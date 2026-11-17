@@ -21,8 +21,8 @@ make core-test
 
 ## One-Command Cross-Compilation
 
-### Sega Genesis / Mega Drive ROM (`build/genesis/out/rom.bin`)
-Uses Docker SGDK (`registry.gitlab.com/doragasu/docker-sgdk:latest`) automatically—no manual SGDK install required (falls back to a local `GDK` only if you explicitly set one):
+### Sega Genesis / Mega Drive ROM (`build/genesis/hearth.bin`)
+Uses Docker SGDK (`registry.gitlab.com/doragasu/docker-sgdk:v2.11`) automatically—no manual SGDK install required (falls back to a local `GDK` only if you explicitly set one):
 ```bash
 make genesis
 ```

@@ -48,18 +48,18 @@ static void play_genesis_sfx(uint8_t sfx) {
     switch (sfx) {
         case SFX_CURSOR:
             PSG_setFrequency(0, 660);
-            PSG_setEnvelope(0, PSG_ENVELOPE_MIN + 4);
+            PSG_setEnvelope(0, PSG_ENVELOPE_MAX + 4);
             break;
         case SFX_CONFIRM:
         case SFX_HIT_CRITICAL:
         case SFX_LOCK_BREAK:
             PSG_setFrequency(0, 880);
-            PSG_setEnvelope(0, PSG_ENVELOPE_MIN + 2);
+            PSG_setEnvelope(0, PSG_ENVELOPE_MAX + 2);
             break;
         case SFX_HIT_NORMAL:
         case SFX_HURT:
             PSG_setNoise(PSG_NOISE_TYPE_WHITE, PSG_NOISE_FREQ_TONE3);
-            PSG_setEnvelope(3, PSG_ENVELOPE_MIN + 3);
+            PSG_setEnvelope(3, PSG_ENVELOPE_MAX + 3);
             break;
         default:
             break;

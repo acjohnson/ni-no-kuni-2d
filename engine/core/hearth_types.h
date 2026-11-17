@@ -23,6 +23,12 @@
     typedef s32 int32_t;
     typedef u32 uint32_t;
     #define HEARTH_INLINE static
+#elif defined(SGDK_GCC)
+    #include <types.h>
+    #ifndef NULL
+        #define NULL ((void *)0)
+    #endif
+    #define HEARTH_INLINE static inline
 #else
     #include <stdbool.h>
     #include <stddef.h>
@@ -33,6 +39,9 @@
         #define HEARTH_INLINE static
     #endif
 #endif
+
+/* Portable zero-dependency byte fill (avoids libc <string.h> / SGDK <memory.h> clashes) */
+void hearth_memset(void *dst, uint8_t val, uint16_t len);
 
 /* 16.8 Fixed-Point Arithmetic (1 pixel = 256 subpixels) */
 typedef int32_t fp16_t;

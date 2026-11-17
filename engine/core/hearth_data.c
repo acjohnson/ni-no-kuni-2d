@@ -4,9 +4,14 @@
  * ============================================================================ */
 
 #include "hearth_data.h"
-#if !defined(HEARTH_TARGET_SNES)
-#include <string.h>
-#endif
+
+void hearth_memset(void *dst, uint8_t val, uint16_t len) {
+    uint8_t *p = (uint8_t *)dst;
+    uint16_t i;
+    for (i = 0; i < len; i++) {
+        p[i] = val;
+    }
+}
 
 /* 4 x 16-Color Master Indexed Sub-Palettes (Index 0 = Transparent) */
 const uint32_t HEARTH_PALETTES_RGB[4][16] = {
@@ -87,14 +92,14 @@ static void place_tree(uint8_t *bg1, uint8_t *bg2, uint8_t *col, int tx, int ty)
 
 void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     int x, y, hash, curve, rx;
-    size_t i;
+    uint16_t i;
     static const int8_t trees[][2] = {
         {3, 5}, {3, 10}, {3, 20}, {8, 24},
         {16, 5}, {22, 5}, {28, 4}, {34, 5},
         {39, 5}, {22, 18}, {35, 24}, {40, 23}
     };
 
-    memset(bg2, O_NONE, HEARTH_MAP_CELLS);
+    hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);
 
     /* 1. Varied sunlit meadow grass */
     for (y = 0; y < HEARTH_MAP_H; y++) {

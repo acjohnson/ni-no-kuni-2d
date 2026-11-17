@@ -62,7 +62,8 @@ SDL2_MINGW_URL  ?= https://github.com/libsdl-org/SDL/releases/download/release-$
 MINGW_SDL2_DIR  ?= $(TOOLCHAIN_DIR)/SDL2-mingw/SDL2-$(SDL2_MINGW_VER)/x86_64-w64-mingw32
 
 # Sega Genesis (SGDK): uses local GDK if installed, otherwise Docker SGDK implicitly
-SGDK_IMAGE      ?= registry.gitlab.com/doragasu/docker-sgdk:latest
+# (doragasu/docker-sgdk publishes versioned tags like v2.11, not :latest)
+SGDK_IMAGE      ?= registry.gitlab.com/doragasu/docker-sgdk:v2.11
 
 # Super Nintendo (PVSnesLib): auto-downloads & caches latest Linux release if unset
 PVSNESLIB_CACHE := $(CURDIR)/$(TOOLCHAIN_DIR)/pvsneslib
@@ -146,8 +147,8 @@ $(BUILD_DIR)/test/$(APP_NAME)_core_test: $(CORE_SRCS) $(CORE_HDRS) $(TEST_SRC)
 # 5. SEGA GENESIS / MEGA DRIVE ROM (Implicit Docker SGDK — Zero Manual Setup!)
 # ------------------------------------------------------------------------------
 genesis-stage: $(CORE_SRCS) $(CORE_HDRS) $(GENESIS_SRC)
-	@rm -rf $(BUILD_DIR)/genesis/src
-	@mkdir -p $(BUILD_DIR)/genesis/src $(BUILD_DIR)/genesis/res
+	@rm -rf $(BUILD_DIR)/genesis/src $(BUILD_DIR)/genesis/out
+	@mkdir -p $(BUILD_DIR)/genesis/src $(BUILD_DIR)/genesis/res $(BUILD_DIR)/genesis/inc
 	@cp $(CORE_SRCS) $(CORE_HDRS) $(BUILD_DIR)/genesis/src/
 	@cp $(GENESIS_SRC) $(BUILD_DIR)/genesis/src/main.c
 
@@ -162,11 +163,12 @@ genesis: genesis-stage
 			exit 1; \
 		}; \
 		echo "Building Sega Genesis ROM via Docker SGDK ($(SGDK_IMAGE))..."; \
-		docker run --rm --user "$$(id -u):$$(id -g)" \
+		docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp \
 			-v "$(CURDIR)/$(BUILD_DIR)/genesis:/m68k" \
 			$(SGDK_IMAGE); \
 	fi
-	@echo "Built Sega Genesis ROM: $(BUILD_DIR)/genesis/out/rom.bin"
+	@cp "$(BUILD_DIR)/genesis/out/rom.bin" "$(BUILD_DIR)/genesis/$(APP_NAME).bin"
+	@echo "Built Sega Genesis ROM: $(BUILD_DIR)/genesis/$(APP_NAME).bin (and out/rom.bin)"
 
 # ------------------------------------------------------------------------------
 # 6. SUPER NINTENDO (SNES) ROM (Auto-Fetches PVSnesLib — Zero Manual Setup!)
