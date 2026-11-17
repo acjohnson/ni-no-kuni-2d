@@ -1,0 +1,6 @@
+{
+  "name": "Project Hearth",
+  "description": "A platform-agnostic, C99-portable custom 16-bit JRPG engine vertical slice featuring fluid 8-way exploration, seamless in-place familiar combat, Sea of Stars-inspired timed hits and blocks, bytecode cutscenes, and a retro C99 exporter for SNES and Sega Genesis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
