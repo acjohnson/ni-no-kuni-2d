@@ -327,6 +327,328 @@ typedef struct {
 static SynthVoice g_voices[SYNTH_MAX_VOICES];
 static SDL_AudioDeviceID g_audio_dev = 0;
 
+/* ----------------------------------------------------------------------------
+ * 4-Track Procedural 16-Bit JRPG BGM Sequencer (Zero external audio files!)
+ *   Track 0: Windmill Hamlet (3/4 Pastoral Waltz in G Major)
+ *   Track 1: Whispering Meadow Battle (4/4 Heroic JRPG Battle in A Minor)
+ *   Track 2: Briar Warden Boss (4/4 Urgent Shrine Boss in D Minor)
+ *   Track 3: Victory Fanfare (4/4 Bright Celebratory Loop in C Major)
+ * ---------------------------------------------------------------------------- */
+enum {
+    BGM_HAMLET  = 0,
+    BGM_BATTLE  = 1,
+    BGM_BOSS    = 2,
+    BGM_VICTORY = 3
+};
+
+#define BGM_REST 0u
+#define BGM_HOLD 255u
+
+/* Integer Hz frequencies for MIDI notes 36 (C2) .. 95 (B6) */
+static const uint16_t BGM_NOTE_HZ[60] = {
+    /* C2..B2 */  65,  69,  73,  78,  82,  87,  93,  98, 104, 110, 117, 123,
+    /* C3..B3 */ 131, 139, 147, 156, 165, 175, 185, 196, 208, 220, 233, 247,
+    /* C4..B4 */ 262, 277, 294, 311, 330, 349, 370, 392, 415, 440, 466, 494,
+    /* C5..B5 */ 523, 554, 587, 622, 659, 698, 740, 784, 831, 880, 932, 988,
+    /* C6..B6 */1047,1109,1175,1245,1319,1397,1480,1568,1661,1760,1865,1976
+};
+
+/* MIDI note shorthand constants */
+enum {
+    N_C2=36, N_Cs2=37, N_D2=38, N_Eb2=39, N_E2=40, N_F2=41, N_Fs2=42, N_G2=43, N_Gs2=44, N_A2=45, N_Bb2=46, N_B2=47,
+    N_C3=48, N_Cs3=49, N_D3=50, N_Eb3=51, N_E3=52, N_F3=53, N_Fs3=54, N_G3=55, N_Gs3=56, N_A3=57, N_Bb3=58, N_B3=59,
+    N_C4=60, N_Cs4=61, N_D4=62, N_Eb4=63, N_E4=64, N_F4=65, N_Fs4=66, N_G4=67, N_Gs4=68, N_A4=69, N_Bb4=70, N_B4=71,
+    N_C5=72, N_Cs5=73, N_D5=74, N_Eb5=75, N_E5=76, N_F5=77, N_Fs5=78, N_G5=79, N_Gs5=80, N_A5=81, N_Bb5=82, N_B5=83,
+    N_C6=84, N_D6=86
+};
+
+typedef struct {
+    uint8_t  length;
+    uint16_t step_ms;
+    const uint8_t *lead;
+    const uint8_t *arp;
+    const uint8_t *bass;
+    const uint8_t *drum; /* 0=none, 1=soft brush/hat, 2=snare, 3=kick */
+} BgmTrack;
+
+/* Track 0: Windmill Hamlet — Warm 3/4 Pastoral Waltz (48 eighth-note steps = 8 measures) */
+static const uint8_t HAMLET_LEAD[48] = {
+    N_G4, N_B4, N_D5, BGM_HOLD, N_E5, N_D5,
+    N_B4, BGM_HOLD, N_G4, BGM_HOLD, N_A4, N_B4,
+    N_C5, BGM_HOLD, N_E5, N_D5, N_C5, N_B4,
+    N_A4, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_B4, N_C5,
+    N_D5, BGM_HOLD, N_G5, N_Fs5, N_E5, N_D5,
+    N_B4, BGM_HOLD, N_E5, N_D5, N_C5, N_B4,
+    N_A4, N_B4, N_C5, N_D5, N_B4, N_A4,
+    N_G4, BGM_HOLD, BGM_HOLD, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t HAMLET_ARP[48] = {
+    N_G3, N_B3, N_D4, N_G4, N_D4, N_B3,
+    N_E3, N_G3, N_B3, N_E4, N_B3, N_G3,
+    N_C4, N_E4, N_G4, N_E4, N_C4, N_G3,
+    N_D3, N_Fs3, N_A3, N_D4, N_C4, N_A3,
+    N_B3, N_D4, N_Fs4, N_D4, N_B3, N_Fs3,
+    N_E3, N_G3, N_B3, N_E4, N_B3, N_G3,
+    N_A3, N_C4, N_E4, N_D4, N_Fs4, N_C4,
+    N_G3, N_B3, N_D4, N_G4, N_D4, N_B3
+};
+static const uint8_t HAMLET_BASS[48] = {
+    N_G2, BGM_HOLD, N_D3, BGM_REST, N_D3, BGM_REST,
+    N_E2, BGM_HOLD, N_B2, BGM_REST, N_B2, BGM_REST,
+    N_C3, BGM_HOLD, N_G3, BGM_REST, N_G3, BGM_REST,
+    N_D2, BGM_HOLD, N_A2, BGM_REST, N_A2, BGM_REST,
+    N_B2, BGM_HOLD, N_Fs3, BGM_REST, N_Fs3, BGM_REST,
+    N_E2, BGM_HOLD, N_B2, BGM_REST, N_B2, BGM_REST,
+    N_A2, BGM_HOLD, N_E3, N_D2, BGM_HOLD, N_A2,
+    N_G2, BGM_HOLD, N_D3, N_G2, BGM_HOLD, BGM_REST
+};
+static const uint8_t HAMLET_DRUM[48] = {
+    3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,
+    3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,
+    3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,
+    3, 0, 1, 3, 0, 1,  3, 0, 1, 0, 0, 0
+};
+
+/* Track 1: Whispering Meadow Battle — Heroic 4/4 JRPG Battle (64 16th-note/8th steps) */
+static const uint8_t BATTLE_LEAD[64] = {
+    N_A4, BGM_HOLD, N_C5, N_E5, N_A5, BGM_HOLD, N_G5, N_E5,
+    N_D5, N_E5, N_F5, N_E5, N_D5, N_C5, N_B4, BGM_HOLD,
+    N_C5, BGM_HOLD, N_E5, N_G5, N_C6, BGM_HOLD, N_B5, N_G5,
+    N_A5, N_G5, N_E5, N_D5, N_E5, BGM_HOLD, BGM_REST, N_E5,
+    N_F5, BGM_HOLD, N_E5, N_D5, N_C5, BGM_HOLD, N_D5, N_E5,
+    N_G5, BGM_HOLD, N_F5, N_E5, N_D5, BGM_HOLD, N_C5, N_B4,
+    N_A4, N_C5, N_E5, N_A5, N_Gs5, N_E5, N_B4, N_Gs5,
+    N_A5, BGM_HOLD, N_E5, N_C5, N_A4, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t BATTLE_ARP[64] = {
+    N_A3, N_E4, N_C4, N_E4, N_A3, N_E4, N_C4, N_E4,
+    N_G3, N_D4, N_B3, N_D4, N_G3, N_D4, N_B3, N_D4,
+    N_C4, N_G4, N_E4, N_G4, N_C4, N_G4, N_E4, N_G4,
+    N_E3, N_B3, N_Gs3, N_B3, N_E3, N_B3, N_E4, N_B3,
+    N_F3, N_C4, N_A3, N_C4, N_C4, N_G4, N_E4, N_G4,
+    N_G3, N_D4, N_B3, N_D4, N_D3, N_A3, N_F3, N_A3,
+    N_A3, N_E4, N_C4, N_E4, N_E3, N_B3, N_Gs3, N_B3,
+    N_A3, N_E4, N_C4, N_E4, N_A3, N_C4, N_E4, N_G4
+};
+static const uint8_t BATTLE_BASS[64] = {
+    N_A2, N_A2, N_A3, N_A2, N_A2, N_A2, N_G2, N_A2,
+    N_G2, N_G2, N_G3, N_G2, N_G2, N_G2, N_F2, N_G2,
+    N_C3, N_C3, N_C4, N_C3, N_C3, N_C3, N_B2, N_C3,
+    N_E2, N_E2, N_E3, N_E2, N_E2, N_Fs2, N_G2, N_Gs2,
+    N_F2, N_F2, N_F3, N_F2, N_C3, N_C3, N_C4, N_C3,
+    N_G2, N_G2, N_G3, N_G2, N_D2, N_D2, N_D3, N_D2,
+    N_A2, N_A2, N_A3, N_A2, N_E2, N_E2, N_E3, N_E2,
+    N_A2, N_A2, N_E2, N_G2, N_A2, BGM_HOLD, BGM_REST, N_E2
+};
+static const uint8_t BATTLE_DRUM[64] = {
+    3, 1, 2, 1, 3, 3, 2, 1,  3, 1, 2, 1, 3, 1, 2, 2,
+    3, 1, 2, 1, 3, 3, 2, 1,  3, 1, 2, 1, 3, 2, 2, 1,
+    3, 1, 2, 1, 3, 3, 2, 1,  3, 1, 2, 1, 3, 1, 2, 1,
+    3, 1, 2, 1, 3, 3, 2, 1,  3, 2, 3, 2, 3, 0, 2, 2
+};
+
+/* Track 2: Briar Warden Boss — Dramatic 4/4 D-Minor Boss Theme */
+static const uint8_t BOSS_LEAD[64] = {
+    N_D5, BGM_HOLD, N_Eb5, N_D5, N_C5, N_Bb4, N_A4, BGM_HOLD,
+    N_D5, N_F5, N_A5, BGM_HOLD, N_G5, N_F5, N_E5, BGM_HOLD,
+    N_F5, BGM_HOLD, N_G5, N_F5, N_E5, N_D5, N_Cs5, BGM_HOLD,
+    N_A4, N_Cs5, N_E5, N_G5, N_F5, N_E5, N_D5, BGM_HOLD,
+    N_Bb5, BGM_HOLD, N_A5, N_G5, N_F5, BGM_HOLD, N_G5, N_A5,
+    N_G5, BGM_HOLD, N_F5, N_E5, N_D5, BGM_HOLD, N_E5, N_F5,
+    N_E5, N_F5, N_G5, N_A5, N_Bb5, N_A5, N_G5, N_E5,
+    N_A5, BGM_HOLD, BGM_HOLD, N_G5, N_F5, N_E5, N_D5, BGM_HOLD
+};
+static const uint8_t BOSS_ARP[64] = {
+    N_D4, N_A3, N_F4, N_A3, N_D4, N_A3, N_Eb4, N_A3,
+    N_D4, N_A3, N_F4, N_A3, N_C4, N_G3, N_E4, N_G3,
+    N_Bb3, N_F3, N_D4, N_F3, N_A3, N_E3, N_Cs4, N_E3,
+    N_A3, N_E3, N_Cs4, N_E3, N_D4, N_A3, N_F4, N_A3,
+    N_Bb3, N_F4, N_D4, N_F4, N_F3, N_C4, N_A3, N_C4,
+    N_G3, N_D4, N_Bb3, N_D4, N_D4, N_A3, N_F4, N_A3,
+    N_C4, N_G4, N_E4, N_G4, N_A3, N_E4, N_Cs4, N_E4,
+    N_A3, N_Cs4, N_E4, N_G4, N_F4, N_E4, N_D4, N_A3
+};
+static const uint8_t BOSS_BASS[64] = {
+    N_D2, N_D2, N_D3, N_D2, N_Eb2, N_D2, N_C2, N_D2,
+    N_D2, N_D2, N_D3, N_D2, N_C2, N_C2, N_C3, N_C2,
+    N_Bb2, N_Bb2, N_Bb2, N_A2, N_A2, N_A2, N_A3, N_A2,
+    N_A2, N_G2, N_F2, N_E2, N_D2, N_D2, N_A2, N_D2,
+    N_Bb2, N_Bb2, N_Bb2, N_Bb2, N_F2, N_F2, N_F3, N_F2,
+    N_G2, N_G2, N_G3, N_G2, N_D2, N_D2, N_D3, N_D2,
+    N_C3, N_C3, N_C3, N_C3, N_A2, N_A2, N_A3, N_A2,
+    N_A2, N_A2, N_A2, N_G2, N_F2, N_E2, N_D2, N_A2
+};
+static const uint8_t BOSS_DRUM[64] = {
+    3, 3, 2, 1, 3, 1, 2, 3,  3, 3, 2, 1, 3, 2, 2, 2,
+    3, 3, 2, 1, 3, 1, 2, 3,  3, 1, 2, 1, 3, 2, 3, 2,
+    3, 3, 2, 1, 3, 1, 2, 3,  3, 3, 2, 1, 3, 2, 2, 1,
+    3, 1, 2, 1, 3, 3, 2, 2,  3, 2, 3, 2, 2, 2, 3, 2
+};
+
+/* Track 3: Victory Fanfare — Bright C Major Celebration */
+static const uint8_t VICTORY_LEAD[32] = {
+    N_C5, N_C5, N_C5, BGM_HOLD, N_C5, BGM_HOLD, N_G4, N_A4,
+    N_B4, BGM_HOLD, N_C5, BGM_HOLD, N_D5, N_E5, N_G5, BGM_HOLD,
+    N_E5, N_C5, N_D5, N_E5, N_F5, BGM_HOLD, N_E5, N_D5,
+    N_C5, BGM_HOLD, N_E5, N_G5, N_C6, BGM_HOLD, BGM_HOLD, BGM_REST
+};
+static const uint8_t VICTORY_ARP[32] = {
+    N_C4, N_E4, N_G4, N_E4, N_C4, N_E4, N_G4, N_E4,
+    N_G3, N_B3, N_D4, N_B3, N_G3, N_B3, N_D4, N_B3,
+    N_A3, N_C4, N_E4, N_C4, N_F3, N_A3, N_C4, N_A3,
+    N_G3, N_C4, N_E4, N_G4, N_C5, N_G4, N_E4, N_C4
+};
+static const uint8_t VICTORY_BASS[32] = {
+    N_C3, BGM_REST, N_G2, BGM_REST, N_C3, BGM_REST, N_G2, BGM_REST,
+    N_G2, BGM_REST, N_D3, BGM_REST, N_G2, BGM_REST, N_B2, BGM_REST,
+    N_A2, BGM_REST, N_E3, BGM_REST, N_F2, BGM_REST, N_C3, BGM_REST,
+    N_G2, BGM_REST, N_G2, BGM_REST, N_C3, BGM_HOLD, N_G2, N_C3
+};
+static const uint8_t VICTORY_DRUM[32] = {
+    3, 2, 2, 1, 3, 1, 2, 1,  3, 1, 2, 1, 3, 2, 2, 1,
+    3, 1, 2, 1, 3, 1, 2, 1,  3, 1, 2, 2, 3, 1, 2, 1
+};
+
+static const BgmTrack BGM_TRACKS[4] = {
+    { 48, 240, HAMLET_LEAD,  HAMLET_ARP,  HAMLET_BASS,  HAMLET_DRUM  },
+    { 64, 155, BATTLE_LEAD,  BATTLE_ARP,  BATTLE_BASS,  BATTLE_DRUM  },
+    { 64, 140, BOSS_LEAD,    BOSS_ARP,    BOSS_BASS,    BOSS_DRUM    },
+    { 32, 165, VICTORY_LEAD, VICTORY_ARP, VICTORY_BASS, VICTORY_DRUM }
+};
+
+typedef struct {
+    uint8_t  wave;
+    uint32_t phase_acc;
+    uint32_t phase_inc;
+    int32_t  base_vol;
+    int32_t  env_fp;      /* 0..65536 */
+    int32_t  decay_fp;    /* per-sample linear/exp-like decay */
+    bool     gate;
+    uint16_t lfsr;
+} BgmChannel;
+
+typedef struct {
+    uint8_t    track_id;
+    uint8_t    step_idx;
+    int32_t    samples_to_next;
+    uint32_t   vib_phase;
+    BgmChannel ch[4]; /* 0=lead, 1=arp, 2=bass, 3=drum */
+} BgmSequencer;
+
+static BgmSequencer g_bgm;
+
+static uint32_t bgm_midi_to_inc(uint8_t midi) {
+    if (midi < 36u || midi >= 96u) return 0u;
+    uint32_t hz = BGM_NOTE_HZ[midi - 36u];
+    return (uint32_t)(((uint64_t)hz << 32) / SYNTH_SAMPLE_RATE);
+}
+
+static void bgm_init(void) {
+    memset(&g_bgm, 0, sizeof(g_bgm));
+    g_bgm.track_id = BGM_HAMLET;
+    g_bgm.step_idx = 0;
+    g_bgm.samples_to_next = 0;
+    g_bgm.ch[0].wave = WAVE_TRIANGLE;
+    g_bgm.ch[1].wave = WAVE_SQUARE25;
+    g_bgm.ch[2].wave = WAVE_TRIANGLE;
+    g_bgm.ch[3].wave = WAVE_NOISE;
+    g_bgm.ch[3].lfsr = 0xBEEFu;
+}
+
+static void bgm_set_track(uint8_t track_id) {
+    if (track_id > BGM_VICTORY || g_bgm.track_id == track_id) return;
+    if (g_audio_dev != 0) SDL_LockAudioDevice(g_audio_dev);
+    g_bgm.track_id = track_id;
+    g_bgm.step_idx = 0;
+    g_bgm.samples_to_next = 0;
+    for (int i = 0; i < 4; i++) {
+        g_bgm.ch[i].gate = false;
+        g_bgm.ch[i].env_fp = 0;
+    }
+    /* Tailor timbres to track mood */
+    if (track_id == BGM_HAMLET) {
+        g_bgm.ch[0].wave = WAVE_TRIANGLE;  /* Warm pastoral ocarina/flute */
+        g_bgm.ch[1].wave = WAVE_SQUARE25;  /* Plucked harp arpeggio */
+    } else if (track_id == BGM_BOSS) {
+        g_bgm.ch[0].wave = WAVE_SQUARE50;  /* Bold dramatic boss lead */
+        g_bgm.ch[1].wave = WAVE_SQUARE25;
+    } else {
+        g_bgm.ch[0].wave = WAVE_SQUARE25;  /* Bright heroic JRPG lead */
+        g_bgm.ch[1].wave = WAVE_SQUARE50;
+    }
+    g_bgm.ch[2].wave = WAVE_TRIANGLE;
+    g_bgm.ch[3].wave = WAVE_NOISE;
+    if (g_audio_dev != 0) SDL_UnlockAudioDevice(g_audio_dev);
+}
+
+static void bgm_trigger_step(void) {
+    const BgmTrack *tr = &BGM_TRACKS[g_bgm.track_id];
+    uint8_t s = g_bgm.step_idx;
+    bool pastoral = (g_bgm.track_id == BGM_HAMLET);
+
+    /* Lead */
+    uint8_t n0 = tr->lead[s];
+    if (n0 == BGM_REST) {
+        g_bgm.ch[0].gate = false;
+    } else if (n0 != BGM_HOLD) {
+        g_bgm.ch[0].phase_inc = bgm_midi_to_inc(n0);
+        g_bgm.ch[0].base_vol  = pastoral ? 1850 : 1450;
+        g_bgm.ch[0].env_fp    = 65536;
+        g_bgm.ch[0].decay_fp  = pastoral ? 3 : 5;
+        g_bgm.ch[0].gate      = true;
+    }
+
+    /* Harp / Harmony Arpeggio */
+    uint8_t n1 = tr->arp[s];
+    if (n1 == BGM_REST) {
+        g_bgm.ch[1].gate = false;
+    } else if (n1 != BGM_HOLD) {
+        g_bgm.ch[1].phase_inc = bgm_midi_to_inc(n1);
+        g_bgm.ch[1].base_vol  = pastoral ? 760 : 720;
+        g_bgm.ch[1].env_fp    = 65536;
+        g_bgm.ch[1].decay_fp  = pastoral ? 8 : 10;
+        g_bgm.ch[1].gate      = true;
+    }
+
+    /* Bass */
+    uint8_t n2 = tr->bass[s];
+    if (n2 == BGM_REST) {
+        g_bgm.ch[2].gate = false;
+    } else if (n2 != BGM_HOLD) {
+        g_bgm.ch[2].phase_inc = bgm_midi_to_inc(n2);
+        g_bgm.ch[2].base_vol  = pastoral ? 1750 : 1850;
+        g_bgm.ch[2].env_fp    = 65536;
+        g_bgm.ch[2].decay_fp  = pastoral ? 5 : 9;
+        g_bgm.ch[2].gate      = true;
+    }
+
+    /* Percussion */
+    uint8_t d = tr->drum[s];
+    if (d != 0u) {
+        if (d == 3u) { /* Soft kick thump */
+            g_bgm.ch[3].wave      = WAVE_TRIANGLE;
+            g_bgm.ch[3].phase_inc = (uint32_t)(((uint64_t)95u << 32) / SYNTH_SAMPLE_RATE);
+            g_bgm.ch[3].base_vol  = pastoral ? 900 : 1650;
+            g_bgm.ch[3].decay_fp  = 24;
+        } else if (d == 2u) { /* Snare */
+            g_bgm.ch[3].wave      = WAVE_NOISE;
+            g_bgm.ch[3].phase_inc = (uint32_t)(((uint64_t)1800u << 32) / SYNTH_SAMPLE_RATE);
+            g_bgm.ch[3].base_vol  = 980;
+            g_bgm.ch[3].decay_fp  = 26;
+        } else { /* Soft brush / hi-hat */
+            g_bgm.ch[3].wave      = WAVE_NOISE;
+            g_bgm.ch[3].phase_inc = (uint32_t)(((uint64_t)4200u << 32) / SYNTH_SAMPLE_RATE);
+            g_bgm.ch[3].base_vol  = pastoral ? 340 : 520;
+            g_bgm.ch[3].decay_fp  = 42;
+        }
+        g_bgm.ch[3].env_fp = 65536;
+        g_bgm.ch[3].gate   = true;
+    }
+
+    g_bgm.step_idx = (uint8_t)((s + 1u) % tr->length);
+    g_bgm.samples_to_next = (int32_t)(((uint32_t)tr->step_ms * SYNTH_SAMPLE_RATE) / 1000u);
+}
+
 static void synth_push_note(uint8_t wave, uint32_t freq_hz, int32_t slide_hz_per_sec, uint32_t ms, int32_t vol) {
     if (g_audio_dev == 0 || g_muted) return;
     int slot = -1;
@@ -462,6 +784,53 @@ static void SDLCALL synth_audio_callback(void *userdata, Uint8 *stream, int len)
 
     for (int s = 0; s < samples; s++) {
         int32_t mix = 0;
+
+        /* 1. Background Music Sequencer (4 Musical Voices) */
+        if (!g_muted) {
+            if (g_bgm.samples_to_next <= 0) {
+                bgm_trigger_step();
+            }
+            g_bgm.samples_to_next--;
+            g_bgm.vib_phase += 520u; /* Gentle ~5.3Hz vibrato for lead flute */
+
+            for (int c = 0; c < 4; c++) {
+                BgmChannel *ch = &g_bgm.ch[c];
+                if (ch->env_fp <= 0) continue;
+                uint32_t prev = ch->phase_acc;
+                uint32_t inc  = ch->phase_inc;
+                if (c == 0 && g_bgm.track_id == BGM_HAMLET) {
+                    int32_t vib = HEARTH_SIN64[(g_bgm.vib_phase >> 26) & 63u];
+                    inc = (uint32_t)((int64_t)inc + ((int64_t)inc * vib) / 26000);
+                }
+                ch->phase_acc += inc;
+                if (c == 3 && ch->wave == WAVE_TRIANGLE && ch->phase_inc > 400000u) {
+                    ch->phase_inc -= 1800u; /* Pitch drop for punchy kick drum */
+                }
+
+                int32_t env = (int32_t)(((int64_t)ch->base_vol * ch->env_fp) >> 16);
+                uint32_t top = ch->phase_acc >> 24;
+                int32_t sample = 0;
+                if (ch->wave == WAVE_SQUARE50) {
+                    sample = (top < 128u) ? env : -env;
+                } else if (ch->wave == WAVE_SQUARE25) {
+                    sample = (top < 64u) ? env : -env;
+                } else if (ch->wave == WAVE_TRIANGLE) {
+                    int32_t tri = (top < 128u) ? (int32_t)top * 2 - 128 : (int32_t)(255u - top) * 2 - 128;
+                    sample = (tri * env) >> 7;
+                } else {
+                    if (ch->phase_acc < prev) {
+                        uint16_t bit = (uint16_t)(((ch->lfsr >> 0) ^ (ch->lfsr >> 2) ^ (ch->lfsr >> 3) ^ (ch->lfsr >> 5)) & 1u);
+                        ch->lfsr = (uint16_t)((ch->lfsr >> 1) | (bit << 15));
+                    }
+                    sample = (ch->lfsr & 1u) ? env : -env;
+                }
+                mix += sample;
+                ch->env_fp -= ch->gate ? ch->decay_fp : (ch->decay_fp * 4 + 24);
+                if (ch->env_fp < 0) ch->env_fp = 0;
+            }
+        }
+
+        /* 2. Foreground Sound Effects (8 Voices) */
         for (int i = 0; i < SYNTH_MAX_VOICES; i++) {
             SynthVoice *v = &g_voices[i];
             if (!v->active) continue;
@@ -1538,6 +1907,7 @@ int main(int argc, char **argv) {
     }
 
     init_palettes();
+    bgm_init();
     hearth_init(&g_state);
 
     printf("Project Hearth (Native C99/SDL2) — Core RAM Footprint: %lu bytes\n",
@@ -1613,6 +1983,13 @@ int main(int argc, char **argv) {
             ppu = hearth_step_60hz(&g_state, bits);
             for (uint8_t i = 0; i < ppu->sfx_count; i++) {
                 synth_play_sfx(ppu->sfx_queue[i]);
+            }
+            if (g_state.mode == MODE_BATTLE) {
+                bgm_set_track(g_state.battle.is_boss_battle ? BGM_BOSS : BGM_BATTLE);
+            } else if (g_state.mode == MODE_BATTLE_VICTORY) {
+                bgm_set_track(BGM_VICTORY);
+            } else {
+                bgm_set_track(BGM_HAMLET);
             }
             acc_ticks -= step_ticks;
             steps++;
