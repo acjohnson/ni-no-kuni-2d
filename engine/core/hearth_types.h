@@ -14,9 +14,25 @@
 #ifndef HEARTH_TYPES_H
 #define HEARTH_TYPES_H
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
+#if defined(HEARTH_TARGET_SNES)
+    #include <snes.h>
+    typedef s8  int8_t;
+    typedef u8  uint8_t;
+    typedef s16 int16_t;
+    typedef u16 uint16_t;
+    typedef s32 int32_t;
+    typedef u32 uint32_t;
+    #define HEARTH_INLINE static
+#else
+    #include <stdbool.h>
+    #include <stddef.h>
+    #include <stdint.h>
+    #if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)
+        #define HEARTH_INLINE static inline
+    #else
+        #define HEARTH_INLINE static
+    #endif
+#endif
 
 /* 16.8 Fixed-Point Arithmetic (1 pixel = 256 subpixels) */
 typedef int32_t fp16_t;

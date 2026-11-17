@@ -1,5 +1,6 @@
 node_modules/
 build/
+.toolchains/
 dist/
 coverage/
 .DS_Store

@@ -91,14 +91,14 @@ extern const HearthCutsceneOp CUTSCENE_TAKE_COURAGE[];
 extern const HearthCutsceneOp CUTSCENE_GIVE_COURAGE[];
 
 /* Hardware Palette Packers for Sega Genesis (BGR333) & SNES (BGR555) */
-static inline uint16_t hearth_rgb_to_genesis_bgr333(uint32_t rgb) {
+HEARTH_INLINE uint16_t hearth_rgb_to_genesis_bgr333(uint32_t rgb) {
     uint16_t r3 = (uint16_t)(((rgb >> 16) & 0xFFu) >> 5);
     uint16_t g3 = (uint16_t)(((rgb >> 8)  & 0xFFu) >> 5);
     uint16_t b3 = (uint16_t)((rgb         & 0xFFu) >> 5);
     return (uint16_t)((b3 << 9) | (g3 << 5) | (r3 << 1));
 }
 
-static inline uint16_t hearth_rgb_to_snes_bgr555(uint32_t rgb) {
+HEARTH_INLINE uint16_t hearth_rgb_to_snes_bgr555(uint32_t rgb) {
     uint16_t r5 = (uint16_t)(((rgb >> 16) & 0xFFu) >> 3);
     uint16_t g5 = (uint16_t)(((rgb >> 8)  & 0xFFu) >> 3);
     uint16_t b5 = (uint16_t)((rgb         & 0xFFu) >> 3);

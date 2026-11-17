@@ -4,12 +4,12 @@
  * Bridges SGDK hardware VDP, 68000 joypad I/O, and PSG/FM sound directly
  * into the platform-agnostic pure C99 core (engine/core/hearth_core.c).
  *
- * Build via top-level Makefile:
- *   GDK=/path/to/sgdk make genesis
+ * Build via top-level Makefile (uses official SGDK Docker image automatically):
+ *   make genesis
  * ============================================================================ */
 
 #include <genesis.h>
-#include "../core/hearth_core.h"
+#include "hearth_core.h"
 
 /* Placed statically in Sega Genesis 64KB 68000 Work RAM (zero malloc!) */
 static HearthState g_hearth;

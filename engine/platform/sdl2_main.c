@@ -1205,7 +1205,7 @@ static void render_battle_scene(const HearthState *st, const HearthPpuPacket *pp
         snprintf(hdr, sizeof(hdr), "%s%.8s", active ? "*" : "", pm->name);
         draw_text(cx + 3, cy + 3, hdr, active ? 0xFFFFF1A8u : 0xFFD0CCC4u, false);
 
-        char hpbuf[20];
+        char hpbuf[32];
         snprintf(hpbuf, sizeof(hpbuf), "H%d/%d M%d", pm->hp, pm->max_hp, pm->mp);
         draw_text(cx + 3, cy + 12, hpbuf, 0xFFA8D678u, false);
 
@@ -1546,12 +1546,12 @@ int main(int argc, char **argv) {
     printf("Hotkeys:  F1 PPU (320x224/256x224) | F2 CRT Scanlines | F3 Shrine Boss | F4 Cutscene | F5 Heal | M Mute | F11 Fullscreen\n");
 
     const uint64_t freq = SDL_GetPerformanceFrequency();
-    const uint64_t step_ticks = freq / 60u;
+    const uint64_t step_ticks = (freq >= 60u) ? (freq / 60u) : 1u;
     uint64_t prev_ticks = SDL_GetPerformanceCounter();
     uint64_t acc_ticks  = 0;
 
     bool running = true;
-    const HearthPpuPacket *ppu = &g_state.ppu;
+    const HearthPpuPacket *ppu = hearth_step_60hz(&g_state, 0);
 
     while (running) {
         SDL_Event ev;
@@ -1627,15 +1627,17 @@ int main(int argc, char **argv) {
         /* Preserve exact aspect ratio inside window */
         int win_w = 0, win_h = 0;
         SDL_GetRendererOutputSize(ren, &win_w, &win_h);
-        SDL_Rect src = { 0, 0, (int)ppu->width, (int)ppu->height };
+        int pw = (ppu->width  > 0) ? (int)ppu->width  : 320;
+        int ph = (ppu->height > 0) ? (int)ppu->height : 224;
+        SDL_Rect src = { 0, 0, pw, ph };
 
-        int scale_x = win_w / (int)ppu->width;
-        int scale_y = win_h / (int)ppu->height;
+        int scale_x = win_w / pw;
+        int scale_y = win_h / ph;
         int int_scale = (scale_x < scale_y) ? scale_x : scale_y;
         SDL_Rect dst;
         if (int_scale >= 1) {
-            dst.w = (int)ppu->width * int_scale;
-            dst.h = (int)ppu->height * int_scale;
+            dst.w = pw * int_scale;
+            dst.h = ph * int_scale;
         } else {
             dst.w = win_w;
             dst.h = win_h;

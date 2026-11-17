@@ -1,21 +1,24 @@
 # ==============================================================================
-# Project Hearth — Multi-Target Native C99 & Retro Console Build System
+# Project Hearth — Zero-Config Multi-Target Native & Retro Console Makefile
 #
-# Supported targets:
+# Targets:
 #   make               -> Auto-detect host OS and build native executable
-#   make run           -> Build & launch native executable (Ubuntu/Linux/macOS)
+#   make run           -> Build & launch native executable
 #   make linux         -> Native Linux amd64 executable (SDL2, zero browser)
-#   make core-test     -> Zero-dependency pure C99 automated verification test
-#   make windows       -> Cross-compile Windows x64 .exe from Linux (MinGW-w64)
+#   make core-test     -> Zero-dependency C89 + C99 core verification suite
+#   make windows       -> Cross-compile Windows x64 .exe (auto-fetches SDL2 MinGW)
+#   make genesis       -> Build Sega Genesis .bin ROM (implicit Docker SGDK)
+#   make snes          -> Build Super Nintendo .sfc ROM (auto-fetches PVSnesLib)
 #   make macos         -> Native macOS executable (Homebrew SDL2)
-#   make genesis       -> Cross-compile Sega Genesis .bin ROM (SGDK)
-#   make snes          -> Cross-compile Super Nintendo .sfc ROM (PVSnesLib)
-#   make clean         -> Remove build/ artifacts
-#   make help          -> Print usage & toolchain setup instructions
+#   make deps-ubuntu   -> Install Ubuntu Noble packages (gcc, SDL2, mingw-w64)
+#   make clean         -> Remove build/ (keeps cached .toolchains/)
+#   make distclean     -> Remove both build/ and .toolchains/
+#   make help          -> Show all targets
 # ==============================================================================
 
 APP_NAME        := hearth
 BUILD_DIR       := build
+TOOLCHAIN_DIR   := .toolchains
 
 CORE_DIR        := engine/core
 PLAT_DIR        := engine/platform
@@ -28,9 +31,10 @@ TEST_SRC        := $(PLAT_DIR)/headless_test.c
 GENESIS_SRC     := $(PLAT_DIR)/genesis_main.c
 SNES_SRC        := $(PLAT_DIR)/snes_main.c
 
-# Strict portable C99 compiler flags
+# Strict portable compiler flags
 CFLAGS_COMMON   := -std=c99 -O2 -Wall -Wextra -Wshadow -Wconversion -Wno-sign-conversion -I$(CORE_DIR)
 CFLAGS_STRICT   := -std=c99 -O2 -Wall -Wextra -Werror -pedantic -I$(CORE_DIR)
+CFLAGS_C89      := -std=c89 -O2 -Wall -Wextra -Werror -pedantic -I$(CORE_DIR)
 
 # Detect Host OS
 UNAME_S         := $(shell uname -s 2>/dev/null || echo Unknown)
@@ -45,22 +49,25 @@ else
     HOST_BIN    := $(BUILD_DIR)/windows/$(APP_NAME).exe
 endif
 
-# Native Compilers
 CC              ?= gcc
 
 # Linux / macOS SDL2 flags (pkg-config first, fallback to sdl2-config)
 SDL2_CFLAGS     := $(shell pkg-config --cflags sdl2 2>/dev/null || sdl2-config --cflags 2>/dev/null)
 SDL2_LIBS       := $(shell pkg-config --libs sdl2 2>/dev/null || sdl2-config --libs 2>/dev/null)
 
-# Windows MinGW-w64 cross-compiler settings (for cross-compiling from Ubuntu Noble)
+# Windows MinGW-w64 cross-compile settings (auto-downloads SDL2 MinGW dev if absent)
 MINGW_CC        ?= x86_64-w64-mingw32-gcc
-MINGW_SDL2_DIR  ?= third_party/SDL2-mingw/x86_64-w64-mingw32
+SDL2_MINGW_VER  ?= 2.30.10
+SDL2_MINGW_URL  ?= https://github.com/libsdl-org/SDL/releases/download/release-$(SDL2_MINGW_VER)/SDL2-devel-$(SDL2_MINGW_VER)-mingw.tar.gz
+MINGW_SDL2_DIR  ?= $(TOOLCHAIN_DIR)/SDL2-mingw/SDL2-$(SDL2_MINGW_VER)/x86_64-w64-mingw32
 
-# Retro Console SDK paths (override via environment or CLI: `GDK=... make genesis`)
-GDK             ?= $(HOME)/sgdk
-PVSNESLIB_HOME  ?= $(HOME)/pvsneslib
+# Sega Genesis (SGDK): uses local GDK if installed, otherwise Docker SGDK implicitly
+SGDK_IMAGE      ?= registry.gitlab.com/doragasu/docker-sgdk:latest
 
-.PHONY: all linux macos windows genesis snes core-test run deps-ubuntu clean help
+# Super Nintendo (PVSnesLib): auto-downloads & caches latest Linux release if unset
+PVSNESLIB_CACHE := $(CURDIR)/$(TOOLCHAIN_DIR)/pvsneslib
+
+.PHONY: all linux macos windows genesis genesis-stage snes core-test run deps-ubuntu clean distclean help
 
 # Default target builds for the current machine
 all: $(HOST_TARGET)
@@ -73,8 +80,8 @@ linux: $(BUILD_DIR)/linux/$(APP_NAME)
 $(BUILD_DIR)/linux/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC)
 	@if [ -z "$(SDL2_CFLAGS)" ] && [ ! -f /usr/include/SDL2/SDL.h ]; then \
 		echo "ERROR: SDL2 development headers not found."; \
-		echo "On Ubuntu Noble amd64, install them with:"; \
-		echo "  sudo apt update && sudo apt install -y build-essential libsdl2-dev pkg-config"; \
+		echo "On Ubuntu Noble amd64, run: make deps-ubuntu"; \
+		echo "  (or: sudo apt update && sudo apt install -y build-essential libsdl2-dev pkg-config)"; \
 		exit 1; \
 	fi
 	@mkdir -p $(BUILD_DIR)/linux
@@ -98,21 +105,19 @@ $(BUILD_DIR)/macos/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC)
 	@echo "Built native macOS binary: $@"
 
 # ------------------------------------------------------------------------------
-# 3. WINDOWS x64 CROSS-COMPILE FROM LINUX (MinGW-w64)
+# 3. WINDOWS x64 CROSS-COMPILE FROM LINUX (MinGW-w64 + auto-fetched SDL2)
 # ------------------------------------------------------------------------------
 windows: $(BUILD_DIR)/windows/$(APP_NAME).exe
 
 $(BUILD_DIR)/windows/$(APP_NAME).exe: $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC)
 	@command -v $(MINGW_CC) >/dev/null 2>&1 || { \
-		echo "ERROR: $(MINGW_CC) not found."; \
-		echo "Install on Ubuntu Noble: sudo apt install -y mingw-w64"; \
+		echo "ERROR: $(MINGW_CC) not found. Install with: sudo apt install -y mingw-w64"; \
 		exit 1; \
 	}
 	@if [ ! -f "$(MINGW_SDL2_DIR)/include/SDL2/SDL.h" ]; then \
-		echo "ERROR: MinGW SDL2 dev package not found at $(MINGW_SDL2_DIR)."; \
-		echo "Download SDL2-devel-*-mingw.tar.gz from https://github.com/libsdl-org/SDL/releases"; \
-		echo "Extract it to third_party/SDL2-mingw/ or pass MINGW_SDL2_DIR=/path/to/x86_64-w64-mingw32"; \
-		exit 1; \
+		echo "Fetching SDL2 $(SDL2_MINGW_VER) MinGW dev package into $(TOOLCHAIN_DIR)/SDL2-mingw/..."; \
+		mkdir -p $(TOOLCHAIN_DIR)/SDL2-mingw; \
+		curl -fsSL "$(SDL2_MINGW_URL)" | tar -xz -C $(TOOLCHAIN_DIR)/SDL2-mingw; \
 	fi
 	@mkdir -p $(BUILD_DIR)/windows
 	$(MINGW_CC) $(CFLAGS_COMMON) \
@@ -126,9 +131,11 @@ $(BUILD_DIR)/windows/$(APP_NAME).exe: $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC)
 	@echo "Built Windows x64 executable: $@"
 
 # ------------------------------------------------------------------------------
-# 4. ZERO-DEPENDENCY PURE C99 CORE VERIFICATION TEST (Runs anywhere with gcc)
+# 4. ZERO-DEPENDENCY CORE VERIFICATION SUITE (Checks BOTH strict C89 & C99!)
 # ------------------------------------------------------------------------------
 core-test: $(BUILD_DIR)/test/$(APP_NAME)_core_test
+	@$(CC) $(CFLAGS_C89) -fsyntax-only $(CORE_SRCS)
+	@echo "[PASS] engine/core compiles cleanly under strict ANSI C89 (SNES 816-tcc safe)"
 	@./$(BUILD_DIR)/test/$(APP_NAME)_core_test
 
 $(BUILD_DIR)/test/$(APP_NAME)_core_test: $(CORE_SRCS) $(CORE_HDRS) $(TEST_SRC)
@@ -136,89 +143,85 @@ $(BUILD_DIR)/test/$(APP_NAME)_core_test: $(CORE_SRCS) $(CORE_HDRS) $(TEST_SRC)
 	$(CC) $(CFLAGS_STRICT) $(CORE_SRCS) $(TEST_SRC) -o $@
 
 # ------------------------------------------------------------------------------
-# 5. SEGA GENESIS / MEGA DRIVE ROM (SGDK — Motorola 68000)
+# 5. SEGA GENESIS / MEGA DRIVE ROM (Implicit Docker SGDK — Zero Manual Setup!)
 # ------------------------------------------------------------------------------
-genesis: $(CORE_SRCS) $(CORE_HDRS) $(GENESIS_SRC)
-	@if [ ! -f "$(GDK)/makefile.gen" ]; then \
-		echo "ERROR: SGDK not found at GDK=$(GDK)."; \
-		echo "Install SGDK or run with SGDK's official Docker image:"; \
-		echo "  git clone https://github.com/Stephane-D/SGDK.git \$$HOME/sgdk"; \
-		echo "  # OR via Docker (no local 68k toolchain install needed):"; \
-		echo "  make genesis-stage && docker run --rm -v \$$(pwd)/build/genesis:/m68k -t ghcr.io/stephane-d/sgdk:latest"; \
-		exit 1; \
+genesis-stage: $(CORE_SRCS) $(CORE_HDRS) $(GENESIS_SRC)
+	@rm -rf $(BUILD_DIR)/genesis/src
+	@mkdir -p $(BUILD_DIR)/genesis/src $(BUILD_DIR)/genesis/res
+	@cp $(CORE_SRCS) $(CORE_HDRS) $(BUILD_DIR)/genesis/src/
+	@cp $(GENESIS_SRC) $(BUILD_DIR)/genesis/src/main.c
+
+genesis: genesis-stage
+	@if [ -n "$(GDK)" ] && [ -f "$(GDK)/makefile.gen" ]; then \
+		echo "Building Sega Genesis ROM using local SGDK at $(GDK)..."; \
+		GDK="$(GDK)" $(MAKE) -C $(BUILD_DIR)/genesis -f "$(GDK)/makefile.gen"; \
+	else \
+		command -v docker >/dev/null 2>&1 || { \
+			echo "ERROR: Docker is required for automatic SGDK builds (or set GDK=/path/to/sgdk)."; \
+			echo "Install Docker on Ubuntu Noble: sudo apt install -y docker.io"; \
+			exit 1; \
+		}; \
+		echo "Building Sega Genesis ROM via Docker SGDK ($(SGDK_IMAGE))..."; \
+		docker run --rm --user "$$(id -u):$$(id -g)" \
+			-v "$(CURDIR)/$(BUILD_DIR)/genesis:/m68k" \
+			$(SGDK_IMAGE); \
 	fi
-	@$(MAKE) --no-print-directory genesis-stage
-	GDK="$(GDK)" $(MAKE) -C $(BUILD_DIR)/genesis -f "$(GDK)/makefile.gen"
 	@echo "Built Sega Genesis ROM: $(BUILD_DIR)/genesis/out/rom.bin"
 
-.PHONY: genesis-stage
-genesis-stage:
-	@rm -rf $(BUILD_DIR)/genesis/src
-	@mkdir -p $(BUILD_DIR)/genesis/src/core $(BUILD_DIR)/genesis/src/platform $(BUILD_DIR)/genesis/res
-	@cp $(CORE_SRCS) $(CORE_HDRS) $(BUILD_DIR)/genesis/src/core/
-	@cp $(GENESIS_SRC) $(BUILD_DIR)/genesis/src/platform/main.c
-	@echo "Staged SGDK project in $(BUILD_DIR)/genesis/"
-
 # ------------------------------------------------------------------------------
-# 6. SUPER NINTENDO (SNES) ROM (PVSnesLib — WDC 65816)
+# 6. SUPER NINTENDO (SNES) ROM (Auto-Fetches PVSnesLib — Zero Manual Setup!)
 # ------------------------------------------------------------------------------
 snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC)
-	@if [ ! -f "$(PVSNESLIB_HOME)/devkitsnes/snes_rules" ]; then \
-		echo "ERROR: PVSnesLib not found at PVSNESLIB_HOME=$(PVSNESLIB_HOME)."; \
-		echo "Download PVSnesLib from https://github.com/alekmaul/pvsneslib/releases"; \
-		echo "Then run: PVSNESLIB_HOME=/path/to/pvsneslib make snes"; \
-		exit 1; \
-	fi
-	@rm -rf $(BUILD_DIR)/snes
-	@mkdir -p $(BUILD_DIR)/snes/core $(BUILD_DIR)/snes/platform
-	@cp $(CORE_SRCS) $(CORE_HDRS) $(BUILD_DIR)/snes/core/
-	@cp $(SNES_SRC) $(BUILD_DIR)/snes/platform/main.c
-	@printf '%s\n' \
-		'.MEMORYMAP' \
-		'  SLOTSIZE $$8000' \
-		'  DEFAULTSLOT 0' \
-		'  SLOT 0 $$8000' \
-		'  SLOT 1 $$0 $$2000' \
-		'  SLOT 2 $$2000 $$E000' \
-		'  SLOT 3 $$0 $$10000' \
-		'.ENDME' \
-		'.ROMBANKSIZE $$8000' \
-		'.ROMBANKS 8' \
-		'.SNESHEADER' \
-		'  ID "HEAR"' \
-		'  NAME "PROJECT HEARTH       "' \
-		'  SLOWROM' \
-		'  LOROM' \
-		'  CARTRIDGETYPE $$00' \
-		'  ROMSIZE $$08' \
-		'  SRAMSIZE $$00' \
-		'  COUNTRY $$01' \
-		'  LICENSEECODE $$00' \
-		'  VERSION $$00' \
-		'.ENDSNES' \
-		'.SNESNATIVEVECTOR' \
-		'  COP EmptyHandler' \
-		'  BRK EmptyHandler' \
-		'  ABORT EmptyHandler' \
-		'  NMI VBlank' \
-		'  IRQ EmptyHandler' \
-		'.ENDNATIVEVECTOR' \
-		'.SNESEMUVECTOR' \
-		'  COP EmptyHandler' \
-		'  BRK EmptyHandler' \
-		'  ABORT EmptyHandler' \
-		'  NMI EmptyHandler' \
-		'  RESET tcc__start' \
-		'  IRQBRK EmptyHandler' \
-		'.ENDEMUVECTOR' > $(BUILD_DIR)/snes/hdr.asm
-	@printf '%s\n' \
-		'export PVSNESLIB_HOME := $(PVSNESLIB_HOME)' \
-		'include $$(PVSNESLIB_HOME)/devkitsnes/snes_rules' \
-		'ROMNAME := hearth' \
-		'CFILES := core/hearth_data.c core/hearth_core.c platform/main.c' \
-		'all: $$(ROMNAME).sfc' > $(BUILD_DIR)/snes/Makefile
-	$(MAKE) -C $(BUILD_DIR)/snes
-	@echo "Built SNES ROM: $(BUILD_DIR)/snes/hearth.sfc"
+	@set -e; \
+	PV_ROOT=""; \
+	if [ -n "$(PVSNESLIB_HOME)" ] && [ -f "$(PVSNESLIB_HOME)/devkitsnes/snes_rules" ]; then \
+		PV_ROOT="$(PVSNESLIB_HOME)"; \
+	else \
+		RULES_PATH=$$(find "$(PVSNESLIB_CACHE)" -maxdepth 4 -path '*/devkitsnes/snes_rules' 2>/dev/null | head -n 1 || true); \
+		if [ -z "$$RULES_PATH" ]; then \
+			command -v curl >/dev/null 2>&1 || { echo "ERROR: curl required (sudo apt install -y curl unzip)"; exit 1; }; \
+			command -v unzip >/dev/null 2>&1 || { echo "ERROR: unzip required (sudo apt install -y curl unzip)"; exit 1; }; \
+			echo "Downloading latest PVSnesLib Linux release into $(TOOLCHAIN_DIR)/pvsneslib/..."; \
+			mkdir -p "$(PVSNESLIB_CACHE)"; \
+			API_JSON=$$(curl -fsSL "https://api.github.com/repos/alekmaul/pvsneslib/releases/latest"); \
+			DL_URL=$$(printf '%s\n' "$$API_JSON" | grep -Eo 'https://[^"]*64b_linux[^"]*\.zip' | head -n 1 || true); \
+			if [ -z "$$DL_URL" ]; then \
+				DL_URL=$$(printf '%s\n' "$$API_JSON" | grep -Eo 'https://[^"]*linux[^"]*\.zip' | head -n 1 || true); \
+			fi; \
+			if [ -z "$$DL_URL" ]; then \
+				echo "ERROR: Could not locate PVSnesLib Linux zip from GitHub API."; \
+				exit 1; \
+			fi; \
+			echo "Fetching $$DL_URL ..."; \
+			curl -fsSL "$$DL_URL" -o "$(PVSNESLIB_CACHE)/pvsneslib.zip"; \
+			unzip -oq "$(PVSNESLIB_CACHE)/pvsneslib.zip" -d "$(PVSNESLIB_CACHE)"; \
+			rm -f "$(PVSNESLIB_CACHE)/pvsneslib.zip"; \
+			RULES_PATH=$$(find "$(PVSNESLIB_CACHE)" -maxdepth 4 -path '*/devkitsnes/snes_rules' | head -n 1); \
+		fi; \
+		PV_ROOT=$$(dirname "$$(dirname "$$RULES_PATH")"); \
+		chmod +x "$$PV_ROOT"/devkitsnes/bin/* "$$PV_ROOT"/devkitsnes/tools/* 2>/dev/null || true; \
+	fi; \
+	echo "Using PVSnesLib at $$PV_ROOT"; \
+	rm -rf "$(BUILD_DIR)/snes"; \
+	mkdir -p "$(BUILD_DIR)/snes/src"; \
+	cp $(CORE_SRCS) $(CORE_HDRS) "$(BUILD_DIR)/snes/src/"; \
+	cp $(SNES_SRC) "$(BUILD_DIR)/snes/src/main.c"; \
+	printf '%s\n' \
+		'export ROMNAME := hearth' \
+		'export ROMTITLE := PROJECT HEARTH' \
+		'export ROMSIZE := 08' \
+		'export SRAMSIZE := 00' \
+		'export COUNTRY := 01' \
+		'SRC := src' \
+		'CFLAGS += -DHEARTH_TARGET_SNES -Isrc' \
+		"include $${PV_ROOT}/devkitsnes/snes_rules" \
+		'all: $$(ROMNAME).sfc' > "$(BUILD_DIR)/snes/Makefile"; \
+	if ! grep -q "AUTOHDR" "$$PV_ROOT/devkitsnes/snes_rules" 2>/dev/null; then \
+		SAMPLE_HDR=$$(find "$$PV_ROOT" -name "hdr.asm" | head -n 1 || true); \
+		if [ -n "$$SAMPLE_HDR" ]; then cp "$$SAMPLE_HDR" "$(BUILD_DIR)/snes/hdr.asm"; fi; \
+	fi; \
+	PVSNESLIB_HOME="$$PV_ROOT" $(MAKE) -C "$(BUILD_DIR)/snes"; \
+	echo "Built SNES ROM: $(BUILD_DIR)/snes/hearth.sfc"
 
 # ------------------------------------------------------------------------------
 # UTILITIES
@@ -227,25 +230,29 @@ run: $(HOST_TARGET)
 	@./$(HOST_BIN)
 
 deps-ubuntu:
-	@echo "Installing Ubuntu Noble amd64 native build dependencies..."
-	sudo apt-get update && sudo apt-get install -y build-essential libsdl2-dev pkg-config mingw-w64
+	@echo "Installing Ubuntu Noble amd64 native & cross-compile dependencies..."
+	sudo apt-get update && sudo apt-get install -y build-essential libsdl2-dev pkg-config curl unzip mingw-w64
 
 clean:
 	rm -rf $(BUILD_DIR)
 
+distclean:
+	rm -rf $(BUILD_DIR) $(TOOLCHAIN_DIR)
+
 help:
-	@echo "Project Hearth — Native C99 / Cross-Compile Makefile"
+	@echo "Project Hearth — Native C99 & Multi-Platform Makefile"
 	@echo ""
 	@echo "Host detected: $(UNAME_S) -> default target: $(HOST_TARGET)"
 	@echo ""
 	@echo "Targets:"
 	@echo "  make              Build native executable for this OS ($(HOST_BIN))"
 	@echo "  make run          Build and launch the native game window"
-	@echo "  make core-test    Compile & run strict C99 core test suite (no SDL2 needed)"
+	@echo "  make core-test    Compile & run strict C89/C99 core verification suite"
 	@echo "  make linux        Build Linux amd64 native SDL2 executable"
-	@echo "  make windows      Cross-compile Windows x64 .exe via MinGW-w64"
+	@echo "  make windows      Cross-compile Windows x64 .exe (auto-fetches SDL2 MinGW)"
+	@echo "  make genesis      Build Sega Genesis ROM (.bin) via Docker SGDK automatically"
+	@echo "  make snes         Build SNES ROM (.sfc) via auto-downloaded PVSnesLib"
 	@echo "  make macos        Build macOS native SDL2 executable"
-	@echo "  make genesis      Build Sega Genesis ROM (.bin) via SGDK"
-	@echo "  make snes         Build Super Nintendo ROM (.sfc) via PVSnesLib"
-	@echo "  make deps-ubuntu  Install Ubuntu Noble packages (gcc, make, libsdl2-dev, mingw-w64)"
-	@echo "  make clean        Delete build/ directory"
+	@echo "  make deps-ubuntu  Install Ubuntu Noble packages (gcc, SDL2, curl, unzip, mingw-w64)"
+	@echo "  make clean        Remove build/ (keeps cached .toolchains/)"
+	@echo "  make distclean    Remove build/ and cached .toolchains/"

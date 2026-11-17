@@ -4,7 +4,9 @@
  * ============================================================================ */
 
 #include "hearth_data.h"
+#if !defined(HEARTH_TARGET_SNES)
 #include <string.h>
+#endif
 
 /* 4 x 16-Color Master Indexed Sub-Palettes (Index 0 = Transparent) */
 const uint32_t HEARTH_PALETTES_RGB[4][16] = {
@@ -52,8 +54,9 @@ const int8_t HEARTH_SIN64[64] = {
 
 /* Internal map helpers */
 static void set_bg1(uint8_t *bg1, uint8_t *col, int x, int y, uint8_t t, uint8_t c) {
+    int idx;
     if (x < 0 || y < 0 || x >= HEARTH_MAP_W || y >= HEARTH_MAP_H) return;
-    int idx = y * HEARTH_MAP_W + x;
+    idx = y * HEARTH_MAP_W + x;
     bg1[idx] = t;
     col[idx] = c;
 }
@@ -64,8 +67,9 @@ static void set_bg2(uint8_t *bg2, int x, int y, uint8_t t) {
 }
 
 static void fill_rect(uint8_t *bg1, uint8_t *col, int x0, int y0, int w, int h, uint8_t t, uint8_t c) {
-    for (int y = y0; y < y0 + h; y++) {
-        for (int x = x0; x < x0 + w; x++) {
+    int x, y;
+    for (y = y0; y < y0 + h; y++) {
+        for (x = x0; x < x0 + w; x++) {
             set_bg1(bg1, col, x, y, t, c);
         }
     }
@@ -82,12 +86,20 @@ static void place_tree(uint8_t *bg1, uint8_t *bg2, uint8_t *col, int tx, int ty)
 }
 
 void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
+    int x, y, hash, curve, rx;
+    size_t i;
+    static const int8_t trees[][2] = {
+        {3, 5}, {3, 10}, {3, 20}, {8, 24},
+        {16, 5}, {22, 5}, {28, 4}, {34, 5},
+        {39, 5}, {22, 18}, {35, 24}, {40, 23}
+    };
+
     memset(bg2, O_NONE, HEARTH_MAP_CELLS);
 
     /* 1. Varied sunlit meadow grass */
-    for (int y = 0; y < HEARTH_MAP_H; y++) {
-        for (int x = 0; x < HEARTH_MAP_W; x++) {
-            int hash = (x * 37 + y * 73) & 15;
+    for (y = 0; y < HEARTH_MAP_H; y++) {
+        for (x = 0; x < HEARTH_MAP_W; x++) {
+            hash = (x * 37 + y * 73) & 15;
             if (hash == 0 || hash == 5) {
                 set_bg1(bg1, col, x, y, T_GRASS_ALT, COL_WALKABLE);
             } else if (hash == 11 && x > 3 && x < HEARTH_MAP_W - 4 && y > 3 && y < HEARTH_MAP_H - 4) {
@@ -99,13 +111,13 @@ void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     }
 
     /* 2. Perimeter forest border */
-    for (int x = 0; x < HEARTH_MAP_W; x++) {
+    for (x = 0; x < HEARTH_MAP_W; x++) {
         set_bg1(bg1, col, x, 0, T_BUSH, COL_SOLID);
         set_bg1(bg1, col, x, 1, T_BUSH, COL_SOLID);
         set_bg1(bg1, col, x, HEARTH_MAP_H - 1, T_BUSH, COL_SOLID);
         set_bg1(bg1, col, x, HEARTH_MAP_H - 2, T_BUSH, COL_SOLID);
     }
-    for (int y = 0; y < HEARTH_MAP_H; y++) {
+    for (y = 0; y < HEARTH_MAP_H; y++) {
         set_bg1(bg1, col, 0, y, T_BUSH, COL_SOLID);
         set_bg1(bg1, col, 1, y, T_BUSH, COL_SOLID);
         set_bg1(bg1, col, HEARTH_MAP_W - 1, y, T_BUSH, COL_SOLID);
@@ -113,9 +125,9 @@ void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     }
 
     /* 3. Winding Creek */
-    for (int y = 2; y < HEARTH_MAP_H - 2; y++) {
-        int curve = (y < 10) ? -1 : ((y > 19) ? 1 : 0);
-        int rx = 19 + curve;
+    for (y = 2; y < HEARTH_MAP_H - 2; y++) {
+        curve = (y < 10) ? -1 : ((y > 19) ? 1 : 0);
+        rx = 19 + curve;
         set_bg1(bg1, col, rx - 1, y, T_WATER, COL_WATER);
         set_bg1(bg1, col, rx,     y, T_WATER, COL_WATER);
         set_bg1(bg1, col, rx + 1, y, T_WATER, COL_WATER);
@@ -132,7 +144,7 @@ void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     fill_rect(bg1, col, 27, 14, 2, 8, T_DIRT, COL_WALKABLE);
 
     /* 5. Timber Bridge */
-    for (int x = 18; x <= 20; x++) {
+    for (x = 18; x <= 20; x++) {
         set_bg1(bg1, col, x, 11, T_BRIDGE_RAIL_N, COL_SOLID);
         set_bg1(bg1, col, x, 12, T_BRIDGE, COL_WALKABLE);
         set_bg1(bg1, col, x, 13, T_BRIDGE, COL_WALKABLE);
@@ -141,7 +153,7 @@ void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     }
 
     /* 6. Shallow Pebble Ford */
-    for (int x = 19; x <= 21; x++) {
+    for (x = 19; x <= 21; x++) {
         set_bg1(bg1, col, x, 21, T_FORD, COL_SHALLOW);
         set_bg1(bg1, col, x, 22, T_FORD, COL_SHALLOW);
     }
@@ -159,7 +171,7 @@ void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     set_bg1(bg1, col, 13, 6, T_WALL_DOOR, COL_SOLID);
     set_bg1(bg1, col, 14, 6, T_WALL_WINDOW, COL_SOLID);
     set_bg1(bg1, col, 15, 6, T_WALL_WOOD, COL_SOLID);
-    for (int x = 11; x <= 15; x++) {
+    for (x = 11; x <= 15; x++) {
         set_bg2(bg2, x, 5, O_ROOF_EAVE);
     }
 
@@ -169,8 +181,8 @@ void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     set_bg1(bg1, col, 10, 9, T_LANTERN_POST, COL_SOLID);
     set_bg1(bg1, col, 16, 11, T_LANTERN_POST, COL_SOLID);
     set_bg1(bg1, col, 16, 15, T_SIGNPOST, COL_SOLID);
-    for (int x = 3; x <= 6; x++) set_bg1(bg1, col, x, 22, T_FENCE, COL_SOLID);
-    for (int x = 11; x <= 13; x++) set_bg1(bg1, col, x, 23, T_FENCE, COL_SOLID);
+    for (x = 3; x <= 6; x++) set_bg1(bg1, col, x, 22, T_FENCE, COL_SOLID);
+    for (x = 11; x <= 13; x++) set_bg1(bg1, col, x, 23, T_FENCE, COL_SOLID);
 
     /* 9. Tall Rustling Wildgrass */
     fill_rect(bg1, col, 23, 6, 4, 3, T_TALL_GRASS, COL_TALL_GRASS);
@@ -194,12 +206,7 @@ void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     set_bg2(bg2, 35, 14, O_SHRINE_ARCH);
 
     /* 11. Scenic Trees with BG2 Overhead Canopies */
-    static const int8_t trees[][2] = {
-        {3, 5}, {3, 10}, {3, 20}, {8, 24},
-        {16, 5}, {22, 5}, {28, 4}, {34, 5},
-        {39, 5}, {22, 18}, {35, 24}, {40, 23}
-    };
-    for (size_t i = 0; i < sizeof(trees) / sizeof(trees[0]); i++) {
+    for (i = 0; i < sizeof(trees) / sizeof(trees[0]); i++) {
         place_tree(bg1, bg2, col, trees[i][0], trees[i][1]);
     }
 }

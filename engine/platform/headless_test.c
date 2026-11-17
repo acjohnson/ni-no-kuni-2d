@@ -36,6 +36,7 @@ int main(void) {
 
     /* 3. Init & Title -> Sandbox Transition */
     hearth_init(&g_st);
+    CHECK(g_st.ppu.width == 320 && g_st.ppu.height == 224, "hearth_init must populate valid PPU dimensions before frame 1");
     CHECK(g_st.mode == MODE_TITLE, "Initial mode should be MODE_TITLE");
     hearth_step_60hz(&g_st, PAD_A);
     CHECK(g_st.mode == MODE_EXPLORE, "Pressing PAD_A on option 0 starts sandbox");
