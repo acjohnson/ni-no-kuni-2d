@@ -30,6 +30,7 @@ SDL2_SRC        := $(PLAT_DIR)/sdl2_main.c
 TEST_SRC        := $(PLAT_DIR)/headless_test.c
 GENESIS_SRC     := $(PLAT_DIR)/genesis_main.c
 SNES_SRC        := $(PLAT_DIR)/snes_main.c
+SNES_AUDIO_GEN  := engine/tools/gen_snes_audio.c
 
 # Strict portable compiler flags
 CFLAGS_COMMON   := -std=c99 -O2 -Wall -Wextra -Wshadow -Wconversion -Wno-sign-conversion -I$(CORE_DIR)
@@ -171,9 +172,9 @@ genesis: genesis-stage
 	@echo "Built Sega Genesis ROM: $(BUILD_DIR)/genesis/$(APP_NAME).bin (and out/rom.bin)"
 
 # ------------------------------------------------------------------------------
-# 6. SUPER NINTENDO (SNES) ROM (Auto-Fetches PVSnesLib — Zero Manual Setup!)
+# 6. SUPER NINTENDO (SNES) ROM (FastROM + SPC700 Audio + Auto-Fetched PVSnesLib)
 # ------------------------------------------------------------------------------
-snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC)
+snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(SNES_AUDIO_GEN)
 	@set -e; \
 	PV_ROOT=""; \
 	if [ -n "$(PVSNESLIB_HOME)" ] && [ -f "$(PVSNESLIB_HOME)/devkitsnes/snes_rules" ]; then \
@@ -205,25 +206,72 @@ snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC)
 	fi; \
 	echo "Using PVSnesLib at $$PV_ROOT"; \
 	rm -rf "$(BUILD_DIR)/snes"; \
-	mkdir -p "$(BUILD_DIR)/snes/src"; \
+	mkdir -p "$(BUILD_DIR)/snes/src" "$(BUILD_DIR)/snes/res"; \
+	$(CC) -std=c99 -O2 $(SNES_AUDIO_GEN) -o "$(BUILD_DIR)/snes/gen_snes_audio"; \
+	"$(BUILD_DIR)/snes/gen_snes_audio" "$(BUILD_DIR)/snes/res"; \
 	cp $(CORE_SRCS) $(CORE_HDRS) "$(BUILD_DIR)/snes/src/"; \
 	cp $(SNES_SRC) "$(BUILD_DIR)/snes/src/main.c"; \
 	printf '%s\n' \
+		'export FASTROM := 1' \
 		'export ROMNAME := hearth' \
 		'export ROMTITLE := PROJECT HEARTH' \
-		'export ROMSIZE := 08' \
+		'export ROMSIZE := 09' \
+		'export ROMBANKS := 16' \
 		'export SRAMSIZE := 00' \
 		'export COUNTRY := 01' \
+		'AUDIOFILES := res/hearth_sfx.it res/hearth_hamlet.it res/hearth_battle.it res/hearth_boss.it' \
+		'export SOUNDBANK := res/soundbank' \
 		'SRC := src' \
-		'CFLAGS += -DHEARTH_TARGET_SNES -Isrc' \
+		'CFLAGS += -DHEARTH_TARGET_SNES -Isrc -I.' \
 		"include $${PV_ROOT}/devkitsnes/snes_rules" \
-		'all: $$(ROMNAME).sfc' > "$(BUILD_DIR)/snes/Makefile"; \
+		'SMCONVFLAGS := -s -o $$(SOUNDBANK) -V -b 5 -f' \
+		'musics: $$(SOUNDBANK).obj' \
+		'src/main.ps: $$(SOUNDBANK).asm' \
+		'all: musics $$(ROMNAME).sfc' > "$(BUILD_DIR)/snes/Makefile"; \
 	if ! grep -q "AUTOHDR" "$$PV_ROOT/devkitsnes/snes_rules" 2>/dev/null; then \
-		SAMPLE_HDR=$$(find "$$PV_ROOT" -name "hdr.asm" | head -n 1 || true); \
-		if [ -n "$$SAMPLE_HDR" ]; then cp "$$SAMPLE_HDR" "$(BUILD_DIR)/snes/hdr.asm"; fi; \
+		printf '%s\n' \
+			'.define FASTROM 1' \
+			'.MEMORYMAP' \
+			'  SLOTSIZE $$8000' \
+			'  DEFAULTSLOT 0' \
+			'  SLOT 0 $$8000' \
+			'  SLOT 1 $$0 $$2000' \
+			'  SLOT 2 $$2000 $$E000' \
+			'  SLOT 3 $$0 $$10000' \
+			'.ENDME' \
+			'.ROMBANKSIZE $$8000' \
+			'.ROMBANKS 16' \
+			'.SNESHEADER' \
+			'  ID "SNES"' \
+			'  NAME "PROJECT HEARTH       "' \
+			'  FASTROM' \
+			'  LOROM' \
+			'  CARTRIDGETYPE $$00' \
+			'  ROMSIZE $$09' \
+			'  SRAMSIZE $$00' \
+			'  COUNTRY $$01' \
+			'  LICENSEECODE $$00' \
+			'  VERSION $$00' \
+			'.ENDSNES' \
+			'.SNESNATIVEVECTOR' \
+			'  COP EmptyHandler' \
+			'  BRK EmptyHandler' \
+			'  ABORT EmptyHandler' \
+			'  NMI VBlank' \
+			'  IRQ EmptyHandler' \
+			'.ENDNATIVEVECTOR' \
+			'.SNESEMUVECTOR' \
+			'  COP EmptyHandler' \
+			'  ABORT EmptyHandler' \
+			'  NMI EmptyHandler' \
+			'  RESET tcc__start' \
+			'  IRQBRK EmptyHandler' \
+			'.ENDEMUVECTOR' \
+			'.BASE $$80' > "$(BUILD_DIR)/snes/hdr.asm"; \
 	fi; \
+	PVSNESLIB_HOME="$$PV_ROOT" $(MAKE) -C "$(BUILD_DIR)/snes" musics; \
 	PVSNESLIB_HOME="$$PV_ROOT" $(MAKE) -C "$(BUILD_DIR)/snes"; \
-	echo "Built SNES ROM: $(BUILD_DIR)/snes/hearth.sfc"
+	echo "Built SNES FastROM + SPC700 ROM: $(BUILD_DIR)/snes/hearth.sfc"
 
 # ------------------------------------------------------------------------------
 # UTILITIES

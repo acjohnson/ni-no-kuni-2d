@@ -86,6 +86,9 @@ typedef struct {
     /* Fixed-Capacity FX Pools */
     HearthParticle  particles[HEARTH_MAX_PARTICLES];
     HearthFloatText ftexts[HEARTH_MAX_FTEXT];
+    uint8_t         active_particles;
+    uint8_t         active_ftexts;
+    uint16_t        windmill_rot;
 
     /* Latest PPU Frame Output Packet */
     HearthPpuPacket ppu;

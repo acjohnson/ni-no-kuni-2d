@@ -139,6 +139,7 @@ static void spawn_particle(
             p->pal_idx = pal_idx;
             p->col_idx = col_idx;
             p->screen_space = screen_space;
+            st->active_particles++;
             return;
         }
     }
@@ -180,6 +181,7 @@ static void spawn_ftext(
             ft->col_idx = col_idx;
             ft->life = 44;
             ft->world_space = world_space;
+            st->active_ftexts++;
             return;
         }
     }
@@ -187,27 +189,39 @@ static void spawn_ftext(
 
 static void step_fx_pools(HearthState *st) {
     int i;
-    for (i = 0; i < HEARTH_MAX_PARTICLES; i++) {
-        HearthParticle *p = &st->particles[i];
-        if (!p->active) continue;
-        if (p->life <= 1) { p->active = false; continue; }
-        p->life--;
-        p->fx += p->vx;
-        p->fy += p->vy;
-        if (p->kind == 1 || p->kind == 4) {
-            p->vy += 22;
-        } else if (p->kind == 3) {
-            p->vx = (p->vx * 235) >> 8;
-            p->vy = (p->vy * 235) >> 8;
+    if (st->active_particles > 0) {
+        for (i = 0; i < HEARTH_MAX_PARTICLES; i++) {
+            HearthParticle *p = &st->particles[i];
+            if (!p->active) continue;
+            if (p->life <= 1) {
+                p->active = false;
+                if (st->active_particles > 0) st->active_particles--;
+                continue;
+            }
+            p->life--;
+            p->fx += p->vx;
+            p->fy += p->vy;
+            if (p->kind == 1 || p->kind == 4) {
+                p->vy += 22;
+            } else if (p->kind == 3) {
+                p->vx = (p->vx * 235) >> 8;
+                p->vy = (p->vy * 235) >> 8;
+            }
         }
     }
-    for (i = 0; i < HEARTH_MAX_FTEXT; i++) {
-        HearthFloatText *ft = &st->ftexts[i];
-        if (!ft->active) continue;
-        if (ft->life <= 1) { ft->active = false; continue; }
-        ft->life--;
-        ft->y = (int16_t)(ft->y + FROM_FP(ft->vy_fp));
-        ft->vy_fp = (int16_t)((ft->vy_fp * 232) >> 8);
+    if (st->active_ftexts > 0) {
+        for (i = 0; i < HEARTH_MAX_FTEXT; i++) {
+            HearthFloatText *ft = &st->ftexts[i];
+            if (!ft->active) continue;
+            if (ft->life <= 1) {
+                ft->active = false;
+                if (st->active_ftexts > 0) st->active_ftexts--;
+                continue;
+            }
+            ft->life--;
+            ft->y = (int16_t)(ft->y + FROM_FP(ft->vy_fp));
+            ft->vy_fp = (int16_t)((ft->vy_fp * 232) >> 8);
+        }
     }
 }
 
@@ -371,10 +385,12 @@ void hearth_start_cutscene(HearthState *st, const HearthCutsceneOp *script) {
  * COLLISION & FLUID 8-WAY CORNER-NUDGING PHYSICS
  * ============================================================================ */
 static uint8_t get_col_at_px(const HearthState *st, int16_t px, int16_t py) {
-    int16_t tx = (int16_t)(px / HEARTH_TILE_SIZE);
-    int16_t ty = (int16_t)(py / HEARTH_TILE_SIZE);
-    if (tx < 0 || ty < 0 || tx >= HEARTH_MAP_W || ty >= HEARTH_MAP_H) return COL_SOLID;
-    return st->map_col[ty * HEARTH_MAP_W + tx];
+    uint16_t tx, ty;
+    if (px < 0 || py < 0) return COL_SOLID;
+    tx = (uint16_t)px >> 4;
+    ty = (uint16_t)py >> 4;
+    if (tx >= HEARTH_MAP_W || ty >= HEARTH_MAP_H) return COL_SOLID;
+    return st->map_col[(ty << 5) + (ty << 3) + (ty << 2) + tx];
 }
 
 static bool collides_world(const HearthState *st, fp16_t fx, fp16_t fy) {
@@ -465,7 +481,9 @@ static void step_hero_movement(HearthState *st, uint16_t pad) {
         dx = FROM_FP(st->hero_fx - st->trail_x[st->trail_head]);
         dy = FROM_FP(st->hero_fy - st->trail_y[st->trail_head]);
         if (dx * dx + dy * dy >= 4) {
-            st->trail_head = (uint8_t)((st->trail_head + 1) % HEARTH_TRAIL_LEN);
+            uint8_t next_head = (uint8_t)(st->trail_head + 1u);
+            if (next_head >= HEARTH_TRAIL_LEN) next_head = 0;
+            st->trail_head = next_head;
             st->trail_x[st->trail_head] = st->hero_fx;
             st->trail_y[st->trail_head] = st->hero_fy;
         }
@@ -494,18 +512,19 @@ static void step_hero_movement(HearthState *st, uint16_t pad) {
 }
 
 static void step_pip_follower(HearthState *st) {
-    int back = (int)(st->tuning.follow_dist_px / 2);
+    int back = (int)(st->tuning.follow_dist_px >> 1);
     int idx;
     fp16_t dx, dy;
 
     if (back < 4) back = 4;
     if (back > HEARTH_TRAIL_LEN - 2) back = HEARTH_TRAIL_LEN - 2;
-    idx = (st->trail_head - back + HEARTH_TRAIL_LEN) % HEARTH_TRAIL_LEN;
+    idx = (int)st->trail_head - back;
+    if (idx < 0) idx += HEARTH_TRAIL_LEN;
 
     dx = st->trail_x[idx] - st->pip_fx;
     dy = (st->trail_y[idx] - TO_FP(4)) - st->pip_fy;
-    st->pip_fx += dx / 7;
-    st->pip_fy += dy / 7;
+    st->pip_fx += dx >> 3;
+    st->pip_fy += dy >> 3;
     if (iabs32(dx) > 40) st->pip_dir = (uint8_t)((dx < 0) ? DIR_LEFT : DIR_RIGHT);
 }
 
@@ -1564,6 +1583,7 @@ static int find_interactable(const HearthState *st, int16_t *ox, int16_t *oy, co
     int16_t wx = 8 * 16 + 8, wy = 17 * 16 + 8;
     int16_t chx = 26 * 16 + 8, chy = 6 * 16 + 8;
     int16_t sx = 16 * 16 + 8, sy = 15 * 16 + 8;
+    int16_t dx, dy, adx, ady;
     int i;
 
     if (st->hero_dir == DIR_UP) py -= 15;
@@ -1574,22 +1594,33 @@ static int find_interactable(const HearthState *st, int16_t *ox, int16_t *oy, co
     for (i = 0; i < HEARTH_MAX_NPCS; i++) {
         int16_t nx = FROM_FP(st->npcs[i].fx);
         int16_t ny = FROM_FP(st->npcs[i].fy);
-        int32_t d1 = (int32_t)(px - nx) * (px - nx) + (int32_t)(py - ny) * (py - ny);
-        int32_t d2 = (int32_t)(hx - nx) * (hx - nx) + (int32_t)(hy - ny) * (hy - ny);
-        if (d1 < 19 * 19 || d2 < 22 * 22) {
+        dx = (int16_t)(px - nx); dy = (int16_t)(py - ny);
+        adx = iabs16(dx); ady = iabs16(dy);
+        if (adx < 19 && ady < 19 && (int16_t)(dx * dx + dy * dy) < 19 * 19) {
+            *ox = nx; *oy = (int16_t)(ny - 24); *olabel = st->npcs[i].name;
+            return i;
+        }
+        dx = (int16_t)(hx - nx); dy = (int16_t)(hy - ny);
+        adx = iabs16(dx); ady = iabs16(dy);
+        if (adx < 22 && ady < 22 && (int16_t)(dx * dx + dy * dy) < 22 * 22) {
             *ox = nx; *oy = (int16_t)(ny - 24); *olabel = st->npcs[i].name;
             return i;
         }
     }
-    if ((int32_t)(hx - wx) * (hx - wx) + (int32_t)(hy - wy) * (hy - wy) < 22 * 22) {
+    dx = (int16_t)(hx - wx); dy = (int16_t)(hy - wy);
+    if (iabs16(dx) < 22 && iabs16(dy) < 22 && (int16_t)(dx * dx + dy * dy) < 22 * 22) {
         *ox = wx; *oy = (int16_t)(wy - 22); *olabel = "Waystone";
         return 10;
     }
-    if (!st->flag_chest_opened && (int32_t)(hx - chx) * (hx - chx) + (int32_t)(hy - chy) * (hy - chy) < 22 * 22) {
-        *ox = chx; *oy = (int16_t)(chy - 18); *olabel = "Chest";
-        return 11;
+    if (!st->flag_chest_opened) {
+        dx = (int16_t)(hx - chx); dy = (int16_t)(hy - chy);
+        if (iabs16(dx) < 22 && iabs16(dy) < 22 && (int16_t)(dx * dx + dy * dy) < 22 * 22) {
+            *ox = chx; *oy = (int16_t)(chy - 18); *olabel = "Chest";
+            return 11;
+        }
     }
-    if ((int32_t)(hx - sx) * (hx - sx) + (int32_t)(hy - sy) * (hy - sy) < 21 * 21) {
+    dx = (int16_t)(hx - sx); dy = (int16_t)(hy - sy);
+    if (iabs16(dx) < 21 && iabs16(dy) < 21 && (int16_t)(dx * dx + dy * dy) < 21 * 21) {
         *ox = sx; *oy = (int16_t)(sy - 18); *olabel = "Read Sign";
         return 12;
     }
@@ -1717,25 +1748,33 @@ static void emit_oam(
 static void sort_ppu_oam(HearthPpuPacket *p, bool by_layer) {
     int i, j;
     for (i = 1; i < (int)p->oam_count; i++) {
-        HearthOamSprite key = p->oam[i];
-        j = i - 1;
-        while (j >= 0 && (by_layer
-            ? (p->oam[j].layer > key.layer || (p->oam[j].layer == key.layer && p->oam[j].sort_y > key.sort_y))
-            : (p->oam[j].sort_y > key.sort_y))) {
-            p->oam[j + 1] = p->oam[j];
-            j--;
+        HearthOamSprite *prev = &p->oam[i - 1];
+        HearthOamSprite *cur  = &p->oam[i];
+        bool out_of_order = by_layer
+            ? (prev->layer > cur->layer || (prev->layer == cur->layer && prev->sort_y > cur->sort_y))
+            : (prev->sort_y > cur->sort_y);
+        if (!out_of_order) continue;
+        {
+            HearthOamSprite key = *cur;
+            j = i - 1;
+            while (j >= 0 && (by_layer
+                ? (p->oam[j].layer > key.layer || (p->oam[j].layer == key.layer && p->oam[j].sort_y > key.sort_y))
+                : (p->oam[j].sort_y > key.sort_y))) {
+                p->oam[j + 1] = p->oam[j];
+                j--;
+            }
+            p->oam[j + 1] = key;
         }
-        p->oam[j + 1] = key;
     }
 }
 
 static void build_explore_ppu_props_and_actors(HearthState *st, HearthPpuPacket *p, int16_t cx, int16_t cy) {
     int i;
 
-    /* Windmill Blades (Overhead Layer 2) */
+    /* Windmill Blades (Overhead Layer 2, zero-divide continuous rotation) */
     emit_oam(p, (int16_t)(6 * 16 + 8 - cx), (int16_t)(5 * 16 + 4 - cy),
         SPR_WINDMILL_BLADES, 0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2000,
-        (uint16_t)((st->frame_count * 7u / 10u) % 360u));
+        st->windmill_rot);
 
     /* Waystone & Chest */
     emit_oam(p, (int16_t)(8 * 16 + 8 - cx), (int16_t)(17 * 16 + 12 - cy),
@@ -1801,7 +1840,7 @@ static void build_explore_ppu_oam(HearthState *st, HearthPpuPacket *p) {
     /* Pip Hovering Companion */
     px = FROM_FP(st->pip_fx);
     py = FROM_FP(st->pip_fy);
-    bob = (int16_t)((HEARTH_SIN64[(st->frame_count >> 1) & 63u] * 3) / 127);
+    bob = (int16_t)((HEARTH_SIN64[(st->frame_count >> 1) & 63u] * 3) >> 7);
     pfl = (uint8_t)(OAM_FLAG_SHADOW | ((st->pip_dir == DIR_LEFT) ? OAM_FLAG_FLIP_X : 0));
     emit_oam(p, (int16_t)(px - cx), (int16_t)(py - 4 + bob - cy), SPR_PIP,
         (uint8_t)((st->frame_count >> 3) & 1u), st->pip_dir, pfl,
@@ -1901,6 +1940,10 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
     just_pressed = (uint16_t)(pad_bits & (uint16_t)(~st->prev_pad));
     st->prev_pad = pad_bits;
     st->frame_count++;
+    if ((st->frame_count & 1u) != 0u) {
+        st->windmill_rot++;
+        if (st->windmill_rot >= 360u) st->windmill_rot = 0u;
+    }
 
     if (st->shake_frames > 0) st->shake_frames--;
     if (st->flash_level > 0) st->flash_level--;
@@ -1926,8 +1969,8 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
             uint8_t lim;
             int16_t sx, sy;
             get_ppu_dims(st, &w, &h, &lim);
-            sx = (int16_t)(14 * 16 + (HEARTH_SIN64[(st->frame_count >> 3) & 63u] / 2));
-            sy = (int16_t)(12 * 16 + (HEARTH_SIN64[((st->frame_count >> 3) + 16u) & 63u] / 5));
+            sx = (int16_t)(14 * 16 + (HEARTH_SIN64[(st->frame_count >> 3) & 63u] >> 1));
+            sy = (int16_t)(12 * 16 + (HEARTH_SIN64[((st->frame_count >> 3) + 16u) & 63u] >> 2));
             st->cam_fx = TO_FP(iclamp16((int16_t)(sx - (int16_t)(w >> 1)), 0, (int16_t)(HEARTH_MAP_W * 16 - (int)w)));
             st->cam_fy = TO_FP(iclamp16((int16_t)(sy - (int16_t)(h >> 1)), 0, (int16_t)(HEARTH_MAP_H * 16 - (int)h)));
             step_field_enemies(st, false);

@@ -73,7 +73,8 @@ export default function App() {
       while (accumulator >= STEP_MS && steps < 4) {
         const padBits = input.poll();
         latestPacket = engine.step(padBits);
-        audio.setMusicMode(latestPacket.mode);
+        const isBossBattle = latestPacket.battle?.enemies.some((e) => e.isBoss) ?? false;
+        audio.setMusicMode(latestPacket.mode, isBossBattle);
         if (latestPacket.sfxQueue.length > 0) {
           audio.processQueue(latestPacket.sfxQueue);
         }

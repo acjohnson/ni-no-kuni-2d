@@ -21,6 +21,9 @@
 
 #include <snes.h>
 #include "hearth_core.h"
+#include "res/soundbank.h"
+
+extern char SOUNDBANK__;
 
 /* ============================================================================
  * 1. STATIC SNES WRAM BUFFERS (Bank $7E — zero malloc, tiny 65816 stacks!)
@@ -106,14 +109,30 @@ static u8  g_tile32[32];
 static u16 g_pal16[16];
 static char g_line[36];
 
-static u8  g_bg0_dirty   = 0;
-static u8  g_bg1_dirty_l = 0;
-static u8  g_bg1_dirty_r = 0;
-static s16 g_last_cam_mx = -999;
-static s16 g_last_cam_my = -999;
-static u8  g_last_battle = 255;
-static u8  g_ui_layout   = 255;
-static u16 g_ui_tick     = 0;
+static u8  g_bg0_dirty     = 0;
+static u8  g_bg1_dirty_l   = 0;
+static u8  g_bg1_dirty_r   = 0;
+static u8  g_env_dirty     = 0;
+static u8  g_env_frame     = 255;
+static u8  g_prev_oam_cnt  = 0;
+static s16 g_last_cam_mx   = -999;
+static s16 g_last_cam_my   = -999;
+static u8  g_last_battle   = 255;
+static u8  g_ui_layout     = 255;
+static u8  g_ui_tick       = 0;
+static u16 g_last_hud_sig  = 0xFFFFu;
+static u16 g_cur_bgm_mod   = 0xFFFFu;
+
+/* Pre-baked 4bpp SNES planar tile buffers for zero-CPU VBlank environmental animation */
+static u8 g_anim_grass[4][32];
+static u8 g_anim_grass_alt[4][32];
+static u8 g_anim_flowers[4][32];
+static u8 g_anim_water[4][32];
+static u8 g_anim_ford[4][32];
+static u8 g_anim_tgrass[4][32];
+static u8 g_anim_rune[4][32];
+/* Windmill 16x16 OBJ: [frame][0..1 = top row T,T+1; 2..3 = bottom row T+16,T+17] */
+static u8 g_anim_windmill[4][4][32];
 
 /* ============================================================================
  * 2. COMPACT 5x7 UPPERCASE ASCII FONT (ASCII 32..95) -> OPAQUE 4bpp BG0 TILES
@@ -188,7 +207,7 @@ static const u8 SNES_FONT_5X7[64][7] = {
 /* ============================================================================
  * 3. SNES 4bpp PLANAR TILE & 16x16 OBJ SHEET BAKER (Called during Force Blank)
  * ============================================================================ */
-static void encode_and_upload_tile8(u16 vram_word_addr) {
+static void encode_pix8_to_buf(u8 *dst32) {
     u8 y, x, mask, c;
     u8 bp0, bp1, bp2, bp3;
     u16 row_off;
@@ -207,11 +226,15 @@ static void encode_and_upload_tile8(u16 vram_word_addr) {
             if (c & 4u) bp2 |= mask;
             if (c & 8u) bp3 |= mask;
         }
-        g_tile32[(u16)(y * 2u)]       = bp0;
-        g_tile32[(u16)(y * 2u + 1u)]  = bp1;
-        g_tile32[(u16)(16u + y * 2u)] = bp2;
-        g_tile32[(u16)(17u + y * 2u)] = bp3;
+        dst32[(u16)(y * 2u)]       = bp0;
+        dst32[(u16)(y * 2u + 1u)]  = bp1;
+        dst32[(u16)(16u + y * 2u)] = bp2;
+        dst32[(u16)(17u + y * 2u)] = bp3;
     }
+}
+
+static void encode_and_upload_tile8(u16 vram_word_addr) {
+    encode_pix8_to_buf(g_tile32);
     dmaCopyVram(g_tile32, vram_word_addr, 32u);
 }
 
@@ -640,6 +663,146 @@ static void bake_obj_sprites_part2(void) {
     upload_obj_sprite16(SPR_TIMED_RING_SLOT);
 }
 
+/* Pre-bake 4 animated frames for meadow grass, flowers, flowing water, ford,
+ * swaying tall grass, and pulsing shrine runes into Bank $7E WRAM. */
+static void bake_env_bg_frames(void) {
+    static const s8 sway_dx[4] = { 0, 1, 0, -1 };
+    u8 f, s1, s2, k;
+    s8 dx;
+
+    for (f = 0; f < 4u; f++) {
+        dx = sway_dx[f];
+
+        /* Sunlit meadow grass breeze */
+        p8_fill(4);
+        g_pix8[(u16)(8u + (u16)((2 + dx) & 7))]  = 5; g_pix8[18] = 3;
+        g_pix8[(u16)(40u + (u16)((6 - dx) & 7))] = 5; g_pix8[54] = 3;
+        g_pix8[33] = 3;
+        encode_pix8_to_buf(g_anim_grass[f]);
+
+        /* Alternate meadow grass breeze */
+        p8_fill(4);
+        g_pix8[(u16)(8u + (u16)((5 - dx) & 7))]  = 5; g_pix8[21] = 3;
+        g_pix8[(u16)(40u + (u16)((2 + dx) & 7))] = 5; g_pix8[51] = 3;
+        g_pix8[31] = 3;
+        encode_pix8_to_buf(g_anim_grass_alt[f]);
+
+        /* Wildflowers bobbing gently */
+        p8_fill(4);
+        g_pix8[(u16)(16u + (u16)((2 + dx) & 7))] = 15;
+        g_pix8[(u16)(16u + (u16)((3 + dx) & 7))] = 8;
+        g_pix8[26] = 3;
+        g_pix8[(u16)(40u + (u16)((5 - dx) & 7))] = 14;
+        g_pix8[(u16)(40u + (u16)((6 - dx) & 7))] = 8;
+        g_pix8[53] = 3;
+        encode_pix8_to_buf(g_anim_flowers[f]);
+
+        /* Flowing sunlit creek water */
+        p8_fill(12);
+        s1 = (u8)((f << 1) & 7u);
+        s2 = (u8)(((f << 1) + 4u) & 7u);
+        for (k = 0; k < 3u; k++) {
+            g_pix8[(u16)(8u  + ((s1 + k) & 7u))] = 13;
+            g_pix8[(u16)(40u + ((s2 + k) & 7u))] = 13;
+        }
+        g_pix8[(u16)(16u + ((s1 + 1u) & 7u))] = 14;
+        g_pix8[(u16)(16u + ((s1 + 2u) & 7u))] = 14;
+        g_pix8[(u16)(48u + ((s2 + 1u) & 7u))] = 14;
+        g_pix8[(u16)(48u + ((s2 + 2u) & 7u))] = 14;
+        g_pix8[(u16)(24u + ((s2 + 3u) & 7u))] = 13;
+        encode_pix8_to_buf(g_anim_water[f]);
+
+        /* Shallow pebble ford shimmering current */
+        p8_fill(13);
+        p8_rect(1, 2, 2, 2, 10); p8_rect(5, 5, 2, 2, 11);
+        g_pix8[(u16)(8u  + ((s1 + 1u) & 7u))] = 14;
+        g_pix8[(u16)(8u  + ((s1 + 2u) & 7u))] = 14;
+        g_pix8[(u16)(48u + ((s1 + 5u) & 7u))] = 14;
+        g_pix8[(u16)(32u + ((s1 + 3u) & 7u))] = 12;
+        encode_pix8_to_buf(g_anim_ford[f]);
+
+        /* Tall wildgrass swaying tips */
+        p8_fill(3);
+        g_pix8[(u16)(8u  + (u16)((1 + dx) & 7))] = 5;
+        g_pix8[(u16)(16u + (u16)((1 + dx) & 7))] = 5; p8_rect(1, 3, 1, 4, 4);
+        g_pix8[(u16)(0u  + (u16)((3 + dx) & 7))] = 5;
+        g_pix8[(u16)(8u  + (u16)((3 + dx) & 7))] = 4; p8_rect(3, 2, 1, 5, 4);
+        g_pix8[(u16)(16u + (u16)((5 + dx) & 7))] = 5;
+        g_pix8[(u16)(24u + (u16)((5 + dx) & 7))] = 5; p8_rect(5, 4, 1, 3, 4);
+        g_pix8[(u16)(8u  + (u16)((7 + dx) & 7))] = 5;
+        g_pix8[(u16)(16u + (u16)((7 + dx) & 7))] = 4; p8_rect(7, 3, 1, 4, 4);
+        encode_pix8_to_buf(g_anim_tgrass[f]);
+
+        /* Ancient Shrine pulsing arcane rune */
+        p8_fill(9); p8_rect(1, 1, 6, 6, 10);
+        if (f == 0u) {
+            p8_rect(3, 3, 2, 2, 13);
+        } else if (f == 1u || f == 3u) {
+            p8_rect(2, 2, 4, 4, 13); p8_rect(3, 3, 2, 2, 14);
+        } else {
+            p8_rect(2, 2, 4, 4, 14); p8_rect(3, 3, 2, 2, 15);
+        }
+        encode_pix8_to_buf(g_anim_rune[f]);
+    }
+}
+
+/* Pre-bake 4 rotational frames of the 16x16 spinning windmill sails */
+static void bake_env_windmill_frames(void) {
+    u8 f, i, d1;
+
+    for (f = 0; f < 4u; f++) {
+        p16_clear();
+        if (f == 0u) {
+            p16_rect(7, 0, 2, 16, 11); p16_rect(0, 7, 16, 2, 11);
+            p16_rect(9, 1, 2, 5, 15);  p16_rect(5, 10, 2, 5, 15);
+            p16_rect(10, 9, 5, 2, 15); p16_rect(1, 5, 5, 2, 15);
+        } else if (f == 1u) {
+            for (i = 0; i < 8u; i++) {
+                d1 = (u8)(i >> 1);
+                g_pix16[(u16)((7u - i) * 16u + (7u + d1))] = 11;
+                g_pix16[(u16)((7u - i) * 16u + (8u + d1))] = 15;
+                g_pix16[(u16)((8u + i) * 16u + (8u - d1))] = 11;
+                g_pix16[(u16)((8u + i) * 16u + (7u - d1))] = 15;
+                g_pix16[(u16)((7u + d1) * 16u + (8u + i))] = 11;
+                g_pix16[(u16)((8u + d1) * 16u + (8u + i))] = 15;
+                g_pix16[(u16)((8u - d1) * 16u + (7u - i))] = 11;
+                g_pix16[(u16)((7u - d1) * 16u + (7u - i))] = 15;
+            }
+        } else if (f == 2u) {
+            for (i = 1; i < 15u; i++) {
+                g_pix16[(u16)(i * 16u + i)] = 11;
+                if ((u8)(i + 1u) < 16u) g_pix16[(u16)(i * 16u + i + 1u)] = 15;
+                g_pix16[(u16)(i * 16u + (15u - i))] = 11;
+                g_pix16[(u16)((i - 1u) * 16u + (15u - i))] = 15;
+            }
+        } else {
+            for (i = 0; i < 8u; i++) {
+                d1 = (u8)(i >> 1);
+                g_pix16[(u16)((7u - d1) * 16u + (8u + i))] = 11;
+                g_pix16[(u16)((8u - d1) * 16u + (8u + i))] = 15;
+                g_pix16[(u16)((8u + d1) * 16u + (7u - i))] = 11;
+                g_pix16[(u16)((7u + d1) * 16u + (7u - i))] = 15;
+                g_pix16[(u16)((7u - i) * 16u + (7u - d1))] = 11;
+                g_pix16[(u16)((7u - i) * 16u + (8u - d1))] = 15;
+                g_pix16[(u16)((8u + i) * 16u + (8u + d1))] = 11;
+                g_pix16[(u16)((8u + i) * 16u + (7u + d1))] = 15;
+            }
+        }
+        p16_rect(6, 6, 4, 4, 7);
+
+        copy_sub16_to_pix8(0, 0); encode_pix8_to_buf(g_anim_windmill[f][0]);
+        copy_sub16_to_pix8(8, 0); encode_pix8_to_buf(g_anim_windmill[f][1]);
+        copy_sub16_to_pix8(0, 8); encode_pix8_to_buf(g_anim_windmill[f][2]);
+        copy_sub16_to_pix8(8, 8); encode_pix8_to_buf(g_anim_windmill[f][3]);
+    }
+    /* Upload frame 0 immediately during boot Force Blank */
+    {
+        u16 t = sprite_slot_to_tile(SPR_WINDMILL_BLADES);
+        dmaCopyVram(g_anim_windmill[0][0], (u16)(VRAM_OBJ_GFX + (t << 4)), 64u);
+        dmaCopyVram(g_anim_windmill[0][2], (u16)(VRAM_OBJ_GFX + ((t + 16u) << 4)), 64u);
+    }
+}
+
 /* ============================================================================
  * 6. BG1 SC_64x32 WORLD MAP & BATTLE ARENA STREAMING
  * ============================================================================ */
@@ -696,7 +859,8 @@ static void write_world_metatile(s16 mx, s16 my) {
     if (mx < 0 || my < 0 || mx >= HEARTH_MAP_W || my >= HEARTH_MAP_H) {
         entry = SNES_TILE(ST_BUSH, 0u, 0u);
     } else {
-        idx = (u16)((u16)my * HEARTH_MAP_W + (u16)mx);
+        /* 44 = 32 + 8 + 4: zero software multiply on 65816 */
+        idx = (u16)(((u16)my << 5) + ((u16)my << 3) + ((u16)my << 2) + (u16)mx);
         ov = g_hearth.map_bg2[idx];
         if (ov == O_ROOF_EAVE) {
             entry = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
@@ -860,21 +1024,23 @@ static void line_str(u16 *pos, const char *src) {
 static void line_int(u16 *pos, s16 val) {
     char tmp[8];
     u16 n = 0;
-    s32 v = val;
+    u16 v;
 
-    if (v < 0) {
+    if (val < 0) {
         if ((u16)(*pos + 1u) < 35u) g_line[(*pos)++] = '-';
-        v = -v;
+        v = (u16)(-val);
+    } else {
+        v = (u16)val;
     }
-    if (v == 0) {
+    if (v == 0u) {
         tmp[n++] = '0';
     } else {
-        while (v > 0 && n < 7u) {
-            tmp[n++] = (char)('0' + (v % 10));
-            v /= 10;
+        while (v > 0u && n < 7u) {
+            tmp[n++] = (char)('0' + (v % 10u));
+            v = (u16)(v / 10u);
         }
     }
-    while (n > 0 && (u16)(*pos + 1u) < 35u) {
+    while (n > 0u && (u16)(*pos + 1u) < 35u) {
         g_line[(*pos)++] = tmp[--n];
     }
     g_line[*pos] = '\0';
@@ -1017,8 +1183,41 @@ static void draw_battle_ui(void) {
     bg0_text(2u, 26u, PAL_UI_CYAN, "L/R:SWAP FAM  A:ACT");
 }
 
+/* Native 16-bit HUD dirty signature (zero 32-bit shifts on WDC 65816) */
+static u16 compute_hud_sig(u8 want, const HearthPpuPacket *ppu) {
+    u16 sig = (u16)((u16)want | ((u16)g_hearth.mode << 4));
+    if (want == 0u) {
+        const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
+        sig = (u16)(sig + (u16)m->hp * 3u + ((u16)m->mp << 5));
+        sig ^= (u16)(((u16)g_hearth.flag_has_courage << 12) |
+                     ((u16)g_hearth.flag_guard_mended << 13) |
+                     ((u16)ppu->interact_active << 14));
+        if (ppu->interact_active && ppu->interact_label) {
+            sig ^= (u16)(((u16)(u8)ppu->interact_label[0] << 8) ^ (u16)(u8)ppu->interact_label[1]);
+        }
+    } else if (want == 2u) {
+        const HearthDialogue *d = &g_hearth.dialogue;
+        sig ^= (u16)((d->visible_chars << 4) ^ ((u16)d->selected_choice << 12) ^
+                     ((u16)d->finished << 14) ^ ((u16)d->choice_count << 10));
+    } else if (want == 3u) {
+        const HearthBattleState *b = &g_hearth.battle;
+        const HearthPartyMember *pm = &g_hearth.party[b->active_slot];
+        sig = (u16)(sig + (u16)pm->hp + ((u16)pm->mp << 4));
+        sig ^= (u16)(((u16)b->active_slot << 8) ^ ((u16)b->selected_cmd << 10) ^
+                     ((u16)b->selected_enemy << 12) ^ ((u16)b->ring.active << 14) ^
+                     ((u16)(b->banner_frames > 0u ? 1u : 0u) << 15));
+        if (b->selected_enemy < b->enemy_count) {
+            sig = (u16)(sig + ((u16)b->enemies[b->selected_enemy].hp << 2));
+            sig ^= (u16)(((u16)b->enemies[b->selected_enemy].broken_locks[0] << 6) ^
+                         ((u16)b->enemies[b->selected_enemy].broken_locks[1] << 7));
+        }
+    }
+    return sig;
+}
+
 static void update_ui_layer(const HearthPpuPacket *ppu) {
     u8 want = 0;
+    u16 sig;
 
     if (g_hearth.mode == MODE_TITLE) {
         want = 1;
@@ -1034,6 +1233,7 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
 
     if (want != g_ui_layout) {
         g_ui_layout = want;
+        g_last_hud_sig = 0xFFFFu;
         if (want == 1u) {
             draw_title_ui();
         } else if (want == 0u) {
@@ -1048,11 +1248,17 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
     }
 
     if (want == 1u) return;
-    if ((g_ui_tick % 6u) != 0u) {
-        g_ui_tick++;
-        return;
+
+    /* Fast dirty-check avoids redundant 65816 string formatting & BG0 VBlank DMA */
+    sig = compute_hud_sig(want, ppu);
+    if (sig == g_last_hud_sig) return;
+
+    /* Throttle rapid typewriter updates to 15Hz; menu/HUD changes apply immediately */
+    if (want == 2u && !g_hearth.dialogue.finished) {
+        if (++g_ui_tick < 4u) return;
+        g_ui_tick = 0;
     }
-    g_ui_tick++;
+    g_last_hud_sig = sig;
 
     if (want == 0u)      draw_explore_hud(ppu);
     else if (want == 2u) draw_dialogue_ui();
@@ -1119,8 +1325,82 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
         }
     }
 
-    for (i = count; i < 52u; i++) {
+    /* Delta OAM hide: only clear slots that were visible last frame (~80% faster!) */
+    for (i = count; i < g_prev_oam_cnt; i++) {
         hide_oam_slot(i);
+    }
+    g_prev_oam_cnt = count;
+}
+
+/* ============================================================================
+ * 8b. SONY SPC700 MUSIC & SOUND EFFECTS DRIVER (SNESMod Soundbank)
+ * ============================================================================ */
+static void load_snes_music(u16 mod_id) {
+    u8 j;
+    if (mod_id == g_cur_bgm_mod) return;
+    g_cur_bgm_mod = mod_id;
+    spcStop();
+    spcLoad(mod_id);
+    for (j = 0; j < 6u; j++) {
+        spcLoadEffect(j);
+    }
+    spcSetModuleVolume(168u);
+    spcPlay(0u);
+}
+
+static void play_snes_sfx(uint8_t sfx) {
+    /* hearth_sfx.it samples @ 16kHz -> pitch=4 plays at exact 16kHz */
+    switch (sfx) {
+        case SFX_STEP:
+        case SFX_GRASS_RUSTLE:
+            spcEffect(4u, 2u, 0x68u);
+            break;
+        case SFX_DASH:
+        case SFX_WATER_SPLASH:
+            spcEffect(5u, 2u, 0xA8u);
+            break;
+        case SFX_CURSOR:
+            spcEffect(4u, 0u, 0xC8u);
+            break;
+        case SFX_CANCEL:
+            spcEffect(3u, 0u, 0xC8u);
+            break;
+        case SFX_TEXT_HERO:
+            spcEffect(4u, 0u, 0x78u);
+            break;
+        case SFX_TEXT_PIP:
+            spcEffect(5u, 0u, 0x88u);
+            break;
+        case SFX_TEXT_ELDER:
+            spcEffect(3u, 0u, 0x78u);
+            break;
+        case SFX_CONFIRM:
+        case SFX_EMOTE:
+        case SFX_ENEMY_ALERT:
+            spcEffect(4u, 1u, 0xE8u);
+            break;
+        case SFX_HIT_NORMAL:
+        case SFX_HURT:
+            spcEffect(4u, 3u, 0xF8u);
+            break;
+        case SFX_HIT_CRITICAL:
+        case SFX_PARRY_CLANG:
+        case SFX_LOCK_BREAK:
+        case SFX_LOCK_ALL_BREAK:
+            spcEffect(4u, 4u, 0xF8u);
+            break;
+        case SFX_HEAL:
+        case SFX_HEART_TAKE:
+        case SFX_HEART_GIVE:
+        case SFX_SUMMON_ARC:
+        case SFX_SPELL_CAST:
+        case SFX_CHEST_OPEN:
+        case SFX_VICTORY_FANFARE:
+        case SFX_BATTLE_SWOOP:
+            spcEffect(4u, 5u, 0xE8u);
+            break;
+        default:
+            break;
     }
 }
 
@@ -1156,6 +1436,23 @@ static void flush_all_maps_force_blank(void) {
     setScreenOn();
 }
 
+static void flush_env_vblank_dma(void) {
+    u8 af = g_env_frame;
+    u16 t = sprite_slot_to_tile(SPR_WINDMILL_BLADES);
+
+    /* 7 BG1 tiles (224 B) + 4 Windmill OBJ tiles (128 B) = 352 bytes total! */
+    dmaCopyVram(g_anim_grass[af],       (u16)(VRAM_BG1_GFX + ((u16)ST_GRASS << 4)),       32u);
+    dmaCopyVram(g_anim_grass_alt[af],   (u16)(VRAM_BG1_GFX + ((u16)ST_GRASS_ALT << 4)),   32u);
+    dmaCopyVram(g_anim_flowers[af],     (u16)(VRAM_BG1_GFX + ((u16)ST_FLOWERS << 4)),     32u);
+    dmaCopyVram(g_anim_water[af],       (u16)(VRAM_BG1_GFX + ((u16)ST_WATER << 4)),       32u);
+    dmaCopyVram(g_anim_ford[af],        (u16)(VRAM_BG1_GFX + ((u16)ST_FORD << 4)),        32u);
+    dmaCopyVram(g_anim_tgrass[af],      (u16)(VRAM_BG1_GFX + ((u16)ST_TALL_GRASS << 4)),  32u);
+    dmaCopyVram(g_anim_rune[af],        (u16)(VRAM_BG1_GFX + ((u16)ST_SHRINE_RUNE << 4)), 32u);
+    dmaCopyVram(g_anim_windmill[af][0], (u16)(VRAM_OBJ_GFX + (t << 4)),                   64u);
+    dmaCopyVram(g_anim_windmill[af][2], (u16)(VRAM_OBJ_GFX + ((t + 16u) << 4)),           64u);
+    g_env_dirty = 0;
+}
+
 static void flush_one_vblank_dma(void) {
     /* Stay well under SNES NTSC VBlank DMA budget: max 2048 bytes per frame! */
     if (g_bg1_dirty_l) {
@@ -1167,6 +1464,8 @@ static void flush_one_vblank_dma(void) {
     } else if (g_bg0_dirty) {
         dmaCopyVram((u8 *)g_bg0_map, VRAM_BG0_MAP, 1792u);
         g_bg0_dirty = 0;
+    } else if (g_env_dirty) {
+        flush_env_vblank_dma();
     }
 }
 
@@ -1175,8 +1474,14 @@ int main(void) {
     const HearthPpuPacket *ppu;
     u8 in_battle;
     u8 scene_switched;
+    u8 i, af;
+    u16 want_mod;
 
-    /* 1. Force Blank for full VRAM & CGRAM hardware upload */
+    /* 1. Boot Sony SPC700 Sound Engine & register soundbank */
+    spcBoot();
+    spcSetBank((u8 *)&SOUNDBANK__);
+
+    /* 2. Force Blank for full VRAM & CGRAM hardware upload */
     setScreenOff();
 
     upload_all_palettes();
@@ -1185,8 +1490,10 @@ int main(void) {
     bake_bg0_ui_and_font();
     bake_obj_sprites_part1();
     bake_obj_sprites_part2();
+    bake_env_bg_frames();
+    bake_env_windmill_frames();
 
-    /* 2. Configure Mode 1 PPU Layers & 16x16 Hardware Sprites */
+    /* 3. Configure Mode 1 PPU Layers & 16x16 Hardware Sprites */
     bgSetGfxPtr(0, VRAM_BG0_GFX);
     bgSetMapPtr(0, VRAM_BG0_MAP, SC_32x32);
     bgSetGfxPtr(1, VRAM_BG1_GFX);
@@ -1197,11 +1504,13 @@ int main(void) {
     setMode(BG_MODE1, 0);
     bgSetDisable(2);
 
-    /* 3. Boot Portable Engine Core in Native SNES 256x224 Mode */
+    /* 4. Boot Portable Engine Core in Native SNES 256x224 Mode */
     hearth_init(&g_hearth);
     g_hearth.tuning.ppu_mode = PPU_SNES_256x224;
     ppu = hearth_step_60hz(&g_hearth, 0u);
     g_last_battle = 0u;
+    g_prev_oam_cnt = 0u;
+    g_env_frame = 0u;
 
     build_full_world_bg1(ppu->cam_x, ppu->cam_y);
     update_ui_layer(ppu);
@@ -1210,9 +1519,11 @@ int main(void) {
     bgSetScroll(0, 0, 0);
     bgSetScroll(1, (u16)ppu->cam_x, (u16)ppu->cam_y);
 
+    /* Load Windmill Hamlet waltz + 6 gameplay SFX before revealing display */
+    load_snes_music(MOD_HEARTH_HAMLET);
     flush_all_maps_force_blank();
 
-    /* 4. Real 60Hz SNES Main Loop */
+    /* 5. Real 60Hz SNES FastROM Main Loop */
     while (1) {
         pad = read_snes_pad();
         ppu = hearth_step_60hz(&g_hearth, pad);
@@ -1232,14 +1543,37 @@ int main(void) {
             }
         } else if (!in_battle) {
             stream_world_bg1(ppu->cam_x, ppu->cam_y);
+            /* Trigger ~7.5 Hz VBlank CHR environmental tile animation */
+            af = (u8)((((u16)g_hearth.frame_count) >> 3) & 3u);
+            if (af != g_env_frame) {
+                g_env_frame = af;
+                g_env_dirty = 1;
+            }
         }
 
         update_ui_layer(ppu);
         render_snes_sprites(ppu);
 
+        /* Trigger SPC700 gameplay SFX */
+        for (i = 0; i < ppu->sfx_count; i++) {
+            play_snes_sfx(ppu->sfx_queue[i]);
+        }
+
         if (scene_switched) {
-            flush_all_maps_force_blank();
+            setScreenOff();
+            want_mod = in_battle
+                ? (u16)(g_hearth.battle.is_boss_battle ? MOD_HEARTH_BOSS : MOD_HEARTH_BATTLE)
+                : (u16)MOD_HEARTH_HAMLET;
+            load_snes_music(want_mod);
+            dmaCopyVram((u8 *)g_bg1_map, VRAM_BG1_MAP, 4096u);
+            dmaCopyVram((u8 *)g_bg0_map, VRAM_BG0_MAP, 2048u);
+            g_bg1_dirty_l = 0;
+            g_bg1_dirty_r = 0;
+            g_bg0_dirty   = 0;
+            g_env_dirty   = 0;
+            setScreenOn();
         } else {
+            spcProcess();
             WaitForVBlank();
             flush_one_vblank_dma();
         }

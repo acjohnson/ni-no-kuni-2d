@@ -157,21 +157,24 @@ static const u8 GEN_FONT_5X7[64][7] = {
 static u8 g_pix8[64];
 static u8 g_pix16[256];
 
-static void upload_pix8_to_vram(u16 tile_idx) {
-    u32 tile[8];
+static void pack_pix8_to_buf(u32 dst[8]) {
     for (u16 y = 0; y < 8; y++) {
         u32 row = 0;
         for (u16 x = 0; x < 8; x++) {
             row = (row << 4) | (u32)(g_pix8[y * 8 + x] & 0x0Fu);
         }
-        tile[y] = row;
+        dst[y] = row;
     }
+}
+
+static void upload_pix8_to_vram(u16 tile_idx) {
+    u32 tile[8];
+    pack_pix8_to_buf(tile);
     VDP_loadTileData(tile, tile_idx, 1, CPU);
 }
 
 /* Genesis 2x2 (16x16) hardware sprites are COLUMN-MAJOR: TL, BL, TR, BR */
-static void upload_pix16_sprite_to_vram(u16 base_tile) {
-    u32 tiles[4][8];
+static void pack_pix16_sprite_to_buf(u32 dst[32]) {
     static const u8 ox[4] = { 0, 0, 8, 8 };
     static const u8 oy[4] = { 0, 8, 0, 8 };
     for (u16 t = 0; t < 4; t++) {
@@ -181,11 +184,27 @@ static void upload_pix16_sprite_to_vram(u16 base_tile) {
                 u8 c = g_pix16[(oy[t] + y) * 16 + (ox[t] + x)] & 0x0Fu;
                 row = (row << 4) | (u32)c;
             }
-            tiles[t][y] = row;
+            dst[t * 8u + y] = row;
         }
     }
-    VDP_loadTileData(&tiles[0][0], base_tile, 4, CPU);
 }
+
+static void upload_pix16_sprite_to_vram(u16 base_tile) {
+    u32 tiles[32];
+    pack_pix16_sprite_to_buf(tiles);
+    VDP_loadTileData(tiles, base_tile, 4, CPU);
+}
+
+/* Persistent RAM buffers for tear-free VBlank DMA_QUEUE environmental animations */
+static u32 g_anim_grass[4][8];
+static u32 g_anim_grass_alt[4][8];
+static u32 g_anim_flowers[4][8];
+static u32 g_anim_water[4][8];
+static u32 g_anim_ford[4][8];
+static u32 g_anim_tgrass[4][8];
+static u32 g_anim_rune[4][8];
+static u32 g_anim_windmill[4][32];
+static u8  g_last_env_frame = 255;
 
 static void p8_fill(u8 col) {
     hearth_memset(g_pix8, col, 64);
@@ -502,6 +521,136 @@ static void bake_all_sprites(void) {
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_TIMED_RING_SLOT * 4);
 }
 
+/* Pre-bake 4 animated frames for meadow grass, flowers, water, ford, tall grass,
+ * pulsing shrine runes, and continuously spinning 16x16 windmill sails. */
+static void bake_env_anim_frames(void) {
+    static const s8 sway_dx[4] = { 0, 1, 0, -1 };
+
+    for (u8 f = 0; f < 4u; f++) {
+        s8 dx = sway_dx[f];
+
+        /* 1. Sunlit meadow grass breeze */
+        p8_fill(4);
+        g_pix8[1*8 + ((2 + dx) & 7)] = 5; g_pix8[2*8 + 2] = 3;
+        g_pix8[5*8 + ((6 - dx) & 7)] = 5; g_pix8[6*8 + 6] = 3;
+        g_pix8[4*8 + 1] = 3;
+        pack_pix8_to_buf(g_anim_grass[f]);
+
+        /* 2. Alternate meadow grass breeze */
+        p8_fill(4);
+        g_pix8[1*8 + ((5 - dx) & 7)] = 5; g_pix8[2*8 + 5] = 3;
+        g_pix8[5*8 + ((2 + dx) & 7)] = 5; g_pix8[6*8 + 3] = 3;
+        g_pix8[3*8 + 7] = 3;
+        pack_pix8_to_buf(g_anim_grass_alt[f]);
+
+        /* 3. Wildflowers bobbing gently in the breeze */
+        p8_fill(4);
+        g_pix8[2*8 + ((2 + dx) & 7)] = 15; g_pix8[2*8 + ((3 + dx) & 7)] = 8; g_pix8[3*8 + 2] = 3;
+        g_pix8[5*8 + ((5 - dx) & 7)] = 14; g_pix8[5*8 + ((6 - dx) & 7)] = 8; g_pix8[6*8 + 5] = 3;
+        pack_pix8_to_buf(g_anim_flowers[f]);
+
+        /* 4. Flowing sunlit creek water (ripples drift smoothly rightward) */
+        p8_fill(12);
+        {
+            u8 s1 = (u8)((f * 2u) & 7u);
+            u8 s2 = (u8)((f * 2u + 4u) & 7u);
+            for (u8 k = 0; k < 3u; k++) {
+                g_pix8[1*8 + ((s1 + k) & 7u)] = 13;
+                g_pix8[5*8 + ((s2 + k) & 7u)] = 13;
+            }
+            g_pix8[2*8 + ((s1 + 1u) & 7u)] = 14;
+            g_pix8[2*8 + ((s1 + 2u) & 7u)] = 14;
+            g_pix8[6*8 + ((s2 + 1u) & 7u)] = 14;
+            g_pix8[6*8 + ((s2 + 2u) & 7u)] = 14;
+            g_pix8[3*8 + ((s2 + 3u) & 7u)] = 13;
+        }
+        pack_pix8_to_buf(g_anim_water[f]);
+
+        /* 5. Shallow pebble ford with shimmering current */
+        p8_fill(13);
+        p8_rect(1, 2, 2, 2, 10); p8_rect(5, 5, 2, 2, 11);
+        g_pix8[1*8 + ((f * 2u + 1u) & 7u)] = 14;
+        g_pix8[1*8 + ((f * 2u + 2u) & 7u)] = 14;
+        g_pix8[6*8 + ((f * 2u + 5u) & 7u)] = 14;
+        g_pix8[4*8 + ((f * 2u + 3u) & 7u)] = 12;
+        pack_pix8_to_buf(g_anim_ford[f]);
+
+        /* 6. Tall wildgrass swaying tips */
+        p8_fill(3);
+        g_pix8[1*8 + ((1 + dx) & 7)] = 5; g_pix8[2*8 + ((1 + dx) & 7)] = 5; p8_rect(1, 3, 1, 4, 4);
+        g_pix8[0*8 + ((3 + dx) & 7)] = 5; g_pix8[1*8 + ((3 + dx) & 7)] = 4; p8_rect(3, 2, 1, 5, 4);
+        g_pix8[2*8 + ((5 + dx) & 7)] = 5; g_pix8[3*8 + ((5 + dx) & 7)] = 5; p8_rect(5, 4, 1, 3, 4);
+        g_pix8[1*8 + ((7 + dx) & 7)] = 5; g_pix8[2*8 + ((7 + dx) & 7)] = 4; p8_rect(7, 3, 1, 4, 4);
+        pack_pix8_to_buf(g_anim_tgrass[f]);
+
+        /* 7. Ancient Shrine rune stone pulsing with arcane cyan light */
+        p8_fill(9); p8_rect(1, 1, 6, 6, 10);
+        if (f == 0u) {
+            p8_rect(3, 3, 2, 2, 13);
+        } else if (f == 1u || f == 3u) {
+            p8_rect(2, 2, 4, 4, 13); p8_rect(3, 3, 2, 2, 14);
+        } else {
+            p8_rect(2, 2, 4, 4, 14); p8_rect(3, 3, 2, 2, 15);
+        }
+        pack_pix8_to_buf(g_anim_rune[f]);
+
+        /* 8. Windmill Blades (4 smooth rotational frames: 0°, 22.5°, 45°, 67.5°) */
+        p16_clear();
+        if (f == 0u) {
+            /* Vertical / Horizontal '+' sails */
+            p16_rect(7, 0, 2, 16, 11); p16_rect(0, 7, 16, 2, 11);
+            p16_rect(9, 1, 2, 5, 15);  p16_rect(5, 10, 2, 5, 15);
+            p16_rect(10, 9, 5, 2, 15); p16_rect(1, 5, 5, 2, 15);
+        } else if (f == 1u) {
+            /* ~22.5 deg clockwise */
+            for (u8 i = 0; i < 8u; i++) {
+                u8 dx1 = (u8)(i >> 1);
+                g_pix16[(7 - i) * 16 + (7 + dx1)] = 11; g_pix16[(7 - i) * 16 + (8 + dx1)] = 15;
+                g_pix16[(8 + i) * 16 + (8 - dx1)] = 11; g_pix16[(8 + i) * 16 + (7 - dx1)] = 15;
+                g_pix16[(7 + dx1) * 16 + (8 + i)] = 11; g_pix16[(8 + dx1) * 16 + (8 + i)] = 15;
+                g_pix16[(8 - dx1) * 16 + (7 - i)] = 11; g_pix16[(7 - dx1) * 16 + (7 - i)] = 15;
+            }
+        } else if (f == 2u) {
+            /* Diagonal 'X' 45 deg sails */
+            for (u8 i = 1; i < 15u; i++) {
+                g_pix16[i * 16 + i] = 11;
+                if (i + 1u < 16u) g_pix16[i * 16 + (i + 1u)] = 15;
+                g_pix16[i * 16 + (15u - i)] = 11;
+                if (i > 0u) g_pix16[(i - 1u) * 16 + (15u - i)] = 15;
+            }
+        } else {
+            /* ~67.5 deg clockwise */
+            for (u8 i = 0; i < 8u; i++) {
+                u8 dy1 = (u8)(i >> 1);
+                g_pix16[(7 - dy1) * 16 + (8 + i)] = 11; g_pix16[(8 - dy1) * 16 + (8 + i)] = 15;
+                g_pix16[(8 + dy1) * 16 + (7 - i)] = 11; g_pix16[(7 + dy1) * 16 + (7 - i)] = 15;
+                g_pix16[(7 - i) * 16 + (7 - dy1)] = 11; g_pix16[(7 - i) * 16 + (8 - dy1)] = 15;
+                g_pix16[(8 + i) * 16 + (8 + dy1)] = 11; g_pix16[(8 + i) * 16 + (7 + dy1)] = 15;
+            }
+        }
+        p16_rect(6, 6, 4, 4, 7); /* Golden hub */
+        pack_pix16_sprite_to_buf(g_anim_windmill[f]);
+    }
+    /* Upload frame 0 immediately to VRAM so boot frame matches animation */
+    VDP_loadTileData(g_anim_windmill[0], VRAM_SPR_BASE + SPR_WINDMILL_BLADES * 4u, 4, CPU);
+}
+
+static void tick_env_animations(u32 frame_count) {
+    u8 af = (u8)((frame_count >> 3) & 3u); /* Smooth ~7.5 Hz environmental cycle */
+    if (af == g_last_env_frame) return;
+    g_last_env_frame = af;
+
+    /* Queue all 11 tile updates (352 bytes total) atomically into VBlank DMA_QUEUE */
+    VDP_loadTileData(g_anim_grass[af],     VRAM_BG_BASE + GT_GRASS,      1, DMA_QUEUE);
+    VDP_loadTileData(g_anim_grass_alt[af], VRAM_BG_BASE + GT_GRASS_ALT,  1, DMA_QUEUE);
+    VDP_loadTileData(g_anim_flowers[af],   VRAM_BG_BASE + GT_FLOWERS,    1, DMA_QUEUE);
+    VDP_loadTileData(g_anim_water[af],     VRAM_BG_BASE + GT_WATER,      1, DMA_QUEUE);
+    VDP_loadTileData(g_anim_ford[af],      VRAM_BG_BASE + GT_FORD,       1, DMA_QUEUE);
+    VDP_loadTileData(g_anim_tgrass[af],    VRAM_BG_BASE + GT_TALL_GRASS, 1, DMA_QUEUE);
+    VDP_loadTileData(g_anim_rune[af],      VRAM_BG_BASE + GT_SHRINE_RUNE,1, DMA_QUEUE);
+    VDP_loadTileData(g_anim_windmill[af],  VRAM_SPR_BASE + SPR_WINDMILL_BLADES * 4u, 4, DMA_QUEUE);
+}
+
 /* ============================================================================
  * 3. HARDWARE MAP TILE MAPPING & 64x64 SCROLL STREAMING
  * ============================================================================ */
@@ -621,10 +770,10 @@ static void draw_battle_backdrop(u8 biome) {
     VDP_clearPlane(BG_B, TRUE);
     VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, sky_t), 0, 0, 40, 10);
     VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, gnd_t), 0, 10, 40, 18);
-    VDP_setHorizontalScroll(BG_A, 0);
-    VDP_setVerticalScroll(BG_A, 0);
-    VDP_setHorizontalScroll(BG_B, 0);
-    VDP_setVerticalScroll(BG_B, 0);
+    VDP_setHorizontalScrollVSync(BG_A, 0);
+    VDP_setVerticalScrollVSync(BG_A, 0);
+    VDP_setHorizontalScrollVSync(BG_B, 0);
+    VDP_setVerticalScrollVSync(BG_B, 0);
 }
 
 /* ============================================================================
@@ -843,7 +992,7 @@ static void render_sprites(const HearthPpuPacket *ppu) {
 
     if (g_hearth.mode == MODE_TITLE) {
         VDP_setSpriteFull(0, -32, -32, SPRITE_SIZE(2, 2), 0, 0);
-        VDP_updateSprites(1, DMA);
+        VDP_updateSprites(1, DMA_QUEUE);
         return;
     }
 
@@ -879,13 +1028,11 @@ static void render_sprites(const HearthPpuPacket *ppu) {
 
     if (count == 0) {
         VDP_setSpriteFull(0, -32, -32, SPRITE_SIZE(2, 2), 0, 0);
-        VDP_updateSprites(1, DMA);
+        VDP_updateSprites(1, DMA_QUEUE);
     } else {
-        /* Patch last sprite link to 0 to terminate SAT cleanly */
-        const HearthOamSprite *last = &ppu->oam[0];
-        (void)last;
+        /* Terminate hardware SAT chain cleanly and flush atomically during VBlank */
         VDP_setSpriteFull(count, -32, -32, SPRITE_SIZE(1, 1), 0, 0);
-        VDP_updateSprites((u16)(count + 1u), DMA);
+        VDP_updateSprites((u16)(count + 1u), DMA_QUEUE);
     }
 }
 
@@ -1060,6 +1207,7 @@ int main(bool hard_reset) {
 
     bake_bg_and_ui_tiles();
     bake_all_sprites();
+    bake_env_anim_frames();
 
     hearth_init(&g_hearth);
     g_hearth.tuning.ppu_mode = PPU_GENESIS_320x224;
@@ -1067,12 +1215,13 @@ int main(bool hard_reset) {
         const HearthPpuPacket *boot_ppu = hearth_step_60hz(&g_hearth, 0u);
         g_last_scene_battle = 0u;
         draw_full_world_viewport(boot_ppu->cam_x, boot_ppu->cam_y);
-        VDP_setHorizontalScroll(BG_A, (s16)(-boot_ppu->cam_x));
-        VDP_setVerticalScroll(BG_A,   (s16)( boot_ppu->cam_y));
-        VDP_setHorizontalScroll(BG_B, (s16)(-boot_ppu->cam_x));
-        VDP_setVerticalScroll(BG_B,   (s16)( boot_ppu->cam_y));
+        VDP_setHorizontalScrollVSync(BG_A, (s16)(-boot_ppu->cam_x));
+        VDP_setVerticalScrollVSync(BG_A,   (s16)( boot_ppu->cam_y));
+        VDP_setHorizontalScrollVSync(BG_B, (s16)(-boot_ppu->cam_x));
+        VDP_setVerticalScrollVSync(BG_B,   (s16)( boot_ppu->cam_y));
         update_window_ui(boot_ppu);
         render_sprites(boot_ppu);
+        SYS_doVBlankProcess();
     }
 
     while (TRUE) {
@@ -1084,22 +1233,26 @@ int main(bool hard_reset) {
 
         if (is_battle != g_last_scene_battle) {
             g_last_scene_battle = is_battle;
+            VDP_setEnable(FALSE);
             if (is_battle) {
                 draw_battle_backdrop(g_hearth.battle.biome);
             } else {
                 draw_full_world_viewport(ppu->cam_x, ppu->cam_y);
             }
+            VDP_setEnable(TRUE);
         }
 
         if (!is_battle) {
             stream_world_viewport(ppu->cam_x, ppu->cam_y);
-            VDP_setHorizontalScroll(BG_A, (s16)(-(ppu->cam_x - ppu->shake_x)));
-            VDP_setVerticalScroll(BG_A,   (s16)( (ppu->cam_y - ppu->shake_y)));
-            VDP_setHorizontalScroll(BG_B, (s16)(-(ppu->cam_x - ppu->shake_x)));
-            VDP_setVerticalScroll(BG_B,   (s16)( (ppu->cam_y - ppu->shake_y)));
+            tick_env_animations(g_hearth.frame_count);
+            /* VSync scroll updates latch atomically in VBlank -> 0% screen tearing */
+            VDP_setHorizontalScrollVSync(BG_A, (s16)(-(ppu->cam_x - ppu->shake_x)));
+            VDP_setVerticalScrollVSync(BG_A,   (s16)( (ppu->cam_y - ppu->shake_y)));
+            VDP_setHorizontalScrollVSync(BG_B, (s16)(-(ppu->cam_x - ppu->shake_x)));
+            VDP_setVerticalScrollVSync(BG_B,   (s16)( (ppu->cam_y - ppu->shake_y)));
         } else {
-            VDP_setHorizontalScroll(BG_A, (s16)ppu->shake_x);
-            VDP_setVerticalScroll(BG_A,   (s16)ppu->shake_y);
+            VDP_setHorizontalScrollVSync(BG_A, (s16)ppu->shake_x);
+            VDP_setVerticalScrollVSync(BG_A,   (s16)ppu->shake_y);
         }
 
         update_window_ui(ppu);
