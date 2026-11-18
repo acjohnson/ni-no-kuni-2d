@@ -40,7 +40,17 @@ sudo apt install -y mingw-w64
 make windows
 ```
 
-*(Run `make clean` to clean build outputs while keeping cached toolchains, or `make distclean` to remove both `build/` and `.toolchains/`.)*
+### Browser Studio Preview (`make wasm`, `make web`, `make web-run`)
+Compiles `engine/core/` to `public/hearth_core.wasm` (auto-fetching Zig into `.toolchains/zig/`), and automatically uses a `node:22-slim` Docker container (caching dependencies in `.toolchains/web/`) when `npm` is not installed locally:
+```bash
+# Launch interactive browser preview on http://localhost:3000
+make web-run
+
+# Or just build the static dist/ bundle + WASM core
+make web
+```
+
+*(Run `make clean` to clean `build/` and `dist/` while keeping cached toolchains, or `make distclean` to remove `build/`, `dist/`, and `.toolchains/`.)*
 
 ---
 

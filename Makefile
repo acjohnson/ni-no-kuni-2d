@@ -11,9 +11,11 @@
 #   make snes          -> Build Super Nintendo .sfc ROM (auto-fetches PVSnesLib)
 #   make macos         -> Native macOS executable (Homebrew SDL2)
 #   make wasm          -> WebAssembly C99 core for browser preview (auto-fetches Zig)
+#   make web           -> Build browser preview bundle (make wasm + Node Docker/npm)
+#   make web-run       -> Launch browser preview on localhost:3000 (Docker/npm)
 #   make deps-ubuntu   -> Install Ubuntu Noble packages (gcc, SDL2, mingw-w64)
-#   make clean         -> Remove build/ (keeps cached .toolchains/)
-#   make distclean     -> Remove both build/ and .toolchains/
+#   make clean         -> Remove build/ and dist/ (keeps cached .toolchains/)
+#   make distclean     -> Remove build/, dist/, and .toolchains/
 #   make help          -> Show all targets
 # ==============================================================================
 
@@ -74,7 +76,12 @@ SGDK_IMAGE      ?= registry.gitlab.com/doragasu/docker-sgdk:v2.11
 # Super Nintendo (PVSnesLib): auto-downloads & caches latest Linux release if unset
 PVSNESLIB_CACHE := $(CURDIR)/$(TOOLCHAIN_DIR)/pvsneslib
 
-.PHONY: all linux macos windows genesis genesis-stage snes wasm core-test run deps-ubuntu clean distclean help
+# Browser Preview (Vite + WASM): uses local npm if present, or Docker Node automatically
+NODE_IMAGE      ?= node:22-slim
+WEB_PORT        ?= 3000
+WEB_CACHE_DIR   := $(CURDIR)/$(TOOLCHAIN_DIR)/web
+
+.PHONY: all linux macos windows genesis genesis-stage snes wasm web web-run core-test run deps-ubuntu clean distclean help
 
 # Default target builds for the current machine
 all: $(HOST_TARGET)
@@ -319,6 +326,68 @@ root = tf.getmembers()[0].name.split("/")[0]; \
 		-I$(CORE_DIR) $(CORE_SRCS) $(WASM_SRC) -o $@; \
 	echo "Built WebAssembly C99 core: $@ ($$(wc -c < $@) bytes)"
 
+web: wasm
+	@set -e; \
+	if [ -z "$(DOCKER_WEB)" ] && command -v npm >/dev/null 2>&1; then \
+		if [ ! -d node_modules ]; then \
+			npm install --no-audit --no-fund --no-package-lock; \
+		fi; \
+		npm run build; \
+	else \
+		command -v docker >/dev/null 2>&1 || { \
+			echo "ERROR: Neither npm nor docker found. Install docker.io (or nodejs/npm)."; \
+			exit 1; \
+		}; \
+		mkdir -p "$(WEB_CACHE_DIR)/app" "$(WEB_CACHE_DIR)/node_modules" "$(WEB_CACHE_DIR)/npm-cache" "$(CURDIR)/dist"; \
+		cp package.json "$(WEB_CACHE_DIR)/package.json"; \
+		echo "Building browser preview (C99 WASM + Vite) via Docker ($(NODE_IMAGE))..."; \
+		docker run --rm --user "$$(id -u):$$(id -g)" \
+			-e HOME=/tmp -e npm_config_cache=/work/npm-cache \
+			-v "$(WEB_CACHE_DIR):/work" \
+			-v "$(CURDIR):/work/app" \
+			-w /work/app \
+			$(NODE_IMAGE) sh -ec '\
+				if [ ! -f /work/node_modules/.hearth_stamp ] || ! cmp -s /work/package.json /work/node_modules/.hearth_stamp; then \
+					echo "Caching npm packages inside $(TOOLCHAIN_DIR)/web/node_modules/ (first run)..."; \
+					npm install --prefix /work --no-audit --no-fund --no-package-lock; \
+					cp /work/package.json /work/node_modules/.hearth_stamp; \
+				fi; \
+				/work/node_modules/.bin/vite build'; \
+	fi
+	@echo "Built browser preview bundle: dist/ (includes dist/hearth_core.wasm)"
+
+web-run: wasm
+	@set -e; \
+	if [ -z "$(DOCKER_WEB)" ] && command -v npm >/dev/null 2>&1; then \
+		if [ ! -d node_modules ]; then \
+			npm install --no-audit --no-fund --no-package-lock; \
+		fi; \
+		echo "Serving Project Hearth Browser Preview (C99 WASM) at http://localhost:$(WEB_PORT)"; \
+		npx vite --port=$(WEB_PORT) --host=0.0.0.0; \
+	else \
+		command -v docker >/dev/null 2>&1 || { \
+			echo "ERROR: Neither npm nor docker found. Install docker.io (or nodejs/npm)."; \
+			exit 1; \
+		}; \
+		mkdir -p "$(WEB_CACHE_DIR)/app" "$(WEB_CACHE_DIR)/node_modules" "$(WEB_CACHE_DIR)/npm-cache"; \
+		cp package.json "$(WEB_CACHE_DIR)/package.json"; \
+		TTY_FLAG=""; if [ -t 0 ]; then TTY_FLAG="-it"; fi; \
+		echo "Starting Browser Preview (C99 WASM) via Docker ($(NODE_IMAGE)) on http://localhost:$(WEB_PORT) ..."; \
+		docker run --rm --init $$TTY_FLAG --user "$$(id -u):$$(id -g)" \
+			-p "$(WEB_PORT):3000" \
+			-e HOME=/tmp -e npm_config_cache=/work/npm-cache \
+			-v "$(WEB_CACHE_DIR):/work" \
+			-v "$(CURDIR):/work/app" \
+			-w /work/app \
+			$(NODE_IMAGE) sh -ec '\
+				if [ ! -f /work/node_modules/.hearth_stamp ] || ! cmp -s /work/package.json /work/node_modules/.hearth_stamp; then \
+					echo "Caching npm packages inside $(TOOLCHAIN_DIR)/web/node_modules/ (first run)..."; \
+					npm install --prefix /work --no-audit --no-fund --no-package-lock; \
+					cp /work/package.json /work/node_modules/.hearth_stamp; \
+				fi; \
+				/work/node_modules/.bin/vite --port=3000 --host=0.0.0.0'; \
+	fi
+
 # ------------------------------------------------------------------------------
 # UTILITIES
 # ------------------------------------------------------------------------------
@@ -330,10 +399,10 @@ deps-ubuntu:
 	sudo apt-get update && sudo apt-get install -y build-essential libsdl2-dev pkg-config curl unzip mingw-w64
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) dist
 
 distclean:
-	rm -rf $(BUILD_DIR) $(TOOLCHAIN_DIR)
+	rm -rf $(BUILD_DIR) dist $(TOOLCHAIN_DIR)
 
 help:
 	@echo "Project Hearth — Native C99 & Multi-Platform Makefile"
@@ -349,7 +418,9 @@ help:
 	@echo "  make genesis      Build Sega Genesis ROM (.bin) via Docker SGDK automatically"
 	@echo "  make snes         Build SNES ROM (.sfc) via auto-downloaded PVSnesLib"
 	@echo "  make wasm         Build WebAssembly C99 core (public/hearth_core.wasm)"
+	@echo "  make web          Build browser preview bundle (make wasm + Docker Node / npm)"
+	@echo "  make web-run      Run browser preview on http://localhost:$(WEB_PORT) (Docker Node / npm)"
 	@echo "  make macos        Build macOS native SDL2 executable"
 	@echo "  make deps-ubuntu  Install Ubuntu Noble packages (gcc, SDL2, curl, unzip, mingw-w64)"
-	@echo "  make clean        Remove build/ (keeps cached .toolchains/)"
-	@echo "  make distclean    Remove build/ and cached .toolchains/"
+	@echo "  make clean        Remove build/ and dist/ (keeps cached .toolchains/)"
+	@echo "  make distclean    Remove build/, dist/, and cached .toolchains/"
