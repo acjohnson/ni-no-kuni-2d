@@ -780,20 +780,20 @@ int main(int argc, char **argv) {
     int16_t *w_snare = make_drum_snare(&l_snare);
     int16_t *w_hat   = make_drum_hat(&l_hat);
 
-    /* 2a. Windmill Hamlet (3/4 Pastoral Waltz, 238ms/step -> IS=6, IT=63) */
+    /* 2a. Windmill Hamlet (3/4 Pastoral Waltz, 238ms/step -> IS=12, IT=126; T0=20000/126=158 <= 255!) */
     ItSampleSpec hamlet_specs[6] = {
-        { "flute_lead", w_flute, l_flute, 8372, 1, 56, 1, 64, 48, 8,  6, 28 },
-        { "harp_arp",   w_harp,  l_harp,  8372, 1, 40, 1, 60, 20, 0,  3, 12 },
-        { "warm_bass",  w_bass,  l_bass,  8372, 1, 52, 1, 64, 34, 4,  5, 18 },
-        { "soft_kick",  w_kick,  l_kick,  16000, 0, 36, 0, 64, 64, 0,  1,  2 },
-        { "soft_snare", w_snare, l_snare, 16000, 0, 32, 0, 64, 64, 0,  1,  2 },
-        { "soft_brush", w_hat,   l_hat,   16000, 0, 28, 0, 64, 64, 0,  1,  2 }
+        { "flute_lead", w_flute, l_flute, 8372, 1, 56, 1, 64, 48, 8, 12, 56 },
+        { "harp_arp",   w_harp,  l_harp,  8372, 1, 40, 1, 60, 20, 0,  6, 24 },
+        { "warm_bass",  w_bass,  l_bass,  8372, 1, 52, 1, 64, 34, 4, 10, 36 },
+        { "soft_kick",  w_kick,  l_kick,  16000, 0, 36, 0, 64, 64, 0,  2,  4 },
+        { "soft_snare", w_snare, l_snare, 16000, 0, 32, 0, 64, 64, 0,  2,  4 },
+        { "soft_brush", w_hat,   l_hat,   16000, 0, 28, 0, 64, 64, 0,  2,  4 }
     };
     Buf pat_hamlet;
     buf_init(&pat_hamlet);
     pack_music_pattern(&pat_hamlet, 48, HAMLET_LEAD, HAMLET_ARP, HAMLET_BASS, HAMLET_DRUM, 52, 34, 48, 30);
     snprintf(path, sizeof(path), "%s/hearth_hamlet.it", outdir);
-    write_it_module(path, "Windmill Hamlet", 6, 63, 4, hamlet_specs, 6, pat_hamlet.data, (uint16_t)pat_hamlet.len, 48);
+    write_it_module(path, "Windmill Hamlet", 12, 126, 4, hamlet_specs, 6, pat_hamlet.data, (uint16_t)pat_hamlet.len, 48);
     free(pat_hamlet.data);
 
     /* 2b. Whispering Meadow Battle (4/4 Heroic JRPG Battle, 155ms/step -> IS=6, IT=97) */

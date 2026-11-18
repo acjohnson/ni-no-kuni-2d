@@ -74,25 +74,7 @@ export const BattleHudOverlay: React.FC<BattleHudOverlayProps> = ({
   ];
 
   return (
-    <div className="w-full border-t border-[#282E3F] bg-[#151924] px-4 py-3 text-[#ECE7DC]">
-      {/* Timed Action Live Prompt Banner */}
-      {timedRingActive && (
-        <div className="mb-3 flex items-center justify-between rounded border border-[#D4942A]/60 bg-[#1F2433] px-3 py-2">
-          <div className="text-xs font-medium text-[#FFF1C4]">
-            {timedRingKind === 'OFFENSE'
-              ? 'Timed Strike Window — Tap SPACE / Z or Click right as the golden ring meets the target!'
-              : 'Incoming Attack — Tap SPACE / Z or Click on impact for a Timed Parry (-55% DMG & +3 MP)!'}
-          </div>
-          <button
-            type="button"
-            onClick={onTimedTap}
-            className="ml-3 shrink-0 rounded bg-[#D4942A] px-3 py-1 text-xs font-semibold text-[#151924] whitespace-nowrap hover:bg-[#E7AA40]"
-          >
-            {timedRingKind === 'OFFENSE' ? 'Strike Now' : 'Parry Now'}
-          </button>
-        </div>
-      )}
-
+    <div className="w-full shrink-0 border-t border-[#282E3F] bg-[#151924] px-4 py-3 text-[#ECE7DC]">
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         {/* Familiar Hot-Swap Strip (Ni No Kuni L/R instant swap!) */}
         <div className="lg:col-span-5">
@@ -157,8 +139,8 @@ export const BattleHudOverlay: React.FC<BattleHudOverlayProps> = ({
           </div>
         </div>
 
-        {/* 4 Tactile Battle Commands */}
-        <div className="lg:col-span-5">
+        {/* 4 Tactile Battle Commands (overlays Timed Strike/Parry prompt in-place with zero height shift) */}
+        <div className="relative lg:col-span-5">
           <div className="mb-1.5 flex items-center justify-between text-[11px] text-[#9AA3B8]">
             <span>
               Commands · <span className="text-[#F5B841]">{active.name}</span>
@@ -194,6 +176,44 @@ export const BattleHudOverlay: React.FC<BattleHudOverlayProps> = ({
               );
             })}
           </div>
+
+          {timedRingActive && (
+            <div
+              className={`absolute inset-0 z-10 flex items-center justify-between gap-3 rounded-md border-2 px-4 py-3 shadow-lg ${
+                timedRingKind === 'OFFENSE'
+                  ? 'border-[#D4942A]/90 bg-[#1C2233]/96'
+                  : 'border-[#5AD2F4]/90 bg-[#182234]/96'
+              }`}
+            >
+              <div className="min-w-0">
+                <div
+                  className={`font-mono text-[11px] font-semibold uppercase tracking-wider ${
+                    timedRingKind === 'OFFENSE' ? 'text-[#F5B841]' : 'text-[#5AD2F4]'
+                  }`}
+                >
+                  {timedRingKind === 'OFFENSE'
+                    ? 'Timed Strike Window'
+                    : 'Incoming Attack — Timed Parry'}
+                </div>
+                <p className="mt-1 text-xs leading-snug text-[#FFF1C4]">
+                  {timedRingKind === 'OFFENSE'
+                    ? 'Tap SPACE / Z or Click right as the golden ring meets the target!'
+                    : 'Tap SPACE / Z or Click on impact (-55% DMG & +3 MP)!'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onTimedTap}
+                className={`shrink-0 rounded px-3.5 py-2 text-xs font-semibold text-[#151924] whitespace-nowrap transition-colors ${
+                  timedRingKind === 'OFFENSE'
+                    ? 'bg-[#D4942A] hover:bg-[#E7AA40]'
+                    : 'bg-[#5AD2F4] hover:bg-[#7CE0FC]'
+                }`}
+              >
+                {timedRingKind === 'OFFENSE' ? 'Strike Now' : 'Parry Now'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Target Enemy & Spell Lock Summary */}
@@ -201,18 +221,19 @@ export const BattleHudOverlay: React.FC<BattleHudOverlayProps> = ({
           <div className="mb-1.5 text-[11px] text-[#9AA3B8]">Targets &amp; Locks</div>
           <div className="space-y-1.5">
             {enemies.map((e, idx) => {
-              if (!e.alive) return null;
-              const isTarget = idx === selectedEnemy;
+              const isTarget = e.alive && idx === selectedEnemy;
               return (
                 <button
                   key={e.id}
                   type="button"
-                  disabled={!isCommandReady}
+                  disabled={!isCommandReady || !e.alive}
                   onClick={() => onSelectEnemy(idx)}
                   className={`w-full rounded border px-2.5 py-1.5 text-left transition-colors ${
-                    isTarget
-                      ? 'border-[#E04E4E] bg-[#261D26]'
-                      : 'border-[#272E40] bg-[#191E2C] hover:border-[#4A5570]'
+                    !e.alive
+                      ? 'border-[#222838] bg-[#141824] opacity-40'
+                      : isTarget
+                        ? 'border-[#E04E4E] bg-[#261D26]'
+                        : 'border-[#272E40] bg-[#191E2C] hover:border-[#4A5570]'
                   }`}
                 >
                   <div className="flex items-center justify-between text-xs font-medium">
@@ -222,14 +243,16 @@ export const BattleHudOverlay: React.FC<BattleHudOverlayProps> = ({
                     </span>
                   </div>
                   <div className="mt-0.5 font-mono text-[10px] text-[#9AA3B8]">
-                    {e.staggered
-                      ? 'STAGGERED'
-                      : e.locks.length > 0
-                        ? 'Locks: ' +
-                          e.locks
-                            .map((lk, li) => (e.brokenLocks[li] ? '—' : lk))
-                            .join(' · ')
-                        : 'Ready'}
+                    {!e.alive
+                      ? 'DEFEATED'
+                      : e.staggered
+                        ? 'STAGGERED'
+                        : e.locks.length > 0
+                          ? 'Locks: ' +
+                            e.locks
+                              .map((lk, li) => (e.brokenLocks[li] ? '—' : lk))
+                              .join(' · ')
+                          : 'Ready'}
                   </div>
                 </button>
               );

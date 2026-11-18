@@ -840,20 +840,8 @@ static u16 map_terrain_to_tile(u8 t) {
     }
 }
 
-static void bg1_set_cell(u16 tx, u16 ty, u16 entry) {
-    u16 x = (u16)(tx & 63u);
-    u16 y = (u16)(ty & 31u);
-    if (x < 32u) {
-        g_bg1_map[(u16)((y << 5) + x)] = entry;
-        g_bg1_dirty_l = 1;
-    } else {
-        g_bg1_map[(u16)(1024u + (y << 5) + (x - 32u))] = entry;
-        g_bg1_dirty_r = 1;
-    }
-}
-
 static void write_world_metatile(s16 mx, s16 my) {
-    u16 entry, idx, tx0, tx1, ty0, ty1;
+    u16 entry, idx, tx0, ty0, ty1, row0, row1, rx;
     u8 ov;
 
     if (mx < 0 || my < 0 || mx >= HEARTH_MAP_W || my >= HEARTH_MAP_H) {
@@ -873,15 +861,29 @@ static void write_world_metatile(s16 mx, s16 my) {
         }
     }
 
-    tx0 = (u16)(((u16)(mx * 2)) & 63u);
-    tx1 = (u16)((tx0 + 1u) & 63u);
-    ty0 = (u16)(((u16)(my * 2)) & 31u);
+    /* Inline 2x2 tile write into SC_64x32 shadow map (tx0 is always even, so tx0 & tx0+1 share the same 32-wide half) */
+    tx0 = (u16)(((u16)mx << 1) & 63u);
+    ty0 = (u16)(((u16)my << 1) & 31u);
     ty1 = (u16)((ty0 + 1u) & 31u);
+    row0 = (u16)(ty0 << 5);
+    row1 = (u16)(ty1 << 5);
 
-    bg1_set_cell(tx0, ty0, entry);
-    bg1_set_cell(tx1, ty0, entry);
-    bg1_set_cell(tx0, ty1, entry);
-    bg1_set_cell(tx1, ty1, entry);
+    if (tx0 < 32u) {
+        row0 = (u16)(row0 + tx0);
+        row1 = (u16)(row1 + tx0);
+        g_bg1_map[row0]              = entry;
+        g_bg1_map[(u16)(row0 + 1u)]  = entry;
+        g_bg1_map[row1]              = entry;
+        g_bg1_map[(u16)(row1 + 1u)]  = entry;
+        g_bg1_dirty_l = 1;
+    } else {
+        rx = (u16)(1024u + (tx0 - 32u));
+        g_bg1_map[(u16)(row0 + rx)]       = entry;
+        g_bg1_map[(u16)(row0 + rx + 1u)]  = entry;
+        g_bg1_map[(u16)(row1 + rx)]       = entry;
+        g_bg1_map[(u16)(row1 + rx + 1u)]  = entry;
+        g_bg1_dirty_r = 1;
+    }
 }
 
 static void build_full_world_bg1(s16 cam_x, s16 cam_y) {
@@ -957,7 +959,7 @@ static void build_battle_bg1(u8 biome) {
  * ============================================================================ */
 static void bg0_clear_all(void) {
     hearth_memset(g_bg0_map, 0, 2048u);
-    g_bg0_dirty = 1;
+    g_bg0_dirty = 3u;
 }
 
 static void bg0_fill_rect(u16 x, u16 y, u16 w, u16 h, u16 entry) {
@@ -967,7 +969,13 @@ static void bg0_fill_rect(u16 x, u16 y, u16 w, u16 h, u16 entry) {
             g_bg0_map[(u16)((ry << 5) + rx)] = entry;
         }
     }
-    g_bg0_dirty = 1;
+    if (y >= 20u) {
+        if (g_bg0_dirty < 2u) g_bg0_dirty = 2u;
+    } else if (y == 0u && h == 1u) {
+        if (g_bg0_dirty == 0u) g_bg0_dirty = 1u;
+    } else {
+        g_bg0_dirty = 3u;
+    }
 }
 
 static void bg0_draw_box(u16 x, u16 y, u16 w, u16 h) {
@@ -988,7 +996,7 @@ static void bg0_draw_box(u16 x, u16 y, u16 w, u16 h) {
     g_bg0_map[(u16)((y << 5) + x + w - 1u)]                = SNES_TILE(SUI_TR, PAL_UI_TEXT, 1u);
     g_bg0_map[(u16)(((y + h - 1u) << 5) + x)]              = SNES_TILE(SUI_BL, PAL_UI_TEXT, 1u);
     g_bg0_map[(u16)(((y + h - 1u) << 5) + x + w - 1u)]     = SNES_TILE(SUI_BR, PAL_UI_TEXT, 1u);
-    g_bg0_dirty = 1;
+    g_bg0_dirty = 3u;
 }
 
 static void bg0_text_n(u16 x, u16 y, u16 pal, const char *s, u16 max_c) {
@@ -1001,7 +1009,13 @@ static void bg0_text_n(u16 x, u16 y, u16 pal, const char *s, u16 max_c) {
         if (c < 32 || c > 95) c = ' ';
         g_bg0_map[(u16)((y << 5) + x + i)] = SNES_TILE((u16)c, pal, 1u);
     }
-    g_bg0_dirty = 1;
+    if (y >= 20u) {
+        if (g_bg0_dirty < 2u) g_bg0_dirty = 2u;
+    } else if (y == 0u) {
+        if (g_bg0_dirty == 0u) g_bg0_dirty = 1u;
+    } else {
+        g_bg0_dirty = 3u;
+    }
 }
 
 static void bg0_text(u16 x, u16 y, u16 pal, const char *s) {
@@ -1046,17 +1060,34 @@ static void line_int(u16 *pos, s16 val) {
     g_line[*pos] = '\0';
 }
 
+static void draw_title_cursor(void) {
+    static const char *opts[3] = {
+        "PLAY WINDMILL HAMLET ",
+        "SHRINE BOSS BATTLE   ",
+        "STORY CUTSCENE DEMO  "
+    };
+    u8 i;
+    u16 pal, y;
+
+    for (i = 0; i < 3u; i++) {
+        pal = (i == g_hearth.title_cursor) ? PAL_UI_GOLD : PAL_UI_TEXT;
+        y = (u16)(16u + ((u16)i << 1));
+        bg0_text(4u, y, pal, (i == g_hearth.title_cursor) ? ">" : " ");
+        bg0_text(6u, y, pal, opts[i]);
+    }
+    g_bg0_dirty = 3u;
+}
+
 static void draw_title_ui(void) {
     bg0_clear_all();
     bg0_draw_box(1u, 2u, 30u, 24u);
-    bg0_text(9u,  5u,  PAL_UI_GOLD, "PROJECT HEARTH");
-    bg0_text(5u,  7u,  PAL_UI_CYAN, "16-BIT JRPG CORE (SNES)");
-    bg0_text(3u,  10u, PAL_UI_TEXT, "DPAD : MOVE   B : DASH");
-    bg0_text(3u,  12u, PAL_UI_TEXT, "A    : ACT / TIMED HIT");
-    bg0_text(3u,  14u, PAL_UI_TEXT, "L / R: SWAP FAMILIAR");
-    bg0_text(4u,  17u, PAL_UI_TEXT, "EXPLORE WINDMILL HAMLET");
-    bg0_text(4u,  19u, PAL_UI_TEXT, "MEND HEARTS & SHRINE!");
-    bg0_text(4u,  22u, PAL_UI_GOLD, "PRESS START OR A TO PLAY");
+    bg0_text(9u,  4u,  PAL_UI_GOLD, "PROJECT HEARTH");
+    bg0_text(5u,  6u,  PAL_UI_CYAN, "16-BIT JRPG CORE (SNES)");
+    bg0_text(3u,  9u,  PAL_UI_TEXT, "DPAD : MOVE   B : DASH");
+    bg0_text(3u,  11u, PAL_UI_TEXT, "A    : ACT / TIMED HIT");
+    bg0_text(3u,  13u, PAL_UI_TEXT, "L / R: SWAP FAMILIAR");
+    draw_title_cursor();
+    bg0_text(4u,  23u, PAL_UI_CYAN, "DPAD:PICK  START/A:GO");
 }
 
 static void draw_explore_hud(const HearthPpuPacket *ppu) {
@@ -1186,9 +1217,12 @@ static void draw_battle_ui(void) {
 /* Native 16-bit HUD dirty signature (zero 32-bit shifts on WDC 65816) */
 static u16 compute_hud_sig(u8 want, const HearthPpuPacket *ppu) {
     u16 sig = (u16)((u16)want | ((u16)g_hearth.mode << 4));
+    if (want == 1u) {
+        return (u16)(sig ^ ((u16)g_hearth.title_cursor << 8));
+    }
     if (want == 0u) {
         const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
-        sig = (u16)(sig + (u16)m->hp * 3u + ((u16)m->mp << 5));
+        sig = (u16)(sig + ((u16)m->hp << 1) + (u16)m->hp + ((u16)m->mp << 5));
         sig ^= (u16)(((u16)g_hearth.flag_has_courage << 12) |
                      ((u16)g_hearth.flag_guard_mended << 13) |
                      ((u16)ppu->interact_active << 14));
@@ -1236,18 +1270,20 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
         g_last_hud_sig = 0xFFFFu;
         if (want == 1u) {
             draw_title_ui();
+            g_last_hud_sig = compute_hud_sig(want, ppu);
         } else if (want == 0u) {
             bg0_clear_all();
             bg0_fill_rect(0u, 0u, 32u, 1u, SNES_TILE(SUI_FILL, PAL_UI_TEXT, 1u));
             bg0_fill_rect(0u, 1u, 32u, 1u, SNES_TILE(SUI_BOT,  PAL_UI_TEXT, 1u));
+            g_bg0_dirty = 3u;
         } else {
             bg0_clear_all();
             bg0_draw_box(0u, 19u, 32u, 9u);
+            g_bg0_dirty = 3u;
         }
         g_ui_tick = 0;
+        if (want == 1u) return;
     }
-
-    if (want == 1u) return;
 
     /* Fast dirty-check avoids redundant 65816 string formatting & BG0 VBlank DMA */
     sig = compute_hud_sig(want, ppu);
@@ -1260,7 +1296,8 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
     }
     g_last_hud_sig = sig;
 
-    if (want == 0u)      draw_explore_hud(ppu);
+    if (want == 1u)      draw_title_cursor();
+    else if (want == 0u) draw_explore_hud(ppu);
     else if (want == 2u) draw_dialogue_ui();
     else                 draw_battle_ui();
 }
@@ -1268,12 +1305,19 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
 /* ============================================================================
  * 8. SNES HARDWARE OAM SPRITE RENDERER
  * ============================================================================ */
-static u8 sprite_obj_palette(u8 spr_id) {
-    if (spr_id <= SPR_FAMILIAR_LUMINA) return 1u;
-    if (spr_id <= SPR_NPC_GUARD || spr_id == SPR_WINDMILL_BLADES ||
-        spr_id == SPR_WAYSTONE || spr_id == SPR_CHEST) return 2u;
-    return 3u;
-}
+static const u8 SPR_PAL_LUT[20] = {
+    1u, 1u, 1u, 1u,
+    2u, 2u, 2u,
+    3u, 3u, 3u, 3u,
+    2u, 2u, 2u,
+    3u, 3u, 3u, 3u, 3u, 3u
+};
+
+static const u16 SPR_TILE_LUT[20] = {
+     0u,  2u,  4u,  6u,  8u, 10u, 12u, 14u,
+    32u, 34u, 36u, 38u, 40u, 42u, 44u, 46u,
+    64u, 66u, 68u, 70u
+};
 
 static void hide_oam_slot(u8 slot) {
     u16 id = (u16)((u16)slot << 2);
@@ -1282,10 +1326,10 @@ static void hide_oam_slot(u8 slot) {
 }
 
 static void render_snes_sprites(const HearthPpuPacket *ppu) {
-    u8 i, count, pal, prio, flip_x;
+    u8 i, count, pal, prio, flip_x, sid, rpal;
     const HearthOamSprite *o;
     s16 sx, sy;
-    u16 id, tile;
+    u16 id, tile, prog, rem;
 
     count = 0;
 
@@ -1299,8 +1343,9 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             if ((g_ui_layout == 2u || g_ui_layout == 3u) && sy >= 140) continue;
             if (g_ui_layout == 0u && sy < 10) continue;
 
-            pal = sprite_obj_palette(o->sprite_id);
-            tile = sprite_slot_to_tile(o->sprite_id);
+            sid = (o->sprite_id < 20u) ? o->sprite_id : 0u;
+            pal = SPR_PAL_LUT[sid];
+            tile = SPR_TILE_LUT[sid];
             flip_x = (u8)((o->flags & OAM_FLAG_FLIP_X) ? 1u : 0u);
             prio = (u8)((o->layer == 2u) ? 3u : 2u);
             id = (u16)((u16)count << 2);
@@ -1311,14 +1356,19 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             count++;
         }
 
-        /* Timed-Hit / Parry indicator ring sprite */
+        /* Converging & flashing Timed-Hit / Parry indicator ring sprite */
         if (g_hearth.mode == MODE_BATTLE && g_hearth.battle.ring.active && count < 50u) {
+            prog = g_hearth.battle.ring.progress_fp;
+            rem = (prog < 256u) ? (u16)(256u - prog) : 0u;
+            rpal = (prog >= g_hearth.battle.ring.sweet_start_fp)
+                ? (u8)(((g_hearth.frame_count & 2u) != 0u) ? 1u : 2u)
+                : 3u;
             sx = (s16)(g_hearth.battle.ring.x - 8);
-            sy = (s16)(g_hearth.battle.ring.y - 24);
+            sy = (s16)(g_hearth.battle.ring.y - 20 - (s16)(rem >> 4));
             if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
                 id = (u16)((u16)count << 2);
                 oamSet(id, (u16)sx, (u16)sy, 3u, 0u, 0u,
-                       sprite_slot_to_tile(SPR_TIMED_RING_SLOT), 3u);
+                       SPR_TILE_LUT[SPR_TIMED_RING_SLOT], rpal);
                 oamSetEx(id, OBJ_SMALL, OBJ_SHOW);
                 count++;
             }
@@ -1461,11 +1511,24 @@ static void flush_one_vblank_dma(void) {
     } else if (g_bg1_dirty_r) {
         dmaCopyVram((u8 *)(g_bg1_map + 1024), (u16)(VRAM_BG1_MAP + 1024u), 2048u);
         g_bg1_dirty_r = 0;
-    } else if (g_bg0_dirty) {
-        dmaCopyVram((u8 *)g_bg0_map, VRAM_BG0_MAP, 1792u);
-        g_bg0_dirty = 0;
-    } else if (g_env_dirty) {
-        flush_env_vblank_dma();
+    } else {
+        if (g_bg0_dirty == 1u) {
+            /* Explore HUD row 0 only (64 bytes -> 0.4 scanlines) */
+            dmaCopyVram((u8 *)g_bg0_map, VRAM_BG0_MAP, 64u);
+            g_bg0_dirty = 0u;
+        } else if (g_bg0_dirty == 2u) {
+            /* Dialogue / Battle box rows 20..26 only (448 bytes -> 2.7 scanlines) */
+            dmaCopyVram((u8 *)(g_bg0_map + 640u), (u16)(VRAM_BG0_MAP + 640u), 448u);
+            g_bg0_dirty = 0u;
+            return;
+        } else if (g_bg0_dirty >= 3u) {
+            dmaCopyVram((u8 *)g_bg0_map, VRAM_BG0_MAP, 1792u);
+            g_bg0_dirty = 0u;
+            return;
+        }
+        if (g_env_dirty) {
+            flush_env_vblank_dma();
+        }
     }
 }
 

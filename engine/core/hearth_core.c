@@ -189,10 +189,13 @@ static void spawn_ftext(
 
 static void step_fx_pools(HearthState *st) {
     int i;
+    uint8_t rem;
     if (st->active_particles > 0) {
-        for (i = 0; i < HEARTH_MAX_PARTICLES; i++) {
+        rem = st->active_particles;
+        for (i = 0; i < HEARTH_MAX_PARTICLES && rem > 0; i++) {
             HearthParticle *p = &st->particles[i];
             if (!p->active) continue;
+            rem--;
             if (p->life <= 1) {
                 p->active = false;
                 if (st->active_particles > 0) st->active_particles--;
@@ -204,15 +207,17 @@ static void step_fx_pools(HearthState *st) {
             if (p->kind == 1 || p->kind == 4) {
                 p->vy += 22;
             } else if (p->kind == 3) {
-                p->vx = (p->vx * 235) >> 8;
-                p->vy = (p->vy * 235) >> 8;
+                p->vx -= (p->vx >> 4) + (p->vx >> 6);
+                p->vy -= (p->vy >> 4) + (p->vy >> 6);
             }
         }
     }
     if (st->active_ftexts > 0) {
-        for (i = 0; i < HEARTH_MAX_FTEXT; i++) {
+        rem = st->active_ftexts;
+        for (i = 0; i < HEARTH_MAX_FTEXT && rem > 0; i++) {
             HearthFloatText *ft = &st->ftexts[i];
             if (!ft->active) continue;
+            rem--;
             if (ft->life <= 1) {
                 ft->active = false;
                 if (st->active_ftexts > 0) st->active_ftexts--;
@@ -220,7 +225,7 @@ static void step_fx_pools(HearthState *st) {
             }
             ft->life--;
             ft->y = (int16_t)(ft->y + FROM_FP(ft->vy_fp));
-            ft->vy_fp = (int16_t)((ft->vy_fp * 232) >> 8);
+            ft->vy_fp = (int16_t)(ft->vy_fp - (ft->vy_fp >> 4) - (ft->vy_fp >> 5));
         }
     }
 }
@@ -431,12 +436,14 @@ static void step_hero_movement(HearthState *st, uint16_t pad) {
     st->hero_dashing = ((pad & PAD_B) != 0) && (ix != 0 || iy != 0);
     max_spd = st->hero_dashing ? st->tuning.dash_speed_fp : st->tuning.walk_speed_fp;
 
-    tvx = (fp16_t)ix * max_spd;
-    tvy = (fp16_t)iy * max_spd;
     if (ix != 0 && iy != 0) {
-        /* 181/256 ~= 0.7071 integer diagonal normalization */
-        tvx = (tvx * 181) >> 8;
-        tvy = (tvy * 181) >> 8;
+        /* 181/256 ~= 0.7071 integer diagonal normalization (128+32+16+4+1, zero multiply) */
+        fp16_t dspd = (max_spd >> 1) + (max_spd >> 3) + (max_spd >> 4) + (max_spd >> 6) + (max_spd >> 8);
+        tvx = (ix > 0) ? dspd : -dspd;
+        tvy = (iy > 0) ? dspd : -dspd;
+    } else {
+        tvx = (ix == 0) ? 0 : ((ix > 0) ? max_spd : -max_spd);
+        tvy = (iy == 0) ? 0 : ((iy > 0) ? max_spd : -max_spd);
     }
 
     st->hero_vx = approach_fp(st->hero_vx, tvx, st->tuning.accel_fp);
@@ -480,7 +487,7 @@ static void step_hero_movement(HearthState *st, uint16_t pad) {
 
         dx = FROM_FP(st->hero_fx - st->trail_x[st->trail_head]);
         dy = FROM_FP(st->hero_fy - st->trail_y[st->trail_head]);
-        if (dx * dx + dy * dy >= 4) {
+        if (dx <= -2 || dx >= 2 || dy <= -2 || dy >= 2) {
             uint8_t next_head = (uint8_t)(st->trail_head + 1u);
             if (next_head >= HEARTH_TRAIL_LEN) next_head = 0;
             st->trail_head = next_head;
@@ -1523,11 +1530,18 @@ static bool step_enemy_chase(HearthState *st, HearthFieldEnemy *e, int idx, int1
         push_sfx(st, SFX_ENEMY_ALERT);
     }
     spd = e->is_boss ? 140 : 200;
-    nvx = (dx > 2) ? spd : ((dx < -2) ? -spd : 0);
-    nvy = (dy > 2) ? spd : ((dy < -2) ? -spd : 0);
-    if (nvx != 0 && nvy != 0) {
-        nvx = (nvx * 181) >> 8;
-        nvy = (nvy * 181) >> 8;
+    if (dx > 2 || dx < -2) {
+        if (dy > 2 || dy < -2) {
+            int16_t dspd = (int16_t)((spd >> 1) + (spd >> 3) + (spd >> 4) + (spd >> 6) + (spd >> 8));
+            nvx = (dx > 0) ? dspd : -dspd;
+            nvy = (dy > 0) ? dspd : -dspd;
+        } else {
+            nvx = (dx > 0) ? spd : -spd;
+            nvy = 0;
+        }
+    } else {
+        nvx = 0;
+        nvy = (dy > 2) ? spd : ((dy < -2) ? -spd : 0);
     }
     cx = get_col_at_px(st, FROM_FP(e->fx + nvx), ey);
     cy = get_col_at_px(st, ex, FROM_FP(e->fy + nvy));
@@ -1722,65 +1736,61 @@ static void step_camera(HearthState *st) {
     st->cam_fy += (gy - st->cam_fy) >> 3;
 }
 
-static void emit_oam(
-    HearthPpuPacket *ppu, int16_t x, int16_t y, uint8_t sprite_id,
-    uint8_t frame, uint8_t dir, uint8_t flags,
-    int16_t sx_fp, int16_t sy_fp, uint8_t aura, uint8_t layer,
-    int16_t sort_y, uint16_t rot_deg
-) {
-    HearthOamSprite *o;
-    if (ppu->oam_count >= HEARTH_MAX_OAM) return;
-    o = &ppu->oam[ppu->oam_count++];
-    o->x = x;
-    o->y = y;
-    o->sprite_id = sprite_id;
-    o->frame = frame;
-    o->dir = dir;
-    o->flags = flags;
-    o->scale_x_fp = sx_fp;
-    o->scale_y_fp = sy_fp;
-    o->aura = aura;
-    o->layer = layer;
-    o->sort_y = sort_y;
-    o->rot_deg = rot_deg;
-}
+#define HEARTH_PUSH_OAM(ppu, px, py, sid, fr, d, fl, sx, sy, au, ly, sy_sort, rot) \
+    do { \
+        if ((ppu)->oam_count < HEARTH_MAX_OAM) { \
+            HearthOamSprite *o_ = &(ppu)->oam[(ppu)->oam_count++]; \
+            o_->x = (px); \
+            o_->y = (py); \
+            o_->sprite_id = (sid); \
+            o_->frame = (fr); \
+            o_->dir = (d); \
+            o_->flags = (fl); \
+            o_->scale_x_fp = (sx); \
+            o_->scale_y_fp = (sy); \
+            o_->aura = (au); \
+            o_->layer = (ly); \
+            o_->sort_y = (sy_sort); \
+            o_->rot_deg = (rot); \
+        } \
+    } while (0)
 
 static void sort_ppu_oam(HearthPpuPacket *p, bool by_layer) {
     int i, j;
-    for (i = 1; i < (int)p->oam_count; i++) {
-        HearthOamSprite *prev = &p->oam[i - 1];
-        HearthOamSprite *cur  = &p->oam[i];
-        bool out_of_order = by_layer
-            ? (prev->layer > cur->layer || (prev->layer == cur->layer && prev->sort_y > cur->sort_y))
-            : (prev->sort_y > cur->sort_y);
-        if (!out_of_order) continue;
-        {
-            HearthOamSprite key = *cur;
-            j = i - 1;
-            while (j >= 0 && (by_layer
-                ? (p->oam[j].layer > key.layer || (p->oam[j].layer == key.layer && p->oam[j].sort_y > key.sort_y))
-                : (p->oam[j].sort_y > key.sort_y))) {
-                p->oam[j + 1] = p->oam[j];
-                j--;
-            }
-            p->oam[j + 1] = key;
+    int cnt = (int)p->oam_count;
+    HearthOamSprite *cur, *prev, *pj;
+    HearthOamSprite key;
+
+    for (i = 1; i < cnt; i++) {
+        cur  = &p->oam[i];
+        prev = cur - 1;
+        if (by_layer) {
+            if (prev->layer < cur->layer || (prev->layer == cur->layer && prev->sort_y <= cur->sort_y)) continue;
+        } else {
+            if (prev->sort_y <= cur->sort_y) continue;
         }
+        key = *cur;
+        j = i - 1;
+        pj = prev;
+        while (j >= 0 && (by_layer
+            ? (pj->layer > key.layer || (pj->layer == key.layer && pj->sort_y > key.sort_y))
+            : (pj->sort_y > key.sort_y))) {
+            *(pj + 1) = *pj;
+            pj--;
+            j--;
+        }
+        *(pj + 1) = key;
     }
 }
 
 static void build_explore_ppu_props_and_actors(HearthState *st, HearthPpuPacket *p, int16_t cx, int16_t cy) {
     int i;
 
-    /* Windmill Blades (Overhead Layer 2, zero-divide continuous rotation) */
-    emit_oam(p, (int16_t)(6 * 16 + 8 - cx), (int16_t)(5 * 16 + 4 - cy),
-        SPR_WINDMILL_BLADES, 0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2000,
-        st->windmill_rot);
-
-    /* Waystone & Chest */
-    emit_oam(p, (int16_t)(8 * 16 + 8 - cx), (int16_t)(17 * 16 + 12 - cy),
+    /* Layer 1 Props & Actors emitted first so layer stays pre-sorted for 65816 */
+    HEARTH_PUSH_OAM(p, (int16_t)(8 * 16 + 8 - cx), (int16_t)(17 * 16 + 12 - cy),
         SPR_WAYSTONE, (uint8_t)((st->frame_count >> 4) & 3u), DIR_DOWN, OAM_FLAG_SHADOW,
         FP_ONE, FP_ONE, AURA_NONE, 1, 17 * 16 + 12, 0);
-    emit_oam(p, (int16_t)(26 * 16 + 8 - cx), (int16_t)(6 * 16 + 12 - cy),
+    HEARTH_PUSH_OAM(p, (int16_t)(26 * 16 + 8 - cx), (int16_t)(6 * 16 + 12 - cy),
         SPR_CHEST, st->flag_chest_opened ? 1 : 0, DIR_DOWN, OAM_FLAG_SHADOW,
         FP_ONE, FP_ONE, AURA_NONE, 1, 6 * 16 + 12, 0);
 
@@ -1788,13 +1798,9 @@ static void build_explore_ppu_props_and_actors(HearthState *st, HearthPpuPacket 
     for (i = 0; i < HEARTH_MAX_NPCS; i++) {
         const HearthNpc *n = &st->npcs[i];
         int16_t nx = FROM_FP(n->fx), ny = FROM_FP(n->fy);
-        emit_oam(p, (int16_t)(nx - cx), (int16_t)(ny - cy), n->sprite_id,
+        HEARTH_PUSH_OAM(p, (int16_t)(nx - cx), (int16_t)(ny - cy), n->sprite_id,
             (uint8_t)((st->frame_count >> 5) & 1u), n->dir, OAM_FLAG_SHADOW,
             FP_ONE, FP_ONE, n->aura, 1, ny, 0);
-        if (n->emote_frames > 0 && n->emote != 0) {
-            emit_oam(p, (int16_t)(nx - cx), (int16_t)(ny - 25 - cy), n->emote,
-                0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2500, 0);
-        }
     }
 
     /* Roaming Field Enemies */
@@ -1806,13 +1812,9 @@ static void build_explore_ppu_props_and_actors(HearthState *st, HearthPpuPacket 
         ex = FROM_FP(e->fx);
         ey = FROM_FP(e->fy);
         fl = (uint8_t)(OAM_FLAG_SHADOW | ((e->dir == DIR_RIGHT) ? OAM_FLAG_FLIP_X : 0));
-        emit_oam(p, (int16_t)(ex - cx), (int16_t)(ey - cy), e->sprite_id,
+        HEARTH_PUSH_OAM(p, (int16_t)(ex - cx), (int16_t)(ey - cy), e->sprite_id,
             (uint8_t)((e->anim_frame >> 4) & 1u), e->dir, fl,
             FP_ONE, FP_ONE, AURA_NONE, 1, ey, 0);
-        if (e->alert_frames > 0) {
-            emit_oam(p, (int16_t)(ex - cx), (int16_t)(ey - 26 - cy), SPR_EMOTE_BANG,
-                0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2500, 0);
-        }
     }
 }
 
@@ -1820,41 +1822,62 @@ static void build_explore_ppu_oam(HearthState *st, HearthPpuPacket *p) {
     int16_t cx = p->cam_x, cy = p->cam_y;
     int16_t hx, hy, px, py, bob;
     uint8_t wf, pfl;
+    int i;
 
     build_explore_ppu_props_and_actors(st, p, cx, cy);
 
-    /* Hero (Rowan) */
+    /* Hero (Rowan, Layer 1) */
     hx = FROM_FP(st->hero_fx);
     hy = FROM_FP(st->hero_fy);
     wf = (st->hero_anim_tick == 0) ? 0 : (uint8_t)((st->hero_anim_tick >> 3) & 3u);
     if (st->hero_safe_frames == 0 || (st->hero_safe_frames & 4u) == 0u) {
-        emit_oam(p, (int16_t)(hx - cx), (int16_t)(hy - cy), SPR_HERO, wf, st->hero_dir, OAM_FLAG_SHADOW,
+        HEARTH_PUSH_OAM(p, (int16_t)(hx - cx), (int16_t)(hy - cy), SPR_HERO, wf, st->hero_dir, OAM_FLAG_SHADOW,
             st->hero_dashing ? 270 : FP_ONE, st->hero_dashing ? 244 : FP_ONE,
             AURA_NONE, 1, hy, 0);
     }
-    if (st->hero_emote_frames > 0 && st->hero_emote != 0) {
-        emit_oam(p, (int16_t)(hx - cx), (int16_t)(hy - 26 - cy), st->hero_emote,
-            0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2500, 0);
-    }
 
-    /* Pip Hovering Companion */
+    /* Pip Hovering Companion (Layer 1) */
     px = FROM_FP(st->pip_fx);
     py = FROM_FP(st->pip_fy);
     bob = (int16_t)((HEARTH_SIN64[(st->frame_count >> 1) & 63u] * 3) >> 7);
     pfl = (uint8_t)(OAM_FLAG_SHADOW | ((st->pip_dir == DIR_LEFT) ? OAM_FLAG_FLIP_X : 0));
-    emit_oam(p, (int16_t)(px - cx), (int16_t)(py - 4 + bob - cy), SPR_PIP,
+    HEARTH_PUSH_OAM(p, (int16_t)(px - cx), (int16_t)(py - 4 + bob - cy), SPR_PIP,
         (uint8_t)((st->frame_count >> 3) & 1u), st->pip_dir, pfl,
         FP_ONE, FP_ONE, AURA_NONE, 1, py, 0);
-    if (st->pip_emote_frames > 0 && st->pip_emote != 0) {
-        emit_oam(p, (int16_t)(px - cx), (int16_t)(py - 24 - cy), st->pip_emote,
+
+    /* Layer 2 Overhead Sprites emitted LAST so sort_ppu_oam skips all layer swaps */
+    HEARTH_PUSH_OAM(p, (int16_t)(6 * 16 + 8 - cx), (int16_t)(5 * 16 + 4 - cy),
+        SPR_WINDMILL_BLADES, 0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2000,
+        st->windmill_rot);
+
+    for (i = 0; i < HEARTH_MAX_NPCS; i++) {
+        const HearthNpc *n = &st->npcs[i];
+        if (n->emote_frames > 0 && n->emote != 0) {
+            int16_t nx = FROM_FP(n->fx), ny = FROM_FP(n->fy);
+            HEARTH_PUSH_OAM(p, (int16_t)(nx - cx), (int16_t)(ny - 25 - cy), n->emote,
+                0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2500, 0);
+        }
+    }
+    for (i = 0; i < HEARTH_MAX_FIELD_ENEMIES; i++) {
+        const HearthFieldEnemy *e = &st->field_enemies[i];
+        if (e->alive && e->alert_frames > 0) {
+            int16_t ex = FROM_FP(e->fx), ey = FROM_FP(e->fy);
+            HEARTH_PUSH_OAM(p, (int16_t)(ex - cx), (int16_t)(ey - 26 - cy), SPR_EMOTE_BANG,
+                0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2500, 0);
+        }
+    }
+    if (st->hero_emote_frames > 0 && st->hero_emote != 0) {
+        HEARTH_PUSH_OAM(p, (int16_t)(hx - cx), (int16_t)(hy - 26 - cy), st->hero_emote,
             0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2500, 0);
     }
-
-    /* Heart-Orb Transfer Sprite */
+    if (st->pip_emote_frames > 0 && st->pip_emote != 0) {
+        HEARTH_PUSH_OAM(p, (int16_t)(px - cx), (int16_t)(py - 24 - cy), st->pip_emote,
+            0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2500, 0);
+    }
     if (st->heart_orb.active) {
         int16_t ox = (int16_t)(st->heart_orb.start_x + ((st->heart_orb.end_x - st->heart_orb.start_x) * st->heart_orb.frame) / st->heart_orb.duration);
         int16_t oy = (int16_t)(st->heart_orb.start_y + ((st->heart_orb.end_y - st->heart_orb.start_y) * st->heart_orb.frame) / st->heart_orb.duration - sin_arc(st->heart_orb.frame, st->heart_orb.duration, 32));
-        emit_oam(p, (int16_t)(ox - cx), (int16_t)(oy - cy), SPR_HEART_ORB,
+        HEARTH_PUSH_OAM(p, (int16_t)(ox - cx), (int16_t)(oy - cy), SPR_HEART_ORB,
             (uint8_t)((st->frame_count >> 2) & 1u), DIR_DOWN, 0,
             FP_ONE, FP_ONE, AURA_NONE, 2, 3000, 0);
     }
@@ -1879,7 +1902,7 @@ static void build_battle_ppu_oam(HearthState *st, HearthPpuPacket *p) {
     uint8_t ei;
 
     if (b->active_slot != 0) {
-        emit_oam(p, b->wizard_back_x, b->wizard_back_y, SPR_HERO,
+        HEARTH_PUSH_OAM(p, b->wizard_back_x, b->wizard_back_y, SPR_HERO,
             (uint8_t)((st->frame_count >> 5) & 1u), DIR_RIGHT, OAM_FLAG_SHADOW,
             FP_ONE, FP_ONE, AURA_NONE, 1, b->wizard_back_y, 0);
     }
@@ -1887,7 +1910,7 @@ static void build_battle_ppu_oam(HearthState *st, HearthPpuPacket *p) {
     if (b->phase != BPHASE_SWAP_ARC) {
         const HearthPartyMember *actor = &st->party[b->active_slot];
         uint8_t hflags = (uint8_t)(OAM_FLAG_SHADOW | ((b->hero_flash_frames > 0) ? OAM_FLAG_FLASH_WHITE : 0));
-        emit_oam(p, b->hero_x, b->hero_y, actor->sprite_id,
+        HEARTH_PUSH_OAM(p, b->hero_x, b->hero_y, actor->sprite_id,
             (uint8_t)((st->frame_count >> 4) & 1u), DIR_RIGHT, hflags,
             b->hero_scale_x_fp, b->hero_scale_y_fp,
             b->hero_guarding ? AURA_RADIANT_COURAGE : AURA_NONE, 1, b->hero_y, 0);
@@ -1898,7 +1921,7 @@ static void build_battle_ppu_oam(HearthState *st, HearthPpuPacket *p) {
         uint8_t eflags;
         if (!e->alive) continue;
         eflags = (uint8_t)(OAM_FLAG_SHADOW | ((e->flash_frames > 0) ? OAM_FLAG_FLASH_WHITE : 0));
-        emit_oam(p, e->x, e->y, e->sprite_id,
+        HEARTH_PUSH_OAM(p, e->x, e->y, e->sprite_id,
             (uint8_t)((e->anim_frame >> 4) & 1u), DIR_LEFT, eflags,
             e->scale_x_fp, e->scale_y_fp,
             e->staggered ? AURA_HOLLOW_FEAR : AURA_NONE, 1, e->y, 0);
