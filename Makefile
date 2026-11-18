@@ -12,7 +12,7 @@
 #   make macos         -> Native macOS executable (Homebrew SDL2)
 #   make wasm          -> WebAssembly C99 core for browser preview (auto-fetches Zig)
 #   make web           -> Build browser preview bundle (make wasm + Node Docker/npm)
-#   make web-run       -> Launch browser preview on localhost:3000 (Docker/npm)
+#   make web-run       -> Launch browser preview on localhost:5173 (Docker/npm)
 #   make deps-ubuntu   -> Install Ubuntu Noble packages (gcc, SDL2, mingw-w64)
 #   make clean         -> Remove build/ and dist/ (keeps cached .toolchains/)
 #   make distclean     -> Remove build/, dist/, and .toolchains/
@@ -78,7 +78,7 @@ PVSNESLIB_CACHE := $(CURDIR)/$(TOOLCHAIN_DIR)/pvsneslib
 
 # Browser Preview (Vite + WASM): uses local npm if present, or Docker Node automatically
 NODE_IMAGE      ?= node:22-slim
-WEB_PORT        ?= 3000
+WEB_PORT        ?= 5173
 WEB_CACHE_DIR   := $(CURDIR)/$(TOOLCHAIN_DIR)/web
 
 .PHONY: all linux macos windows genesis genesis-stage snes wasm web web-run core-test run deps-ubuntu clean distclean help
@@ -330,7 +330,7 @@ web: wasm
 	@set -e; \
 	if [ -z "$(DOCKER_WEB)" ] && command -v npm >/dev/null 2>&1; then \
 		if [ ! -d node_modules ]; then \
-			npm install --no-audit --no-fund --no-package-lock; \
+			npm install --no-audit --no-fund --no-package-lock --legacy-peer-deps; \
 		fi; \
 		npm run build; \
 	else \
@@ -349,7 +349,7 @@ web: wasm
 			$(NODE_IMAGE) sh -ec '\
 				if [ ! -f /work/node_modules/.hearth_stamp ] || ! cmp -s /work/package.json /work/node_modules/.hearth_stamp; then \
 					echo "Caching npm packages inside $(TOOLCHAIN_DIR)/web/node_modules/ (first run)..."; \
-					npm install --prefix /work --no-audit --no-fund --no-package-lock; \
+					npm install --prefix /work --no-audit --no-fund --no-package-lock --legacy-peer-deps; \
 					cp /work/package.json /work/node_modules/.hearth_stamp; \
 				fi; \
 				/work/node_modules/.bin/vite build'; \
@@ -360,7 +360,7 @@ web-run: wasm
 	@set -e; \
 	if [ -z "$(DOCKER_WEB)" ] && command -v npm >/dev/null 2>&1; then \
 		if [ ! -d node_modules ]; then \
-			npm install --no-audit --no-fund --no-package-lock; \
+			npm install --no-audit --no-fund --no-package-lock --legacy-peer-deps; \
 		fi; \
 		echo "Serving Project Hearth Browser Preview (C99 WASM) at http://localhost:$(WEB_PORT)"; \
 		npx vite --port=$(WEB_PORT) --host=0.0.0.0; \
@@ -374,7 +374,7 @@ web-run: wasm
 		TTY_FLAG=""; if [ -t 0 ]; then TTY_FLAG="-it"; fi; \
 		echo "Starting Browser Preview (C99 WASM) via Docker ($(NODE_IMAGE)) on http://localhost:$(WEB_PORT) ..."; \
 		docker run --rm --init $$TTY_FLAG --user "$$(id -u):$$(id -g)" \
-			-p "$(WEB_PORT):3000" \
+			-p "$(WEB_PORT):$(WEB_PORT)" \
 			-e HOME=/tmp -e npm_config_cache=/work/npm-cache \
 			-v "$(WEB_CACHE_DIR):/work" \
 			-v "$(CURDIR):/work/app" \
@@ -382,10 +382,10 @@ web-run: wasm
 			$(NODE_IMAGE) sh -ec '\
 				if [ ! -f /work/node_modules/.hearth_stamp ] || ! cmp -s /work/package.json /work/node_modules/.hearth_stamp; then \
 					echo "Caching npm packages inside $(TOOLCHAIN_DIR)/web/node_modules/ (first run)..."; \
-					npm install --prefix /work --no-audit --no-fund --no-package-lock; \
+					npm install --prefix /work --no-audit --no-fund --no-package-lock --legacy-peer-deps; \
 					cp /work/package.json /work/node_modules/.hearth_stamp; \
 				fi; \
-				/work/node_modules/.bin/vite --port=3000 --host=0.0.0.0'; \
+				/work/node_modules/.bin/vite --port=$(WEB_PORT) --host=0.0.0.0'; \
 	fi
 
 # ------------------------------------------------------------------------------
