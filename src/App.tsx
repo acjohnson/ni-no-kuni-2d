@@ -15,29 +15,34 @@ import { BattleHudOverlay } from './components/BattleHudOverlay';
 import { ControlsModal } from './components/ControlsModal';
 import { EngineWorkbench } from './components/EngineWorkbench';
 import { PortraitFrame } from './components/PortraitFrame';
-import { EncounterPreset } from './core/battleSystem';
-import { HearthEngine } from './core/engine';
-import { EngineTuning, FamiliarSlot, UiSnapshot } from './core/types';
+import {
+  CutsceneOpExport,
+  EncounterPreset,
+  EngineTuning,
+  FamiliarSlot,
+  UiSnapshot,
+} from './core/types';
 import { RetroInputAdapter } from './host/inputAdapter';
 import { PixelAtlas } from './host/pixelAtlas';
 import { SoftwarePpuRenderer } from './host/ppuRenderer';
 import { RetroSynthAudio } from './host/synthAudio';
+import { WasmHearthEngine } from './host/wasmEngine';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const engineRef = useRef<HearthEngine | null>(null);
+  const engineRef = useRef<WasmHearthEngine | null>(null);
   const atlasRef = useRef<PixelAtlas | null>(null);
+  const cutsceneOpsRef = useRef<CutsceneOpExport[]>([]);
   const rendererRef = useRef<SoftwarePpuRenderer | null>(null);
   const inputRef = useRef<RetroInputAdapter | null>(null);
   const audioRef = useRef<RetroSynthAudio | null>(null);
 
-  if (!engineRef.current) engineRef.current = new HearthEngine();
-  if (!atlasRef.current) atlasRef.current = new PixelAtlas();
   if (!rendererRef.current) rendererRef.current = new SoftwarePpuRenderer();
   if (!inputRef.current) inputRef.current = new RetroInputAdapter();
   if (!audioRef.current) audioRef.current = new RetroSynthAudio();
 
-  const [ui, setUi] = useState<UiSnapshot>(() => engineRef.current!.getUiSnapshot());
+  const [ui, setUi] = useState<UiSnapshot | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [workbenchOpen, setWorkbenchOpen] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [crtEnabled, setCrtEnabled] = useState(true);
@@ -47,62 +52,29 @@ export default function App() {
     audioRef.current?.unlock();
   }, []);
 
-  /* Fixed-Timestep 60Hz Engine Loop Decoupled from React State */
+  const syncAfterUiAction = useCallback(() => {
+    const engine = engineRef.current;
+    const audio = audioRef.current;
+    if (!engine) return;
+    if (audio) {
+      const pendingSfx = engine.consumePendingSfx();
+      if (pendingSfx.length > 0) {
+        audio.processQueue(pendingSfx);
+      }
+    }
+    setUi(engine.getUiSnapshot());
+  }, []);
+
+  /* Load WebAssembly C99 Core & Run Fixed-Timestep 60Hz Engine Loop */
   useEffect(() => {
-    const engine = engineRef.current!;
-    const atlas = atlasRef.current!;
     const renderer = rendererRef.current!;
     const input = inputRef.current!;
     const audio = audioRef.current!;
 
     input.attach();
 
+    let cancelled = false;
     let rafId = 0;
-    let lastTime = performance.now();
-    let accumulator = 0;
-    const STEP_MS = 1000 / 60;
-    let frameSinceSync = 0;
-
-    const tick = (now: number) => {
-      const elapsed = Math.min(64, now - lastTime);
-      lastTime = now;
-      accumulator += elapsed;
-
-      let latestPacket = null;
-      let steps = 0;
-      while (accumulator >= STEP_MS && steps < 4) {
-        const padBits = input.poll();
-        latestPacket = engine.step(padBits);
-        const isBossBattle = latestPacket.battle?.enemies.some((e) => e.isBoss) ?? false;
-        audio.setMusicMode(latestPacket.mode, isBossBattle);
-        if (latestPacket.sfxQueue.length > 0) {
-          audio.processQueue(latestPacket.sfxQueue);
-        }
-        accumulator -= STEP_MS;
-        steps++;
-      }
-
-      if (latestPacket && canvasRef.current) {
-        renderer.render(
-          canvasRef.current,
-          latestPacket,
-          engine.map,
-          atlas,
-          engine.getUiSnapshot().party
-        );
-      }
-
-      // Sync lightweight React HUD snapshot ~15Hz (every 4 ticks) for smooth HUD & zero jitter
-      frameSinceSync += steps;
-      if (frameSinceSync >= 3) {
-        frameSinceSync = 0;
-        setUi(engine.getUiSnapshot());
-      }
-
-      rafId = window.requestAnimationFrame(tick);
-    };
-
-    rafId = window.requestAnimationFrame(tick);
 
     const onGlobalKey = (e: KeyboardEvent) => {
       if (e.code === 'Tab') {
@@ -113,7 +85,68 @@ export default function App() {
     };
     window.addEventListener('keydown', onGlobalKey);
 
+    WasmHearthEngine.create('/hearth_core.wasm')
+      .then((engine) => {
+        if (cancelled) return;
+        engineRef.current = engine;
+        atlasRef.current = new PixelAtlas(engine.palettes);
+        cutsceneOpsRef.current = engine.getCutsceneIntroOps();
+        setUi(engine.getUiSnapshot());
+
+        const atlas = atlasRef.current;
+        let lastTime = performance.now();
+        let accumulator = 0;
+        const STEP_MS = 1000 / 60;
+        let frameSinceSync = 0;
+
+        const tick = (now: number) => {
+          const elapsed = Math.min(64, now - lastTime);
+          lastTime = now;
+          accumulator += elapsed;
+
+          let latestPacket = null;
+          let steps = 0;
+          while (accumulator >= STEP_MS && steps < 4) {
+            const padBits = input.poll();
+            latestPacket = engine.step(padBits);
+            const isBossBattle = latestPacket.battle?.enemies.some((e) => e.isBoss) ?? false;
+            audio.setMusicMode(latestPacket.mode, isBossBattle);
+            if (latestPacket.sfxQueue.length > 0) {
+              audio.processQueue(latestPacket.sfxQueue);
+            }
+            accumulator -= STEP_MS;
+            steps++;
+          }
+
+          if (latestPacket && canvasRef.current) {
+            renderer.render(
+              canvasRef.current,
+              latestPacket,
+              engine.map,
+              atlas,
+              engine.getUiSnapshot().party
+            );
+          }
+
+          frameSinceSync += steps;
+          if (frameSinceSync >= 3) {
+            frameSinceSync = 0;
+            setUi(engine.getUiSnapshot());
+          }
+
+          rafId = window.requestAnimationFrame(tick);
+        };
+
+        rafId = window.requestAnimationFrame(tick);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : 'Failed to load WebAssembly core');
+        }
+      });
+
     return () => {
+      cancelled = true;
       window.cancelAnimationFrame(rafId);
       window.removeEventListener('keydown', onGlobalKey);
       input.detach();
@@ -126,24 +159,27 @@ export default function App() {
   };
 
   const handleStartSandbox = () => {
+    if (!engineRef.current) return;
     blurFocus();
     unlockAudio();
-    engineRef.current!.startSandbox();
-    setUi(engineRef.current!.getUiSnapshot());
+    engineRef.current.startSandbox();
+    syncAfterUiAction();
   };
 
   const handleStartCutscene = () => {
+    if (!engineRef.current) return;
     blurFocus();
     unlockAudio();
-    engineRef.current!.startCutsceneDemo(false);
-    setUi(engineRef.current!.getUiSnapshot());
+    engineRef.current.startCutsceneDemo();
+    syncAfterUiAction();
   };
 
   const handleJumpBattle = (preset: EncounterPreset = 'SHRINE_BOSS') => {
+    if (!engineRef.current) return;
     blurFocus();
     unlockAudio();
-    engineRef.current!.startQuickBattle(preset);
-    setUi(engineRef.current!.getUiSnapshot());
+    engineRef.current.startQuickBattle(preset);
+    syncAfterUiAction();
   };
 
   const handleToggleMute = () => {
@@ -154,42 +190,48 @@ export default function App() {
   };
 
   const handleUpdateTuning = (partial: Partial<EngineTuning>) => {
-    engineRef.current!.setTuning(partial);
-    setUi(engineRef.current!.getUiSnapshot());
+    if (!engineRef.current) return;
+    engineRef.current.setTuning(partial);
+    syncAfterUiAction();
   };
 
   const handleCanvasClick = () => {
+    if (!engineRef.current) return;
     unlockAudio();
-    engineRef.current!.uiTriggerTimedTap();
-    setUi(engineRef.current!.getUiSnapshot());
+    engineRef.current.uiTriggerTimedTap();
+    syncAfterUiAction();
   };
 
   const handleBattleCommand = (cmdIdx: number) => {
+    if (!engineRef.current) return;
     unlockAudio();
-    engineRef.current!.uiBattleCommand(cmdIdx);
-    setUi(engineRef.current!.getUiSnapshot());
+    engineRef.current.uiBattleCommand(cmdIdx);
+    syncAfterUiAction();
   };
 
   const handleSwapFamiliar = (slot: FamiliarSlot) => {
+    if (!engineRef.current) return;
     unlockAudio();
-    engineRef.current!.uiBattleSwapFamiliar(slot);
-    setUi(engineRef.current!.getUiSnapshot());
+    engineRef.current.uiBattleSwapFamiliar(slot);
+    syncAfterUiAction();
   };
 
   const handleSelectEnemy = (idx: number) => {
+    if (!engineRef.current) return;
     unlockAudio();
-    engineRef.current!.uiBattleSelectEnemy(idx);
-    setUi(engineRef.current!.getUiSnapshot());
+    engineRef.current.uiBattleSelectEnemy(idx);
+    syncAfterUiAction();
   };
 
   const handleSelectChoice = (idx: number) => {
+    if (!engineRef.current) return;
     unlockAudio();
-    engineRef.current!.uiSelectDialogueChoice(idx);
-    setUi(engineRef.current!.getUiSnapshot());
+    engineRef.current.uiSelectDialogueChoice(idx);
+    syncAfterUiAction();
   };
 
-  const isSnes = ui.tuning.ppuMode === 'SNES_256x224';
-  const activeMember = ui.party[ui.activeSlot];
+  const isSnes = ui?.tuning.ppuMode === 'SNES_256x224';
+  const activeMember = ui ? ui.party[ui.activeSlot] : null;
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#11131A] text-[#ECE7DC]">
@@ -199,8 +241,9 @@ export default function App() {
         <button
           type="button"
           onClick={() => {
-            engineRef.current!.returnToTitle();
-            setUi(engineRef.current!.getUiSnapshot());
+            if (!engineRef.current) return;
+            engineRef.current.returnToTitle();
+            syncAfterUiAction();
           }}
           className="font-display text-lg font-semibold tracking-tight text-[#F6F1E6] whitespace-nowrap shrink-0 hover:text-[#F5B841] transition-colors"
         >
@@ -289,12 +332,19 @@ export default function App() {
                 <div className="crt-scanlines pointer-events-none absolute inset-0 opacity-65" />
               )}
 
+              {/* Loading / Error State */}
+              {!ui && (
+                <div className="absolute inset-0 flex items-center justify-center bg-[#0E1017]/90 px-6 text-center font-mono text-xs text-[#AEB6C8]">
+                  {loadError ? `Error: ${loadError}` : 'Initializing C99 WebAssembly Core...'}
+                </div>
+              )}
+
               {/* TITLE SCREEN OVERLAY */}
-              {ui.mode === 'TITLE' && (
+              {ui?.mode === 'TITLE' && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-t from-[#11141E]/92 via-[#11141E]/62 to-[#11141E]/45 px-6 text-center">
                   <div className="max-w-lg">
                     <p className="font-mono text-xs tracking-wider text-[#F5B841]">
-                      16-BIT CUSTOM ENGINE VERTICAL SLICE · C99-PORTABLE CORE
+                      16-BIT CUSTOM ENGINE VERTICAL SLICE · C99 WASM CORE
                     </p>
                     <h1
                       className="mt-2 font-display text-4xl font-bold tracking-tight text-[#FBF7EE] sm:text-5xl"
@@ -304,7 +354,7 @@ export default function App() {
                     </h1>
                     <p className="mt-3 font-serif text-sm leading-relaxed text-[#D8D3C8] sm:text-base">
                       Tactile 8-way sub-pixel exploration, fluid familiar hot-swapping, timed hits
-                      and parries, and bytecode cutscenes—built cleanly for retro hardware.
+                      and parries, and bytecode cutscenes—driven directly by the native C99 core.
                     </p>
 
                     <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
@@ -348,7 +398,7 @@ export default function App() {
               )}
 
               {/* PAINTED PORTRAIT DIALOGUE & CUTSCENE OVERLAY */}
-              {ui.dialogue.active && (ui.mode === 'EXPLORE' || ui.mode === 'CUTSCENE') && (
+              {ui && ui.dialogue.active && (ui.mode === 'EXPLORE' || ui.mode === 'CUTSCENE') && (
                 <div
                   className="absolute inset-x-3 bottom-3 z-20 rounded-md border-2 border-[#D4942A]/80 bg-[#171C2B]/96 p-3.5 shadow-2xl sm:inset-x-5 sm:bottom-4 sm:p-4"
                   onClick={handleCanvasClick}
@@ -376,7 +426,7 @@ export default function App() {
                         <div className="mt-3 flex flex-wrap gap-2">
                           {ui.dialogue.choices.map((ch, idx) => (
                             <button
-                              key={ch.actionId}
+                              key={`${ch.actionId}_${idx}`}
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -400,7 +450,7 @@ export default function App() {
               )}
 
               {/* BATTLE VICTORY / DEFEAT SUMMARY MODAL */}
-              {(ui.mode === 'BATTLE_VICTORY' || ui.mode === 'BATTLE_DEFEAT') && (
+              {ui && (ui.mode === 'BATTLE_VICTORY' || ui.mode === 'BATTLE_DEFEAT') && (
                 <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#10131C]/82 p-4">
                   <div className="w-full max-w-sm rounded-lg border-2 border-[#D4942A]/80 bg-[#171C2B] p-5 text-center shadow-2xl">
                     <h2 className="font-display text-2xl font-bold text-[#FBF7EE]">
@@ -439,8 +489,8 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => {
-                          engineRef.current!.uiFinishBattleSummary(false);
-                          setUi(engineRef.current!.getUiSnapshot());
+                          engineRef.current?.uiFinishBattleSummary(false);
+                          syncAfterUiAction();
                         }}
                         className="rounded-md bg-[#D4942A] px-4 py-2 text-xs font-semibold text-[#141721] whitespace-nowrap hover:bg-[#E7AA40]"
                       >
@@ -449,8 +499,8 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => {
-                          engineRef.current!.uiFinishBattleSummary(true);
-                          setUi(engineRef.current!.getUiSnapshot());
+                          engineRef.current?.uiFinishBattleSummary(true);
+                          syncAfterUiAction();
                         }}
                         className="flex items-center gap-1.5 rounded-md border border-[#3B445E] bg-[#1E2436] px-3.5 py-2 text-xs font-medium text-[#ECE7DC] whitespace-nowrap hover:border-[#D4942A]"
                       >
@@ -465,7 +515,7 @@ export default function App() {
           </div>
 
           {/* BOTTOM CONTEXT BAR: Seamless swap between Battle HUD and Clean Exploration Strip */}
-          {ui.mode === 'BATTLE' ? (
+          {ui?.mode === 'BATTLE' ? (
             <BattleHudOverlay
               party={ui.party}
               activeSlot={ui.activeSlot}
@@ -486,74 +536,82 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-3 min-w-0">
                 <span className="flex items-center gap-1.5 font-medium text-[#F6F1E6] whitespace-nowrap">
                   <Compass className="h-3.5 w-3.5 text-[#F5B841]" />
-                  {ui.zoneLabel}
+                  {ui?.zoneLabel ?? 'Windmill Hamlet'}
                 </span>
                 <span aria-hidden="true" className="text-[#4B546B]">
                   ·
                 </span>
-                <span className="truncate text-[#C7CFDF]">{ui.objectiveLabel}</span>
+                <span className="truncate text-[#C7CFDF]">
+                  {ui?.objectiveLabel ?? 'Loading C99 WebAssembly engine...'}
+                </span>
               </div>
 
-              <div className="flex flex-wrap items-center gap-4 font-mono text-[11px] tabular-nums">
-                <span className="flex items-center gap-1.5 whitespace-nowrap">
-                  <Heart
-                    className={`h-3.5 w-3.5 ${
-                      ui.locket.hasCourage
-                        ? 'text-[#F5B841] fill-[#F5B841]'
-                        : ui.locket.guardMended
-                          ? 'text-[#74B461] fill-[#74B461]'
-                          : 'text-[#6A738A]'
-                    }`}
-                  />
-                  {ui.locket.hasCourage
-                    ? 'Locket: Courage'
-                    : ui.locket.guardMended
-                      ? 'Bram Mended'
-                      : 'Locket: Empty'}
-                </span>
-                <span aria-hidden="true" className="text-[#4B546B]">
-                  /
-                </span>
-                <span className="text-[#E6E0D4] whitespace-nowrap">
-                  Lead: {activeMember.name} ({activeMember.hp}/{activeMember.maxHp} HP)
-                </span>
-                <span aria-hidden="true" className="text-[#4B546B]">
-                  /
-                </span>
-                <span className="text-[#8E98B0] whitespace-nowrap">
-                  {isSnes ? '256x224 SNES' : '320x224 Genesis'} · Tab: Workbench
-                </span>
-              </div>
+              {ui && activeMember && (
+                <div className="flex flex-wrap items-center gap-4 font-mono text-[11px] tabular-nums">
+                  <span className="flex items-center gap-1.5 whitespace-nowrap">
+                    <Heart
+                      className={`h-3.5 w-3.5 ${
+                        ui.locket.hasCourage
+                          ? 'text-[#F5B841] fill-[#F5B841]'
+                          : ui.locket.guardMended
+                            ? 'text-[#74B461] fill-[#74B461]'
+                            : 'text-[#6A738A]'
+                      }`}
+                    />
+                    {ui.locket.hasCourage
+                      ? 'Locket: Courage'
+                      : ui.locket.guardMended
+                        ? 'Bram Mended'
+                        : 'Locket: Empty'}
+                  </span>
+                  <span aria-hidden="true" className="text-[#4B546B]">
+                    /
+                  </span>
+                  <span className="text-[#E6E0D4] whitespace-nowrap">
+                    Lead: {activeMember.name} ({activeMember.hp}/{activeMember.maxHp} HP)
+                  </span>
+                  <span aria-hidden="true" className="text-[#4B546B]">
+                    /
+                  </span>
+                  <span className="text-[#8E98B0] whitespace-nowrap">
+                    {isSnes ? '256x224 SNES' : '320x224 Genesis'} · Tab: Workbench
+                  </span>
+                </div>
+              )}
             </footer>
           )}
         </main>
 
         {/* Optional Collapsible Engine Workbench (Feel Tuner, PNG Swapper, C99 Exporter) */}
-        <EngineWorkbench
-          open={workbenchOpen}
-          onClose={() => setWorkbenchOpen(false)}
-          tuning={ui.tuning}
-          onUpdateTuning={handleUpdateTuning}
-          crtEnabled={crtEnabled}
-          onToggleCrt={() => setCrtEnabled((v) => !v)}
-          oamCount={ui.oamCount}
-          oamLimit={ui.oamLimit}
-          playerTileX={ui.playerTileX}
-          playerTileY={ui.playerTileY}
-          activeEnemyCount={ui.activeEnemyCount}
-          onRespawnEnemies={() => {
-            engineRef.current!.respawnFieldEnemies();
-            setUi(engineRef.current!.getUiSnapshot());
-          }}
-          onHealParty={() => {
-            unlockAudio();
-            engineRef.current!.healPartyFull();
-            setUi(engineRef.current!.getUiSnapshot());
-          }}
-          onJumpBattle={(preset) => handleJumpBattle(preset)}
-          atlas={atlasRef.current!}
-          mapData={engineRef.current!.map}
-        />
+        {ui && atlasRef.current && engineRef.current && (
+          <EngineWorkbench
+            open={workbenchOpen}
+            onClose={() => setWorkbenchOpen(false)}
+            tuning={ui.tuning}
+            onUpdateTuning={handleUpdateTuning}
+            crtEnabled={crtEnabled}
+            onToggleCrt={() => setCrtEnabled((v) => !v)}
+            oamCount={ui.oamCount}
+            oamLimit={ui.oamLimit}
+            playerTileX={ui.playerTileX}
+            playerTileY={ui.playerTileY}
+            activeEnemyCount={ui.activeEnemyCount}
+            onRespawnEnemies={() => {
+              engineRef.current?.respawnFieldEnemies();
+              syncAfterUiAction();
+            }}
+            onHealParty={() => {
+              unlockAudio();
+              engineRef.current?.healPartyFull();
+              syncAfterUiAction();
+            }}
+            onJumpBattle={(preset) => handleJumpBattle(preset)}
+            atlas={atlasRef.current}
+            mapData={engineRef.current.map}
+            palettes={engineRef.current.palettes}
+            cutsceneOps={cutsceneOpsRef.current}
+          />
+        )}
       </div>
 
       <ControlsModal open={controlsOpen} onClose={() => setControlsOpen(false)} />

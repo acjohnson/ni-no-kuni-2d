@@ -8,9 +8,13 @@
  *  - Desktop / Portable C99 (SDL2 — RGBA8888 standard <stdint.h>)
  */
 
-import { CUTSCENE_INTRO_DEMO } from '../core/cutsceneData';
-import { MAP_H, MAP_W, PALETTES, WorldMapData } from '../core/mapData';
-import { EngineTuning } from '../core/types';
+import {
+  CutsceneOpExport,
+  EngineTuning,
+  MAP_H,
+  MAP_W,
+  WorldMapData,
+} from '../core/types';
 
 export type C99Target = 'SGDK_GENESIS' | 'PVSNESLIB_SNES' | 'SDL2_C99';
 
@@ -147,7 +151,12 @@ void hearth_step_60hz(uint16_t pad_bits, OamSprite *out_oam, uint8_t *out_oam_co
 `;
 }
 
-export function generateHearthDataHeader(target: C99Target, map: WorldMapData): string {
+export function generateHearthDataHeader(
+  target: C99Target,
+  map: WorldMapData,
+  palettes: readonly (readonly string[])[],
+  cutsceneOps: readonly CutsceneOpExport[]
+): string {
   const palType = target === 'SDL2_C99' ? 'uint32_t' : 'uint16_t';
   const palComment =
     target === 'SGDK_GENESIS'
@@ -163,7 +172,7 @@ export function generateHearthDataHeader(target: C99Target, map: WorldMapData): 
         ? toSnesBgr555(hex)
         : toRgba8888(hex);
 
-  const palRows = PALETTES.map(
+  const palRows = palettes.map(
     (pal, idx) =>
       `    /* Sub-Palette ${idx} */\n    { ${pal.map(formatColor).join(', ')} }`
   ).join(',\n');
@@ -179,26 +188,23 @@ export function generateHearthDataHeader(target: C99Target, map: WorldMapData): 
     return lines.join('\n');
   };
 
-  const opcodeIdxMap: Record<string, string> = {
-    WAIT: 'OP_WAIT',
-    PAN_CAM: 'OP_PAN_CAM',
-    CAM_FOLLOW: 'OP_CAM_FOLLOW',
-    FACE_ACTOR: 'OP_FACE_ACTOR',
-    EMOTE: 'OP_EMOTE',
-    SAY: 'OP_SAY',
-    SFX: 'OP_SFX',
-    SHAKE: 'OP_SHAKE',
-    HEART_ORB: 'OP_HEART_ORB',
-    SET_FLAG: 'OP_SET_FLAG',
-    END: 'OP_END',
-  };
+  const opcodeNames = [
+    'OP_WAIT',
+    'OP_PAN_CAM',
+    'OP_CAM_FOLLOW',
+    'OP_FACE_ACTOR',
+    'OP_EMOTE',
+    'OP_SAY',
+    'OP_SFX',
+    'OP_SHAKE',
+    'OP_HEART_ORB',
+    'OP_SET_FLAG',
+    'OP_END',
+  ];
 
-  const csLines = CUTSCENE_INTRO_DEMO.map((op, i) => {
-    const code = opcodeIdxMap[op.op] ?? 'OP_WAIT';
-    const a0 = op.x ?? op.frames ?? op.sfx ?? 0;
-    const a1 = op.y ?? op.dir ?? op.intensity ?? 0;
-    const a2 = op.frames ?? i;
-    return `    { ${code.padEnd(14, ' ')}, ${String(a0).padStart(3, ' ')}, ${String(a1).padStart(3, ' ')}, ${String(a2).padStart(3, ' ')} },`;
+  const csLines = cutsceneOps.map((op) => {
+    const code = opcodeNames[op.opcode] ?? 'OP_WAIT';
+    return `    { ${code.padEnd(14, ' ')}, ${String(op.a0).padStart(3, ' ')}, ${String(op.a1).padStart(3, ' ')}, ${String(op.a2).padStart(3, ' ')} },`;
   }).join('\n');
 
   return `/* ============================================================================
@@ -226,8 +232,8 @@ static const uint8_t hearth_map_col[${MAP_W * MAP_H}] = {
 ${formatByteArray(map.col, MAP_W)}
 };
 
-/* Intro Demo Cutscene Bytecode Script (${CUTSCENE_INTRO_DEMO.length} instructions) */
-static const CutsceneInstr hearth_cutscene_intro[${CUTSCENE_INTRO_DEMO.length}] = {
+/* Intro Demo Cutscene Bytecode Script (${cutsceneOps.length} instructions) */
+static const CutsceneInstr hearth_cutscene_intro[${cutsceneOps.length}] = {
 ${csLines}
 };
 

@@ -10,6 +10,7 @@
 #   make genesis       -> Build Sega Genesis .bin ROM (implicit Docker SGDK)
 #   make snes          -> Build Super Nintendo .sfc ROM (auto-fetches PVSnesLib)
 #   make macos         -> Native macOS executable (Homebrew SDL2)
+#   make wasm          -> WebAssembly C99 core for browser preview (auto-fetches Zig)
 #   make deps-ubuntu   -> Install Ubuntu Noble packages (gcc, SDL2, mingw-w64)
 #   make clean         -> Remove build/ (keeps cached .toolchains/)
 #   make distclean     -> Remove both build/ and .toolchains/
@@ -31,6 +32,10 @@ TEST_SRC        := $(PLAT_DIR)/headless_test.c
 GENESIS_SRC     := $(PLAT_DIR)/genesis_main.c
 SNES_SRC        := $(PLAT_DIR)/snes_main.c
 SNES_AUDIO_GEN  := engine/tools/gen_snes_audio.c
+WASM_SRC        := $(PLAT_DIR)/wasm_bridge.c
+WASM_OUT        := public/hearth_core.wasm
+ZIG_VER         := 0.14.0
+ZIG_CACHE       := $(TOOLCHAIN_DIR)/zig
 
 # Strict portable compiler flags
 CFLAGS_COMMON   := -std=c99 -O2 -Wall -Wextra -Wshadow -Wconversion -Wno-sign-conversion -I$(CORE_DIR)
@@ -69,7 +74,7 @@ SGDK_IMAGE      ?= registry.gitlab.com/doragasu/docker-sgdk:v2.11
 # Super Nintendo (PVSnesLib): auto-downloads & caches latest Linux release if unset
 PVSNESLIB_CACHE := $(CURDIR)/$(TOOLCHAIN_DIR)/pvsneslib
 
-.PHONY: all linux macos windows genesis genesis-stage snes core-test run deps-ubuntu clean distclean help
+.PHONY: all linux macos windows genesis genesis-stage snes wasm core-test run deps-ubuntu clean distclean help
 
 # Default target builds for the current machine
 all: $(HOST_TARGET)
@@ -274,6 +279,47 @@ snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(SNES_AUDIO_GEN)
 	echo "Built SNES FastROM + SPC700 ROM: $(BUILD_DIR)/snes/hearth.sfc"
 
 # ------------------------------------------------------------------------------
+# 7. FREESTANDING WEBASSEMBLY CORE FOR BROWSER STUDIO PREVIEW
+# ------------------------------------------------------------------------------
+wasm: $(WASM_OUT)
+
+$(WASM_OUT): $(CORE_SRCS) $(CORE_HDRS) $(WASM_SRC)
+	@set -e; \
+	ZIG_BIN=$$(command -v zig 2>/dev/null || true); \
+	if [ -z "$$ZIG_BIN" ]; then \
+		if [ -x "$(ZIG_CACHE)/zig" ]; then \
+			ZIG_BIN="$(ZIG_CACHE)/zig"; \
+		else \
+			command -v curl >/dev/null 2>&1 || { echo "ERROR: curl required to auto-fetch Zig"; exit 1; }; \
+			UNAME_M=$$(uname -m); \
+			if [ "$$UNAME_S" = "Darwin" ]; then ZIG_OS="macos"; else ZIG_OS="linux"; fi; \
+			if [ "$$UNAME_M" = "arm64" ] || [ "$$UNAME_M" = "aarch64" ]; then ZIG_ARCH="aarch64"; else ZIG_ARCH="x86_64"; fi; \
+			ZIG_PKG="zig-$${ZIG_OS}-$${ZIG_ARCH}-$(ZIG_VER)"; \
+			ZIG_URL="https://ziglang.org/download/$(ZIG_VER)/$${ZIG_PKG}.tar.xz"; \
+			echo "Auto-fetching Zig $(ZIG_VER) ($${ZIG_OS}-$${ZIG_ARCH}) into $(ZIG_CACHE)/..."; \
+			mkdir -p "$(ZIG_CACHE)"; \
+			curl -fsSL "$$ZIG_URL" -o "$(ZIG_CACHE)/zig.tar.xz"; \
+			if command -v xz >/dev/null 2>&1; then \
+				tar -xJf "$(ZIG_CACHE)/zig.tar.xz" -C "$(ZIG_CACHE)" --strip-components=1; \
+			elif command -v python3 >/dev/null 2>&1; then \
+				python3 -c 'import tarfile, os; \
+tf = tarfile.open("$(ZIG_CACHE)/zig.tar.xz", "r:xz"); \
+root = tf.getmembers()[0].name.split("/")[0]; \
+[setattr(m, "name", m.name[len(root)+1:]) or (tf.extract(m, "$(ZIG_CACHE)") if m.name else None) for m in tf.getmembers()]'; \
+			else \
+				echo "ERROR: Need either xz or python3 to extract Zig archive."; exit 1; \
+			fi; \
+			rm -f "$(ZIG_CACHE)/zig.tar.xz"; \
+			ZIG_BIN="$(ZIG_CACHE)/zig"; \
+		fi; \
+	fi; \
+	mkdir -p public; \
+	"$$ZIG_BIN" cc -target wasm32-freestanding -O2 -Wall -Wextra -Werror -Wno-sign-conversion \
+		-nostdlib -Wl,--no-entry,--strip-all \
+		-I$(CORE_DIR) $(CORE_SRCS) $(WASM_SRC) -o $@; \
+	echo "Built WebAssembly C99 core: $@ ($$(wc -c < $@) bytes)"
+
+# ------------------------------------------------------------------------------
 # UTILITIES
 # ------------------------------------------------------------------------------
 run: $(HOST_TARGET)
@@ -302,6 +348,7 @@ help:
 	@echo "  make windows      Cross-compile Windows x64 .exe (auto-fetches SDL2 MinGW)"
 	@echo "  make genesis      Build Sega Genesis ROM (.bin) via Docker SGDK automatically"
 	@echo "  make snes         Build SNES ROM (.sfc) via auto-downloaded PVSnesLib"
+	@echo "  make wasm         Build WebAssembly C99 core (public/hearth_core.wasm)"
 	@echo "  make macos        Build macOS native SDL2 executable"
 	@echo "  make deps-ubuntu  Install Ubuntu Noble packages (gcc, SDL2, curl, unzip, mingw-w64)"
 	@echo "  make clean        Remove build/ (keeps cached .toolchains/)"

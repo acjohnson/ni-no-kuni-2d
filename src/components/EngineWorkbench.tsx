@@ -11,8 +11,13 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { WorldMapData } from '../core/mapData';
-import { DEFAULT_TUNING, EngineTuning, PpuMode } from '../core/types';
+import {
+  CutsceneOpExport,
+  DEFAULT_TUNING,
+  EngineTuning,
+  PpuMode,
+  WorldMapData,
+} from '../core/types';
 import {
   C99Target,
   generateHearthDataHeader,
@@ -37,6 +42,8 @@ interface EngineWorkbenchProps {
   onJumpBattle: (preset: 'MEADOW_PACK' | 'SHRINE_BOSS') => void;
   atlas: PixelAtlas;
   mapData: WorldMapData;
+  palettes: readonly (readonly string[])[];
+  cutsceneOps: readonly CutsceneOpExport[];
 }
 
 const SWAPPABLE_SLOTS: { id: SwappableSlotId; label: string; spec: string }[] = [
@@ -66,6 +73,8 @@ export const EngineWorkbench: React.FC<EngineWorkbenchProps> = ({
   onJumpBattle,
   atlas,
   mapData,
+  palettes,
+  cutsceneOps,
 }) => {
   const [tab, setTab] = useState<'feel' | 'assets' | 'c99'>('feel');
   const [c99Target, setC99Target] = useState<C99Target>('SGDK_GENESIS');
@@ -76,8 +85,8 @@ export const EngineWorkbench: React.FC<EngineWorkbenchProps> = ({
   const generatedCode = useMemo(() => {
     return c99File === 'types'
       ? generateHearthTypesHeader(c99Target, tuning)
-      : generateHearthDataHeader(c99Target, mapData);
-  }, [c99Target, c99File, tuning, mapData]);
+      : generateHearthDataHeader(c99Target, mapData, palettes, cutsceneOps);
+  }, [c99Target, c99File, tuning, mapData, palettes, cutsceneOps]);
 
   if (!open) return null;
 

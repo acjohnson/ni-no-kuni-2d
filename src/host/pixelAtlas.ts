@@ -7,13 +7,14 @@
  */
 
 import {
+  Direction,
   O_CANOPY_BL,
   O_CANOPY_BR,
   O_CANOPY_TL,
   O_CANOPY_TR,
   O_ROOF_EAVE,
   O_SHRINE_ARCH,
-  PALETTES,
+  SpriteId,
   T_BRIDGE,
   T_BRIDGE_RAIL_N,
   T_BRIDGE_RAIL_S,
@@ -43,8 +44,7 @@ import {
   T_WINDMILL_ROOF,
   T_WINDMILL_WALL,
   TILE_SIZE,
-} from '../core/mapData';
-import { Direction, SpriteId } from '../core/types';
+} from '../core/types';
 
 export type SwappableSlotId =
   | 'hero'
@@ -65,12 +65,13 @@ function makeCanvas(w: number, h: number): HTMLCanvasElement {
 /** Paint a pixel string pattern using an indexed 16-color palette ('.' = transparent, '1'-'f' = palette index) */
 function drawPattern(
   ctx: CanvasRenderingContext2D,
+  palettes: readonly (readonly string[])[],
   pattern: string[],
   palIdx: number,
   ox = 0,
   oy = 0
 ): void {
-  const pal = PALETTES[palIdx];
+  const pal = palettes[palIdx];
   for (let y = 0; y < pattern.length; y++) {
     const row = pattern[y];
     for (let x = 0; x < row.length; x++) {
@@ -86,12 +87,14 @@ function drawPattern(
 }
 
 export class PixelAtlas {
+  private readonly palettes: readonly (readonly string[])[];
   private bg1Tiles = new Map<number, HTMLCanvasElement[]>(); // tileId -> animation frames
   private bg2Tiles = new Map<number, HTMLCanvasElement>();
   private sprites = new Map<string, HTMLCanvasElement>(); // key: `${spriteId}_${dir}_${frame}`
   private overrides = new Map<SwappableSlotId, HTMLImageElement>();
 
-  constructor() {
+  constructor(palettes: readonly (readonly string[])[]) {
+    this.palettes = palettes;
     this.buildAllTiles();
     this.buildAllSprites();
   }
@@ -160,6 +163,7 @@ export class PixelAtlas {
    * 16x16 TERRAIN & ARCHITECTURE TILES (PALETTE 0)
    * ======================================================================== */
   private buildAllTiles(): void {
+    const PALETTES = this.palettes;
     const p0 = PALETTES[0];
     const makeTile = (fn: (ctx: CanvasRenderingContext2D) => void): HTMLCanvasElement => {
       const c = makeCanvas(TILE_SIZE, TILE_SIZE);
@@ -625,6 +629,14 @@ export class PixelAtlas {
    * HANDCRAFTED 16-BIT CHARACTER, FAMILIAR, NPC & MONSTER SPRITES
    * ======================================================================== */
   private buildAllSprites(): void {
+    const PALETTES = this.palettes;
+    const paintPattern = (
+      ctx: CanvasRenderingContext2D,
+      pattern: string[],
+      palIdx: number,
+      ox = 0,
+      oy = 0
+    ) => drawPattern(ctx, PALETTES, pattern, palIdx, ox, oy);
     const register = (id: SpriteId, dir: Direction, frame: number, c: HTMLCanvasElement) => {
       this.sprites.set(`${id}_${dir}_${frame}`, c);
     };
@@ -680,7 +692,7 @@ export class PixelAtlas {
                     '....11111111....',
                   ];
 
-        drawPattern(ctx, headPattern, 1, 0, 1 + bob);
+        paintPattern(ctx, headPattern, 1, 0, 1 + bob);
 
         // Terracotta Scarf + Forest Green Tunic + Brass Heart Locket
         const bodyPattern = [
@@ -692,7 +704,7 @@ export class PixelAtlas {
           '...1155555511...',
           '...1cccccccc1...',
         ];
-        drawPattern(ctx, bodyPattern, 1, 0, 8 + bob);
+        paintPattern(ctx, bodyPattern, 1, 0, 8 + bob);
 
         // Animated Boots
         const pal1 = PALETTES[1];
@@ -741,7 +753,7 @@ export class PixelAtlas {
               '....11aaaa11....',
               '.....11..11.....',
             ];
-      drawPattern(ctx, pat, 1, 0, 2);
+      paintPattern(ctx, pat, 1, 0, 2);
       register('pip', 0, f, c);
     }
 
@@ -765,7 +777,7 @@ export class PixelAtlas {
         '....1444114441.151..',
         '....1111..1111..1...',
       ];
-      drawPattern(ctx, pat, 1, 0, 5 + bob);
+      paintPattern(ctx, pat, 1, 0, 5 + bob);
       register('familiar_bramble', 0, f, c);
     }
 
@@ -788,7 +800,7 @@ export class PixelAtlas {
         '..1dd1..1dd1..1dd1..',
         '..11.....11.....11..',
       ];
-      drawPattern(ctx, pat, 1, 0, 4 + bob);
+      paintPattern(ctx, pat, 1, 0, 4 + bob);
       register('familiar_lumina', 0, f, c);
     }
 
@@ -817,7 +829,7 @@ export class PixelAtlas {
           `....1b1..1b1....`,
           `....111..111....`,
         ];
-        drawPattern(ctx, pat, 2, 1, 5 + f);
+        paintPattern(ctx, pat, 2, 1, 5 + f);
         if (spear) {
           ctx.fillStyle = PALETTES[2][1];
           ctx.fillRect(15, 2, 2, 18);
@@ -851,7 +863,7 @@ export class PixelAtlas {
         '.....1555555551.....',
         '.....111....111.....',
       ];
-      drawPattern(ctx, pat, 3, 0, 6 + f);
+      paintPattern(ctx, pat, 3, 0, 6 + f);
       register('enemy_gloomcap', 0, f, c);
     }
 
@@ -872,7 +884,7 @@ export class PixelAtlas {
         '....1661....1661....',
         '....111......111....',
       ];
-      drawPattern(ctx, pat, 3, 0, 6 + f);
+      paintPattern(ctx, pat, 3, 0, 6 + f);
       register('enemy_thornling', 0, f, c);
     }
 
@@ -900,7 +912,7 @@ export class PixelAtlas {
               '.....11..1221..11.....',
               '..........11..........',
             ];
-      drawPattern(ctx, pat, 3, 0, 4 + f);
+      paintPattern(ctx, pat, 3, 0, 4 + f);
       register('enemy_dusk_moth', 0, f, c);
     }
 
@@ -932,7 +944,7 @@ export class PixelAtlas {
         '......16771........17761........',
         '......1111..........1111........',
       ];
-      drawPattern(ctx, pat, 3, 0, 7 + bob);
+      paintPattern(ctx, pat, 3, 0, 7 + bob);
       register('boss_briar_warden', 0, f, c);
     }
 
@@ -957,7 +969,7 @@ export class PixelAtlas {
       const c = makeCanvas(16, 22);
       const ctx = c.getContext('2d')!;
       const bob = f === 1 || f === 2 ? -1 : 0;
-      drawPattern(
+      paintPattern(
         ctx,
         [
           '.......11.......',
@@ -973,7 +985,7 @@ export class PixelAtlas {
         0,
         2 + bob
       );
-      drawPattern(
+      paintPattern(
         ctx,
         [
           '...1111111111...',
@@ -1014,7 +1026,7 @@ export class PixelAtlas {
               '.1bbbbbbbbbbbb1.',
               '..111111111111..',
             ];
-      drawPattern(ctx, pat, 2, 0, 5);
+      paintPattern(ctx, pat, 2, 0, 5);
       register('chest', 0, f, c);
     }
 
@@ -1028,7 +1040,7 @@ export class PixelAtlas {
       ctx.fillStyle = '#F4E7C8';
       ctx.fillRect(2, 1, 8, 7);
       ctx.fillRect(5, 8, 2, 2);
-      drawPattern(ctx, sym, palIdx, 3, 2);
+      paintPattern(ctx, sym, palIdx, 3, 2);
       register(id, 0, 0, c);
       register(id, 0, 1, c);
     };
@@ -1041,7 +1053,7 @@ export class PixelAtlas {
     for (let f = 0; f < 2; f++) {
       const c = makeCanvas(12, 12);
       const ctx = c.getContext('2d')!;
-      drawPattern(
+      paintPattern(
         ctx,
         f === 0
           ? ['...bbbb...', '..bccccb..', '.bcbbbbcb.', '.bccccccb.', '..bccccb..', '...bbbb...']

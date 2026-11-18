@@ -5,14 +5,17 @@
  * HearthEngine and draws crisp nearest-neighbor 16-bit layers onto the canvas.
  */
 
-import { MAP_H, MAP_W, PALETTES, TILE_SIZE, WorldMapData } from '../core/mapData';
 import {
   BattleEnemyState,
   FP_ONE,
   LockKind,
+  MAP_H,
+  MAP_W,
   OamSprite,
   PartyMemberState,
   PpuFramePacket,
+  TILE_SIZE,
+  WorldMapData,
 } from '../core/types';
 import { PixelAtlas } from './pixelAtlas';
 

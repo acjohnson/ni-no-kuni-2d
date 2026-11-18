@@ -54,11 +54,77 @@ export type GameMode =
   | 'BATTLE_VICTORY'
   | 'BATTLE_DEFEAT';
 
-export type BattleBiome = 'MEADOW' | 'VILLAGE' | 'SHRINE';
+export type BattleBiome = 'MEADOW' | 'SHRINE';
+
+export type EncounterPreset = 'MEADOW_PACK' | 'GLADE_DUO' | 'SHRINE_BOSS';
 
 export type LockKind = 'SWORD' | 'SUN' | 'STAR';
 
 export type FamiliarSlot = 0 | 1 | 2; // 0=Rowan (Wizard), 1=Bramblekit, 2=Lumina
+
+export const TILE_SIZE = 16;
+export const MAP_W = 44;
+export const MAP_H = 28;
+
+export const T_GRASS = 0;
+export const T_GRASS_ALT = 1;
+export const T_FLOWERS = 2;
+export const T_TALL_GRASS = 3;
+export const T_DIRT = 4;
+export const T_COBBLE = 5;
+export const T_WATER = 6;
+export const T_FORD = 7;
+export const T_BRIDGE = 8;
+export const T_BRIDGE_RAIL_N = 9;
+export const T_BRIDGE_RAIL_S = 10;
+export const T_FENCE = 11;
+export const T_TREE_TRUNK = 12;
+export const T_BUSH = 13;
+export const T_WALL_WOOD = 14;
+export const T_WALL_WINDOW = 15;
+export const T_WALL_DOOR = 16;
+export const T_ROOF_BODY = 17;
+export const T_ROOF_TOP = 18;
+export const T_WINDMILL_WALL = 19;
+export const T_WINDMILL_DOOR = 20;
+export const T_WINDMILL_ROOF = 21;
+export const T_SHRINE_FLOOR = 22;
+export const T_SHRINE_RUNE = 23;
+export const T_SHRINE_PILLAR = 24;
+export const T_SIGNPOST = 25;
+export const T_LANTERN_POST = 26;
+export const T_FLOWER_BED = 27;
+
+export const O_NONE = 0;
+export const O_CANOPY_TL = 1;
+export const O_CANOPY_TR = 2;
+export const O_CANOPY_BL = 3;
+export const O_CANOPY_BR = 4;
+export const O_ROOF_EAVE = 5;
+export const O_SHRINE_ARCH = 6;
+
+export const COL_WALKABLE = 0;
+export const COL_SOLID = 1;
+export const COL_TALL_GRASS = 2;
+export const COL_SHALLOW = 3;
+export const COL_WATER = 4;
+
+export interface WorldMapData {
+  width: number;
+  height: number;
+  bg1: Uint8Array;
+  bg2: Uint8Array;
+  col: Uint8Array;
+}
+
+export interface CutsceneOpExport {
+  opcode: number;
+  a0: number;
+  a1: number;
+  a2: number;
+  speaker: string;
+  text: string;
+}
 
 export type HeartAura = 'NONE' | 'RADIANT_COURAGE' | 'HOLLOW_FEAR' | 'MENDED';
 
