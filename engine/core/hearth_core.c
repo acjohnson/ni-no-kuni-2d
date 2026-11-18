@@ -421,38 +421,8 @@ static bool collides_world(const HearthState *st, fp16_t fx, fp16_t fy) {
     return false;
 }
 
-static void step_hero_movement(HearthState *st, uint16_t pad) {
-    int16_t ix = 0, iy = 0;
-    fp16_t max_spd, tvx, tvy, nfx, nfy;
-    bool moving;
-    int16_t dx, dy, hx, hy;
-    uint8_t cadence, foot;
-
-    if (pad & PAD_LEFT)  ix -= 1;
-    if (pad & PAD_RIGHT) ix += 1;
-    if (pad & PAD_UP)    iy -= 1;
-    if (pad & PAD_DOWN)  iy += 1;
-
-    st->hero_dashing = ((pad & PAD_B) != 0) && (ix != 0 || iy != 0);
-    max_spd = st->hero_dashing ? st->tuning.dash_speed_fp : st->tuning.walk_speed_fp;
-
-    if (ix != 0 && iy != 0) {
-        /* 181/256 ~= 0.7071 integer diagonal normalization (128+32+16+4+1, zero multiply) */
-        fp16_t dspd = (max_spd >> 1) + (max_spd >> 3) + (max_spd >> 4) + (max_spd >> 6) + (max_spd >> 8);
-        tvx = (ix > 0) ? dspd : -dspd;
-        tvy = (iy > 0) ? dspd : -dspd;
-    } else {
-        tvx = (ix == 0) ? 0 : ((ix > 0) ? max_spd : -max_spd);
-        tvy = (iy == 0) ? 0 : ((iy > 0) ? max_spd : -max_spd);
-    }
-
-    st->hero_vx = approach_fp(st->hero_vx, tvx, st->tuning.accel_fp);
-    st->hero_vy = approach_fp(st->hero_vy, tvy, st->tuning.accel_fp);
-
-    if (ix != 0 || iy != 0) {
-        if (iabs16(ix) >= iabs16(iy) && ix != 0) st->hero_dir = (uint8_t)((ix < 0) ? DIR_LEFT : DIR_RIGHT);
-        else if (iy != 0) st->hero_dir = (uint8_t)((iy < 0) ? DIR_UP : DIR_DOWN);
-    }
+static void step_hero_collide_xy(HearthState *st) {
+    fp16_t nfx, nfy;
 
     /* Axis-separated collision with 5px automatic corner-nudging! */
     if (st->hero_vx != 0) {
@@ -479,39 +449,79 @@ static void step_hero_movement(HearthState *st, uint16_t pad) {
             st->hero_vy = 0;
         }
     }
+}
 
-    moving = (iabs32(st->hero_vx) > 24 || iabs32(st->hero_vy) > 24);
-    if (moving) {
-        st->hero_anim_tick = (uint16_t)(st->hero_anim_tick + (st->hero_dashing ? 2 : 1));
-        st->hero_step_timer++;
+static void step_hero_trail_and_fx(HearthState *st) {
+    int16_t dx, dy, hx, hy;
+    uint8_t cadence, foot, next_head;
 
-        dx = FROM_FP(st->hero_fx - st->trail_x[st->trail_head]);
-        dy = FROM_FP(st->hero_fy - st->trail_y[st->trail_head]);
-        if (dx <= -2 || dx >= 2 || dy <= -2 || dy >= 2) {
-            uint8_t next_head = (uint8_t)(st->trail_head + 1u);
-            if (next_head >= HEARTH_TRAIL_LEN) next_head = 0;
-            st->trail_head = next_head;
-            st->trail_x[st->trail_head] = st->hero_fx;
-            st->trail_y[st->trail_head] = st->hero_fy;
+    st->hero_anim_tick = (uint16_t)(st->hero_anim_tick + (st->hero_dashing ? 2 : 1));
+    st->hero_step_timer++;
+
+    dx = FROM_FP(st->hero_fx - st->trail_x[st->trail_head]);
+    dy = FROM_FP(st->hero_fy - st->trail_y[st->trail_head]);
+    if (dx <= -2 || dx >= 2 || dy <= -2 || dy >= 2) {
+        next_head = (uint8_t)(st->trail_head + 1u);
+        if (next_head >= HEARTH_TRAIL_LEN) next_head = 0;
+        st->trail_head = next_head;
+        st->trail_x[st->trail_head] = st->hero_fx;
+        st->trail_y[st->trail_head] = st->hero_fy;
+    }
+
+    cadence = st->hero_dashing ? (uint8_t)10 : (uint8_t)16;
+    if (st->hero_step_timer >= cadence) {
+        st->hero_step_timer = 0;
+        hx = FROM_FP(st->hero_fx);
+        hy = FROM_FP(st->hero_fy);
+        foot = get_col_at_px(st, hx, hy);
+        if (foot == COL_TALL_GRASS) {
+            push_sfx(st, SFX_GRASS_RUSTLE);
+            spawn_burst(st, 1, hx, hy, 4, 0, 4, false);
+        } else if (foot == COL_SHALLOW) {
+            push_sfx(st, SFX_WATER_SPLASH);
+            spawn_burst(st, 2, hx, hy, 4, 0, 14, false);
+        } else {
+            push_sfx(st, st->hero_dashing ? (uint8_t)SFX_DASH : (uint8_t)SFX_STEP);
+            if (st->hero_dashing) spawn_burst(st, 0, hx, hy, 2, 0, 8, false);
         }
+    }
+}
 
-        cadence = st->hero_dashing ? (uint8_t)10 : (uint8_t)16;
-        if (st->hero_step_timer >= cadence) {
-            st->hero_step_timer = 0;
-            hx = FROM_FP(st->hero_fx);
-            hy = FROM_FP(st->hero_fy);
-            foot = get_col_at_px(st, hx, hy);
-            if (foot == COL_TALL_GRASS) {
-                push_sfx(st, SFX_GRASS_RUSTLE);
-                spawn_burst(st, 1, hx, hy, 4, 0, 4, false);
-            } else if (foot == COL_SHALLOW) {
-                push_sfx(st, SFX_WATER_SPLASH);
-                spawn_burst(st, 2, hx, hy, 4, 0, 14, false);
-            } else {
-                push_sfx(st, st->hero_dashing ? (uint8_t)SFX_DASH : (uint8_t)SFX_STEP);
-                if (st->hero_dashing) spawn_burst(st, 0, hx, hy, 2, 0, 8, false);
-            }
-        }
+static void step_hero_movement(HearthState *st, uint16_t pad) {
+    int16_t ix = 0, iy = 0;
+    int16_t max_spd, dspd;
+    fp16_t tvx, tvy;
+
+    if (pad & PAD_LEFT)  ix -= 1;
+    if (pad & PAD_RIGHT) ix += 1;
+    if (pad & PAD_UP)    iy -= 1;
+    if (pad & PAD_DOWN)  iy += 1;
+
+    st->hero_dashing = ((pad & PAD_B) != 0) && (ix != 0 || iy != 0);
+    max_spd = st->hero_dashing ? st->tuning.dash_speed_fp : st->tuning.walk_speed_fp;
+
+    if (ix != 0 && iy != 0) {
+        /* 181/256 ~= 0.7071 integer diagonal normalization (128+32+16+4+1, zero multiply) */
+        dspd = (int16_t)((max_spd >> 1) + (max_spd >> 3) + (max_spd >> 4) + (max_spd >> 6) + (max_spd >> 8));
+        tvx = (ix > 0) ? (fp16_t)dspd : (fp16_t)(-dspd);
+        tvy = (iy > 0) ? (fp16_t)dspd : (fp16_t)(-dspd);
+    } else {
+        tvx = (ix == 0) ? 0 : ((ix > 0) ? (fp16_t)max_spd : (fp16_t)(-max_spd));
+        tvy = (iy == 0) ? 0 : ((iy > 0) ? (fp16_t)max_spd : (fp16_t)(-max_spd));
+    }
+
+    st->hero_vx = approach_fp(st->hero_vx, tvx, st->tuning.accel_fp);
+    st->hero_vy = approach_fp(st->hero_vy, tvy, st->tuning.accel_fp);
+
+    if (ix != 0 || iy != 0) {
+        if (iabs16(ix) >= iabs16(iy) && ix != 0) st->hero_dir = (uint8_t)((ix < 0) ? DIR_LEFT : DIR_RIGHT);
+        else if (iy != 0) st->hero_dir = (uint8_t)((iy < 0) ? DIR_UP : DIR_DOWN);
+    }
+
+    step_hero_collide_xy(st);
+
+    if (iabs32(st->hero_vx) > 24 || iabs32(st->hero_vy) > 24) {
+        step_hero_trail_and_fx(st);
     } else {
         st->hero_anim_tick = 0;
         st->hero_step_timer = 10;
