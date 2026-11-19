@@ -806,43 +806,41 @@ static void bake_env_windmill_frames(void) {
 /* ============================================================================
  * 6. BG1 SC_64x32 WORLD MAP & BATTLE ARENA STREAMING
  * ============================================================================ */
-static u16 map_terrain_to_tile(u8 t) {
-    switch (t) {
-        case T_GRASS:          return ST_GRASS;
-        case T_GRASS_ALT:      return ST_GRASS_ALT;
-        case T_FLOWERS:        return ST_FLOWERS;
-        case T_DIRT:           return ST_DIRT;
-        case T_COBBLE:         return ST_COBBLE;
-        case T_WATER:          return ST_WATER;
-        case T_FORD:           return ST_FORD;
-        case T_BRIDGE:         return ST_BRIDGE;
-        case T_BRIDGE_RAIL_N:
-        case T_BRIDGE_RAIL_S:  return ST_BRIDGE_RAIL;
-        case T_TALL_GRASS:     return ST_TALL_GRASS;
-        case T_BUSH:           return ST_BUSH;
-        case T_TREE_TRUNK:     return ST_TRUNK;
-        case T_ROOF_TOP:       return ST_ROOF_TOP;
-        case T_ROOF_BODY:      return ST_ROOF_BODY;
-        case T_WALL_WOOD:      return ST_WALL_WOOD;
-        case T_WALL_WINDOW:    return ST_WALL_WIN;
-        case T_WALL_DOOR:      return ST_WALL_DOOR;
-        case T_WINDMILL_ROOF:  return ST_WINDMILL_ROOF;
-        case T_WINDMILL_WALL:
-        case T_WINDMILL_DOOR:  return ST_WINDMILL_WALL;
-        case T_FLOWER_BED:     return ST_FLOWER_BED;
-        case T_FENCE:          return ST_FENCE;
-        case T_LANTERN_POST:   return ST_LAMP;
-        case T_SIGNPOST:       return ST_SIGN;
-        case T_SHRINE_FLOOR:   return ST_SHRINE_FLOOR;
-        case T_SHRINE_RUNE:    return ST_SHRINE_RUNE;
-        case T_SHRINE_PILLAR:  return ST_SHRINE_PILLAR;
-        default:               return ST_GRASS;
-    }
-}
+static const u8 TERRAIN_TILE_LUT[28] = {
+    ST_GRASS,          /* 0: T_GRASS */
+    ST_GRASS_ALT,      /* 1: T_GRASS_ALT */
+    ST_FLOWERS,        /* 2: T_FLOWERS */
+    ST_TALL_GRASS,     /* 3: T_TALL_GRASS */
+    ST_DIRT,           /* 4: T_DIRT */
+    ST_COBBLE,         /* 5: T_COBBLE */
+    ST_WATER,          /* 6: T_WATER */
+    ST_FORD,           /* 7: T_FORD */
+    ST_BRIDGE,         /* 8: T_BRIDGE */
+    ST_BRIDGE_RAIL,    /* 9: T_BRIDGE_RAIL_N */
+    ST_BRIDGE_RAIL,    /* 10: T_BRIDGE_RAIL_S */
+    ST_FENCE,          /* 11: T_FENCE */
+    ST_TRUNK,          /* 12: T_TREE_TRUNK */
+    ST_BUSH,           /* 13: T_BUSH */
+    ST_WALL_WOOD,      /* 14: T_WALL_WOOD */
+    ST_WALL_WIN,       /* 15: T_WALL_WINDOW */
+    ST_WALL_DOOR,      /* 16: T_WALL_DOOR */
+    ST_ROOF_BODY,      /* 17: T_ROOF_BODY */
+    ST_ROOF_TOP,       /* 18: T_ROOF_TOP */
+    ST_WINDMILL_WALL,  /* 19: T_WINDMILL_WALL */
+    ST_WINDMILL_WALL,  /* 20: T_WINDMILL_DOOR */
+    ST_WINDMILL_ROOF,  /* 21: T_WINDMILL_ROOF */
+    ST_SHRINE_FLOOR,   /* 22: T_SHRINE_FLOOR */
+    ST_SHRINE_RUNE,    /* 23: T_SHRINE_RUNE */
+    ST_SHRINE_PILLAR,  /* 24: T_SHRINE_PILLAR */
+    ST_SIGN,           /* 25: T_SIGNPOST */
+    ST_LAMP,           /* 26: T_LANTERN_POST */
+    ST_FLOWER_BED      /* 27: T_FLOWER_BED */
+};
 
 static void write_world_metatile(s16 mx, s16 my) {
-    u16 entry, idx, tx0, ty0, ty1, row0, row1, rx;
-    u8 ov;
+    u16 entry, idx, tx0, row0;
+    u16 *dst;
+    u8 ov, t;
 
     if (mx < 0 || my < 0 || mx >= HEARTH_MAP_W || my >= HEARTH_MAP_H) {
         entry = SNES_TILE(ST_BUSH, 0u, 0u);
@@ -857,33 +855,26 @@ static void write_world_metatile(s16 mx, s16 my) {
         } else if (ov != O_NONE) {
             entry = SNES_TILE(ST_CANOPY, 0u, 1u);
         } else {
-            entry = SNES_TILE(map_terrain_to_tile(g_hearth.map_bg1[idx]), 0u, 0u);
+            t = g_hearth.map_bg1[idx];
+            entry = (t < 28u) ? (u16)TERRAIN_TILE_LUT[t] : (u16)ST_GRASS;
         }
     }
 
-    /* Inline 2x2 tile write into SC_64x32 shadow map (tx0 is always even, so tx0 & tx0+1 share the same 32-wide half) */
+    /* Inline 2x2 tile write into SC_64x32 shadow map:
+     * ty0 = (my << 1) & 31 is always even, so ty1 = ty0 + 1 never wraps (+32 words). */
     tx0 = (u16)(((u16)mx << 1) & 63u);
-    ty0 = (u16)(((u16)my << 1) & 31u);
-    ty1 = (u16)((ty0 + 1u) & 31u);
-    row0 = (u16)(ty0 << 5);
-    row1 = (u16)(ty1 << 5);
-
+    row0 = (u16)((((u16)my << 1) & 31u) << 5);
     if (tx0 < 32u) {
-        row0 = (u16)(row0 + tx0);
-        row1 = (u16)(row1 + tx0);
-        g_bg1_map[row0]              = entry;
-        g_bg1_map[(u16)(row0 + 1u)]  = entry;
-        g_bg1_map[row1]              = entry;
-        g_bg1_map[(u16)(row1 + 1u)]  = entry;
+        dst = &g_bg1_map[(u16)(row0 + tx0)];
         g_bg1_dirty_l = 1;
     } else {
-        rx = (u16)(1024u + (tx0 - 32u));
-        g_bg1_map[(u16)(row0 + rx)]       = entry;
-        g_bg1_map[(u16)(row0 + rx + 1u)]  = entry;
-        g_bg1_map[(u16)(row1 + rx)]       = entry;
-        g_bg1_map[(u16)(row1 + rx + 1u)]  = entry;
+        dst = &g_bg1_map[(u16)(1024u + row0 + (tx0 - 32u))];
         g_bg1_dirty_r = 1;
     }
+    dst[0]  = entry;
+    dst[1]  = entry;
+    dst[32] = entry;
+    dst[33] = entry;
 }
 
 static void build_full_world_bg1(s16 cam_x, s16 cam_y) {
@@ -1214,36 +1205,39 @@ static void draw_battle_ui(void) {
     bg0_text(2u, 26u, PAL_UI_CYAN, "L/R:SWAP FAM  A:ACT");
 }
 
-/* Native 16-bit HUD dirty signature (zero 32-bit shifts on WDC 65816) */
+/* Native 16-bit HUD dirty signature (zero 32-bit shifts or high bit-shifts on WDC 65816) */
 static u16 compute_hud_sig(u8 want, const HearthPpuPacket *ppu) {
-    u16 sig = (u16)((u16)want | ((u16)g_hearth.mode << 4));
+    u16 sig = (u16)(((u16)g_hearth.mode << 4) | (u16)want);
+    if (want == 0u) {
+        const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
+        sig = (u16)(sig + (u16)m->hp + (u16)(m->mp << 5));
+        if (g_hearth.flag_has_courage) sig ^= 0x1000u;
+        if (g_hearth.flag_guard_mended) sig ^= 0x2000u;
+        if (ppu->interact_active && ppu->interact_label) {
+            sig ^= (u16)(0x4000u ^ ((u16)(u8)ppu->interact_label[0] << 8) ^ (u16)(u8)ppu->interact_label[1]);
+        }
+        return sig;
+    }
     if (want == 1u) {
         return (u16)(sig ^ ((u16)g_hearth.title_cursor << 8));
     }
-    if (want == 0u) {
-        const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
-        sig = (u16)(sig + ((u16)m->hp << 1) + (u16)m->hp + ((u16)m->mp << 5));
-        sig ^= (u16)(((u16)g_hearth.flag_has_courage << 12) |
-                     ((u16)g_hearth.flag_guard_mended << 13) |
-                     ((u16)ppu->interact_active << 14));
-        if (ppu->interact_active && ppu->interact_label) {
-            sig ^= (u16)(((u16)(u8)ppu->interact_label[0] << 8) ^ (u16)(u8)ppu->interact_label[1]);
-        }
-    } else if (want == 2u) {
+    if (want == 2u) {
         const HearthDialogue *d = &g_hearth.dialogue;
-        sig ^= (u16)((d->visible_chars << 4) ^ ((u16)d->selected_choice << 12) ^
-                     ((u16)d->finished << 14) ^ ((u16)d->choice_count << 10));
-    } else if (want == 3u) {
+        sig ^= (u16)((d->visible_chars << 4) ^ ((u16)d->selected_choice << 8));
+        if (d->finished) sig ^= 0x4000u;
+        sig ^= (u16)((u16)d->choice_count << 2);
+    } else {
         const HearthBattleState *b = &g_hearth.battle;
         const HearthPartyMember *pm = &g_hearth.party[b->active_slot];
         sig = (u16)(sig + (u16)pm->hp + ((u16)pm->mp << 4));
-        sig ^= (u16)(((u16)b->active_slot << 8) ^ ((u16)b->selected_cmd << 10) ^
-                     ((u16)b->selected_enemy << 12) ^ ((u16)b->ring.active << 14) ^
-                     ((u16)(b->banner_frames > 0u ? 1u : 0u) << 15));
+        sig ^= (u16)(((u16)b->active_slot << 8) ^ ((u16)b->selected_cmd << 2) ^
+                     ((u16)b->selected_enemy << 4));
+        if (b->ring.active) sig ^= 0x4000u;
+        if (b->banner_frames > 0u) sig ^= 0x8000u;
         if (b->selected_enemy < b->enemy_count) {
             sig = (u16)(sig + ((u16)b->enemies[b->selected_enemy].hp << 2));
-            sig ^= (u16)(((u16)b->enemies[b->selected_enemy].broken_locks[0] << 6) ^
-                         ((u16)b->enemies[b->selected_enemy].broken_locks[1] << 7));
+            if (b->enemies[b->selected_enemy].broken_locks[0]) sig ^= 0x0040u;
+            if (b->enemies[b->selected_enemy].broken_locks[1]) sig ^= 0x0080u;
         }
     }
     return sig;
@@ -1303,56 +1297,69 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
 }
 
 /* ============================================================================
- * 8. SNES HARDWARE OAM SPRITE RENDERER
+ * 8. SNES HARDWARE OAM SPRITE RENDERER (Direct oamMemory[] Shadow Writes)
  * ============================================================================ */
 static const u8 SPR_PAL_LUT[20] = {
-    1u, 1u, 1u, 1u,
-    2u, 2u, 2u,
-    3u, 3u, 3u, 3u,
-    2u, 2u, 2u,
-    3u, 3u, 3u, 3u, 3u, 3u
+    (1u << 1), (1u << 1), (1u << 1), (1u << 1),
+    (2u << 1), (2u << 1), (2u << 1),
+    (3u << 1), (3u << 1), (3u << 1), (3u << 1),
+    (2u << 1), (2u << 1), (2u << 1),
+    (3u << 1), (3u << 1), (3u << 1), (3u << 1), (3u << 1), (3u << 1)
 };
 
-static const u16 SPR_TILE_LUT[20] = {
+static const u8 SPR_TILE_LUT_U8[20] = {
      0u,  2u,  4u,  6u,  8u, 10u, 12u, 14u,
     32u, 34u, 36u, 38u, 40u, 42u, 44u, 46u,
     64u, 66u, 68u, 70u
 };
 
-static void hide_oam_slot(u8 slot) {
-    u16 id = (u16)((u16)slot << 2);
-    oamSet(id, 255u, 224u, 0u, 0u, 0u, 0u, 0u);
-    oamSetEx(id, OBJ_SMALL, OBJ_HIDE);
-}
+static const u8 HI_X8_BIT[4]    = { 0x01u, 0x04u, 0x10u, 0x40u };
+static const u8 HI_TAIL_MASK[4] = { 0x00u, 0x54u, 0x50u, 0x40u };
 
 static void render_snes_sprites(const HearthPpuPacket *ppu) {
-    u8 i, count, pal, prio, flip_x, sid, rpal;
+    u8 i, count, sid, rpal, lane, hi_byte, attr, end_lane;
     const HearthOamSprite *o;
-    s16 sx, sy;
-    u16 id, tile, prog, rem;
+    u8 *dst;
+    u8 *hi_dst;
+    s16 sx, sy, shx, shy;
+    u16 prog, rem;
+    u8 min_y, max_y;
 
     count = 0;
+    dst = oamMemory;
+    hi_dst = &oamMemory[512];
+    hi_byte = 0;
 
     if (g_hearth.mode != MODE_TITLE) {
-        for (i = 0; i < ppu->oam_count && count < 48u; i++) {
-            o = &ppu->oam[i];
-            sx = (s16)(o->x - 8 + ppu->shake_x);
-            sy = (s16)(o->y - ((o->layer == 2u) ? 8 : 16) + ppu->shake_y);
+        shx = (s16)ppu->shake_x;
+        shy = (s16)ppu->shake_y;
+        min_y = (g_ui_layout == 0u) ? 10u : 0u;
+        max_y = (g_ui_layout == 2u || g_ui_layout == 3u) ? 140u : 224u;
+        o = ppu->oam;
 
-            if (sx < -15 || sx >= 256 || sy < -15 || sy >= 224) continue;
-            if ((g_ui_layout == 2u || g_ui_layout == 3u) && sy >= 140) continue;
-            if (g_ui_layout == 0u && sy < 10) continue;
+        for (i = 0; i < ppu->oam_count && count < 48u; i++, o++) {
+            sx = (s16)(o->x - 8 + shx);
+            sy = (s16)(o->y - ((o->layer == 2u) ? 8 : 16) + shy);
+
+            if (sx < -15 || sx >= 256 || sy < -15 || sy >= (s16)max_y) continue;
+            if (g_ui_layout == 0u && sy < (s16)min_y) continue;
 
             sid = (o->sprite_id < 20u) ? o->sprite_id : 0u;
-            pal = SPR_PAL_LUT[sid];
-            tile = SPR_TILE_LUT[sid];
-            flip_x = (u8)((o->flags & OAM_FLAG_FLIP_X) ? 1u : 0u);
-            prio = (u8)((o->layer == 2u) ? 3u : 2u);
-            id = (u16)((u16)count << 2);
+            attr = (u8)(((o->layer == 2u) ? 0x30u : 0x20u) | SPR_PAL_LUT[sid]);
+            if (o->flags & OAM_FLAG_FLIP_X) attr |= 0x40u;
 
-            oamSet(id, (u16)((u16)sx & 0x00FFu), (u16)((u16)sy & 0x00FFu),
-                   prio, flip_x, 0u, tile, pal);
-            oamSetEx(id, OBJ_SMALL, (u8)((sx < 0) ? OBJ_HIDE : OBJ_SHOW));
+            dst[0] = (u8)sx;
+            dst[1] = (u8)sy;
+            dst[2] = SPR_TILE_LUT_U8[sid];
+            dst[3] = attr;
+            dst += 4;
+
+            lane = (u8)(count & 3u);
+            if (sx < 0) hi_byte |= HI_X8_BIT[lane];
+            if (lane == 3u) {
+                *hi_dst++ = hi_byte;
+                hi_byte = 0;
+            }
             count++;
         }
 
@@ -1361,23 +1368,42 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             prog = g_hearth.battle.ring.progress_fp;
             rem = (prog < 256u) ? (u16)(256u - prog) : 0u;
             rpal = (prog >= g_hearth.battle.ring.sweet_start_fp)
-                ? (u8)(((g_hearth.frame_count & 2u) != 0u) ? 1u : 2u)
-                : 3u;
+                ? (u8)(((g_hearth.frame_count & 2u) != 0u) ? (1u << 1) : (2u << 1))
+                : (u8)(3u << 1);
             sx = (s16)(g_hearth.battle.ring.x - 8);
             sy = (s16)(g_hearth.battle.ring.y - 20 - (s16)(rem >> 4));
             if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
-                id = (u16)((u16)count << 2);
-                oamSet(id, (u16)sx, (u16)sy, 3u, 0u, 0u,
-                       SPR_TILE_LUT[SPR_TIMED_RING_SLOT], rpal);
-                oamSetEx(id, OBJ_SMALL, OBJ_SHOW);
+                dst[0] = (u8)sx;
+                dst[1] = (u8)sy;
+                dst[2] = SPR_TILE_LUT_U8[SPR_TIMED_RING_SLOT];
+                dst[3] = (u8)(0x30u | rpal);
+                dst += 4;
+                if ((count & 3u) == 3u) {
+                    *hi_dst++ = hi_byte;
+                    hi_byte = 0;
+                }
                 count++;
             }
         }
     }
 
-    /* Delta OAM hide: only clear slots that were visible last frame (~80% faster!) */
+    /* Delta OAM hide: clear previously used slots (x=255, y=240, x8=1, size=0) */
     for (i = count; i < g_prev_oam_cnt; i++) {
-        hide_oam_slot(i);
+        dst[0] = 255u;
+        dst[1] = 240u;
+        dst += 4;
+        lane = (u8)(i & 3u);
+        hi_byte |= HI_X8_BIT[lane];
+        if (lane == 3u) {
+            *hi_dst++ = hi_byte;
+            hi_byte = 0;
+        }
+    }
+
+    /* Flush any partial 4-sprite high-table byte cleanly (unused upper lanes keep x8=1, size=0) */
+    end_lane = (u8)(((count > g_prev_oam_cnt) ? count : g_prev_oam_cnt) & 3u);
+    if (end_lane != 0u) {
+        *hi_dst = (u8)(hi_byte | HI_TAIL_MASK[end_lane]);
     }
     g_prev_oam_cnt = count;
 }
@@ -1641,8 +1667,7 @@ int main(void) {
             flush_one_vblank_dma();
         }
 
-        /* Lock BG0 HUD to (0,0) and hardware-scroll BG1 world */
-        bgSetScroll(0, 0, 0);
+        /* Hardware-scroll BG1 world (BG0 locked to 0,0 at init) */
         if (in_battle) {
             bgSetScroll(1, (u16)(-ppu->shake_x), (u16)(-ppu->shake_y));
         } else {
