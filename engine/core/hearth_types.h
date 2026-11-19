@@ -50,6 +50,12 @@ typedef int32_t fp16_t;
 #define TO_FP(px)       ((fp16_t)((int32_t)(px) << FP_SHIFT))
 #define FROM_FP(fp)     ((int16_t)((fp) >> FP_SHIFT))
 #define FP_MUL(a, b)    ((fp16_t)(((int32_t)(a) * (int32_t)(b)) >> FP_SHIFT))
+#if defined(HEARTH_TARGET_SNES)
+    /* On little-endian 65816, bytes +1..+2 of an fp16_t lvalue equal (int16_t)(fp >> 8) */
+    #define FP_PX(fp)   (*((const int16_t *)((const uint8_t *)&(fp) + 1)))
+#else
+    #define FP_PX(fp)   FROM_FP(fp)
+#endif
 
 /* 12-Button Retro Gamepad Bitmask (uint16_t) */
 #define PAD_UP          (1u << 0)

@@ -806,7 +806,7 @@ static void bake_env_windmill_frames(void) {
 /* ============================================================================
  * 6. BG1 SC_64x32 WORLD MAP & BATTLE ARENA STREAMING
  * ============================================================================ */
-static const u8 TERRAIN_TILE_LUT[28] = {
+static const u16 TERRAIN_TILE_LUT[28] = {
     ST_GRASS,          /* 0: T_GRASS */
     ST_GRASS_ALT,      /* 1: T_GRASS_ALT */
     ST_FLOWERS,        /* 2: T_FLOWERS */
@@ -837,62 +837,128 @@ static const u8 TERRAIN_TILE_LUT[28] = {
     ST_FLOWER_BED      /* 27: T_FLOWER_BED */
 };
 
-static void write_world_metatile(s16 mx, s16 my) {
-    u16 entry, idx, tx0, row0;
-    u16 *dst;
-    u8 ov, t;
+static void stream_world_col(s16 mx, s16 my_start) {
+    u16 half_col, row_off, off, k, entry, idx, idx_valid, ov, t;
+    s16 my;
 
-    if (mx < 0 || my < 0 || mx >= HEARTH_MAP_W || my >= HEARTH_MAP_H) {
-        entry = SNES_TILE(ST_BUSH, 0u, 0u);
-    } else {
-        /* 44 = 32 + 8 + 4: zero software multiply on 65816 */
-        idx = (u16)(((u16)my << 5) + ((u16)my << 3) + ((u16)my << 2) + (u16)mx);
-        ov = g_hearth.map_bg2[idx];
-        if (ov == O_ROOF_EAVE) {
-            entry = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
-        } else if (ov == O_SHRINE_ARCH) {
-            entry = SNES_TILE(ST_SHRINE_ARCH, 0u, 1u);
-        } else if (ov != O_NONE) {
-            entry = SNES_TILE(ST_CANOPY, 0u, 1u);
-        } else {
-            t = g_hearth.map_bg1[idx];
-            entry = (t < 28u) ? (u16)TERRAIN_TILE_LUT[t] : (u16)ST_GRASS;
-        }
-    }
-
-    /* Inline 2x2 tile write into SC_64x32 shadow map:
-     * ty0 = (my << 1) & 31 is always even, so ty1 = ty0 + 1 never wraps (+32 words). */
-    tx0 = (u16)(((u16)mx << 1) & 63u);
-    row0 = (u16)((((u16)my << 1) & 31u) << 5);
-    if (tx0 < 32u) {
-        dst = &g_bg1_map[(u16)(row0 + tx0)];
+    half_col = (u16)(((u16)mx & 15u) << 1);
+    if (((u16)mx & 16u) == 0u) {
         g_bg1_dirty_l = 1;
     } else {
-        dst = &g_bg1_map[(u16)(1024u + row0 + (tx0 - 32u))];
+        half_col = (u16)(1024u + half_col);
         g_bg1_dirty_r = 1;
     }
-    dst[0]  = entry;
-    dst[1]  = entry;
-    dst[32] = entry;
-    dst[33] = entry;
+    row_off = (u16)(((u16)my_start & 15u) << 6);
+
+    if (mx < 0 || mx >= HEARTH_MAP_W) {
+        entry = (u16)ST_BUSH;
+        for (k = 0u; k < 16u; k++) {
+            off = (u16)(half_col + row_off);
+            g_bg1_map[off]              = entry;
+            g_bg1_map[(u16)(off + 1u)]  = entry;
+            g_bg1_map[(u16)(off + 32u)] = entry;
+            g_bg1_map[(u16)(off + 33u)] = entry;
+            row_off = (u16)((row_off + 64u) & 1023u);
+        }
+        return;
+    }
+
+    my = my_start;
+    idx = 0u;
+    idx_valid = 0u;
+    for (k = 0u; k < 16u; k++, my++) {
+        if (my < 0 || my >= HEARTH_MAP_H) {
+            entry = (u16)ST_BUSH;
+        } else {
+            if (!idx_valid) {
+                idx = (u16)(((u16)my << 5) + ((u16)my << 3) + ((u16)my << 2) + (u16)mx);
+                idx_valid = 1u;
+            }
+            ov = (u16)g_hearth.map_bg2[idx];
+            if (ov == 0u) {
+                t = (u16)g_hearth.map_bg1[idx];
+                entry = (t < 28u) ? TERRAIN_TILE_LUT[t] : (u16)ST_GRASS;
+            } else if (ov == O_ROOF_EAVE) {
+                entry = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
+            } else if (ov == O_SHRINE_ARCH) {
+                entry = SNES_TILE(ST_SHRINE_ARCH, 0u, 1u);
+            } else {
+                entry = SNES_TILE(ST_CANOPY, 0u, 1u);
+            }
+            idx += (u16)HEARTH_MAP_W;
+        }
+        off = (u16)(half_col + row_off);
+        g_bg1_map[off]              = entry;
+        g_bg1_map[(u16)(off + 1u)]  = entry;
+        g_bg1_map[(u16)(off + 32u)] = entry;
+        g_bg1_map[(u16)(off + 33u)] = entry;
+        row_off = (u16)((row_off + 64u) & 1023u);
+    }
+}
+
+static void stream_world_row(s16 mx_start, s16 my) {
+    u16 row_off, off, k, entry, row_idx, idx, ov, t;
+    s16 mx;
+
+    row_off = (u16)(((u16)my & 15u) << 6);
+    g_bg1_dirty_l = 1;
+    g_bg1_dirty_r = 1;
+
+    mx = mx_start;
+    if (my < 0 || my >= HEARTH_MAP_H) {
+        entry = (u16)ST_BUSH;
+        for (k = 0u; k < 20u; k++, mx++) {
+            off = (u16)(row_off + (((u16)mx & 15u) << 1));
+            if (((u16)mx & 16u) != 0u) off = (u16)(off + 1024u);
+            g_bg1_map[off]              = entry;
+            g_bg1_map[(u16)(off + 1u)]  = entry;
+            g_bg1_map[(u16)(off + 32u)] = entry;
+            g_bg1_map[(u16)(off + 33u)] = entry;
+        }
+        return;
+    }
+
+    row_idx = (u16)(((u16)my << 5) + ((u16)my << 3) + ((u16)my << 2));
+    for (k = 0u; k < 20u; k++, mx++) {
+        if (mx < 0 || mx >= HEARTH_MAP_W) {
+            entry = (u16)ST_BUSH;
+        } else {
+            idx = (u16)(row_idx + (u16)mx);
+            ov = (u16)g_hearth.map_bg2[idx];
+            if (ov == 0u) {
+                t = (u16)g_hearth.map_bg1[idx];
+                entry = (t < 28u) ? TERRAIN_TILE_LUT[t] : (u16)ST_GRASS;
+            } else if (ov == O_ROOF_EAVE) {
+                entry = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
+            } else if (ov == O_SHRINE_ARCH) {
+                entry = SNES_TILE(ST_SHRINE_ARCH, 0u, 1u);
+            } else {
+                entry = SNES_TILE(ST_CANOPY, 0u, 1u);
+            }
+        }
+        off = (u16)(row_off + (((u16)mx & 15u) << 1));
+        if (((u16)mx & 16u) != 0u) off = (u16)(off + 1024u);
+        g_bg1_map[off]              = entry;
+        g_bg1_map[(u16)(off + 1u)]  = entry;
+        g_bg1_map[(u16)(off + 32u)] = entry;
+        g_bg1_map[(u16)(off + 33u)] = entry;
+    }
 }
 
 static void build_full_world_bg1(s16 cam_x, s16 cam_y) {
-    s16 mx0, my0, dy, dx;
+    s16 mx0, my0, dy;
 
     mx0 = (s16)((cam_x >> 4) - 2);
     my0 = (s16)((cam_y >> 4) - 1);
     for (dy = 0; dy < 16; dy++) {
-        for (dx = 0; dx < 20; dx++) {
-            write_world_metatile((s16)(mx0 + dx), (s16)(my0 + dy));
-        }
+        stream_world_row(mx0, (s16)(my0 + dy));
     }
     g_last_cam_mx = (s16)(cam_x >> 4);
     g_last_cam_my = (s16)(cam_y >> 4);
 }
 
 static void stream_world_bg1(s16 cam_x, s16 cam_y) {
-    s16 cmx, cmy, d;
+    s16 cmx, cmy;
 
     cmx = (s16)(cam_x >> 4);
     cmy = (s16)(cam_y >> 4);
@@ -906,27 +972,19 @@ static void stream_world_bg1(s16 cam_x, s16 cam_y) {
 
     while (g_last_cam_mx < cmx) {
         g_last_cam_mx++;
-        for (d = -1; d < 15; d++) {
-            write_world_metatile((s16)(g_last_cam_mx + 17), (s16)(g_last_cam_my + d));
-        }
+        stream_world_col((s16)(g_last_cam_mx + 17), (s16)(g_last_cam_my - 1));
     }
     while (g_last_cam_mx > cmx) {
         g_last_cam_mx--;
-        for (d = -1; d < 15; d++) {
-            write_world_metatile((s16)(g_last_cam_mx - 2), (s16)(g_last_cam_my + d));
-        }
+        stream_world_col((s16)(g_last_cam_mx - 2), (s16)(g_last_cam_my - 1));
     }
     while (g_last_cam_my < cmy) {
         g_last_cam_my++;
-        for (d = -2; d < 18; d++) {
-            write_world_metatile((s16)(g_last_cam_mx + d), (s16)(g_last_cam_my + 14));
-        }
+        stream_world_row((s16)(g_last_cam_mx - 2), (s16)(g_last_cam_my + 14));
     }
     while (g_last_cam_my > cmy) {
         g_last_cam_my--;
-        for (d = -2; d < 18; d++) {
-            write_world_metatile((s16)(g_last_cam_mx + d), (s16)(g_last_cam_my - 1));
-        }
+        stream_world_row((s16)(g_last_cam_mx - 2), (s16)(g_last_cam_my - 1));
     }
 }
 
@@ -1027,28 +1085,42 @@ static void line_str(u16 *pos, const char *src) {
 }
 
 static void line_int(u16 *pos, s16 val) {
-    char tmp[8];
-    u16 n = 0;
-    u16 v;
+    u16 v, d, started, p;
 
+    p = *pos;
     if (val < 0) {
-        if ((u16)(*pos + 1u) < 35u) g_line[(*pos)++] = '-';
+        if ((u16)(p + 1u) < 35u) g_line[p++] = '-';
         v = (u16)(-val);
     } else {
         v = (u16)val;
     }
     if (v == 0u) {
-        tmp[n++] = '0';
+        if ((u16)(p + 1u) < 35u) g_line[p++] = '0';
     } else {
-        while (v > 0u && n < 7u) {
-            tmp[n++] = (char)('0' + (v % 10u));
-            v = (u16)(v / 10u);
+        started = 0u;
+        if (v >= 10000u) {
+            d = 0u; while (v >= 10000u) { v -= 10000u; d++; }
+            if ((u16)(p + 1u) < 35u) g_line[p++] = (char)('0' + d);
+            started = 1u;
         }
+        if (started || v >= 1000u) {
+            d = 0u; while (v >= 1000u) { v -= 1000u; d++; }
+            if ((u16)(p + 1u) < 35u) g_line[p++] = (char)('0' + d);
+            started = 1u;
+        }
+        if (started || v >= 100u) {
+            d = 0u; while (v >= 100u) { v -= 100u; d++; }
+            if ((u16)(p + 1u) < 35u) g_line[p++] = (char)('0' + d);
+            started = 1u;
+        }
+        if (started || v >= 10u) {
+            d = 0u; while (v >= 10u) { v -= 10u; d++; }
+            if ((u16)(p + 1u) < 35u) g_line[p++] = (char)('0' + d);
+        }
+        if ((u16)(p + 1u) < 35u) g_line[p++] = (char)('0' + v);
     }
-    while (n > 0u && (u16)(*pos + 1u) < 35u) {
-        g_line[(*pos)++] = tmp[--n];
-    }
-    g_line[*pos] = '\0';
+    g_line[p] = '\0';
+    *pos = p;
 }
 
 static void draw_title_cursor(void) {
@@ -1081,30 +1153,67 @@ static void draw_title_ui(void) {
     bg0_text(4u,  23u, PAL_UI_CYAN, "DPAD:PICK  START/A:GO");
 }
 
-static void draw_explore_hud(const HearthPpuPacket *ppu) {
-    u16 pos;
-    const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
-
-    line_reset(&pos);
-    line_str(&pos, "HP:");
-    line_int(&pos, m->hp);
-    line_str(&pos, "/");
-    line_int(&pos, m->max_hp);
-    line_str(&pos, " M:");
-    line_int(&pos, m->mp);
-    if (ppu->interact_active && ppu->interact_label) {
-        line_str(&pos, " [A]");
-        line_str(&pos, ppu->interact_label);
-    } else if (g_hearth.flag_guard_mended) {
-        line_str(&pos, " SHRINE->");
-    } else if (g_hearth.flag_has_courage) {
-        line_str(&pos, " COURAGE!");
+static u16 put_hud_u16(u16 col, u16 v) {
+    u16 d;
+    if (v >= 100u) {
+        d = 0u;
+        while (v >= 100u) { v -= 100u; d++; }
+        g_bg0_map[col++] = (u16)(0x3030u + d);
+        d = 0u;
+        while (v >= 10u) { v -= 10u; d++; }
+        g_bg0_map[col++] = (u16)(0x3030u + d);
+        g_bg0_map[col++] = (u16)(0x3030u + v);
+    } else if (v >= 10u) {
+        d = 0u;
+        while (v >= 10u) { v -= 10u; d++; }
+        g_bg0_map[col++] = (u16)(0x3030u + d);
+        g_bg0_map[col++] = (u16)(0x3030u + v);
     } else {
-        line_str(&pos, " HAMLET");
+        g_bg0_map[col++] = (u16)(0x3030u + v);
     }
-    while (pos < 30u) g_line[pos++] = ' ';
-    g_line[pos] = '\0';
-    bg0_text(1u, 0u, PAL_UI_TEXT, g_line);
+    return col;
+}
+
+static u16 put_hud_str(u16 col, const char *s) {
+    u16 ch;
+    while (*s != '\0' && col < 31u) {
+        ch = (u16)(u8)(*s++);
+        if (ch >= (u16)'a' && ch <= (u16)'z') ch = (u16)(ch - 32u);
+        else if (ch < 32u || ch > 95u) ch = 32u;
+        g_bg0_map[col++] = (u16)(ch | 0x3000u);
+    }
+    return col;
+}
+
+static void draw_explore_hud(const HearthPpuPacket *ppu) {
+    const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
+    u16 col = 1u;
+
+    g_bg0_map[col++] = (u16)('H' | 0x3000u);
+    g_bg0_map[col++] = (u16)('P' | 0x3000u);
+    g_bg0_map[col++] = (u16)(':' | 0x3000u);
+    col = put_hud_u16(col, (u16)((m->hp > 0) ? m->hp : 0));
+    g_bg0_map[col++] = (u16)('/' | 0x3000u);
+    col = put_hud_u16(col, (u16)((m->max_hp > 0) ? m->max_hp : 0));
+    g_bg0_map[col++] = (u16)(' ' | 0x3000u);
+    g_bg0_map[col++] = (u16)('M' | 0x3000u);
+    g_bg0_map[col++] = (u16)(':' | 0x3000u);
+    col = put_hud_u16(col, (u16)((m->mp > 0) ? m->mp : 0));
+
+    if (ppu->interact_active && ppu->interact_label) {
+        col = put_hud_str(col, " [A]");
+        col = put_hud_str(col, ppu->interact_label);
+    } else if (g_hearth.flag_guard_mended) {
+        col = put_hud_str(col, " SHRINE->");
+    } else if (g_hearth.flag_has_courage) {
+        col = put_hud_str(col, " COURAGE!");
+    } else {
+        col = put_hud_str(col, " HAMLET");
+    }
+    while (col < 31u) {
+        g_bg0_map[col++] = 0x3020u;
+    }
+    if (g_bg0_dirty == 0u) g_bg0_dirty = 1u;
 }
 
 static void draw_dialogue_ui(void) {
@@ -1299,66 +1408,64 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
 /* ============================================================================
  * 8. SNES HARDWARE OAM SPRITE RENDERER (Direct oamMemory[] Shadow Writes)
  * ============================================================================ */
-static const u8 SPR_PAL_LUT[20] = {
-    (1u << 1), (1u << 1), (1u << 1), (1u << 1),
-    (2u << 1), (2u << 1), (2u << 1),
-    (3u << 1), (3u << 1), (3u << 1), (3u << 1),
-    (2u << 1), (2u << 1), (2u << 1),
-    (3u << 1), (3u << 1), (3u << 1), (3u << 1), (3u << 1), (3u << 1)
+/* Pre-combined 16-bit word: ((0x20 | (pal << 1)) << 8) | tile */
+static const u16 SPR_TILE_ATTR_LUT[20] = {
+    0x2200u, 0x2202u, 0x2204u, 0x2206u,
+    0x2408u, 0x240Au, 0x240Cu,
+    0x260Eu, 0x2620u, 0x2622u, 0x2624u,
+    0x2426u, 0x2428u, 0x242Au,
+    0x262Cu, 0x262Eu, 0x2640u, 0x2642u, 0x2644u, 0x2646u
 };
 
-static const u8 SPR_TILE_LUT_U8[20] = {
-     0u,  2u,  4u,  6u,  8u, 10u, 12u, 14u,
-    32u, 34u, 36u, 38u, 40u, 42u, 44u, 46u,
-    64u, 66u, 68u, 70u
-};
-
-static const u8 HI_X8_BIT[4]    = { 0x01u, 0x04u, 0x10u, 0x40u };
 static const u8 HI_TAIL_MASK[4] = { 0x00u, 0x54u, 0x50u, 0x40u };
 
 static void render_snes_sprites(const HearthPpuPacket *ppu) {
-    u8 i, count, sid, rpal, lane, hi_byte, attr, end_lane;
+    u16 i, n, count, sid, ta, lay, flg, hi_byte, hi_mask, prev_cnt, end_lane;
     const HearthOamSprite *o;
-    u8 *dst;
+    u16 *wdst;
     u8 *hi_dst;
-    s16 sx, sy, shx, shy;
-    u16 prog, rem;
-    u8 min_y, max_y;
+    s16 sx, sy, shx, shy, min_y, max_y;
+    u16 prog, rem, rpal;
 
-    count = 0;
-    dst = oamMemory;
+    count = 0u;
+    wdst = (u16 *)oamMemory;
     hi_dst = &oamMemory[512];
-    hi_byte = 0;
+    hi_byte = 0u;
+    hi_mask = 1u;
 
     if (g_hearth.mode != MODE_TITLE) {
         shx = (s16)ppu->shake_x;
         shy = (s16)ppu->shake_y;
-        min_y = (g_ui_layout == 0u) ? 10u : 0u;
-        max_y = (g_ui_layout == 2u || g_ui_layout == 3u) ? 140u : 224u;
+        min_y = (g_ui_layout == 0u) ? 10 : -15;
+        max_y = (g_ui_layout == 2u || g_ui_layout == 3u) ? 140 : 224;
+        n = (u16)ppu->oam_count;
+        if (n > 48u) n = 48u;
         o = ppu->oam;
 
-        for (i = 0; i < ppu->oam_count && count < 48u; i++, o++) {
+        for (i = 0u; i < n; i++, o++) {
+            lay = (u16)o->layer;
+            sy = (s16)(o->y - ((lay == 2u) ? 8 : 16) + shy);
+            if (sy < min_y || sy >= max_y) continue;
             sx = (s16)(o->x - 8 + shx);
-            sy = (s16)(o->y - ((o->layer == 2u) ? 8 : 16) + shy);
+            if (sx < -15 || sx >= 256) continue;
 
-            if (sx < -15 || sx >= 256 || sy < -15 || sy >= (s16)max_y) continue;
-            if (g_ui_layout == 0u && sy < (s16)min_y) continue;
+            sid = (u16)o->sprite_id;
+            if (sid >= 20u) sid = 0u;
+            ta = SPR_TILE_ATTR_LUT[sid];
+            if (lay == 2u) ta |= 0x1000u;
+            flg = (u16)o->flags;
+            if (flg & OAM_FLAG_FLIP_X) ta |= 0x4000u;
 
-            sid = (o->sprite_id < 20u) ? o->sprite_id : 0u;
-            attr = (u8)(((o->layer == 2u) ? 0x30u : 0x20u) | SPR_PAL_LUT[sid]);
-            if (o->flags & OAM_FLAG_FLIP_X) attr |= 0x40u;
+            wdst[0] = (u16)(((u16)sy << 8) | ((u16)sx & 0x00FFu));
+            wdst[1] = ta;
+            wdst += 2;
 
-            dst[0] = (u8)sx;
-            dst[1] = (u8)sy;
-            dst[2] = SPR_TILE_LUT_U8[sid];
-            dst[3] = attr;
-            dst += 4;
-
-            lane = (u8)(count & 3u);
-            if (sx < 0) hi_byte |= HI_X8_BIT[lane];
-            if (lane == 3u) {
-                *hi_dst++ = hi_byte;
-                hi_byte = 0;
+            if (sx < 0) hi_byte |= hi_mask;
+            hi_mask <<= 2;
+            if (hi_mask >= 0x0100u) {
+                *hi_dst++ = (u8)hi_byte;
+                hi_byte = 0u;
+                hi_mask = 1u;
             }
             count++;
         }
@@ -1368,19 +1475,19 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             prog = g_hearth.battle.ring.progress_fp;
             rem = (prog < 256u) ? (u16)(256u - prog) : 0u;
             rpal = (prog >= g_hearth.battle.ring.sweet_start_fp)
-                ? (u8)(((g_hearth.frame_count & 2u) != 0u) ? (1u << 1) : (2u << 1))
-                : (u8)(3u << 1);
+                ? ((((u16)g_hearth.frame_count & 2u) != 0u) ? 0x3200u : 0x3400u)
+                : 0x3600u;
             sx = (s16)(g_hearth.battle.ring.x - 8);
             sy = (s16)(g_hearth.battle.ring.y - 20 - (s16)(rem >> 4));
             if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
-                dst[0] = (u8)sx;
-                dst[1] = (u8)sy;
-                dst[2] = SPR_TILE_LUT_U8[SPR_TIMED_RING_SLOT];
-                dst[3] = (u8)(0x30u | rpal);
-                dst += 4;
-                if ((count & 3u) == 3u) {
-                    *hi_dst++ = hi_byte;
-                    hi_byte = 0;
+                wdst[0] = (u16)(((u16)sy << 8) | ((u16)sx & 0x00FFu));
+                wdst[1] = (u16)(rpal | 70u);
+                wdst += 2;
+                hi_mask <<= 2;
+                if (hi_mask >= 0x0100u) {
+                    *hi_dst++ = (u8)hi_byte;
+                    hi_byte = 0u;
+                    hi_mask = 1u;
                 }
                 count++;
             }
@@ -1388,24 +1495,25 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
     }
 
     /* Delta OAM hide: clear previously used slots (x=255, y=240, x8=1, size=0) */
-    for (i = count; i < g_prev_oam_cnt; i++) {
-        dst[0] = 255u;
-        dst[1] = 240u;
-        dst += 4;
-        lane = (u8)(i & 3u);
-        hi_byte |= HI_X8_BIT[lane];
-        if (lane == 3u) {
-            *hi_dst++ = hi_byte;
-            hi_byte = 0;
+    prev_cnt = (u16)g_prev_oam_cnt;
+    for (i = count; i < prev_cnt; i++) {
+        wdst[0] = 0xF0FFu;
+        wdst += 2;
+        hi_byte |= hi_mask;
+        hi_mask <<= 2;
+        if (hi_mask >= 0x0100u) {
+            *hi_dst++ = (u8)hi_byte;
+            hi_byte = 0u;
+            hi_mask = 1u;
         }
     }
 
     /* Flush any partial 4-sprite high-table byte cleanly (unused upper lanes keep x8=1, size=0) */
-    end_lane = (u8)(((count > g_prev_oam_cnt) ? count : g_prev_oam_cnt) & 3u);
+    end_lane = (u16)(((count > prev_cnt) ? count : prev_cnt) & 3u);
     if (end_lane != 0u) {
-        *hi_dst = (u8)(hi_byte | HI_TAIL_MASK[end_lane]);
+        *hi_dst = (u8)(hi_byte | (u16)HI_TAIL_MASK[end_lane]);
     }
-    g_prev_oam_cnt = count;
+    g_prev_oam_cnt = (u8)count;
 }
 
 /* ============================================================================

@@ -7,10 +7,27 @@
 
 void hearth_memset(void *dst, uint8_t val, uint16_t len) {
     uint8_t *p = (uint8_t *)dst;
+#if defined(HEARTH_TARGET_SNES)
+    uint16_t wval;
+    uint16_t *wp;
+    if (len >= 2u) {
+        wval = (uint16_t)(((uint16_t)val << 8) | (uint16_t)val);
+        wp = (uint16_t *)dst;
+        while (len >= 2u) {
+            *wp++ = wval;
+            len -= 2u;
+        }
+        p = (uint8_t *)wp;
+    }
+    if (len != 0u) {
+        *p = val;
+    }
+#else
     uint16_t i;
     for (i = 0; i < len; i++) {
         p[i] = val;
     }
+#endif
 }
 
 /* 4 x 16-Color Master Indexed Sub-Palettes (Index 0 = Transparent) */
