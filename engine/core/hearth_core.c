@@ -1043,9 +1043,509 @@ static void set_battle_vfx(
     b->vfx_ty = ty;
 }
 
+static void step_battle_command(HearthState *st, uint16_t just_pressed) {
+    HearthBattleState *b = &st->battle;
+    HearthPartyMember *actor = &st->party[b->active_slot];
+    int p_idx;
+
+    if (b->phase == BPHASE_SWAP_ARC) {
+        const uint16_t dur = 16;
+        b->swap_arc_fp = (uint16_t)((b->phase_timer * FP_ONE) / dur);
+        if ((b->phase_timer & 1u) == 0u) {
+            int16_t ax = (int16_t)(b->wizard_back_x + ((b->hero_home_x - b->wizard_back_x) * (int16_t)b->phase_timer) / (int16_t)dur);
+            int16_t ay = (int16_t)(b->hero_home_y - sin_arc(b->phase_timer, dur, 32));
+            spawn_particle(st, 3, ax, (int16_t)(ay - 10), 0, -40, 14, 2, 3, 15, true);
+        }
+        if (b->phase_timer >= dur) {
+            b->hero_x = b->hero_home_x;
+            b->hero_y = b->hero_home_y;
+            b->hero_scale_x_fp = 345;
+            b->hero_scale_y_fp = 185;
+            b->hero_flash_frames = 4;
+            spawn_burst(st, 3, b->hero_x, (int16_t)(b->hero_y - 4), 8, 3, 12, true);
+            spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), actor->name, 3, 11, false);
+            b->phase = BPHASE_COMMAND;
+            b->phase_timer = 0;
+        }
+        return;
+    }
+
+    if (!b->enemies[b->selected_enemy].alive) b->selected_enemy = first_alive_enemy(b);
+
+    /* Free Ni No Kuni Familiar Hot-Swap with L / R! */
+    if (just_pressed & (PAD_L | PAD_R)) {
+        uint8_t next = (just_pressed & PAD_L)
+            ? (uint8_t)((b->active_slot + 2) % 3)
+            : (uint8_t)((b->active_slot + 1) % 3);
+        if (st->party[next].hp > 0 && next != b->active_slot) {
+            b->prev_slot = b->active_slot;
+            b->active_slot = next;
+            st->active_slot = next;
+            b->phase = BPHASE_SWAP_ARC;
+            b->phase_timer = 0;
+            b->swap_arc_fp = 0;
+            b->hero_guarding = false;
+            push_sfx(st, SFX_SUMMON_ARC);
+            spawn_burst(st, 3, (int16_t)(b->wizard_back_x + 6), (int16_t)(b->wizard_back_y - 12), 10, 3, 11, true);
+            return;
+        }
+    }
+
+    if (just_pressed & PAD_LEFT)  { b->selected_cmd = (uint8_t)((b->selected_cmd + 3) % 4); push_sfx(st, SFX_CURSOR); }
+    if (just_pressed & PAD_RIGHT) { b->selected_cmd = (uint8_t)((b->selected_cmd + 1) % 4); push_sfx(st, SFX_CURSOR); }
+    if ((just_pressed & (PAD_UP | PAD_DOWN)) && b->enemy_count > 1) {
+        uint8_t other = (uint8_t)(1 - b->selected_enemy);
+        if (b->enemies[other].alive) { b->selected_enemy = other; push_sfx(st, SFX_CURSOR); }
+    }
+
+    if (just_pressed & PAD_A) {
+        if (b->selected_cmd == 0) {
+            b->active_action = 0;
+            b->hero_guarding = false;
+            b->phase = BPHASE_PLAYER_WINDUP;
+            b->phase_timer = 0;
+            b->timed_result = 0;
+            b->timed_buffer = 0;
+            push_sfx(st, SFX_CONFIRM);
+        } else if (b->selected_cmd == 1) {
+            if (actor->mp < actor->skill_cost) {
+                push_sfx(st, SFX_CANCEL);
+                spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 26), "LOW MP!", 3, 10, false);
+            } else {
+                actor->mp = (int16_t)(actor->mp - actor->skill_cost);
+                b->active_action = 1;
+                b->hero_guarding = false;
+                b->phase = BPHASE_PLAYER_WINDUP;
+                b->phase_timer = 0;
+                b->timed_result = 0;
+                b->timed_buffer = 0;
+                push_sfx(st, SFX_SPELL_CAST);
+                copy_str_safe(b->banner, sizeof(b->banner), actor->skill_name);
+                b->banner_frames = 44;
+            }
+        } else if (b->selected_cmd == 2) {
+            b->hero_guarding = true;
+            actor->mp = (int16_t)((actor->mp + 6 > actor->max_mp) ? actor->max_mp : actor->mp + 6);
+            push_sfx(st, SFX_PARRY_CLANG);
+            spawn_burst(st, 3, b->hero_x, (int16_t)(b->hero_y - 12), 8, 3, 15, true);
+            spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), "GUARD +6 MP", 3, 15, false);
+            begin_enemy_turn(b);
+        } else {
+            if (st->potions == 0) {
+                push_sfx(st, SFX_CANCEL);
+                spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 26), "NO TONICS!", 3, 10, false);
+            } else {
+                st->potions--;
+                for (p_idx = 0; p_idx < 3; p_idx++) {
+                    st->party[p_idx].hp = (int16_t)((st->party[p_idx].hp + 45 > st->party[p_idx].max_hp) ? st->party[p_idx].max_hp : st->party[p_idx].hp + 45);
+                    st->party[p_idx].mp = (int16_t)((st->party[p_idx].mp + 10 > st->party[p_idx].max_mp) ? st->party[p_idx].max_mp : st->party[p_idx].mp + 10);
+                }
+                push_sfx(st, SFX_HEAL);
+                spawn_burst(st, 5, b->hero_x, (int16_t)(b->hero_y - 10), 12, 0, 4, true);
+                spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), "+45 HP / +10 MP", 0, 4, false);
+                begin_enemy_turn(b);
+            }
+        }
+    }
+}
+
+static void step_battle_player_windup(HearthState *st) {
+    HearthBattleState *b = &st->battle;
+    HearthPartyMember *actor = &st->party[b->active_slot];
+    HearthBattleEnemy *e = &b->enemies[b->selected_enemy];
+    const uint16_t dur = 28;
+    int p_idx;
+
+    if (actor->slot == 2) {
+        /* Lumina levitates upward in a luminous crescent orbit */
+        int16_t ox = (int16_t)((HEARTH_SIN64[(b->phase_timer * 2u) & 63u] * 8) >> 7);
+        b->hero_x = (int16_t)(b->hero_home_x - 4 + ox);
+        b->hero_y = (int16_t)(b->hero_home_y - sin_arc(b->phase_timer, dur, 18));
+        b->hero_scale_x_fp = 240;
+        b->hero_scale_y_fp = 276;
+        if ((b->phase_timer % 6u) == 0u) {
+            spawn_particle(st, 3, (int16_t)(b->hero_x + hearth_prng_range(&st->prng, -8, 8)),
+                (int16_t)(b->hero_y - 12), 0, -60, 14, 2, 3, 15, true);
+        }
+    } else if (actor->slot == 1) {
+        /* Bramblekit coils deeply like a spring with solar sparks */
+        b->hero_x = (int16_t)(b->hero_home_x - sin_arc(b->phase_timer, dur, 14));
+        b->hero_y = (int16_t)(b->hero_home_y - ((b->active_action == 1) ? sin_arc(b->phase_timer, dur, 10) : 0));
+        b->hero_scale_x_fp = 315;
+        b->hero_scale_y_fp = 195;
+        if ((b->phase_timer % 5u) == 0u) {
+            spawn_particle(st, 3, b->hero_x, (int16_t)(b->hero_y - 6),
+                hearth_prng_range(&st->prng, -90, 60), -110, 14, 2, 3, 11, true);
+        }
+    } else {
+        /* Rowan steps back & raises Locket Staff with golden heart glow */
+        b->hero_x = (int16_t)(b->hero_home_x - sin_arc(b->phase_timer, dur, 10));
+        b->hero_y = (int16_t)(b->hero_home_y - sin_arc(b->phase_timer, dur, 6));
+        b->hero_scale_x_fp = 285;
+        b->hero_scale_y_fp = 225;
+        if ((b->phase_timer % 7u) == 0u) {
+            spawn_particle(st, 5, b->hero_x, (int16_t)(b->hero_y - 14), 0, -90, 16, 2, 3, 11, true);
+        }
+    }
+    if (b->phase_timer == 14) {
+        b->hero_flash_frames = 3;
+        if (b->active_action == 1 && !actor->skill_is_heal) {
+            spawn_burst(st, 3, b->hero_x, (int16_t)(b->hero_y - 10), 7, 3, (actor->slot == 2) ? 15 : 11, true);
+        }
+    }
+    if (b->phase_timer >= dur) {
+        if (b->active_action == 1 && actor->skill_is_heal) {
+            for (p_idx = 0; p_idx < 3; p_idx++) {
+                st->party[p_idx].hp = (int16_t)((st->party[p_idx].hp + 38 > st->party[p_idx].max_hp) ? st->party[p_idx].max_hp : st->party[p_idx].hp + 38);
+            }
+            push_sfx(st, SFX_HEAL);
+            set_battle_vfx(b, BVFX_HEAL_BLOOM, 28, b->hero_home_x, (int16_t)(b->hero_home_y - 10), b->hero_home_x, b->hero_home_y);
+            spawn_burst(st, 5, b->hero_home_x, (int16_t)(b->hero_home_y - 10), 16, 0, 4, true);
+            spawn_ftext(st, b->hero_home_x, (int16_t)(b->hero_home_y - 30), "+38 HP!", 0, 4, false);
+            b->hero_x = b->hero_home_x;
+            b->hero_y = b->hero_home_y;
+            begin_enemy_turn(b);
+        } else {
+            uint16_t ldur = (b->active_action == 1) ? 40u : 36u;
+            b->phase = BPHASE_PLAYER_LUNGE;
+            b->phase_timer = 0;
+            b->timed_result = 0;
+            b->timed_buffer = 0;
+            if (actor->slot == 0) {
+                set_battle_vfx(b, BVFX_STAFF_ARC, ldur, b->hero_home_x, (int16_t)(b->hero_home_y - 10), e->home_x, (int16_t)(e->home_y - 12));
+            } else if (actor->slot == 1) {
+                set_battle_vfx(b, (b->active_action == 1) ? BVFX_SOLAR_METEOR : BVFX_ACORN_SPIN,
+                    ldur, b->hero_home_x, (int16_t)(b->hero_home_y - 10), e->home_x, (int16_t)(e->home_y - 12));
+            } else {
+                set_battle_vfx(b, (b->active_action == 1) ? BVFX_PRISM_NOVA : BVFX_STAR_BOLT,
+                    ldur, (int16_t)(b->hero_home_x + 12), (int16_t)(b->hero_home_y - 16), e->home_x, (int16_t)(e->home_y - 14));
+            }
+        }
+    }
+}
+
+static void step_battle_player_lunge(HearthState *st) {
+    HearthBattleState *b = &st->battle;
+    HearthPartyMember *actor = &st->party[b->active_slot];
+    HearthBattleEnemy *e = &b->enemies[b->selected_enemy];
+    uint16_t dur = (b->active_action == 1) ? 40u : 36u;
+    int16_t dest_x = (actor->slot == 2)
+        ? (int16_t)((b->hero_home_x + e->home_x) / 2 - 20)
+        : (int16_t)(e->home_x - 24);
+    int16_t dest_y = (actor->slot == 2) ? (int16_t)(b->hero_home_y - 14) : e->home_y;
+    int16_t arc_h;
+    uint16_t win = (st->tuning.timed_hit_window_f < 6) ? 6 : st->tuning.timed_hit_window_f;
+    uint16_t sweet_start = (dur > win) ? (uint16_t)(dur - win) : 1;
+
+    if (actor->slot == 1 && b->active_action == 1) {
+        /* Sea-of-Stars Solar Slam: soaring high meteor vault! */
+        arc_h = 56;
+    } else if (actor->slot == 1) {
+        /* Acorn Rush: kinetic spinning dash arc */
+        arc_h = 26;
+    } else if (actor->slot == 2) {
+        /* Lumina hovers upward while projecting comet / nova */
+        arc_h = (b->active_action == 1) ? 28 : 16;
+    } else {
+        /* Rowan graceful leaping staff strike */
+        arc_h = 22;
+    }
+
+    b->hero_x = (int16_t)(b->hero_home_x + ((dest_x - b->hero_home_x) * (int16_t)b->phase_timer) / (int16_t)dur);
+    b->hero_y = (int16_t)(b->hero_home_y + ((dest_y - b->hero_home_y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, arc_h));
+
+    if (actor->slot == 1) {
+        /* Squash & stretch spin rhythm */
+        b->hero_scale_x_fp = ((b->phase_timer & 4u) != 0u) ? 290 : 220;
+        b->hero_scale_y_fp = ((b->phase_timer & 4u) != 0u) ? 225 : 295;
+        if ((b->phase_timer & 3u) == 0u) {
+            spawn_particle(st, 3, b->hero_x, (int16_t)(b->hero_y - 8), -50, 20, 12,
+                (b->active_action == 1) ? 3 : 2, 3, 11, true);
+        }
+        b->vfx_x = b->hero_x;
+        b->vfx_y = (int16_t)(b->hero_y - 8);
+    } else if (actor->slot == 2) {
+        b->hero_scale_x_fp = 235;
+        b->hero_scale_y_fp = 285;
+        b->vfx_x = (int16_t)(b->hero_x + ((e->home_x - b->hero_x) * (int16_t)b->phase_timer) / (int16_t)dur);
+        b->vfx_y = (int16_t)((b->hero_y - 12) + (((e->home_y - 12) - (b->hero_y - 12)) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, (b->active_action == 1) ? 34 : 22));
+        if ((b->phase_timer & 3u) == 0u) {
+            spawn_particle(st, 3, b->vfx_x, b->vfx_y, -30, -20, 12, 2, 3, 15, true);
+        }
+    } else {
+        b->hero_scale_x_fp = 230;
+        b->hero_scale_y_fp = 282;
+        b->vfx_x = (int16_t)(b->hero_x + 8);
+        b->vfx_y = (int16_t)(b->hero_y - 10);
+    }
+
+    b->ring.active = true;
+    b->ring.is_parry = false;
+    b->ring.x = e->home_x;
+    b->ring.y = (int16_t)(e->home_y - 14);
+    b->ring.progress_fp = (uint16_t)((b->phase_timer * FP_ONE) / dur);
+    b->ring.sweet_start_fp = (uint16_t)((sweet_start * FP_ONE) / dur);
+    b->ring.result = b->timed_result;
+
+    if (b->timed_result == 0 && b->timed_buffer > 0) {
+        if (b->phase_timer >= sweet_start) {
+            b->timed_result = 1;
+            b->ring.result = 1;
+            b->timed_buffer = 0;
+        } else if (b->phase_timer + 6 >= sweet_start) {
+            b->timed_result = 2;
+            b->ring.result = 2;
+            b->timed_buffer = 0;
+        }
+    }
+
+    if (b->phase_timer >= dur) {
+        b->phase = BPHASE_PLAYER_IMPACT;
+        b->phase_timer = 0;
+        resolve_player_strike(st, false);
+    }
+}
+
+static void step_battle_player_aftermath(HearthState *st) {
+    HearthBattleState *b = &st->battle;
+    HearthPartyMember *actor = &st->party[b->active_slot];
+    uint8_t i;
+
+    if (b->phase == BPHASE_PLAYER_IMPACT) {
+        uint16_t late = (uint16_t)((st->tuning.timed_hit_window_f >> 1) + 3);
+        bool any_alive;
+        if (b->phase_timer <= late && b->timed_result == 0 && b->timed_buffer > 0) {
+            b->timed_result = 1;
+            b->ring.result = 1;
+            b->timed_buffer = 0;
+            b->phase = BPHASE_PLAYER_FOLLOWUP;
+            b->phase_timer = 0;
+            push_sfx(st, SFX_HIT_CRITICAL);
+            spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 32), "PERFECT!", 3, 11, false);
+            return;
+        }
+        if (b->phase_timer >= 20) {
+            b->ring.active = false;
+            any_alive = false;
+            for (i = 0; i < b->enemy_count; i++) if (b->enemies[i].alive) any_alive = true;
+            if (b->timed_result == 1 && any_alive) {
+                b->phase = BPHASE_PLAYER_FOLLOWUP;
+                b->phase_timer = 0;
+            } else {
+                b->phase = BPHASE_PLAYER_RETURN;
+                b->phase_timer = 0;
+            }
+        }
+    } else if (b->phase == BPHASE_PLAYER_FOLLOWUP) {
+        uint8_t ti = b->enemies[b->selected_enemy].alive ? b->selected_enemy : first_alive_enemy(b);
+        HearthBattleEnemy *e = &b->enemies[ti];
+        const uint16_t dur = 30;
+        int16_t base_x = (actor->slot == 2) ? (int16_t)(b->hero_home_x + 36) : (int16_t)(e->home_x - 24);
+        /* Sea-of-Stars acrobatic rebound somersault & diving finisher! */
+        b->hero_x = (int16_t)(base_x - sin_arc(b->phase_timer, dur, 22));
+        b->hero_y = (int16_t)(e->home_y - sin_arc(b->phase_timer, dur, 40));
+        b->hero_scale_x_fp = (b->phase_timer < 15) ? 235 : 325;
+        b->hero_scale_y_fp = (b->phase_timer < 15) ? 295 : 200;
+
+        if (b->phase_timer == 14) {
+            b->hero_flash_frames = 4;
+            spawn_burst(st, 3, b->hero_x, (int16_t)(b->hero_y - 10), 8, 3, 11, true);
+            set_battle_vfx(b, (actor->slot == 2) ? BVFX_PRISM_NOVA : BVFX_SOLAR_METEOR,
+                16, b->hero_x, (int16_t)(b->hero_y - 8), e->home_x, (int16_t)(e->home_y - 12));
+        }
+        if (b->phase_timer == 21) {
+            b->selected_enemy = ti;
+            resolve_player_strike(st, true);
+        }
+        if (b->phase_timer >= dur) {
+            b->phase = BPHASE_PLAYER_RETURN;
+            b->phase_timer = 0;
+        }
+    } else {
+        const uint16_t dur = 18;
+        bool all_dead;
+        b->hero_x = (int16_t)(b->hero_x + ((b->hero_home_x - b->hero_x) * (int16_t)b->phase_timer) / (int16_t)dur);
+        b->hero_y = (int16_t)(b->hero_y + ((b->hero_home_y - b->hero_y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, 12));
+        if (b->phase_timer >= dur) {
+            b->hero_x = b->hero_home_x;
+            b->hero_y = b->hero_home_y;
+            b->ring.active = false;
+
+            all_dead = true;
+            for (i = 0; i < b->enemy_count; i++) if (b->enemies[i].alive) all_dead = false;
+            if (all_dead) {
+                b->exp_earned = b->is_boss_battle ? 120 : 48;
+                b->phase = BPHASE_VICTORY_POSE;
+                b->phase_timer = 0;
+                push_sfx(st, SFX_VICTORY_FANFARE);
+                copy_str_safe(b->banner, sizeof(b->banner), "VICTORY!");
+                b->banner_frames = 90;
+            } else {
+                begin_enemy_turn(b);
+            }
+        }
+    }
+}
+
+static void step_battle_enemy(HearthState *st) {
+    HearthBattleState *b = &st->battle;
+    HearthPartyMember *actor = &st->party[b->active_slot];
+    HearthBattleEnemy *e;
+    uint8_t i;
+
+    if (b->phase == BPHASE_ENEMY_SELECT) {
+        while (b->enemy_turn_idx < b->enemy_count && !b->enemies[b->enemy_turn_idx].alive) {
+            b->enemy_turn_idx++;
+        }
+        if (b->enemy_turn_idx >= b->enemy_count) {
+            b->phase = BPHASE_COMMAND;
+            b->phase_timer = 0;
+            b->hero_guarding = false;
+            for (i = 0; i < b->enemy_count; i++) {
+                e = &b->enemies[i];
+                if (!e->alive) continue;
+                if (e->staggered) {
+                    e->staggered = false;
+                } else if (e->charge_turns == 0 && hearth_prng_range(&st->prng, 0, 2) == 0) {
+                    e->charge_turns = e->max_charge_turns;
+                    if (e->is_boss) {
+                        e->lock_count = 3;
+                        e->locks[0] = LOCK_SWORD; e->locks[1] = LOCK_SUN; e->locks[2] = LOCK_STAR;
+                    } else {
+                        e->lock_count = 2;
+                        e->locks[0] = LOCK_SWORD; e->locks[1] = LOCK_SUN;
+                    }
+                    e->broken_locks[0] = false;
+                    e->broken_locks[1] = false;
+                    e->broken_locks[2] = false;
+                }
+            }
+            return;
+        }
+        e = &b->enemies[b->enemy_turn_idx];
+        if (e->staggered) {
+            spawn_ftext(st, e->home_x, (int16_t)(e->home_y - 26), "STAGGERED!", 3, 11, false);
+            b->enemy_turn_idx++;
+            b->phase_timer = 0;
+            return;
+        }
+        if (e->charge_turns > 1) {
+            e->charge_turns--;
+            spawn_ftext(st, e->home_x, (int16_t)(e->home_y - 28), "CHARGING...", 3, 4, false);
+            spawn_burst(st, 3, e->home_x, (int16_t)(e->home_y - 12), 5, 3, 4, true);
+            b->enemy_turn_idx++;
+            b->phase_timer = 0;
+            return;
+        }
+        b->phase = BPHASE_ENEMY_TELEGRAPH;
+        b->phase_timer = 0;
+        b->timed_result = 0;
+        b->timed_buffer = 0;
+        if (e->charge_turns == 1) {
+            copy_str_safe(b->banner, sizeof(b->banner), e->special_name);
+            b->banner_frames = 60;
+        } else {
+            copy_str_safe(b->banner, sizeof(b->banner), "INCOMING! READY PARRY!");
+            b->banner_frames = 36;
+        }
+    } else if (b->phase == BPHASE_ENEMY_TELEGRAPH) {
+        const uint16_t dur = 38;
+        int16_t jitter = ((b->phase_timer > 18) && ((b->phase_timer & 2u) != 0u)) ? 2 : 0;
+        e = &b->enemies[b->enemy_turn_idx];
+        e->x = (int16_t)(e->home_x + sin_arc(b->phase_timer, dur, 14) + jitter);
+        e->y = (int16_t)(e->home_y - ((e->charge_turns == 1) ? sin_arc(b->phase_timer, dur, 10) : 0));
+        e->scale_x_fp = 310;
+        e->scale_y_fp = 200;
+        if (b->phase_timer == 10 || b->phase_timer == 24) {
+            e->flash_frames = 3;
+            spawn_burst(st, 3, (int16_t)(e->x - 6), (int16_t)(e->y - 14), 6, 3, (e->charge_turns == 1) ? 4 : 10, true);
+            if (b->phase_timer == 10) push_sfx(st, SFX_ENEMY_ALERT);
+        }
+        if (b->phase_timer >= dur) {
+            b->phase = BPHASE_ENEMY_LUNGE;
+            b->phase_timer = 0;
+            b->timed_result = 0;
+            b->timed_buffer = 0;
+            set_battle_vfx(b, BVFX_ENEMY_CLAW, 34, e->home_x, (int16_t)(e->home_y - 12), b->hero_home_x, (int16_t)(b->hero_home_y - 12));
+        }
+    } else if (b->phase == BPHASE_ENEMY_LUNGE) {
+        const uint16_t dur = 32;
+        int16_t dest_x = (int16_t)(b->hero_home_x + 24);
+        int16_t arc_h;
+        uint16_t win = (st->tuning.parry_window_f < 6) ? 6 : st->tuning.parry_window_f;
+        uint16_t sweet_start = (dur > win) ? (uint16_t)(dur - win) : 1;
+        e = &b->enemies[b->enemy_turn_idx];
+        arc_h = (e->charge_turns == 1 || e->is_boss) ? 30 : 18;
+
+        e->x = (int16_t)(e->home_x + ((dest_x - e->home_x) * (int16_t)b->phase_timer) / (int16_t)dur);
+        e->y = (int16_t)(e->home_y + ((b->hero_home_y - e->home_y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, arc_h));
+        b->vfx_x = (int16_t)(e->x - 6);
+        b->vfx_y = (int16_t)(e->y - 10);
+
+        b->ring.active = true;
+        b->ring.is_parry = true;
+        b->ring.x = b->hero_home_x;
+        b->ring.y = (int16_t)(b->hero_home_y - 14);
+        b->ring.progress_fp = (uint16_t)((b->phase_timer * FP_ONE) / dur);
+        b->ring.sweet_start_fp = (uint16_t)((sweet_start * FP_ONE) / dur);
+        b->ring.result = b->timed_result;
+
+        if (b->timed_result == 0 && b->timed_buffer > 0 && b->phase_timer >= sweet_start) {
+            b->timed_result = 1;
+            b->ring.result = 1;
+            b->timed_buffer = 0;
+        }
+
+        if (b->phase_timer >= dur) {
+            b->phase = BPHASE_ENEMY_IMPACT;
+            b->phase_timer = 0;
+            resolve_enemy_hit(st, e);
+            if (b->timed_result == 1) {
+                set_battle_vfx(b, BVFX_GUARD_SHIELD, 20, b->hero_home_x, (int16_t)(b->hero_home_y - 12), e->x, e->y);
+                e->x = (int16_t)(e->x + 14);
+            }
+        }
+    } else if (b->phase == BPHASE_ENEMY_IMPACT) {
+        if (b->phase_timer >= 20) {
+            b->ring.active = false;
+            b->phase = BPHASE_ENEMY_RETURN;
+            b->phase_timer = 0;
+        }
+    } else {
+        const uint16_t dur = 16;
+        int healthy, p_idx;
+        e = &b->enemies[b->enemy_turn_idx];
+        e->x = (int16_t)(e->x + ((e->home_x - e->x) * (int16_t)b->phase_timer) / (int16_t)dur);
+        e->y = (int16_t)(e->y + ((e->home_y - e->y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, 8));
+        if (b->phase_timer >= dur) {
+            e->x = e->home_x;
+            e->y = e->home_y;
+            if (e->charge_turns == 1) { e->charge_turns = 0; e->lock_count = 0; }
+
+            if (actor->hp <= 0) {
+                healthy = -1;
+                for (p_idx = 0; p_idx < 3; p_idx++) {
+                    if (st->party[p_idx].hp > 0) { healthy = p_idx; break; }
+                }
+                if (healthy >= 0) {
+                    b->active_slot = (uint8_t)healthy;
+                    st->active_slot = (uint8_t)healthy;
+                    push_sfx(st, SFX_SUMMON_ARC);
+                } else {
+                    b->phase = BPHASE_DEFEAT_POSE;
+                    b->phase_timer = 0;
+                    return;
+                }
+            }
+            b->enemy_turn_idx++;
+            b->phase = BPHASE_ENEMY_SELECT;
+            b->phase_timer = 0;
+        }
+    }
+}
+
 static void step_battle(HearthState *st, uint16_t just_pressed) {
     HearthBattleState *b = &st->battle;
-    HearthPartyMember *actor;
     uint8_t i;
 
     if (!b->active) return;
@@ -1074,7 +1574,6 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
     if (just_pressed & PAD_A) b->timed_buffer = 9;
     else if (b->timed_buffer > 0) b->timed_buffer--;
 
-    actor = &st->party[b->active_slot];
     b->phase_timer++;
 
     switch (b->phase) {
@@ -1104,512 +1603,32 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
             break;
         }
 
-        case BPHASE_COMMAND: {
-            int p_idx;
-            if (!b->enemies[b->selected_enemy].alive) b->selected_enemy = first_alive_enemy(b);
-
-            /* Free Ni No Kuni Familiar Hot-Swap with L / R! */
-            if (just_pressed & (PAD_L | PAD_R)) {
-                uint8_t next = (just_pressed & PAD_L)
-                    ? (uint8_t)((b->active_slot + 2) % 3)
-                    : (uint8_t)((b->active_slot + 1) % 3);
-                if (st->party[next].hp > 0 && next != b->active_slot) {
-                    b->prev_slot = b->active_slot;
-                    b->active_slot = next;
-                    st->active_slot = next;
-                    b->phase = BPHASE_SWAP_ARC;
-                    b->phase_timer = 0;
-                    b->swap_arc_fp = 0;
-                    b->hero_guarding = false;
-                    push_sfx(st, SFX_SUMMON_ARC);
-                    spawn_burst(st, 3, (int16_t)(b->wizard_back_x + 6), (int16_t)(b->wizard_back_y - 12), 10, 3, 11, true);
-                    break;
-                }
-            }
-
-            if (just_pressed & PAD_LEFT)  { b->selected_cmd = (uint8_t)((b->selected_cmd + 3) % 4); push_sfx(st, SFX_CURSOR); }
-            if (just_pressed & PAD_RIGHT) { b->selected_cmd = (uint8_t)((b->selected_cmd + 1) % 4); push_sfx(st, SFX_CURSOR); }
-            if ((just_pressed & (PAD_UP | PAD_DOWN)) && b->enemy_count > 1) {
-                uint8_t other = (uint8_t)(1 - b->selected_enemy);
-                if (b->enemies[other].alive) { b->selected_enemy = other; push_sfx(st, SFX_CURSOR); }
-            }
-
-            if (just_pressed & PAD_A) {
-                if (b->selected_cmd == 0) {
-                    b->active_action = 0;
-                    b->hero_guarding = false;
-                    b->phase = BPHASE_PLAYER_WINDUP;
-                    b->phase_timer = 0;
-                    b->timed_result = 0;
-                    b->timed_buffer = 0;
-                    push_sfx(st, SFX_CONFIRM);
-                } else if (b->selected_cmd == 1) {
-                    if (actor->mp < actor->skill_cost) {
-                        push_sfx(st, SFX_CANCEL);
-                        spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 26), "LOW MP!", 3, 10, false);
-                    } else {
-                        actor->mp = (int16_t)(actor->mp - actor->skill_cost);
-                        b->active_action = 1;
-                        b->hero_guarding = false;
-                        b->phase = BPHASE_PLAYER_WINDUP;
-                        b->phase_timer = 0;
-                        b->timed_result = 0;
-                        b->timed_buffer = 0;
-                        push_sfx(st, SFX_SPELL_CAST);
-                        copy_str_safe(b->banner, sizeof(b->banner), actor->skill_name);
-                        b->banner_frames = 44;
-                    }
-                } else if (b->selected_cmd == 2) {
-                    b->hero_guarding = true;
-                    actor->mp = (int16_t)((actor->mp + 6 > actor->max_mp) ? actor->max_mp : actor->mp + 6);
-                    push_sfx(st, SFX_PARRY_CLANG);
-                    spawn_burst(st, 3, b->hero_x, (int16_t)(b->hero_y - 12), 8, 3, 15, true);
-                    spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), "GUARD +6 MP", 3, 15, false);
-                    begin_enemy_turn(b);
-                } else {
-                    if (st->potions == 0) {
-                        push_sfx(st, SFX_CANCEL);
-                        spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 26), "NO TONICS!", 3, 10, false);
-                    } else {
-                        st->potions--;
-                        for (p_idx = 0; p_idx < 3; p_idx++) {
-                            st->party[p_idx].hp = (int16_t)((st->party[p_idx].hp + 45 > st->party[p_idx].max_hp) ? st->party[p_idx].max_hp : st->party[p_idx].hp + 45);
-                            st->party[p_idx].mp = (int16_t)((st->party[p_idx].mp + 10 > st->party[p_idx].max_mp) ? st->party[p_idx].max_mp : st->party[p_idx].mp + 10);
-                        }
-                        push_sfx(st, SFX_HEAL);
-                        spawn_burst(st, 5, b->hero_x, (int16_t)(b->hero_y - 10), 12, 0, 4, true);
-                        spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), "+45 HP / +10 MP", 0, 4, false);
-                        begin_enemy_turn(b);
-                    }
-                }
-            }
+        case BPHASE_COMMAND:
+        case BPHASE_SWAP_ARC:
+            step_battle_command(st, just_pressed);
             break;
-        }
 
-        case BPHASE_SWAP_ARC: {
-            const uint16_t dur = 16;
-            b->swap_arc_fp = (uint16_t)((b->phase_timer * FP_ONE) / dur);
-            if ((b->phase_timer & 1u) == 0u) {
-                int16_t ax = (int16_t)(b->wizard_back_x + ((b->hero_home_x - b->wizard_back_x) * (int16_t)b->phase_timer) / (int16_t)dur);
-                int16_t ay = (int16_t)(b->hero_home_y - sin_arc(b->phase_timer, dur, 32));
-                spawn_particle(st, 3, ax, (int16_t)(ay - 10), 0, -40, 14, 2, 3, 15, true);
-            }
-            if (b->phase_timer >= dur) {
-                b->hero_x = b->hero_home_x;
-                b->hero_y = b->hero_home_y;
-                b->hero_scale_x_fp = 345;
-                b->hero_scale_y_fp = 185;
-                b->hero_flash_frames = 4;
-                spawn_burst(st, 3, b->hero_x, (int16_t)(b->hero_y - 4), 8, 3, 12, true);
-                spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), actor->name, 3, 11, false);
-                b->phase = BPHASE_COMMAND;
-                b->phase_timer = 0;
-            }
+        case BPHASE_PLAYER_WINDUP:
+            step_battle_player_windup(st);
             break;
-        }
 
-        case BPHASE_PLAYER_WINDUP: {
-            const uint16_t dur = 28;
-            HearthBattleEnemy *e = &b->enemies[b->selected_enemy];
-            int p_idx;
-            if (actor->slot == 2) {
-                /* Lumina levitates upward in a luminous crescent orbit */
-                int16_t ox = (int16_t)((HEARTH_SIN64[(b->phase_timer * 2u) & 63u] * 8) >> 7);
-                b->hero_x = (int16_t)(b->hero_home_x - 4 + ox);
-                b->hero_y = (int16_t)(b->hero_home_y - sin_arc(b->phase_timer, dur, 18));
-                b->hero_scale_x_fp = 240;
-                b->hero_scale_y_fp = 276;
-                if ((b->phase_timer % 6u) == 0u) {
-                    spawn_particle(st, 3, (int16_t)(b->hero_x + hearth_prng_range(&st->prng, -8, 8)),
-                        (int16_t)(b->hero_y - 12), 0, -60, 14, 2, 3, 15, true);
-                }
-            } else if (actor->slot == 1) {
-                /* Bramblekit coils deeply like a spring with solar sparks */
-                b->hero_x = (int16_t)(b->hero_home_x - sin_arc(b->phase_timer, dur, 14));
-                b->hero_y = (int16_t)(b->hero_home_y - ((b->active_action == 1) ? sin_arc(b->phase_timer, dur, 10) : 0));
-                b->hero_scale_x_fp = 315;
-                b->hero_scale_y_fp = 195;
-                if ((b->phase_timer % 5u) == 0u) {
-                    spawn_particle(st, 3, b->hero_x, (int16_t)(b->hero_y - 6),
-                        hearth_prng_range(&st->prng, -90, 60), -110, 14, 2, 3, 11, true);
-                }
-            } else {
-                /* Rowan steps back & raises Locket Staff with golden heart glow */
-                b->hero_x = (int16_t)(b->hero_home_x - sin_arc(b->phase_timer, dur, 10));
-                b->hero_y = (int16_t)(b->hero_home_y - sin_arc(b->phase_timer, dur, 6));
-                b->hero_scale_x_fp = 285;
-                b->hero_scale_y_fp = 225;
-                if ((b->phase_timer % 7u) == 0u) {
-                    spawn_particle(st, 5, b->hero_x, (int16_t)(b->hero_y - 14), 0, -90, 16, 2, 3, 11, true);
-                }
-            }
-            if (b->phase_timer == 14) {
-                b->hero_flash_frames = 3;
-                if (b->active_action == 1 && !actor->skill_is_heal) {
-                    spawn_burst(st, 3, b->hero_x, (int16_t)(b->hero_y - 10), 7, 3, (actor->slot == 2) ? 15 : 11, true);
-                }
-            }
-            if (b->phase_timer >= dur) {
-                if (b->active_action == 1 && actor->skill_is_heal) {
-                    for (p_idx = 0; p_idx < 3; p_idx++) {
-                        st->party[p_idx].hp = (int16_t)((st->party[p_idx].hp + 38 > st->party[p_idx].max_hp) ? st->party[p_idx].max_hp : st->party[p_idx].hp + 38);
-                    }
-                    push_sfx(st, SFX_HEAL);
-                    set_battle_vfx(b, BVFX_HEAL_BLOOM, 28, b->hero_home_x, (int16_t)(b->hero_home_y - 10), b->hero_home_x, b->hero_home_y);
-                    spawn_burst(st, 5, b->hero_home_x, (int16_t)(b->hero_home_y - 10), 16, 0, 4, true);
-                    spawn_ftext(st, b->hero_home_x, (int16_t)(b->hero_home_y - 30), "+38 HP!", 0, 4, false);
-                    b->hero_x = b->hero_home_x;
-                    b->hero_y = b->hero_home_y;
-                    begin_enemy_turn(b);
-                } else {
-                    uint16_t ldur = (b->active_action == 1) ? 40u : 36u;
-                    b->phase = BPHASE_PLAYER_LUNGE;
-                    b->phase_timer = 0;
-                    b->timed_result = 0;
-                    b->timed_buffer = 0;
-                    if (actor->slot == 0) {
-                        set_battle_vfx(b, BVFX_STAFF_ARC, ldur, b->hero_home_x, (int16_t)(b->hero_home_y - 10), e->home_x, (int16_t)(e->home_y - 12));
-                    } else if (actor->slot == 1) {
-                        set_battle_vfx(b, (b->active_action == 1) ? BVFX_SOLAR_METEOR : BVFX_ACORN_SPIN,
-                            ldur, b->hero_home_x, (int16_t)(b->hero_home_y - 10), e->home_x, (int16_t)(e->home_y - 12));
-                    } else {
-                        set_battle_vfx(b, (b->active_action == 1) ? BVFX_PRISM_NOVA : BVFX_STAR_BOLT,
-                            ldur, (int16_t)(b->hero_home_x + 12), (int16_t)(b->hero_home_y - 16), e->home_x, (int16_t)(e->home_y - 14));
-                    }
-                }
-            }
+        case BPHASE_PLAYER_LUNGE:
+            step_battle_player_lunge(st);
             break;
-        }
 
-        case BPHASE_PLAYER_LUNGE: {
-            HearthBattleEnemy *e = &b->enemies[b->selected_enemy];
-            uint16_t dur = (b->active_action == 1) ? 40u : 36u;
-            int16_t dest_x = (actor->slot == 2)
-                ? (int16_t)((b->hero_home_x + e->home_x) / 2 - 20)
-                : (int16_t)(e->home_x - 24);
-            int16_t dest_y = (actor->slot == 2) ? (int16_t)(b->hero_home_y - 14) : e->home_y;
-            int16_t arc_h;
-            uint16_t win = (st->tuning.timed_hit_window_f < 6) ? 6 : st->tuning.timed_hit_window_f;
-            uint16_t sweet_start = (dur > win) ? (uint16_t)(dur - win) : 1;
-
-            if (actor->slot == 1 && b->active_action == 1) {
-                /* Sea-of-Stars Solar Slam: soaring high meteor vault! */
-                arc_h = 56;
-            } else if (actor->slot == 1) {
-                /* Acorn Rush: kinetic spinning dash arc */
-                arc_h = 26;
-            } else if (actor->slot == 2) {
-                /* Lumina hovers upward while projecting comet / nova */
-                arc_h = (b->active_action == 1) ? 28 : 16;
-            } else {
-                /* Rowan graceful leaping staff strike */
-                arc_h = 22;
-            }
-
-            b->hero_x = (int16_t)(b->hero_home_x + ((dest_x - b->hero_home_x) * (int16_t)b->phase_timer) / (int16_t)dur);
-            b->hero_y = (int16_t)(b->hero_home_y + ((dest_y - b->hero_home_y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, arc_h));
-
-            if (actor->slot == 1) {
-                /* Squash & stretch spin rhythm */
-                b->hero_scale_x_fp = ((b->phase_timer & 4u) != 0u) ? 290 : 220;
-                b->hero_scale_y_fp = ((b->phase_timer & 4u) != 0u) ? 225 : 295;
-                if ((b->phase_timer & 3u) == 0u) {
-                    spawn_particle(st, 3, b->hero_x, (int16_t)(b->hero_y - 8), -50, 20, 12,
-                        (b->active_action == 1) ? 3 : 2, 3, 11, true);
-                }
-            } else if (actor->slot == 2) {
-                b->hero_scale_x_fp = 235;
-                b->hero_scale_y_fp = 285;
-                /* Update curving comet/nova position */
-                b->vfx_x = (int16_t)(b->hero_x + ((e->home_x - b->hero_x) * (int16_t)b->phase_timer) / (int16_t)dur);
-                b->vfx_y = (int16_t)((b->hero_y - 12) + (((e->home_y - 12) - (b->hero_y - 12)) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, (b->active_action == 1) ? 34 : 22));
-                if ((b->phase_timer & 3u) == 0u) {
-                    spawn_particle(st, 3, b->vfx_x, b->vfx_y, -30, -20, 12, 2, 3, 15, true);
-                }
-            } else {
-                b->hero_scale_x_fp = 230;
-                b->hero_scale_y_fp = 282;
-                b->vfx_x = (int16_t)(b->hero_x + 8);
-                b->vfx_y = (int16_t)(b->hero_y - 10);
-            }
-            if (actor->slot == 1) {
-                b->vfx_x = b->hero_x;
-                b->vfx_y = (int16_t)(b->hero_y - 8);
-            }
-
-            b->ring.active = true;
-            b->ring.is_parry = false;
-            b->ring.x = e->home_x;
-            b->ring.y = (int16_t)(e->home_y - 14);
-            b->ring.progress_fp = (uint16_t)((b->phase_timer * FP_ONE) / dur);
-            b->ring.sweet_start_fp = (uint16_t)((sweet_start * FP_ONE) / dur);
-            b->ring.result = b->timed_result;
-
-            if (b->timed_result == 0 && b->timed_buffer > 0) {
-                if (b->phase_timer >= sweet_start) {
-                    b->timed_result = 1;
-                    b->ring.result = 1;
-                    b->timed_buffer = 0;
-                } else if (b->phase_timer + 6 >= sweet_start) {
-                    b->timed_result = 2;
-                    b->ring.result = 2;
-                    b->timed_buffer = 0;
-                }
-            }
-
-            if (b->phase_timer >= dur) {
-                b->phase = BPHASE_PLAYER_IMPACT;
-                b->phase_timer = 0;
-                resolve_player_strike(st, false);
-            }
+        case BPHASE_PLAYER_IMPACT:
+        case BPHASE_PLAYER_FOLLOWUP:
+        case BPHASE_PLAYER_RETURN:
+            step_battle_player_aftermath(st);
             break;
-        }
 
-        case BPHASE_PLAYER_IMPACT: {
-            uint16_t late = (uint16_t)((st->tuning.timed_hit_window_f >> 1) + 3);
-            bool any_alive;
-            if (b->phase_timer <= late && b->timed_result == 0 && b->timed_buffer > 0) {
-                b->timed_result = 1;
-                b->ring.result = 1;
-                b->timed_buffer = 0;
-                b->phase = BPHASE_PLAYER_FOLLOWUP;
-                b->phase_timer = 0;
-                push_sfx(st, SFX_HIT_CRITICAL);
-                spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 32), "PERFECT!", 3, 11, false);
-                break;
-            }
-            if (b->phase_timer >= 20) {
-                b->ring.active = false;
-                any_alive = false;
-                for (i = 0; i < b->enemy_count; i++) if (b->enemies[i].alive) any_alive = true;
-                if (b->timed_result == 1 && any_alive) {
-                    b->phase = BPHASE_PLAYER_FOLLOWUP;
-                    b->phase_timer = 0;
-                } else {
-                    b->phase = BPHASE_PLAYER_RETURN;
-                    b->phase_timer = 0;
-                }
-            }
+        case BPHASE_ENEMY_SELECT:
+        case BPHASE_ENEMY_TELEGRAPH:
+        case BPHASE_ENEMY_LUNGE:
+        case BPHASE_ENEMY_IMPACT:
+        case BPHASE_ENEMY_RETURN:
+            step_battle_enemy(st);
             break;
-        }
-
-        case BPHASE_PLAYER_FOLLOWUP: {
-            uint8_t ti = b->enemies[b->selected_enemy].alive ? b->selected_enemy : first_alive_enemy(b);
-            HearthBattleEnemy *e = &b->enemies[ti];
-            const uint16_t dur = 30;
-            int16_t base_x = (actor->slot == 2) ? (int16_t)(b->hero_home_x + 36) : (int16_t)(e->home_x - 24);
-            /* Sea-of-Stars acrobatic rebound somersault & diving finisher! */
-            b->hero_x = (int16_t)(base_x - sin_arc(b->phase_timer, dur, 22));
-            b->hero_y = (int16_t)(e->home_y - sin_arc(b->phase_timer, dur, 40));
-            b->hero_scale_x_fp = (b->phase_timer < 15) ? 235 : 325;
-            b->hero_scale_y_fp = (b->phase_timer < 15) ? 295 : 200;
-
-            if (b->phase_timer == 14) {
-                /* Apex gleam before diving slam */
-                b->hero_flash_frames = 4;
-                spawn_burst(st, 3, b->hero_x, (int16_t)(b->hero_y - 10), 8, 3, 11, true);
-                set_battle_vfx(b, (actor->slot == 2) ? BVFX_PRISM_NOVA : BVFX_SOLAR_METEOR,
-                    16, b->hero_x, (int16_t)(b->hero_y - 8), e->home_x, (int16_t)(e->home_y - 12));
-            }
-            if (b->phase_timer == 21) {
-                b->selected_enemy = ti;
-                resolve_player_strike(st, true);
-            }
-            if (b->phase_timer >= dur) {
-                b->phase = BPHASE_PLAYER_RETURN;
-                b->phase_timer = 0;
-            }
-            break;
-        }
-
-        case BPHASE_PLAYER_RETURN: {
-            const uint16_t dur = 18;
-            bool all_dead;
-            b->hero_x = (int16_t)(b->hero_x + ((b->hero_home_x - b->hero_x) * (int16_t)b->phase_timer) / (int16_t)dur);
-            b->hero_y = (int16_t)(b->hero_y + ((b->hero_home_y - b->hero_y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, 12));
-            if (b->phase_timer >= dur) {
-                b->hero_x = b->hero_home_x;
-                b->hero_y = b->hero_home_y;
-                b->ring.active = false;
-
-                all_dead = true;
-                for (i = 0; i < b->enemy_count; i++) if (b->enemies[i].alive) all_dead = false;
-                if (all_dead) {
-                    b->exp_earned = b->is_boss_battle ? 120 : 48;
-                    b->phase = BPHASE_VICTORY_POSE;
-                    b->phase_timer = 0;
-                    push_sfx(st, SFX_VICTORY_FANFARE);
-                    copy_str_safe(b->banner, sizeof(b->banner), "VICTORY!");
-                    b->banner_frames = 90;
-                } else {
-                    begin_enemy_turn(b);
-                }
-            }
-            break;
-        }
-
-        case BPHASE_ENEMY_SELECT: {
-            HearthBattleEnemy *e;
-            while (b->enemy_turn_idx < b->enemy_count && !b->enemies[b->enemy_turn_idx].alive) {
-                b->enemy_turn_idx++;
-            }
-            if (b->enemy_turn_idx >= b->enemy_count) {
-                b->phase = BPHASE_COMMAND;
-                b->phase_timer = 0;
-                b->hero_guarding = false;
-                for (i = 0; i < b->enemy_count; i++) {
-                    e = &b->enemies[i];
-                    if (!e->alive) continue;
-                    if (e->staggered) {
-                        e->staggered = false;
-                    } else if (e->charge_turns == 0 && hearth_prng_range(&st->prng, 0, 2) == 0) {
-                        e->charge_turns = e->max_charge_turns;
-                        if (e->is_boss) {
-                            e->lock_count = 3;
-                            e->locks[0] = LOCK_SWORD; e->locks[1] = LOCK_SUN; e->locks[2] = LOCK_STAR;
-                        } else {
-                            e->lock_count = 2;
-                            e->locks[0] = LOCK_SWORD; e->locks[1] = LOCK_SUN;
-                        }
-                        e->broken_locks[0] = false;
-                        e->broken_locks[1] = false;
-                        e->broken_locks[2] = false;
-                    }
-                }
-                break;
-            }
-            e = &b->enemies[b->enemy_turn_idx];
-            if (e->staggered) {
-                spawn_ftext(st, e->home_x, (int16_t)(e->home_y - 26), "STAGGERED!", 3, 11, false);
-                b->enemy_turn_idx++;
-                b->phase_timer = 0;
-                break;
-            }
-            if (e->charge_turns > 1) {
-                e->charge_turns--;
-                spawn_ftext(st, e->home_x, (int16_t)(e->home_y - 28), "CHARGING...", 3, 4, false);
-                spawn_burst(st, 3, e->home_x, (int16_t)(e->home_y - 12), 5, 3, 4, true);
-                b->enemy_turn_idx++;
-                b->phase_timer = 0;
-                break;
-            }
-            b->phase = BPHASE_ENEMY_TELEGRAPH;
-            b->phase_timer = 0;
-            b->timed_result = 0;
-            b->timed_buffer = 0;
-            if (e->charge_turns == 1) {
-                copy_str_safe(b->banner, sizeof(b->banner), e->special_name);
-                b->banner_frames = 60;
-            } else {
-                copy_str_safe(b->banner, sizeof(b->banner), "INCOMING! READY PARRY!");
-                b->banner_frames = 36;
-            }
-            break;
-        }
-
-        case BPHASE_ENEMY_TELEGRAPH: {
-            HearthBattleEnemy *e = &b->enemies[b->enemy_turn_idx];
-            const uint16_t dur = 38;
-            int16_t jitter = ((b->phase_timer > 18) && ((b->phase_timer & 2u) != 0u)) ? 2 : 0;
-            e->x = (int16_t)(e->home_x + sin_arc(b->phase_timer, dur, 14) + jitter);
-            e->y = (int16_t)(e->home_y - ((e->charge_turns == 1) ? sin_arc(b->phase_timer, dur, 10) : 0));
-            e->scale_x_fp = 310;
-            e->scale_y_fp = 200;
-            if (b->phase_timer == 10 || b->phase_timer == 24) {
-                e->flash_frames = 3;
-                spawn_burst(st, 3, (int16_t)(e->x - 6), (int16_t)(e->y - 14), 6, 3, (e->charge_turns == 1) ? 4 : 10, true);
-                if (b->phase_timer == 10) push_sfx(st, SFX_ENEMY_ALERT);
-            }
-            if (b->phase_timer >= dur) {
-                b->phase = BPHASE_ENEMY_LUNGE;
-                b->phase_timer = 0;
-                b->timed_result = 0;
-                b->timed_buffer = 0;
-                set_battle_vfx(b, BVFX_ENEMY_CLAW, 34, e->home_x, (int16_t)(e->home_y - 12), b->hero_home_x, (int16_t)(b->hero_home_y - 12));
-            }
-            break;
-        }
-
-        case BPHASE_ENEMY_LUNGE: {
-            HearthBattleEnemy *e = &b->enemies[b->enemy_turn_idx];
-            const uint16_t dur = 32;
-            int16_t dest_x = (int16_t)(b->hero_home_x + 24);
-            int16_t arc_h = (e->charge_turns == 1 || e->is_boss) ? 30 : 18;
-            uint16_t win = (st->tuning.parry_window_f < 6) ? 6 : st->tuning.parry_window_f;
-            uint16_t sweet_start = (dur > win) ? (uint16_t)(dur - win) : 1;
-
-            e->x = (int16_t)(e->home_x + ((dest_x - e->home_x) * (int16_t)b->phase_timer) / (int16_t)dur);
-            e->y = (int16_t)(e->home_y + ((b->hero_home_y - e->home_y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, arc_h));
-            b->vfx_x = (int16_t)(e->x - 6);
-            b->vfx_y = (int16_t)(e->y - 10);
-
-            b->ring.active = true;
-            b->ring.is_parry = true;
-            b->ring.x = b->hero_home_x;
-            b->ring.y = (int16_t)(b->hero_home_y - 14);
-            b->ring.progress_fp = (uint16_t)((b->phase_timer * FP_ONE) / dur);
-            b->ring.sweet_start_fp = (uint16_t)((sweet_start * FP_ONE) / dur);
-            b->ring.result = b->timed_result;
-
-            if (b->timed_result == 0 && b->timed_buffer > 0 && b->phase_timer >= sweet_start) {
-                b->timed_result = 1;
-                b->ring.result = 1;
-                b->timed_buffer = 0;
-            }
-
-            if (b->phase_timer >= dur) {
-                b->phase = BPHASE_ENEMY_IMPACT;
-                b->phase_timer = 0;
-                resolve_enemy_hit(st, e);
-                if (b->timed_result == 1) {
-                    set_battle_vfx(b, BVFX_GUARD_SHIELD, 20, b->hero_home_x, (int16_t)(b->hero_home_y - 12), e->x, e->y);
-                    e->x = (int16_t)(e->x + 14);
-                }
-            }
-            break;
-        }
-
-        case BPHASE_ENEMY_IMPACT: {
-            if (b->phase_timer >= 20) {
-                b->ring.active = false;
-                b->phase = BPHASE_ENEMY_RETURN;
-                b->phase_timer = 0;
-            }
-            break;
-        }
-
-        case BPHASE_ENEMY_RETURN: {
-            HearthBattleEnemy *e = &b->enemies[b->enemy_turn_idx];
-            const uint16_t dur = 16;
-            int healthy, p_idx;
-            e->x = (int16_t)(e->x + ((e->home_x - e->x) * (int16_t)b->phase_timer) / (int16_t)dur);
-            e->y = (int16_t)(e->y + ((e->home_y - e->y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, 8));
-            if (b->phase_timer >= dur) {
-                e->x = e->home_x;
-                e->y = e->home_y;
-                if (e->charge_turns == 1) { e->charge_turns = 0; e->lock_count = 0; }
-
-                if (actor->hp <= 0) {
-                    healthy = -1;
-                    for (p_idx = 0; p_idx < 3; p_idx++) {
-                        if (st->party[p_idx].hp > 0) { healthy = p_idx; break; }
-                    }
-                    if (healthy >= 0) {
-                        b->active_slot = (uint8_t)healthy;
-                        st->active_slot = (uint8_t)healthy;
-                        push_sfx(st, SFX_SUMMON_ARC);
-                    } else {
-                        b->phase = BPHASE_DEFEAT_POSE;
-                        b->phase_timer = 0;
-                        break;
-                    }
-                }
-                b->enemy_turn_idx++;
-                b->phase = BPHASE_ENEMY_SELECT;
-                b->phase_timer = 0;
-            }
-            break;
-        }
 
         case BPHASE_VICTORY_POSE: {
             if ((b->phase_timer % 18u) == 0u) {
