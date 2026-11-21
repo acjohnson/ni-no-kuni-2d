@@ -34,10 +34,13 @@ int main(void) {
     CHECK(hearth_rgb_to_genesis_bgr333(0xFFFFFFu) == 0x0EEEu, "Genesis BGR333 white pack");
     CHECK(hearth_rgb_to_snes_bgr555(0xFFFFFFu) == 0x7FFFu, "SNES BGR555 white pack");
 
-    /* 3. Init & Title -> Sandbox Transition */
+    /* 3. Init -> Retro Opening Intro -> Title -> Sandbox Transition */
     hearth_init(&g_st);
     CHECK(g_st.ppu.width == 320 && g_st.ppu.height == 224, "hearth_init must populate valid PPU dimensions before frame 1");
-    CHECK(g_st.mode == MODE_TITLE, "Initial mode should be MODE_TITLE");
+    CHECK(g_st.mode == MODE_INTRO, "Initial mode should be MODE_INTRO");
+    hearth_step_60hz(&g_st, PAD_START);
+    CHECK(g_st.mode == MODE_TITLE, "Pressing PAD_START during intro skips cleanly to MODE_TITLE");
+    hearth_step_60hz(&g_st, 0);
     hearth_step_60hz(&g_st, PAD_A);
     CHECK(g_st.mode == MODE_EXPLORE, "Pressing PAD_A on option 0 starts sandbox");
 
@@ -89,7 +92,7 @@ int main(void) {
     int16_t boss_hp_before = g_st.battle.enemies[0].hp;
     hearth_step_60hz(&g_st, PAD_A); /* Select STRIKE */
     bool pressed_timed = false;
-    for (int f = 0; f < 120; f++) {
+    for (int f = 0; f < 220; f++) {
         uint16_t pad = 0;
         if (!pressed_timed && g_st.battle.ring.active &&
             g_st.battle.ring.progress_fp >= g_st.battle.ring.sweet_start_fp) {
@@ -106,7 +109,7 @@ int main(void) {
     printf("[PASS] Instant Familiar Hot-Swap, Timed-Hit Critical + Follow-up, & Spell Lock Break\n");
 
     /* 7. Boss Turn 1: Briar Warden charges Bramble Tempest (charge_turns 2 -> 1) */
-    for (int f = 0; f < 40 && g_st.battle.phase != BPHASE_COMMAND; f++) {
+    for (int f = 0; f < 60 && g_st.battle.phase != BPHASE_COMMAND; f++) {
         hearth_step_60hz(&g_st, 0);
     }
     CHECK(g_st.battle.phase == BPHASE_COMMAND, "Turn 1 charge loops cleanly back to BPHASE_COMMAND");
@@ -120,7 +123,7 @@ int main(void) {
     hearth_step_60hz(&g_st, PAD_A); /* Execute GUARD -> triggers enemy attack */
 
     bool pressed_parry = false;
-    for (int f = 0; f < 160; f++) {
+    for (int f = 0; f < 240; f++) {
         uint16_t pad = 0;
         if (!pressed_parry && g_st.battle.ring.active && g_st.battle.ring.is_parry &&
             g_st.battle.ring.progress_fp >= g_st.battle.ring.sweet_start_fp) {

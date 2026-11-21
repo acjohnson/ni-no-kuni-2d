@@ -269,11 +269,11 @@ void hearth_default_tuning(HearthTuning *t) {
     t->dash_speed_fp      = 614; /* 2.40 px/frame */
     t->accel_fp           = 128;
     t->follow_dist_px     = 22;
-    t->hitstop_normal_f   = 3;
-    t->hitstop_crit_f     = 7;
-    t->hitstop_parry_f    = 5;
-    t->timed_hit_window_f = 8;
-    t->parry_window_f     = 9;
+    t->hitstop_normal_f   = 4;
+    t->hitstop_crit_f     = 8;
+    t->hitstop_parry_f    = 6;
+    t->timed_hit_window_f = 15;
+    t->parry_window_f     = 16;
     t->show_hitboxes      = false;
 }
 
@@ -350,6 +350,130 @@ static void set_npc(
     n->emote_frames = 0;
 }
 
+static void apply_intro_scene_copy(HearthIntroState *in) {
+    static const char *titles[4] = {
+        "WINDMILL VALLEY",
+        "THE HEART-LOCKET",
+        "SUN & STARLIGHT",
+        "THE BRIAR SHRINE"
+    };
+    static const char *lines1[4] = {
+        "Where golden winds turn over the valley of Hearth,",
+        "Rowan wakes to Pip's lantern chime and a brass locket,",
+        "Bramblekit of Sun and Lumina of Starlight answer,",
+        "East beyond the creek, the Briar Warden stirs..."
+    };
+    static const char *lines2[4] = {
+        "every living heart shines like a lamp in the dusk.",
+        "forged to mend spirits chilled by hollow dread.",
+        "kindred familiars bound to a courageous soul.",
+        "Carry light into the mist. Your tale begins!"
+    };
+    uint8_t s = (in->scene < 4u) ? in->scene : 3u;
+    in->title = titles[s];
+    in->line1 = lines1[s];
+    in->line2 = lines2[s];
+}
+
+static void frame_title_camera(HearthState *st) {
+    uint16_t w, h;
+    uint8_t lim;
+    int16_t tx, ty;
+    get_ppu_dims(st, &w, &h, &lim);
+    /* Calm, steady storybook framing on Windmill, Cottage & Hamlet Plaza */
+    tx = iclamp16((int16_t)(10 * 16 - (int16_t)(w >> 1)), 0, (int16_t)(HEARTH_MAP_W * 16 - (int)w));
+    ty = iclamp16((int16_t)(10 * 16 + 8 - (int16_t)(h >> 1)), 0, (int16_t)(HEARTH_MAP_H * 16 - (int)h));
+    st->cam_fx = TO_FP(tx);
+    st->cam_fy = TO_FP(ty);
+}
+
+void hearth_start_intro(HearthState *st) {
+    st->mode = MODE_INTRO;
+    st->battle.active = false;
+    st->dialogue.active = false;
+    st->cam_override = false;
+    st->intro.scene = 0;
+    st->intro.timer = 0;
+    st->intro.fade = 15;
+    st->intro.chars = 0;
+    apply_intro_scene_copy(&st->intro);
+    frame_title_camera(st);
+    build_ppu_packet(st);
+}
+
+void hearth_skip_intro(HearthState *st) {
+    st->mode = MODE_TITLE;
+    st->intro.fade = 0;
+    st->title_cursor = 0;
+    frame_title_camera(st);
+    push_sfx(st, SFX_CONFIRM);
+    build_ppu_packet(st);
+}
+
+static void step_intro_cutscene(HearthState *st, uint16_t just_pressed) {
+    HearthIntroState *in = &HS.intro;
+    const uint16_t scene_dur = 250u;
+    uint16_t total_chars;
+
+    total_chars = (uint16_t)(str_len16(in->line1) + str_len16(in->line2));
+
+    if (just_pressed & PAD_START) {
+        hearth_skip_intro(st);
+        return;
+    }
+
+    if (just_pressed & PAD_A) {
+        if (in->chars < total_chars) {
+            in->chars = total_chars;
+            if (in->timer < 18u) in->timer = 18u;
+            push_sfx(st, SFX_CURSOR);
+        } else if (in->scene < 3u) {
+            in->scene++;
+            in->timer = 0;
+            in->fade = 15;
+            in->chars = 0;
+            apply_intro_scene_copy(in);
+            push_sfx(st, SFX_CONFIRM);
+            return;
+        } else {
+            hearth_skip_intro(st);
+            return;
+        }
+    }
+
+    in->timer++;
+    if (in->timer < 16u) {
+        in->fade = (uint8_t)(15u - in->timer);
+    } else if (in->timer > (uint16_t)(scene_dur - 16u)) {
+        uint16_t over = (uint16_t)(in->timer - (scene_dur - 16u));
+        in->fade = (over > 15u) ? 15u : (uint8_t)over;
+    } else {
+        in->fade = 0u;
+    }
+
+    if (in->timer >= 14u && in->chars < total_chars && ((in->timer & 1u) == 0u)) {
+        in->chars++;
+        if ((in->chars & 3u) == 0u) {
+            push_sfx(st, (in->scene == 1u) ? SFX_TEXT_PIP : SFX_TEXT_ELDER);
+        }
+    }
+
+    if (in->timer >= scene_dur) {
+        if (in->scene < 3u) {
+            in->scene++;
+            in->timer = 0;
+            in->fade = 15;
+            in->chars = 0;
+            apply_intro_scene_copy(in);
+        } else {
+            HS.mode = MODE_TITLE;
+            in->fade = 0;
+            HS.title_cursor = 0;
+            frame_title_camera(st);
+        }
+    }
+}
+
 void hearth_init(HearthState *st) {
     int i;
     hearth_memset(st, 0, (uint16_t)sizeof(*st));
@@ -358,7 +482,6 @@ void hearth_init(HearthState *st) {
     hearth_build_sandbox_map(st->map_bg1, st->map_bg2, st->map_col);
     init_party(st);
 
-    st->mode = MODE_TITLE;
     st->hero_fx = TO_FP(10 * HEARTH_TILE_SIZE + 8);
     st->hero_fy = TO_FP(14 * HEARTH_TILE_SIZE + 8);
     st->hero_dir = DIR_DOWN;
@@ -376,8 +499,7 @@ void hearth_init(HearthState *st) {
     set_npc(&st->npcs[2], 2, "Guard Bram", SPR_NPC_GUARD, 22, 13, DIR_LEFT, AURA_HOLLOW_FEAR);
 
     hearth_respawn_enemies(st);
-    snap_cam_to_hero(st);
-    build_ppu_packet(st);
+    hearth_start_intro(st);
 }
 
 void hearth_heal_party(HearthState *st) {
@@ -394,12 +516,14 @@ void hearth_heal_party(HearthState *st) {
 void hearth_toggle_ppu_mode(HearthState *st) {
     st->tuning.ppu_mode = (st->tuning.ppu_mode == PPU_GENESIS_320x224)
         ? (uint8_t)PPU_SNES_256x224 : (uint8_t)PPU_GENESIS_320x224;
-    snap_cam_to_hero(st);
+    if (st->mode == MODE_TITLE || st->mode == MODE_INTRO) frame_title_camera(st);
+    else snap_cam_to_hero(st);
     build_ppu_packet(st);
 }
 
 void hearth_start_sandbox(HearthState *st) {
     st->mode = MODE_EXPLORE;
+    st->intro.fade = 0;
     st->cam_override = false;
     st->dialogue.active = false;
     st->battle.active = false;
@@ -409,6 +533,7 @@ void hearth_start_sandbox(HearthState *st) {
 
 void hearth_start_cutscene(HearthState *st, const HearthCutsceneOp *script) {
     st->mode = MODE_CUTSCENE;
+    st->intro.fade = 0;
     st->battle.active = false;
     st->dialogue.active = false;
     st->cs_script = script;
@@ -905,6 +1030,19 @@ static void resolve_enemy_hit(HearthState *st, HearthBattleEnemy *e) {
     b->hero_scale_y_fp = 205;
 }
 
+static void set_battle_vfx(
+    HearthBattleState *b, uint8_t kind, uint16_t dur,
+    int16_t x, int16_t y, int16_t tx, int16_t ty
+) {
+    b->vfx_kind = kind;
+    b->vfx_timer = 0;
+    b->vfx_dur = dur;
+    b->vfx_x = x;
+    b->vfx_y = y;
+    b->vfx_tx = tx;
+    b->vfx_ty = ty;
+}
+
 static void step_battle(HearthState *st, uint16_t just_pressed) {
     HearthBattleState *b = &st->battle;
     HearthPartyMember *actor;
@@ -914,6 +1052,13 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
 
     if (b->banner_frames > 0) b->banner_frames--;
     if (b->hero_flash_frames > 0) b->hero_flash_frames--;
+    if (b->vfx_kind != BVFX_NONE) {
+        b->vfx_timer++;
+        if (b->vfx_timer >= b->vfx_dur) {
+            b->vfx_kind = BVFX_NONE;
+            b->vfx_timer = 0;
+        }
+    }
     b->hero_scale_x_fp = (int16_t)(b->hero_scale_x_fp + ((FP_ONE - b->hero_scale_x_fp) >> 2));
     b->hero_scale_y_fp = (int16_t)(b->hero_scale_y_fp + ((FP_ONE - b->hero_scale_y_fp) >> 2));
 
@@ -926,7 +1071,7 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
         if (e->alive) e->anim_frame++;
     }
 
-    if (just_pressed & PAD_A) b->timed_buffer = 6;
+    if (just_pressed & PAD_A) b->timed_buffer = 9;
     else if (b->timed_buffer > 0) b->timed_buffer--;
 
     actor = &st->party[b->active_slot];
@@ -1064,26 +1209,73 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
         }
 
         case BPHASE_PLAYER_WINDUP: {
-            const uint16_t dur = 12;
+            const uint16_t dur = 28;
+            HearthBattleEnemy *e = &b->enemies[b->selected_enemy];
             int p_idx;
-            b->hero_x = (int16_t)(b->hero_home_x - sin_arc(b->phase_timer, dur, 8));
-            b->hero_scale_x_fp = 290;
-            b->hero_scale_y_fp = 215;
+            if (actor->slot == 2) {
+                /* Lumina levitates upward in a luminous crescent orbit */
+                int16_t ox = (int16_t)((HEARTH_SIN64[(b->phase_timer * 2u) & 63u] * 8) >> 7);
+                b->hero_x = (int16_t)(b->hero_home_x - 4 + ox);
+                b->hero_y = (int16_t)(b->hero_home_y - sin_arc(b->phase_timer, dur, 18));
+                b->hero_scale_x_fp = 240;
+                b->hero_scale_y_fp = 276;
+                if ((b->phase_timer % 6u) == 0u) {
+                    spawn_particle(st, 3, (int16_t)(b->hero_x + hearth_prng_range(&st->prng, -8, 8)),
+                        (int16_t)(b->hero_y - 12), 0, -60, 14, 2, 3, 15, true);
+                }
+            } else if (actor->slot == 1) {
+                /* Bramblekit coils deeply like a spring with solar sparks */
+                b->hero_x = (int16_t)(b->hero_home_x - sin_arc(b->phase_timer, dur, 14));
+                b->hero_y = (int16_t)(b->hero_home_y - ((b->active_action == 1) ? sin_arc(b->phase_timer, dur, 10) : 0));
+                b->hero_scale_x_fp = 315;
+                b->hero_scale_y_fp = 195;
+                if ((b->phase_timer % 5u) == 0u) {
+                    spawn_particle(st, 3, b->hero_x, (int16_t)(b->hero_y - 6),
+                        hearth_prng_range(&st->prng, -90, 60), -110, 14, 2, 3, 11, true);
+                }
+            } else {
+                /* Rowan steps back & raises Locket Staff with golden heart glow */
+                b->hero_x = (int16_t)(b->hero_home_x - sin_arc(b->phase_timer, dur, 10));
+                b->hero_y = (int16_t)(b->hero_home_y - sin_arc(b->phase_timer, dur, 6));
+                b->hero_scale_x_fp = 285;
+                b->hero_scale_y_fp = 225;
+                if ((b->phase_timer % 7u) == 0u) {
+                    spawn_particle(st, 5, b->hero_x, (int16_t)(b->hero_y - 14), 0, -90, 16, 2, 3, 11, true);
+                }
+            }
+            if (b->phase_timer == 14) {
+                b->hero_flash_frames = 3;
+                if (b->active_action == 1 && !actor->skill_is_heal) {
+                    spawn_burst(st, 3, b->hero_x, (int16_t)(b->hero_y - 10), 7, 3, (actor->slot == 2) ? 15 : 11, true);
+                }
+            }
             if (b->phase_timer >= dur) {
                 if (b->active_action == 1 && actor->skill_is_heal) {
                     for (p_idx = 0; p_idx < 3; p_idx++) {
                         st->party[p_idx].hp = (int16_t)((st->party[p_idx].hp + 38 > st->party[p_idx].max_hp) ? st->party[p_idx].max_hp : st->party[p_idx].hp + 38);
                     }
                     push_sfx(st, SFX_HEAL);
-                    spawn_burst(st, 5, b->hero_home_x, (int16_t)(b->hero_home_y - 10), 14, 0, 4, true);
+                    set_battle_vfx(b, BVFX_HEAL_BLOOM, 28, b->hero_home_x, (int16_t)(b->hero_home_y - 10), b->hero_home_x, b->hero_home_y);
+                    spawn_burst(st, 5, b->hero_home_x, (int16_t)(b->hero_home_y - 10), 16, 0, 4, true);
                     spawn_ftext(st, b->hero_home_x, (int16_t)(b->hero_home_y - 30), "+38 HP!", 0, 4, false);
                     b->hero_x = b->hero_home_x;
+                    b->hero_y = b->hero_home_y;
                     begin_enemy_turn(b);
                 } else {
+                    uint16_t ldur = (b->active_action == 1) ? 40u : 36u;
                     b->phase = BPHASE_PLAYER_LUNGE;
                     b->phase_timer = 0;
                     b->timed_result = 0;
                     b->timed_buffer = 0;
+                    if (actor->slot == 0) {
+                        set_battle_vfx(b, BVFX_STAFF_ARC, ldur, b->hero_home_x, (int16_t)(b->hero_home_y - 10), e->home_x, (int16_t)(e->home_y - 12));
+                    } else if (actor->slot == 1) {
+                        set_battle_vfx(b, (b->active_action == 1) ? BVFX_SOLAR_METEOR : BVFX_ACORN_SPIN,
+                            ldur, b->hero_home_x, (int16_t)(b->hero_home_y - 10), e->home_x, (int16_t)(e->home_y - 12));
+                    } else {
+                        set_battle_vfx(b, (b->active_action == 1) ? BVFX_PRISM_NOVA : BVFX_STAR_BOLT,
+                            ldur, (int16_t)(b->hero_home_x + 12), (int16_t)(b->hero_home_y - 16), e->home_x, (int16_t)(e->home_y - 14));
+                    }
                 }
             }
             break;
@@ -1091,18 +1283,59 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
 
         case BPHASE_PLAYER_LUNGE: {
             HearthBattleEnemy *e = &b->enemies[b->selected_enemy];
-            const uint16_t dur = 18;
+            uint16_t dur = (b->active_action == 1) ? 40u : 36u;
             int16_t dest_x = (actor->slot == 2)
-                ? (int16_t)((b->hero_home_x + e->home_x) / 2 - 12)
+                ? (int16_t)((b->hero_home_x + e->home_x) / 2 - 20)
                 : (int16_t)(e->home_x - 24);
-            int16_t dest_y = (actor->slot == 2) ? (int16_t)(b->hero_home_y - 6) : e->home_y;
-            uint16_t win = (st->tuning.timed_hit_window_f < 4) ? 4 : st->tuning.timed_hit_window_f;
+            int16_t dest_y = (actor->slot == 2) ? (int16_t)(b->hero_home_y - 14) : e->home_y;
+            int16_t arc_h;
+            uint16_t win = (st->tuning.timed_hit_window_f < 6) ? 6 : st->tuning.timed_hit_window_f;
             uint16_t sweet_start = (dur > win) ? (uint16_t)(dur - win) : 1;
 
+            if (actor->slot == 1 && b->active_action == 1) {
+                /* Sea-of-Stars Solar Slam: soaring high meteor vault! */
+                arc_h = 56;
+            } else if (actor->slot == 1) {
+                /* Acorn Rush: kinetic spinning dash arc */
+                arc_h = 26;
+            } else if (actor->slot == 2) {
+                /* Lumina hovers upward while projecting comet / nova */
+                arc_h = (b->active_action == 1) ? 28 : 16;
+            } else {
+                /* Rowan graceful leaping staff strike */
+                arc_h = 22;
+            }
+
             b->hero_x = (int16_t)(b->hero_home_x + ((dest_x - b->hero_home_x) * (int16_t)b->phase_timer) / (int16_t)dur);
-            b->hero_y = (int16_t)(b->hero_home_y + ((dest_y - b->hero_home_y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, 14));
-            b->hero_scale_x_fp = 230;
-            b->hero_scale_y_fp = 282;
+            b->hero_y = (int16_t)(b->hero_home_y + ((dest_y - b->hero_home_y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, arc_h));
+
+            if (actor->slot == 1) {
+                /* Squash & stretch spin rhythm */
+                b->hero_scale_x_fp = ((b->phase_timer & 4u) != 0u) ? 290 : 220;
+                b->hero_scale_y_fp = ((b->phase_timer & 4u) != 0u) ? 225 : 295;
+                if ((b->phase_timer & 3u) == 0u) {
+                    spawn_particle(st, 3, b->hero_x, (int16_t)(b->hero_y - 8), -50, 20, 12,
+                        (b->active_action == 1) ? 3 : 2, 3, 11, true);
+                }
+            } else if (actor->slot == 2) {
+                b->hero_scale_x_fp = 235;
+                b->hero_scale_y_fp = 285;
+                /* Update curving comet/nova position */
+                b->vfx_x = (int16_t)(b->hero_x + ((e->home_x - b->hero_x) * (int16_t)b->phase_timer) / (int16_t)dur);
+                b->vfx_y = (int16_t)((b->hero_y - 12) + (((e->home_y - 12) - (b->hero_y - 12)) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, (b->active_action == 1) ? 34 : 22));
+                if ((b->phase_timer & 3u) == 0u) {
+                    spawn_particle(st, 3, b->vfx_x, b->vfx_y, -30, -20, 12, 2, 3, 15, true);
+                }
+            } else {
+                b->hero_scale_x_fp = 230;
+                b->hero_scale_y_fp = 282;
+                b->vfx_x = (int16_t)(b->hero_x + 8);
+                b->vfx_y = (int16_t)(b->hero_y - 10);
+            }
+            if (actor->slot == 1) {
+                b->vfx_x = b->hero_x;
+                b->vfx_y = (int16_t)(b->hero_y - 8);
+            }
 
             b->ring.active = true;
             b->ring.is_parry = false;
@@ -1117,7 +1350,7 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
                     b->timed_result = 1;
                     b->ring.result = 1;
                     b->timed_buffer = 0;
-                } else if (b->phase_timer + 4 >= sweet_start) {
+                } else if (b->phase_timer + 6 >= sweet_start) {
                     b->timed_result = 2;
                     b->ring.result = 2;
                     b->timed_buffer = 0;
@@ -1133,10 +1366,11 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
         }
 
         case BPHASE_PLAYER_IMPACT: {
-            uint16_t late = (uint16_t)((st->tuning.timed_hit_window_f >> 1) + 2);
+            uint16_t late = (uint16_t)((st->tuning.timed_hit_window_f >> 1) + 3);
             bool any_alive;
             if (b->phase_timer <= late && b->timed_result == 0 && b->timed_buffer > 0) {
                 b->timed_result = 1;
+                b->ring.result = 1;
                 b->timed_buffer = 0;
                 b->phase = BPHASE_PLAYER_FOLLOWUP;
                 b->phase_timer = 0;
@@ -1144,7 +1378,7 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
                 spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 32), "PERFECT!", 3, 11, false);
                 break;
             }
-            if (b->phase_timer >= 10) {
+            if (b->phase_timer >= 20) {
                 b->ring.active = false;
                 any_alive = false;
                 for (i = 0; i < b->enemy_count; i++) if (b->enemies[i].alive) any_alive = true;
@@ -1162,14 +1396,22 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
         case BPHASE_PLAYER_FOLLOWUP: {
             uint8_t ti = b->enemies[b->selected_enemy].alive ? b->selected_enemy : first_alive_enemy(b);
             HearthBattleEnemy *e = &b->enemies[ti];
-            const uint16_t dur = 16;
+            const uint16_t dur = 30;
             int16_t base_x = (actor->slot == 2) ? (int16_t)(b->hero_home_x + 36) : (int16_t)(e->home_x - 24);
-            b->hero_x = (int16_t)(base_x - sin_arc(b->phase_timer, dur, 14));
-            b->hero_y = (int16_t)(e->home_y - sin_arc(b->phase_timer, dur, 26));
-            b->hero_scale_x_fp = 310;
-            b->hero_scale_y_fp = 210;
+            /* Sea-of-Stars acrobatic rebound somersault & diving finisher! */
+            b->hero_x = (int16_t)(base_x - sin_arc(b->phase_timer, dur, 22));
+            b->hero_y = (int16_t)(e->home_y - sin_arc(b->phase_timer, dur, 40));
+            b->hero_scale_x_fp = (b->phase_timer < 15) ? 235 : 325;
+            b->hero_scale_y_fp = (b->phase_timer < 15) ? 295 : 200;
 
-            if (b->phase_timer == 10) {
+            if (b->phase_timer == 14) {
+                /* Apex gleam before diving slam */
+                b->hero_flash_frames = 4;
+                spawn_burst(st, 3, b->hero_x, (int16_t)(b->hero_y - 10), 8, 3, 11, true);
+                set_battle_vfx(b, (actor->slot == 2) ? BVFX_PRISM_NOVA : BVFX_SOLAR_METEOR,
+                    16, b->hero_x, (int16_t)(b->hero_y - 8), e->home_x, (int16_t)(e->home_y - 12));
+            }
+            if (b->phase_timer == 21) {
                 b->selected_enemy = ti;
                 resolve_player_strike(st, true);
             }
@@ -1181,10 +1423,10 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
         }
 
         case BPHASE_PLAYER_RETURN: {
-            const uint16_t dur = 12;
+            const uint16_t dur = 18;
             bool all_dead;
             b->hero_x = (int16_t)(b->hero_x + ((b->hero_home_x - b->hero_x) * (int16_t)b->phase_timer) / (int16_t)dur);
-            b->hero_y = (int16_t)(b->hero_y + ((b->hero_home_y - b->hero_y) * (int16_t)b->phase_timer) / (int16_t)dur);
+            b->hero_y = (int16_t)(b->hero_y + ((b->hero_home_y - b->hero_y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, 12));
             if (b->phase_timer >= dur) {
                 b->hero_x = b->hero_home_x;
                 b->hero_y = b->hero_home_y;
@@ -1257,38 +1499,49 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
             b->timed_buffer = 0;
             if (e->charge_turns == 1) {
                 copy_str_safe(b->banner, sizeof(b->banner), e->special_name);
-                b->banner_frames = 44;
+                b->banner_frames = 60;
+            } else {
+                copy_str_safe(b->banner, sizeof(b->banner), "INCOMING! READY PARRY!");
+                b->banner_frames = 36;
             }
             break;
         }
 
         case BPHASE_ENEMY_TELEGRAPH: {
             HearthBattleEnemy *e = &b->enemies[b->enemy_turn_idx];
-            const uint16_t dur = 20;
-            e->x = (int16_t)(e->home_x + sin_arc(b->phase_timer, dur, 9));
-            e->scale_x_fp = 290;
-            e->scale_y_fp = 215;
-            if (b->phase_timer == 8) {
-                spawn_burst(st, 3, (int16_t)(e->x - 6), (int16_t)(e->y - 14), 5, 3, 10, true);
+            const uint16_t dur = 38;
+            int16_t jitter = ((b->phase_timer > 18) && ((b->phase_timer & 2u) != 0u)) ? 2 : 0;
+            e->x = (int16_t)(e->home_x + sin_arc(b->phase_timer, dur, 14) + jitter);
+            e->y = (int16_t)(e->home_y - ((e->charge_turns == 1) ? sin_arc(b->phase_timer, dur, 10) : 0));
+            e->scale_x_fp = 310;
+            e->scale_y_fp = 200;
+            if (b->phase_timer == 10 || b->phase_timer == 24) {
+                e->flash_frames = 3;
+                spawn_burst(st, 3, (int16_t)(e->x - 6), (int16_t)(e->y - 14), 6, 3, (e->charge_turns == 1) ? 4 : 10, true);
+                if (b->phase_timer == 10) push_sfx(st, SFX_ENEMY_ALERT);
             }
             if (b->phase_timer >= dur) {
                 b->phase = BPHASE_ENEMY_LUNGE;
                 b->phase_timer = 0;
                 b->timed_result = 0;
                 b->timed_buffer = 0;
+                set_battle_vfx(b, BVFX_ENEMY_CLAW, 34, e->home_x, (int16_t)(e->home_y - 12), b->hero_home_x, (int16_t)(b->hero_home_y - 12));
             }
             break;
         }
 
         case BPHASE_ENEMY_LUNGE: {
             HearthBattleEnemy *e = &b->enemies[b->enemy_turn_idx];
-            const uint16_t dur = 16;
+            const uint16_t dur = 32;
             int16_t dest_x = (int16_t)(b->hero_home_x + 24);
-            uint16_t win = (st->tuning.parry_window_f < 4) ? 4 : st->tuning.parry_window_f;
+            int16_t arc_h = (e->charge_turns == 1 || e->is_boss) ? 30 : 18;
+            uint16_t win = (st->tuning.parry_window_f < 6) ? 6 : st->tuning.parry_window_f;
             uint16_t sweet_start = (dur > win) ? (uint16_t)(dur - win) : 1;
 
             e->x = (int16_t)(e->home_x + ((dest_x - e->home_x) * (int16_t)b->phase_timer) / (int16_t)dur);
-            e->y = (int16_t)(e->home_y + ((b->hero_home_y - e->home_y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, 10));
+            e->y = (int16_t)(e->home_y + ((b->hero_home_y - e->home_y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, arc_h));
+            b->vfx_x = (int16_t)(e->x - 6);
+            b->vfx_y = (int16_t)(e->y - 10);
 
             b->ring.active = true;
             b->ring.is_parry = true;
@@ -1308,12 +1561,16 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
                 b->phase = BPHASE_ENEMY_IMPACT;
                 b->phase_timer = 0;
                 resolve_enemy_hit(st, e);
+                if (b->timed_result == 1) {
+                    set_battle_vfx(b, BVFX_GUARD_SHIELD, 20, b->hero_home_x, (int16_t)(b->hero_home_y - 12), e->x, e->y);
+                    e->x = (int16_t)(e->x + 14);
+                }
             }
             break;
         }
 
         case BPHASE_ENEMY_IMPACT: {
-            if (b->phase_timer >= 12) {
+            if (b->phase_timer >= 20) {
                 b->ring.active = false;
                 b->phase = BPHASE_ENEMY_RETURN;
                 b->phase_timer = 0;
@@ -1323,10 +1580,10 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
 
         case BPHASE_ENEMY_RETURN: {
             HearthBattleEnemy *e = &b->enemies[b->enemy_turn_idx];
-            const uint16_t dur = 12;
+            const uint16_t dur = 16;
             int healthy, p_idx;
             e->x = (int16_t)(e->x + ((e->home_x - e->x) * (int16_t)b->phase_timer) / (int16_t)dur);
-            e->y = (int16_t)(e->y + ((e->home_y - e->y) * (int16_t)b->phase_timer) / (int16_t)dur);
+            e->y = (int16_t)(e->y + ((e->home_y - e->y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, 8));
             if (b->phase_timer >= dur) {
                 e->x = e->home_x;
                 e->y = e->home_y;
@@ -1925,7 +2182,7 @@ static void emit_oam(
 ) {
     uint16_t idx;
 #if defined(HEARTH_TARGET_SNES)
-    (void)p; (void)frame; (void)dir; (void)sx_fp; (void)sy_fp; (void)aura; (void)rot_deg;
+    (void)p; (void)sx_fp; (void)sy_fp; (void)aura; (void)rot_deg;
     idx = (uint16_t)g_hearth.ppu.oam_count;
     if (idx >= HEARTH_MAX_OAM) return;
     g_hearth.ppu.oam_count = (uint8_t)(idx + 1u);
@@ -1933,7 +2190,13 @@ static void emit_oam(
     g_hearth.ppu.oam[idx].y = y;
     g_hearth.ppu.oam[idx].sort_y = sort_y;
     g_hearth.ppu.oam[idx].sprite_id = sprite_id;
-    g_hearth.ppu.oam[idx].flags = (uint8_t)(flags | ((layer >= 2u) ? OAM_FLAG_LAYER2 : 0u));
+    g_hearth.ppu.oam[idx].flags = (uint8_t)(
+        flags |
+        (((uint8_t)(dir & 3u)) << OAM_FLAG_DIR_SHIFT) |
+        ((frame & 1u) ? OAM_FLAG_STEP_BIT : 0u) |
+        ((frame != 0u) ? OAM_FLAG_WALK_BIT : 0u) |
+        ((layer >= 2u) ? OAM_FLAG_LAYER2 : 0u)
+    );
 #else
     HearthOamSprite *o;
     idx = (uint16_t)p->oam_count;
@@ -1960,7 +2223,7 @@ static void emit_oam_std(
 ) {
     uint16_t idx;
 #if defined(HEARTH_TARGET_SNES)
-    (void)p; (void)frame; (void)dir;
+    (void)p;
     idx = (uint16_t)g_hearth.ppu.oam_count;
     if (idx >= HEARTH_MAX_OAM) return;
     g_hearth.ppu.oam_count = (uint8_t)(idx + 1u);
@@ -1968,7 +2231,13 @@ static void emit_oam_std(
     g_hearth.ppu.oam[idx].y = y;
     g_hearth.ppu.oam[idx].sort_y = sort_y;
     g_hearth.ppu.oam[idx].sprite_id = sprite_id;
-    g_hearth.ppu.oam[idx].flags = (uint8_t)(flags | ((layer >= 2u) ? OAM_FLAG_LAYER2 : 0u));
+    g_hearth.ppu.oam[idx].flags = (uint8_t)(
+        flags |
+        (((uint8_t)(dir & 3u)) << OAM_FLAG_DIR_SHIFT) |
+        ((frame & 1u) ? OAM_FLAG_STEP_BIT : 0u) |
+        ((frame != 0u) ? OAM_FLAG_WALK_BIT : 0u) |
+        ((layer >= 2u) ? OAM_FLAG_LAYER2 : 0u)
+    );
 #else
     HearthOamSprite *o;
     idx = (uint16_t)p->oam_count;
@@ -1996,7 +2265,11 @@ static void emit_oam_std(
         g_hearth.ppu.oam[(idx)].y = (vy); \
         g_hearth.ppu.oam[(idx)].sort_y = (vsort); \
         g_hearth.ppu.oam[(idx)].sprite_id = (vsid); \
-        g_hearth.ppu.oam[(idx)].flags = (uint8_t)((vfl) | (((vlay) >= 2u) ? OAM_FLAG_LAYER2 : 0u)); \
+        g_hearth.ppu.oam[(idx)].flags = (uint8_t)((vfl) | \
+            (((uint8_t)((vdir) & 3u)) << OAM_FLAG_DIR_SHIFT) | \
+            (((vfr) & 1u) ? OAM_FLAG_STEP_BIT : 0u) | \
+            (((vfr) != 0u) ? OAM_FLAG_WALK_BIT : 0u) | \
+            (((vlay) >= 2u) ? OAM_FLAG_LAYER2 : 0u)); \
     } while (0)
 #else
 #define OAM_SET_IDX(p, idx, vx, vy, vsid, vfr, vdir, vfl, vsx, vsy, vaura, vlay, vsort, vrot) \
@@ -2268,6 +2541,41 @@ static void build_battle_ppu_oam(HearthState *st, HearthPpuPacket *p) {
     sort_ppu_oam(p, (int16_t)HP.oam_count);
 }
 
+static void build_intro_ppu_oam(HearthState *st, HearthPpuPacket *p) {
+    uint16_t fc16 = (uint16_t)HS.frame_count;
+    int16_t cx = (int16_t)(HP.width >> 1);
+    int16_t bob = (int16_t)((HEARTH_SIN64[(fc16 >> 1) & 63u] * 4) >> 7);
+    uint8_t sc = HS.intro.scene;
+    ST_UNUSED(st);
+
+    if (sc == 0u) {
+        /* Windmill sails turning peacefully over the valley ridge */
+        emit_oam(p, (int16_t)(cx - 56), 88, SPR_WINDMILL_BLADES, 0, DIR_DOWN, 0,
+            FP_ONE, FP_ONE, AURA_NONE, 2, 100, HS.windmill_rot);
+        emit_oam_std(p, (int16_t)(cx + 36), 124, SPR_HERO, (uint8_t)((fc16 >> 5) & 1u), DIR_LEFT, OAM_FLAG_SHADOW, 1, 124);
+        emit_oam_std(p, (int16_t)(cx + 54), (int16_t)(112 + bob), SPR_PIP, (uint8_t)((fc16 >> 3) & 1u), DIR_LEFT, OAM_FLAG_FLIP_X, 1, 120);
+    } else if (sc == 1u) {
+        /* Rowan & Pip beside the gleaming Brass Heart-Locket */
+        emit_oam_std(p, (int16_t)(cx - 26), 124, SPR_HERO, (uint8_t)((fc16 >> 4) & 3u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 124);
+        emit_oam_std(p, (int16_t)(cx + 26), (int16_t)(112 + bob), SPR_PIP, (uint8_t)((fc16 >> 3) & 1u), DIR_LEFT, OAM_FLAG_FLIP_X, 1, 120);
+        emit_oam_std(p, cx, (int16_t)(98 - bob), SPR_HEART_ORB, (uint8_t)((fc16 >> 2) & 1u), DIR_DOWN, 0, 2, 130);
+    } else if (sc == 2u) {
+        /* Kindred Familiars: Bramblekit of Sun & Lumina of Starlight orbiting the Locket */
+        int16_t orb_x = (int16_t)((HEARTH_SIN64[(fc16 >> 1) & 63u] * 38) >> 7);
+        int16_t orb_y = (int16_t)((HEARTH_SIN64[((fc16 >> 1) + 16u) & 63u] * 10) >> 7);
+        emit_oam_std(p, cx, 126, SPR_HERO, 0, DIR_DOWN, OAM_FLAG_SHADOW, 1, 126);
+        emit_oam_std(p, (int16_t)(cx - 42 + (orb_x >> 2)), (int16_t)(118 + (orb_y >> 1)), SPR_FAMILIAR_BRAMBLE, (uint8_t)((fc16 >> 4) & 1u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 118);
+        emit_oam_std(p, (int16_t)(cx + 42 - (orb_x >> 2)), (int16_t)(110 - (orb_y >> 1)), SPR_FAMILIAR_LUMINA, (uint8_t)((fc16 >> 3) & 1u), DIR_LEFT, OAM_FLAG_SHADOW, 1, 110);
+        emit_oam_std(p, cx, (int16_t)(92 + bob), SPR_HEART_ORB, (uint8_t)((fc16 >> 2) & 1u), DIR_DOWN, 0, 2, 130);
+    } else {
+        /* Briar Warden awakening over the ancient Stone Shrine */
+        emit_oam_std(p, (int16_t)(cx + 28), 124, SPR_BOSS_BRIAR, (uint8_t)((fc16 >> 4) & 1u), DIR_LEFT, OAM_FLAG_SHADOW, 1, 124);
+        emit_oam_std(p, (int16_t)(cx - 48), 126, SPR_HERO, (uint8_t)((fc16 >> 4) & 3u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 126);
+        emit_oam_std(p, (int16_t)(cx - 30), (int16_t)(114 + bob), SPR_PIP, (uint8_t)((fc16 >> 3) & 1u), DIR_RIGHT, 0, 1, 120);
+        emit_oam_std(p, (int16_t)(cx + 28), (int16_t)(88 - bob), SPR_EMOTE_SPARK, 0, DIR_DOWN, 0, 2, 140);
+    }
+}
+
 static void build_ppu_packet(HearthState *st) {
     HearthPpuPacket *p = &HS.ppu;
 
@@ -2280,12 +2588,15 @@ static void build_ppu_packet(HearthState *st) {
     HP.cam_y = FP_PX(HS.cam_fy);
     HP.shake_x = (HS.shake_frames > 0) ? (int8_t)hearth_prng_range(&HS.prng, -(int16_t)HS.shake_intensity, (int16_t)HS.shake_intensity) : 0;
     HP.shake_y = (HS.shake_frames > 0) ? (int8_t)hearth_prng_range(&HS.prng, -(int16_t)HS.shake_intensity, (int16_t)HS.shake_intensity) : 0;
+    HP.fade_level = (HS.mode == MODE_INTRO) ? HS.intro.fade : 0u;
     HP.flash_level = HS.flash_level;
     HP.hitstop_active = (HS.hitstop_frames > 0);
     HP.oam_count = 0;
     HP.interact_active = false;
 
-    if (HS.mode != MODE_BATTLE && HS.mode != MODE_BATTLE_VICTORY && HS.mode != MODE_BATTLE_DEFEAT) {
+    if (HS.mode == MODE_INTRO) {
+        build_intro_ppu_oam(st, p);
+    } else if (HS.mode != MODE_BATTLE && HS.mode != MODE_BATTLE_VICTORY && HS.mode != MODE_BATTLE_DEFEAT) {
         build_explore_ppu_oam(st, p);
     } else {
         build_battle_ppu_oam(st, p);
@@ -2325,15 +2636,13 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
     if (HS.npcs[2].emote_frames > 0) HS.npcs[2].emote_frames--; else HS.npcs[2].emote = 0;
 
     switch (HS.mode) {
+        case MODE_INTRO:
+            step_intro_cutscene(st, just_pressed);
+            break;
+
         case MODE_TITLE: {
-            uint16_t w, h;
-            uint8_t lim;
-            int16_t sx, sy;
-            get_ppu_dims(st, &w, &h, &lim);
-            sx = (int16_t)(14 * 16 + (HEARTH_SIN64[(HS.frame_count >> 3) & 63u] >> 1));
-            sy = (int16_t)(12 * 16 + (HEARTH_SIN64[((HS.frame_count >> 3) + 16u) & 63u] >> 2));
-            HS.cam_fx = TO_FP(iclamp16((int16_t)(sx - (int16_t)(w >> 1)), 0, (int16_t)(HEARTH_MAP_W * 16 - (int)w)));
-            HS.cam_fy = TO_FP(iclamp16((int16_t)(sy - (int16_t)(h >> 1)), 0, (int16_t)(HEARTH_MAP_H * 16 - (int)h)));
+            /* Calm, composed Windmill Hamlet framing (no sliding screen motion!) */
+            frame_title_camera(st);
             step_field_enemies(st, false);
 
             if (just_pressed & (PAD_UP | PAD_LEFT)) {
@@ -2345,7 +2654,7 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
             } else if (just_pressed & (PAD_A | PAD_START)) {
                 if (HS.title_cursor == 0) hearth_start_sandbox(st);
                 else if (HS.title_cursor == 1) hearth_start_battle(st, ENCOUNTER_SHRINE_BOSS, BIOME_SHRINE, -1);
-                else hearth_start_cutscene(st, CUTSCENE_INTRO_DEMO);
+                else hearth_start_intro(st);
             }
             break;
         }

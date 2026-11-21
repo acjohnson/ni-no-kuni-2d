@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include "../core/hearth_core.h"
+#include "pixel_art_data.h"
 
 /* ============================================================================
  * 1. VIRTUAL PPU FRAMEBUFFER & PIXEL HELPERS
@@ -1157,6 +1158,42 @@ static void spr_box(int ox, int oy, int rx, int ry, int rw, int rh,
     fill_rect_px(x0, y0, x1 - x0, y1 - y0, c);
 }
 
+static inline uint8_t hex_char_to_idx(char ch) {
+    if (ch >= '1' && ch <= '9') return (uint8_t)(ch - '0');
+    if (ch >= 'a' && ch <= 'f') return (uint8_t)(10 + (ch - 'a'));
+    if (ch >= 'A' && ch <= 'F') return (uint8_t)(10 + (ch - 'A'));
+    return 0u;
+}
+
+static void draw_pixel_art(const char *const *rows, int nrows, int ox, int oy,
+                           int anchor_x, int anchor_y, uint8_t pal_idx,
+                           bool flip_x, bool flash_white,
+                           int16_t sx_fp, int16_t sy_fp) {
+    if (nrows <= 0 || !rows[0]) return;
+    int ncols = (int)strlen(rows[0]);
+    for (int r = 0; r < nrows; r++) {
+        const char *line = rows[r];
+        for (int c = 0; c < ncols; c++) {
+            uint8_t idx = hex_char_to_idx(line[c]);
+            if (idx == 0u) continue;
+            uint32_t col = flash_white ? 0xFFFFFFFFu : pal_col(pal_idx, idx);
+            int rx = flip_x ? (anchor_x - 1 - c) : (c - anchor_x);
+            int ry = r - anchor_y;
+            if (sx_fp == FP_ONE && sy_fp == FP_ONE) {
+                put_px(ox + rx, oy + ry, col);
+            } else {
+                int x0 = ox + ((rx * sx_fp) >> 8);
+                int x1 = ox + (((rx + 1) * sx_fp) >> 8);
+                int y0 = oy + ((ry * sy_fp) >> 8);
+                int y1 = oy + (((ry + 1) * sy_fp) >> 8);
+                if (x1 <= x0) x1 = x0 + 1;
+                if (y1 <= y0) y1 = y0 + 1;
+                fill_rect_px(x0, y0, x1 - x0, y1 - y0, col);
+            }
+        }
+    }
+}
+
 static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t frame) {
     bool flip  = (o->flags & OAM_FLAG_FLIP_X) != 0;
     bool flash = (o->flags & OAM_FLAG_FLASH_WHITE) != 0;
@@ -1164,8 +1201,8 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
     int16_t sy = o->scale_y_fp ? o->scale_y_fp : FP_ONE;
 
     if (o->flags & OAM_FLAG_SHADOW) {
-        int r = (o->sprite_id == SPR_BOSS_BRIAR) ? 14 : 6;
-        fill_ellipse_alpha(ox, oy + 1, r, 3, 0xFF10141Au, 110);
+        int r = (o->sprite_id == SPR_BOSS_BRIAR) ? 15 : 6;
+        fill_ellipse_alpha(ox, oy + 1, r, 3, 0xFF10141Au, 115);
     }
 
     /* Heart-Mending Aura Rings */
@@ -1178,169 +1215,79 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
         draw_circle_outline(ox, oy - 7, pulse, pal_col(3, 3));
     }
 
-    int leg = (o->frame & 1u) ? 1 : -1;
-    int bob = (o->frame & 1u) ? -1 : 0;
+    int step = (int)(o->frame & 3u);
+    int bob = (step == 1 || step == 3) ? -1 : 0;
 
     switch (o->sprite_id) {
         case SPR_HERO: {
-            /* Rowan: auburn hair, golden scarf, emerald adventurer tunic */
-            uint32_t out  = pal_col(1, 1);
-            uint32_t skin = pal_col(1, 2);
-            uint32_t hair = pal_col(1, 4);
-            uint32_t tunic= pal_col(1, 6);
-            uint32_t tun2 = pal_col(1, 7);
-            uint32_t cape = pal_col(1, 8);
-            uint32_t gold = pal_col(1, 10);
-            uint32_t boot = pal_col(1, 15);
-            /* Boots */
-            spr_box(ox, oy, -4, -3 + (leg > 0 ? -1 : 0), 3, 3, boot, flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -3 + (leg < 0 ? -1 : 0), 3, 3, boot, flip, flash, sx, sy);
-            /* Tunic + cloak */
-            spr_box(ox, oy, -5, -10 + bob, 10, 7, out, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -9 + bob,  8, 6, tunic, flip, flash, sx, sy);
-            spr_box(ox, oy, -3, -9 + bob,  5, 4, tun2, flip, flash, sx, sy);
-            /* Scarf */
-            spr_box(ox, oy, -4, -10 + bob, 8, 2, cape, flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -10 + bob, 4, 2, gold, flip, flash, sx, sy);
-            /* Head & hair */
-            spr_box(ox, oy, -5, -18 + bob, 10, 8, out, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -17 + bob,  8, 7, skin, flip, flash, sx, sy);
-            spr_box(ox, oy, -5, -19 + bob, 10, 4, hair, flip, flash, sx, sy);
-            if (o->dir == DIR_UP) {
-                spr_box(ox, oy, -4, -16 + bob, 8, 5, hair, flip, flash, sx, sy);
-            } else if (o->dir == DIR_LEFT || o->dir == DIR_RIGHT) {
-                spr_box(ox, oy,  1, -14 + bob, 2, 2, out, flip, flash, sx, sy);
-            } else {
-                spr_box(ox, oy, -3, -14 + bob, 2, 2, out, flip, flash, sx, sy);
-                spr_box(ox, oy,  1, -14 + bob, 2, 2, out, flip, flash, sx, sy);
-            }
+            /* 16x18 Handcrafted Pixel-Art Rowan (all 4 directions + animated stride!) */
+            const char *const *head = HERO_HEAD_DOWN;
+            if (o->dir == DIR_UP)         head = HERO_HEAD_UP;
+            else if (o->dir == DIR_LEFT)  head = HERO_HEAD_LEFT;
+            else if (o->dir == DIR_RIGHT) head = HERO_HEAD_RIGHT;
+
+            int lx = (step == 1) ? -1 : (step == 3 ? 1 : 0);
+            int rx_leg = -lx;
+            /* Animated boots underneath body */
+            spr_box(ox, oy, -4 + lx, -3 + (step == 1 ? -1 : 0), 3, 3, pal_col(1, 15), flip, flash, sx, sy);
+            spr_box(ox, oy,  1 + rx_leg, -3 + (step == 3 ? -1 : 0), 3, 3, pal_col(1, 15), flip, flash, sx, sy);
+            draw_pixel_art(HERO_BODY, 7, ox, oy + bob, 8, 9, 1, flip, flash, sx, sy);
+            draw_pixel_art(head, 7, ox, oy + bob, 8, 16, 1, flip, flash, sx, sy);
             break;
         }
         case SPR_PIP: {
-            /* Pip: floating brass lantern fairy */
-            int fy = -10 + (HEARTH_SIN64[(frame >> 1) & 63u] >> 5);
-            spr_box(ox, oy, -5, fy - 4, 10, 9, pal_col(1, 1), flip, flash, sx, sy);
-            spr_box(ox, oy, -4, fy - 3,  8, 7, pal_col(1, 10), flip, flash, sx, sy);
-            spr_box(ox, oy, -3, fy - 2,  6, 5, pal_col(1, 11), flip, flash, sx, sy);
-            /* Wings */
-            int wf = ((frame >> 2) & 1u) ? -1 : 1;
-            spr_box(ox, oy, -8, fy - 2 + wf, 3, 4, pal_col(1, 14), flip, flash, sx, sy);
-            spr_box(ox, oy,  5, fy - 2 - wf, 3, 4, pal_col(1, 14), flip, flash, sx, sy);
-            /* Eyes */
-            spr_box(ox, oy, -2, fy - 1, 1, 2, pal_col(1, 1), flip, flash, sx, sy);
-            spr_box(ox, oy,  1, fy - 1, 1, 2, pal_col(1, 1), flip, flash, sx, sy);
+            int fy = -4 + (HEARTH_SIN64[(frame >> 1) & 63u] >> 5);
+            const char *const *pf = ((frame >> 3) & 1u) ? PIP_FRAME1 : PIP_FRAME0;
+            fill_ellipse_alpha(ox, oy + fy - 6, 8, 7, pal_col(1, 10), 42);
+            draw_pixel_art(pf, 12, ox, oy + fy, 8, 12, 1, flip, flash, sx, sy);
             break;
         }
         case SPR_FAMILIAR_BRAMBLE: {
-            /* Bramblekit: Leafy acorn knight with oak shield & sword */
-            spr_box(ox, oy, -6, -13 + bob, 12, 11, pal_col(1, 1), flip, flash, sx, sy);
-            spr_box(ox, oy, -5, -12 + bob, 10,  9, pal_col(1, 6), flip, flash, sx, sy);
-            spr_box(ox, oy, -5, -16 + bob, 10,  5, pal_col(1, 4), flip, flash, sx, sy); /* Acorn cap */
-            spr_box(ox, oy, -4, -15 + bob,  8,  3, pal_col(1, 5), flip, flash, sx, sy);
-            spr_box(ox, oy, -1, -18 + bob,  2,  3, pal_col(1, 7), flip, flash, sx, sy); /* Sprout */
-            /* Face */
-            spr_box(ox, oy, -3, -10 + bob,  6,  4, pal_col(1, 2), flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -9 + bob,   1,  2, pal_col(1, 1), flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -9 + bob,   1,  2, pal_col(1, 1), flip, flash, sx, sy);
-            /* Sword + Shield */
-            spr_box(ox, oy,  6, -14 + bob,  2, 10, pal_col(1, 14), flip, flash, sx, sy);
-            spr_box(ox, oy,  5,  -7 + bob,  4,  2, pal_col(1, 10), flip, flash, sx, sy);
-            spr_box(ox, oy, -9,  -9 + bob,  4,  7, pal_col(1, 10), flip, flash, sx, sy);
+            draw_pixel_art(BRAMBLE_ART, 13, ox, oy + bob, 10, 13, 1, flip, flash, sx, sy);
             break;
         }
         case SPR_FAMILIAR_LUMINA: {
-            /* Lumina: Floating radiant star-fox */
-            int fy = -4 + (HEARTH_SIN64[(frame >> 1) & 63u] >> 6);
-            spr_box(ox, oy, -6, -13 + fy, 12, 10, pal_col(1, 1), flip, flash, sx, sy);
-            spr_box(ox, oy, -5, -12 + fy, 10,  8, pal_col(1, 10), flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -10 + fy,  8,  5, pal_col(1, 11), flip, flash, sx, sy);
-            /* Fox ears */
-            spr_box(ox, oy, -6, -17 + fy,  3,  5, pal_col(1, 9), flip, flash, sx, sy);
-            spr_box(ox, oy,  3, -17 + fy,  3,  5, pal_col(1, 9), flip, flash, sx, sy);
-            /* Star gem & tail */
-            spr_box(ox, oy, -1, -13 + fy,  2,  2, pal_col(1, 13), flip, flash, sx, sy);
-            spr_box(ox, oy, -10, -10 + fy, 5,  5, pal_col(1, 14), flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -9 + fy,   1,  2, pal_col(1, 1), flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -9 + fy,   1,  2, pal_col(1, 1), flip, flash, sx, sy);
+            int fy = -3 + (HEARTH_SIN64[(frame >> 1) & 63u] >> 6);
+            fill_ellipse_alpha(ox, oy + fy - 6, 9, 6, pal_col(1, 13), 48);
+            draw_pixel_art(LUMINA_ART, 12, ox, oy + fy, 10, 12, 1, flip, flash, sx, sy);
             break;
         }
-        case SPR_NPC_ELDER:
-        case SPR_NPC_CLARA:
+        case SPR_NPC_ELDER: {
+            draw_pixel_art(NPC_ELDER_ART, 12, ox, oy, 8, 12, 2, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_NPC_CLARA: {
+            draw_pixel_art(NPC_CLARA_ART, 12, ox, oy, 8, 12, 2, flip, flash, sx, sy);
+            break;
+        }
         case SPR_NPC_GUARD: {
-            uint32_t robe = (o->sprite_id == SPR_NPC_ELDER) ? pal_col(2, 13)
-                          : (o->sprite_id == SPR_NPC_CLARA) ? pal_col(2, 10)
-                          : pal_col(2, 8);
-            uint32_t trim = (o->sprite_id == SPR_NPC_ELDER) ? pal_col(2, 7)
-                          : (o->sprite_id == SPR_NPC_CLARA) ? pal_col(2, 15)
-                          : pal_col(2, 5);
-            uint32_t hair = (o->sprite_id == SPR_NPC_ELDER) ? pal_col(2, 4)
-                          : (o->sprite_id == SPR_NPC_CLARA) ? pal_col(2, 7)
-                          : pal_col(2, 11);
-            spr_box(ox, oy, -5, -10, 10, 10, pal_col(2, 1), flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -9,   8,  8, robe, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -9,   8,  2, trim, flip, flash, sx, sy);
-            spr_box(ox, oy, -5, -18, 10,  8, pal_col(2, 1), flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -17,  8,  7, pal_col(2, 2), flip, flash, sx, sy);
-            spr_box(ox, oy, -5, -19, 10,  4, hair, flip, flash, sx, sy);
-            spr_box(ox, oy, -3, -14,  2,  2, pal_col(2, 1), flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -14,  2,  2, pal_col(2, 1), flip, flash, sx, sy);
-            if (o->sprite_id == SPR_NPC_GUARD) {
-                spr_box(ox, oy, 5, -17, 2, 16, pal_col(2, 5), flip, flash, sx, sy); /* Spear */
-            }
+            draw_pixel_art(NPC_GUARD_ART, 12, ox, oy, 8, 12, 2, flip, flash, sx, sy);
+            /* Guard spear */
+            spr_box(ox, oy, 6, -15, 2, 15, pal_col(2, 5), flip, flash, sx, sy);
+            spr_box(ox, oy, 6, -17, 2, 3,  pal_col(2, 15), flip, flash, sx, sy);
             break;
         }
         case SPR_ENEMY_GLOOMCAP: {
-            /* Purple mushroom imp */
-            spr_box(ox, oy, -5, -8 + bob,  10, 7, pal_col(3, 1), flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -7 + bob,   8, 5, pal_col(3, 5), flip, flash, sx, sy);
-            spr_box(ox, oy, -8, -16 + bob, 16, 9, pal_col(3, 1), flip, flash, sx, sy);
-            spr_box(ox, oy, -7, -15 + bob, 14, 7, pal_col(3, 3), flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -13 + bob,  3, 3, pal_col(3, 4), flip, flash, sx, sy);
-            spr_box(ox, oy,  2, -14 + bob,  3, 2, pal_col(3, 4), flip, flash, sx, sy);
-            spr_box(ox, oy, -3,  -6 + bob,  2, 2, pal_col(3, 10), flip, flash, sx, sy);
-            spr_box(ox, oy,  1,  -6 + bob,  2, 2, pal_col(3, 10), flip, flash, sx, sy);
+            draw_pixel_art(GLOOMCAP_ART, 11, ox, oy + bob, 10, 11, 3, flip, flash, sx, sy);
             break;
         }
         case SPR_ENEMY_THORNLING: {
-            /* Spiky bramble golem */
-            spr_box(ox, oy, -7, -14 + bob, 14, 13, pal_col(3, 1), flip, flash, sx, sy);
-            spr_box(ox, oy, -6, -13 + bob, 12, 11, pal_col(3, 6), flip, flash, sx, sy);
-            spr_box(ox, oy, -5, -12 + bob, 10,  7, pal_col(3, 7), flip, flash, sx, sy);
-            spr_box(ox, oy, -7, -17 + bob,  3,  4, pal_col(3, 8), flip, flash, sx, sy);
-            spr_box(ox, oy,  4, -17 + bob,  3,  4, pal_col(3, 8), flip, flash, sx, sy);
-            spr_box(ox, oy, -3, -9 + bob,   2,  2, pal_col(3, 11), flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -9 + bob,   2,  2, pal_col(3, 11), flip, flash, sx, sy);
+            draw_pixel_art(THORNLING_ART, 11, ox, oy + bob, 10, 11, 3, flip, flash, sx, sy);
             break;
         }
         case SPR_ENEMY_DUSK_MOTH: {
             int fy = -4 + (HEARTH_SIN64[(frame >> 1) & 63u] >> 5);
-            int flap = ((frame >> 2) & 1u) ? -2 : 2;
-            spr_box(ox, oy, -11, -13 + fy + flap, 7, 8, pal_col(3, 3), flip, flash, sx, sy);
-            spr_box(ox, oy,   4, -13 + fy + flap, 7, 8, pal_col(3, 3), flip, flash, sx, sy);
-            spr_box(ox, oy,  -9, -11 + fy + flap, 4, 4, pal_col(3, 15), flip, flash, sx, sy);
-            spr_box(ox, oy,   5, -11 + fy + flap, 4, 4, pal_col(3, 15), flip, flash, sx, sy);
-            spr_box(ox, oy,  -3, -14 + fy,        6, 10, pal_col(3, 1), flip, flash, sx, sy);
-            spr_box(ox, oy,  -2, -13 + fy,        4,  8, pal_col(3, 2), flip, flash, sx, sy);
-            spr_box(ox, oy,  -2, -12 + fy,        1,  2, pal_col(3, 11), flip, flash, sx, sy);
-            spr_box(ox, oy,   1, -12 + fy,        1,  2, pal_col(3, 11), flip, flash, sx, sy);
+            const char *const *mf = ((frame >> 2) & 1u) ? DUSK_MOTH_F1 : DUSK_MOTH_F0;
+            draw_pixel_art(mf, 7, ox, oy + fy, 11, 7, 3, flip, flash, sx, sy);
             break;
         }
         case SPR_BOSS_BRIAR: {
-            /* 32x32 Ancient Briar Warden Boss */
             int b = ((frame >> 4) & 1u) ? -1 : 0;
-            /* Roots & armored body */
-            spr_box(ox, oy, -14, -26 + b, 28, 25, pal_col(3, 1), flip, flash, sx, sy);
-            spr_box(ox, oy, -12, -24 + b, 24, 21, pal_col(3, 2), flip, flash, sx, sy);
-            spr_box(ox, oy, -10, -22 + b, 20, 16, pal_col(3, 6), flip, flash, sx, sy);
-            /* Antler crown */
-            spr_box(ox, oy, -14, -33 + b,  5,  9, pal_col(3, 7), flip, flash, sx, sy);
-            spr_box(ox, oy,   9, -33 + b,  5,  9, pal_col(3, 7), flip, flash, sx, sy);
-            spr_box(ox, oy,  -4, -31 + b,  8,  6, pal_col(3, 8), flip, flash, sx, sy);
-            /* Glowing core & eyes */
-            spr_box(ox, oy,  -6, -18 + b,  4,  3, pal_col(3, 11), flip, flash, sx, sy);
-            spr_box(ox, oy,   2, -18 + b,  4,  3, pal_col(3, 11), flip, flash, sx, sy);
-            spr_box(ox, oy,  -4, -11 + b,  8,  6, pal_col(3, 4), flip, flash, sx, sy);
-            spr_box(ox, oy,  -2, -10 + b,  4,  4, pal_col(3, 15), flip, flash, sx, sy);
+            draw_pixel_art(BOSS_BRIAR_ART, 21, ox, oy + b, 16, 21, 3, flip, flash, sx, sy);
+            /* Pulsing heart rune core */
+            if ((frame >> 3) & 1u) {
+                fill_ellipse_alpha(ox, oy - 9 + b, 5, 4, pal_col(3, 15), 110);
+            }
             break;
         }
         case SPR_WINDMILL_BLADES: {
@@ -1353,28 +1300,28 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
                 int ey = oy + (sa * 22) / 127;
                 draw_line_px(ox, oy, ex, ey, pal_col(0, 6));
                 draw_line_px(ox + 1, oy, ex + 1, ey, pal_col(0, 8));
-                int px = ox + (ca * 14) / 127 - (sa * 4) / 127;
-                int py = oy + (sa * 14) / 127 + (ca * 4) / 127;
+                int px = ox + (ca * 14) / 127 - (sa * 5) / 127;
+                int py = oy + (sa * 14) / 127 + (ca * 5) / 127;
+                int mx = ox + (ca * 8) / 127 - (sa * 4) / 127;
+                int my = oy + (sa * 8) / 127 + (ca * 4) / 127;
                 draw_line_px(px, py, ex, ey, pal_col(2, 15));
+                draw_line_px(mx, my, px, py, pal_col(2, 14));
             }
             fill_rect_px(ox - 2, oy - 2, 5, 5, pal_col(0, 6));
             fill_rect_px(ox - 1, oy - 1, 3, 3, pal_col(1, 10));
             break;
         }
         case SPR_WAYSTONE: {
-            uint32_t rune = ((frame >> 4) & 1u) ? pal_col(3, 15) : pal_col(0, 14);
-            spr_box(ox, oy, -6, -18, 12, 18, pal_col(0, 1), flip, flash, sx, sy);
-            spr_box(ox, oy, -5, -17, 10, 16, pal_col(0, 10), flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -16,  8, 14, pal_col(0, 11), flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -13,  4,  7, rune, flip, flash, sx, sy);
+            int fy = (HEARTH_SIN64[(frame >> 2) & 63u] >> 6);
+            spr_box(ox, oy, -5, -7, 10, 7, pal_col(0, 10), flip, flash, sx, sy);
+            spr_box(ox, oy, -4, -6,  8, 5, pal_col(0, 11), flip, flash, sx, sy);
+            fill_ellipse_alpha(ox, oy - 13 + fy, 7, 7, pal_col(3, 15), 70);
+            draw_pixel_art(WAYSTONE_CRYSTAL, 9, ox, oy - 8 + fy, 8, 9, 3, flip, flash, sx, sy);
             break;
         }
         case SPR_CHEST: {
-            bool opened = o->frame > 0;
-            spr_box(ox, oy, -7, -11, 14, 11, pal_col(2, 1), flip, flash, sx, sy);
-            spr_box(ox, oy, -6, -10, 12,  9, opened ? pal_col(2, 11) : pal_col(2, 12), flip, flash, sx, sy);
-            spr_box(ox, oy, -6,  -6, 12,  2, pal_col(2, 7), flip, flash, sx, sy);
-            spr_box(ox, oy, -2,  -7,  4,  3, opened ? pal_col(2, 1) : pal_col(2, 15), flip, flash, sx, sy);
+            const char *const *ch = (o->frame > 0) ? CHEST_OPEN : CHEST_CLOSED;
+            draw_pixel_art(ch, 10, ox, oy, 8, 10, 2, flip, flash, sx, sy);
             break;
         }
         case SPR_EMOTE_BANG:
@@ -1391,9 +1338,10 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
             break;
         }
         case SPR_HEART_ORB: {
-            fill_ellipse_alpha(ox, oy, 7, 7, pal_col(1, 10), 120);
-            fill_rect_px(ox - 3, oy - 3, 6, 6, pal_col(1, 10));
-            fill_rect_px(ox - 2, oy - 2, 4, 4, pal_col(1, 11));
+            int pulse = 6 + (((int)frame >> 3) & 2);
+            fill_ellipse_alpha(ox, oy, pulse + 2, pulse + 2, pal_col(1, 10), 100);
+            fill_ellipse_alpha(ox, oy, pulse, pulse, pal_col(1, 11), 165);
+            fill_rect_px(ox - 2, oy - 2, 4, 4, 0xFFFFFFFFu);
             break;
         }
         default:
@@ -1402,8 +1350,212 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
 }
 
 /* ============================================================================
- * 6. BATTLE ARENA, DIALOGUE, TITLE & HUD OVERLAYS (Rendered inside Virtual PPU)
+ * 6. EMERALD DRAGON RETRO INTRO, BATTLE ARENA, DIALOGUE, TITLE & HUD OVERLAYS
  * ============================================================================ */
+static void render_intro_scene(const HearthState *st, const HearthPpuPacket *ppu) {
+    int w = (int)g_ppu_w;
+    int h = (int)g_ppu_h;
+    uint8_t sc = st->intro.scene;
+    uint32_t f = ppu->frame_count;
+
+    /* Classic PC Engine / 16-bit Emerald Dragon panoramic storybook sky */
+    for (int y = 0; y < 146; y++) {
+        uint32_t col;
+        if (sc == 0) {
+            col = (y < 44) ? 0xFF141836u : (y < 88) ? 0xFF232C5Au : (y < 120) ? 0xFF43487Au : 0xFF7D5A76u;
+        } else if (sc == 1) {
+            col = (y < 44) ? 0xFF1B1638u : (y < 88) ? 0xFF34224Eu : (y < 120) ? 0xFF5D3458u : 0xFF8C535Eu;
+        } else if (sc == 2) {
+            col = (y < 44) ? 0xFF121C3Cu : (y < 88) ? 0xFF1D3562u : (y < 120) ? 0xFF2F5888u : 0xFF53849Eu;
+        } else {
+            col = (y < 44) ? 0xFF141126u : (y < 88) ? 0xFF241B3Cu : (y < 120) ? 0xFF38244Bu : 0xFF563254u;
+        }
+        fill_rect_px(0, y, w, 1, col);
+    }
+
+    /* Twinkling pixel starfield */
+    for (int i = 0; i < 28; i++) {
+        int sx = ((i * 53 + (int)(f >> 3)) % (w - 8)) + 4;
+        int sy = 22 + ((i * 29) % 72);
+        uint32_t scol = (((f >> 3) + (uint32_t)i) & 3u) == 0u ? 0xFFFFF6CCu : 0xFF9AB4E8u;
+        put_px(sx, sy, scol);
+    }
+
+    /* Crescent moon / radiant emblem per scene */
+    if (sc == 0) {
+        fill_ellipse_alpha(w - 58, 48, 16, 16, 0xFFFFEBA8u, 75);
+        fill_ellipse_alpha(w - 58, 48, 11, 11, 0xFFFFF6D6u, 255);
+        fill_ellipse_alpha(w - 53, 45, 9, 9, 0xFF1D244Cu, 255);
+        /* Silhouette windmill tower behind blades */
+        int wx = w / 2 - 36;
+        fill_rect_px(wx - 10, 74, 20, 48, 0xFF2C2F46u);
+        fill_rect_px(wx - 12, 68, 24, 7, 0xFF423A58u);
+        fill_rect_px(wx - 4, 108, 8, 14, 0xFFFFD878u);
+    } else if (sc == 1) {
+        /* Radiant Heart-Locket crest rays */
+        int cx = w / 2;
+        int cy = 84;
+        int pulse = 24 + (((int)f >> 2) & 7);
+        fill_ellipse_alpha(cx, cy, pulse + 14, pulse + 14, 0xFFF5B841u, 45);
+        draw_circle_outline(cx, cy, pulse, 0xFFFFEBA8u);
+        draw_circle_outline(cx, cy, pulse - 8, 0xFFE86A4Au);
+    } else if (sc == 2) {
+        /* Familiar Summoning Runic Circle (Sun & Starlight) */
+        int cx = w / 2;
+        fill_ellipse_alpha(cx, 128, 72, 16, 0xFF5AD2F4u, 55);
+        draw_circle_outline(cx, 104, 34 + (((int)f >> 3) & 3), 0xFFF5B841u);
+        draw_circle_outline(cx, 104, 22, 0xFF9AD8F4u);
+    } else {
+        /* Ancient Shrine ruins & ominous glow */
+        int cx = w / 2 + 44;
+        fill_rect_px(cx - 38, 62, 10, 62, 0xFF2D2B42u);
+        fill_rect_px(cx + 28, 62, 10, 62, 0xFF2D2B42u);
+        fill_rect_px(cx - 42, 56, 84, 8, 0xFF3E3856u);
+        fill_ellipse_alpha(cx, 106, 30, 26, 0xFFB044C8u, 55);
+    }
+
+    /* Distant rolling valley hills */
+    for (int x = 0; x < w; x++) {
+        int h1 = 104 + (HEARTH_SIN64[((x + (int)(f >> 2)) >> 3) & 63] >> 4);
+        int h2 = 120 + (HEARTH_SIN64[((x + (int)(f >> 1)) >> 2) & 63] >> 5);
+        fill_rect_px(x, h1, 1, 146 - h1, (sc == 3) ? 0xFF251E3Au : 0xFF2A3E4Eu);
+        fill_rect_px(x, h2, 1, 146 - h2, (sc == 3) ? 0xFF312848u : 0xFF3B6648u);
+    }
+    /* Foreground grassy terrace */
+    fill_rect_px(0, 128, w, 24, (sc == 3) ? 0xFF3A354Cu : 0xFF548E54u);
+    fill_rect_px(0, 128, w, 2,  (sc == 3) ? 0xFF625B7Au : 0xFF8CC870u);
+
+    /* OAM Cast Actors staged by hearth_core.c */
+    for (uint8_t i = 0; i < ppu->oam_count; i++) {
+        const HearthOamSprite *o = &ppu->oam[i];
+        draw_oam_sprite(o, o->x + ppu->shake_x, o->y + ppu->shake_y, ppu->frame_count);
+    }
+
+    /* Top cinema letterbox bar with chapter title & scene pips */
+    fill_rect_px(0, 0, w, 20, 0xFF0C0A14u);
+    fill_rect_px(0, 19, w, 1, 0xFFC79A52u);
+    if (st->intro.title && st->intro.title[0] != '\0') {
+        draw_text(10, 6, st->intro.title, 0xFFFFF1A8u, true);
+    }
+    for (int i = 0; i < 4; i++) {
+        uint32_t pcol = (i == (int)sc) ? 0xFFFFF1A8u : 0xFF554A66u;
+        fill_rect_px(w - 44 + i * 9, 7, 5, 5, pcol);
+    }
+
+    /* Bottom Emerald Dragon narrative box */
+    int ny = 152;
+    fill_rect_px(0, ny, w, h - ny, 0xFF0E0C17u);
+    fill_rect_px(0, ny, w, 1, 0xFFC79A52u);
+    draw_rect_outline(6, ny + 5, w - 12, h - ny - 10, 0xFF8B6A36u);
+
+    /* Typewriter split across line1 and line2 */
+    int total_vis = (int)st->intro.chars;
+    const char *l1 = st->intro.line1 ? st->intro.line1 : "";
+    const char *l2 = st->intro.line2 ? st->intro.line2 : "";
+    int len1 = (int)strlen(l1);
+    int v1 = (total_vis < len1) ? total_vis : len1;
+    int v2 = (total_vis > len1) ? (total_vis - len1) : 0;
+
+    char b1[96], b2[96];
+    if (v1 > 90) v1 = 90;
+    if (v2 > 90) v2 = 90;
+    memcpy(b1, l1, (size_t)v1); b1[v1] = '\0';
+    memcpy(b2, l2, (size_t)v2); b2[v2] = '\0';
+
+    draw_text_centered(w / 2, ny + 14, b1, 0xFFF7F0DCu, true);
+    draw_text_centered(w / 2, ny + 28, b2, 0xFFEADAB8u, true);
+
+    draw_text_centered(w / 2, h - 14, "[SPACE/A] NEXT   [ESC/START] SKIP INTRO", 0xFF9AD8F4u, false);
+}
+
+static void render_battle_vfx(const HearthState *st, const HearthPpuPacket *ppu) {
+    if (st->battle.vfx_kind == BVFX_NONE || st->battle.vfx_dur == 0) return;
+    int sx = st->battle.vfx_x + ppu->shake_x;
+    int sy = st->battle.vfx_y + ppu->shake_y;
+    int tx = st->battle.vfx_tx + ppu->shake_x;
+    int ty = st->battle.vfx_ty + ppu->shake_y;
+    int dur = (int)st->battle.vfx_dur;
+    int elap = dur - (int)st->battle.vfx_timer;
+    if (elap < 0) elap = 0;
+    int p = (dur > 0) ? (elap * 256) / dur : 256;
+    if (p > 256) p = 256;
+
+    switch (st->battle.vfx_kind) {
+        case BVFX_STAFF_ARC: {
+            int cx = sx + (((tx - sx) * p) >> 8);
+            int cy = sy + (((ty - sy) * p) >> 8) - ((HEARTH_SIN64[(p >> 3) & 31] * 14) >> 7);
+            draw_line_px(cx - 10, cy - 8, cx + 8, cy + 8, 0xFFFFF6CCu);
+            draw_line_px(cx - 8, cy - 10, cx + 10, cy + 6, 0xFFF5B841u);
+            draw_circle_outline(cx, cy, 8 + (p >> 5), 0xFFFFE082u);
+            break;
+        }
+        case BVFX_ACORN_SPIN: {
+            int cx = sx + (((tx - sx) * p) >> 8);
+            int cy = sy + (((ty - sy) * p) >> 8);
+            draw_circle_outline(cx, cy, 12, 0xFF8CD674u);
+            draw_circle_outline(cx, cy, 8, 0xFFFFF1A8u);
+            draw_line_px(cx - 11, cy, cx + 11, cy, 0xFFF5B841u);
+            draw_line_px(cx, cy - 11, cx, cy + 11, 0xFFF5B841u);
+            break;
+        }
+        case BVFX_SOLAR_METEOR: {
+            int cx = sx + (((tx - sx) * p) >> 8);
+            int cy = sy + (((ty - sy) * p) >> 8) - ((HEARTH_SIN64[(p >> 3) & 31] * 48) >> 7);
+            fill_ellipse_alpha(cx, cy, 14, 14, 0xFFE86A4Au, 115);
+            fill_ellipse_alpha(cx, cy, 8, 8, 0xFFFFE066u, 190);
+            draw_circle_outline(cx, cy, 16 + ((elap >> 1) & 3), 0xFFFFF6CCu);
+            if (p > 210) {
+                draw_circle_outline(tx, ty, (p - 210) * 1, 0xFFFFE066u);
+                draw_circle_outline(tx, ty, (p - 210) / 2 + 4, 0xFFE86A4Au);
+            }
+            break;
+        }
+        case BVFX_STAR_BOLT: {
+            int cx = sx + (((tx - sx) * p) >> 8);
+            int cy = sy + (((ty - sy) * p) >> 8) - ((HEARTH_SIN64[(p >> 3) & 31] * 26) >> 7);
+            draw_line_px(sx, sy, cx, cy, 0xFF5AD2F4u);
+            fill_ellipse_alpha(cx, cy, 9, 9, 0xFF5AD2F4u, 140);
+            fill_rect_px(cx - 3, cy - 3, 6, 6, 0xFFFFFFFFu);
+            draw_line_px(cx - 8, cy, cx + 8, cy, 0xFFFFF6CCu);
+            draw_line_px(cx, cy - 8, cx, cy + 8, 0xFFFFF6CCu);
+            break;
+        }
+        case BVFX_PRISM_NOVA: {
+            int r1 = 8 + ((p * 32) >> 8);
+            int r2 = 4 + ((p * 20) >> 8);
+            fill_ellipse_alpha(tx, ty, r2, r2, 0xFF5AD2F4u, 85);
+            draw_circle_outline(tx, ty, r1, 0xFFFFF1A8u);
+            draw_circle_outline(tx, ty, r2, 0xFF5AD2F4u);
+            draw_line_px(tx - r1, ty, tx + r1, ty, 0xFFFFF6CCu);
+            draw_line_px(tx, ty - r1, tx, ty + r1, 0xFF9AD8F4u);
+            break;
+        }
+        case BVFX_ENEMY_CLAW: {
+            int cx = sx + (((tx - sx) * p) >> 8);
+            int cy = sy + (((ty - sy) * p) >> 8);
+            for (int k = -1; k <= 1; k++) {
+                draw_line_px(cx - 10, cy - 8 + k * 4, cx + 10, cy + 8 + k * 4, 0xFFE85272u);
+            }
+            break;
+        }
+        case BVFX_GUARD_SHIELD: {
+            int r = 14 + ((p * 10) >> 8);
+            fill_ellipse_alpha(sx, sy, r - 2, r, 0xFF5AD2F4u, 80);
+            draw_circle_outline(sx, sy, r, 0xFFFFFFFFu);
+            draw_circle_outline(sx, sy, r - 3, 0xFF5AD2F4u);
+            break;
+        }
+        case BVFX_HEAL_BLOOM: {
+            int r = 10 + ((p * 18) >> 8);
+            fill_ellipse_alpha(sx, sy, r, r / 2 + 4, 0xFF74D680u, 75);
+            draw_circle_outline(sx, sy - (elap >> 1), r / 2 + 4, 0xFFFFF1A8u);
+            break;
+        }
+        default:
+            break;
+    }
+}
+
 static void render_battle_scene(const HearthState *st, const HearthPpuPacket *ppu) {
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
@@ -1456,6 +1608,9 @@ static void render_battle_scene(const HearthState *st, const HearthPpuPacket *pp
         draw_oam_sprite(o, o->x + ppu->shake_x, o->y + ppu->shake_y, ppu->frame_count);
     }
 
+    /* Sea-of-Stars Choreographed Battle VFX */
+    render_battle_vfx(st, ppu);
+
     /* Enemy HP bars, Target Arrow, and Spell Lock Badges */
     for (uint8_t i = 0; i < st->battle.enemy_count; i++) {
         const HearthBattleEnemy *e = &st->battle.enemies[i];
@@ -1506,52 +1661,61 @@ static void render_battle_scene(const HearthState *st, const HearthPpuPacket *pp
         }
     }
 
-    /* Timed Hit / Parry Converging Timing Ring */
+    /* Timed Hit / Parry Converging Timing Ring (Clearer & Wider Sweet Spot) */
     if (st->battle.ring.active) {
         int rx = st->battle.ring.x + ppu->shake_x;
         int ry = st->battle.ring.y + ppu->shake_y;
         int rem = 256 - (int)st->battle.ring.progress_fp;
         if (rem < 0) rem = 0;
-        int outer_r = 9 + (rem * 24) / 256;
+        int outer_r = 10 + (rem * 28) / 256;
         bool in_sweet = st->battle.ring.progress_fp >= st->battle.ring.sweet_start_fp;
         uint32_t ring_col = in_sweet ? 0xFFFFF1A8u
                           : (st->battle.ring.is_parry ? 0xFF5AD2F4u : 0xFFF5B841u);
-        draw_circle_outline(rx, ry, 9, in_sweet ? 0xFFFFFFFFu : 0xFFE8B43Cu);
-        draw_circle_outline(rx, ry, outer_r, ring_col);
         if (in_sweet) {
-            draw_circle_outline(rx, ry, outer_r - 1, 0xFFFFFFFFu);
-            draw_text_centered(rx, ry - 20, st->battle.ring.is_parry ? "[A] PARRY!" : "[A] STRIKE!", 0xFFFFF1A8u, true);
+            fill_ellipse_alpha(rx, ry, 12, 12, st->battle.ring.is_parry ? 0xFF5AD2F4u : 0xFFF5B841u, 75);
+        }
+        draw_circle_outline(rx, ry, 10, in_sweet ? 0xFFFFFFFFu : 0xFFE8B43Cu);
+        draw_circle_outline(rx, ry, outer_r, ring_col);
+        draw_circle_outline(rx, ry, outer_r - 1, ring_col);
+        if (in_sweet) {
+            draw_text_centered(rx, ry - 22, st->battle.ring.is_parry ? ">> [SPACE] PARRY! <<" : ">> [SPACE] STRIKE! <<", 0xFFFFF1A8u, true);
+        } else {
+            draw_text_centered(rx, ry - 22, st->battle.ring.is_parry ? "WAIT TO PARRY..." : "TIME [SPACE]...", 0xFF9AD8F4u, true);
         }
     }
 
     /* Top Action Banner */
     if (st->battle.banner_frames > 0 && st->battle.banner[0] != '\0') {
-        fill_rect_alpha(w / 2 - 96, 6, 192, 14, 0xFF14111Du, 215);
-        draw_rect_outline(w / 2 - 96, 6, 192, 14, 0xFFE8B43Cu);
+        fill_rect_alpha(w / 2 - 104, 6, 208, 14, 0xFF14111Du, 215);
+        draw_rect_outline(w / 2 - 104, 6, 208, 14, 0xFFE8B43Cu);
         draw_text_centered(w / 2, 10, st->battle.banner, 0xFFFFF6CCu, true);
     }
 
     /* Bottom Classic 16-Bit JRPG Battle HUD Bar */
-    int hud_y = h - 56;
-    fill_rect_alpha(4, hud_y, w - 8, 52, 0xFF161322u, 236);
-    draw_rect_outline(4, hud_y, w - 8, 52, 0xFFE8B852u);
-    draw_rect_outline(5, hud_y + 1, w - 10, 50, 0xFF5C4A28u);
+    int hud_y = h - 64;
+    fill_rect_alpha(4, hud_y, w - 8, 60, 0xFF161322u, 238);
+    draw_rect_outline(4, hud_y, w - 8, 60, 0xFFE8B852u);
+    draw_rect_outline(5, hud_y + 1, w - 10, 58, 0xFF5C4A28u);
 
-    /* Top Row inside HUD: Horizontal Battle Commands (A/D or Left/Right selects) */
+    /* Explicit Controls Hint Bar so players always know how to switch familiars! */
+    const HearthPartyMember *act_pm = &st->party[st->battle.active_slot];
+    draw_text(8, hud_y + 3, "[Q/E] SWAP FAMILIAR", 0xFF9AD8F4u, false);
+    draw_text(w - 118, hud_y + 3, "[W/S] TARGET [SPACE] ACT", 0xFFD0C4A8u, false);
+
+    /* Top Row inside HUD: Horizontal Battle Commands with Real Move Names */
     int tab_w = (w - 16) / 4;
     for (int i = 0; i < 4; i++) {
         int tx = 8 + i * tab_w;
-        int ty = hud_y + 4;
+        int ty = hud_y + 13;
         bool sel = (st->battle.selected_cmd == (uint8_t)i);
         fill_rect_px(tx, ty, tab_w - 3, 12, (sel && st->battle.phase == BPHASE_COMMAND) ? 0xFF3A2E58u : 0xFF211C31u);
         draw_rect_outline(tx, ty, tab_w - 3, 12, (sel && st->battle.phase == BPHASE_COMMAND) ? 0xFFFFF1A8u : 0xFF4A4262u);
 
-        char label[20];
+        char label[24];
         if (i == 0) {
-            snprintf(label, sizeof(label), "%sSTRIKE", sel ? ">" : "");
+            snprintf(label, sizeof(label), "%s%.9s", sel ? ">" : "", act_pm->basic_name);
         } else if (i == 1) {
-            const HearthPartyMember *pm = &st->party[st->battle.active_slot];
-            snprintf(label, sizeof(label), "%s%s %u", sel ? ">" : "", pm->skill_is_heal ? "HEAL" : "SKILL", (unsigned)pm->skill_cost);
+            snprintf(label, sizeof(label), "%s%.7s %u", sel ? ">" : "", act_pm->skill_name, (unsigned)act_pm->skill_cost);
         } else if (i == 2) {
             snprintf(label, sizeof(label), "%sGUARD", sel ? ">" : "");
         } else {
@@ -1565,12 +1729,12 @@ static void render_battle_scene(const HearthState *st, const HearthPpuPacket *pp
     for (int i = 0; i < 3; i++) {
         const HearthPartyMember *pm = &st->party[i];
         int cx = 8 + i * card_w;
-        int cy = hud_y + 19;
+        int cy = hud_y + 28;
         bool active = (st->battle.active_slot == (uint8_t)i);
-        fill_rect_px(cx, cy, card_w - 3, 30, active ? 0xFF2B2446u : 0xFF1D192Bu);
-        draw_rect_outline(cx, cy, card_w - 3, 30, active ? 0xFFF5B841u : 0xFF4C4562u);
+        fill_rect_px(cx, cy, card_w - 3, 29, active ? 0xFF2B2446u : 0xFF1D192Bu);
+        draw_rect_outline(cx, cy, card_w - 3, 29, active ? 0xFFF5B841u : 0xFF4C4562u);
 
-        char hdr[16];
+        char hdr[18];
         snprintf(hdr, sizeof(hdr), "%s%.8s", active ? "*" : "", pm->name);
         draw_text(cx + 3, cy + 3, hdr, active ? 0xFFFFF1A8u : 0xFFD0CCC4u, false);
 
@@ -1613,9 +1777,13 @@ static void render_dialogue_overlay(const HearthState *st) {
     if (!st->dialogue.active) return;
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
-    int bx = 8, by = h - 62, bw = w - 16, bh = 54;
+    int choice_rows = (st->dialogue.finished && st->dialogue.choice_count > 0)
+                    ? (int)st->dialogue.choice_count : 0;
+    int bh = 48 + choice_rows * 13;
+    if (bh > h - 26) bh = h - 26;
+    int bx = 8, by = h - bh - 6, bw = w - 16;
 
-    fill_rect_alpha(bx, by, bw, bh, 0xFF171423u, 236);
+    fill_rect_alpha(bx, by, bw, bh, 0xFF171423u, 240);
     draw_rect_outline(bx, by, bw, bh, 0xFFE8B852u);
     draw_rect_outline(bx + 1, by + 1, bw - 2, bh - 2, 0xFF544324u);
 
@@ -1627,16 +1795,64 @@ static void render_dialogue_overlay(const HearthState *st) {
         draw_text(bx + 11, by - 8, st->dialogue.speaker, 0xFFFFF1A8u, true);
     }
 
-    draw_text_wrapped(bx + 8, by + 8, bw - 16, st->dialogue.full_text, st->dialogue.visible_chars, 0xFFF4EEDCu);
+    /* Optional Mini Pixel Portrait on left (matched by speaker name) */
+    int text_x = bx + 8;
+    int text_w = bw - 16;
+    const char *spk = st->dialogue.speaker;
+    int portrait_id = 0;
+    if (spk && spk[0] != '\0') {
+        if (strstr(spk, "Rowan")) portrait_id = 1;
+        else if (strstr(spk, "Pip")) portrait_id = 2;
+        else if (strstr(spk, "Elder") || strstr(spk, "Wren")) portrait_id = 3;
+        else if (strstr(spk, "Clara")) portrait_id = 4;
+        else if (strstr(spk, "Guard") || strstr(spk, "Bram")) portrait_id = 5;
+    }
+    if (portrait_id != 0) {
+        int px = bx + 6;
+        int py = by + 7;
+        fill_rect_px(px, py, 24, 24, 0xFF231D36u);
+        draw_rect_outline(px, py, 24, 24, 0xFF8B6A36u);
+        int cx = px + 12;
+        int cy = py + 21;
+        switch (portrait_id) {
+            case 1:
+                draw_pixel_art(HERO_BODY, 7, cx, cy, 8, 9, 1, false, false, FP_ONE, FP_ONE);
+                draw_pixel_art(HERO_HEAD_DOWN, 7, cx, cy, 8, 16, 1, false, false, FP_ONE, FP_ONE);
+                break;
+            case 2:
+                draw_pixel_art(PIP_FRAME0, 12, cx, cy - 3, 8, 12, 1, false, false, FP_ONE, FP_ONE);
+                break;
+            case 3:
+                draw_pixel_art(NPC_ELDER_ART, 12, cx, cy - 2, 8, 12, 2, false, false, FP_ONE, FP_ONE);
+                break;
+            case 4:
+                draw_pixel_art(NPC_CLARA_ART, 12, cx, cy - 2, 8, 12, 2, false, false, FP_ONE, FP_ONE);
+                break;
+            case 5:
+                draw_pixel_art(NPC_GUARD_ART, 12, cx, cy - 2, 8, 12, 2, false, false, FP_ONE, FP_ONE);
+                break;
+            default:
+                break;
+        }
+        text_x = bx + 35;
+        text_w = bw - 43;
+    }
+
+    draw_text_wrapped(text_x, by + 7, text_w, st->dialogue.full_text, st->dialogue.visible_chars, 0xFFF4EEDCu);
 
     if (st->dialogue.finished) {
         if (st->dialogue.choice_count > 0) {
-            int cy = by + 30;
+            /* Stack choices vertically (full-width rows) so long labels NEVER overlap! */
+            int cy = by + bh - choice_rows * 13 - 4;
             for (uint8_t i = 0; i < st->dialogue.choice_count; i++) {
                 bool sel = (st->dialogue.selected_choice == i);
-                int cx = bx + 12 + (int)i * ((bw - 24) / st->dialogue.choice_count);
-                if (sel) draw_text(cx - 7, cy, ">", 0xFFFFF1A8u, true);
-                draw_text(cx, cy, st->dialogue.choices[i].label, sel ? 0xFFFFF1A8u : 0xFFA8A4B4u, true);
+                int row_y = cy + (int)i * 13;
+                if (sel) {
+                    fill_rect_px(bx + 6, row_y - 2, bw - 12, 11, 0xFF33294Eu);
+                    draw_rect_outline(bx + 6, row_y - 2, bw - 12, 11, 0xFFF5B841u);
+                    draw_text(bx + 10, row_y, ">", 0xFFFFF1A8u, true);
+                }
+                draw_text(bx + 18, row_y, st->dialogue.choices[i].label, sel ? 0xFFFFF1A8u : 0xFFB8B2C4u, true);
             }
         } else if ((st->frame_count >> 4) & 1u) {
             draw_text(bx + bw - 26, by + bh - 11, "[A]", 0xFFF5B841u, true);
@@ -1650,7 +1866,10 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
 
-    if (st->mode == MODE_BATTLE || st->mode == MODE_BATTLE_VICTORY || st->mode == MODE_BATTLE_DEFEAT) {
+    if (st->mode == MODE_INTRO) {
+        render_intro_scene(st, ppu);
+        render_particles_and_text(st, ppu);
+    } else if (st->mode == MODE_BATTLE || st->mode == MODE_BATTLE_VICTORY || st->mode == MODE_BATTLE_DEFEAT) {
         render_battle_scene(st, ppu);
         render_particles_and_text(st, ppu);
     } else {
@@ -1740,16 +1959,16 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
     /* Title Overlay */
     if (st->mode == MODE_TITLE) {
         fill_rect_alpha(0, 0, w, h, 0xFF100E1Bu, 145);
-        draw_text_scaled_centered(w / 2, 34, "PROJECT HEARTH", 0xFFFFF1A8u, 2);
-        draw_text_centered(w / 2, 56, "PURE C99 16-BIT JRPG ENGINE", 0xFF9AD8F4u, true);
+        draw_text_scaled_centered(w / 2, 32, "PROJECT HEARTH", 0xFFFFF1A8u, 2);
+        draw_text_centered(w / 2, 54, "CHRONICLE OF WINDMILL HAMLET", 0xFF9AD8F4u, true);
 
         static const char *OPTS[3] = {
             "PLAY WINDMILL HAMLET",
             "SHRINE BOSS BATTLE",
-            "CUTSCENE VM DEMO"
+            "REPLAY OPENING INTRO"
         };
-        int my = 96;
-        fill_rect_alpha(w / 2 - 84, my - 8, 168, 60, 0xFF161322u, 225);
+        int my = 92;
+        fill_rect_alpha(w / 2 - 84, my - 8, 168, 60, 0xFF161322u, 228);
         draw_rect_outline(w / 2 - 84, my - 8, 168, 60, 0xFFE8B852u);
         for (int i = 0; i < 3; i++) {
             bool sel = (st->title_cursor == (uint8_t)i);
@@ -1759,8 +1978,8 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
             }
             draw_text_centered(w / 2 + 4, my + i * 16, OPTS[i], sel ? 0xFFFFF1A8u : 0xFFD4CFC4u, true);
         }
-        draw_text_centered(w / 2, h - 32, "WASD/ARROWS MOVE  SPACE/Z ACT  SHIFT DASH", 0xFFC8D2DCu, true);
-        draw_text_centered(w / 2, h - 20, "F1 PPU  F2 CRT  F3 BOSS  F4 CUTSCENE  M MUTE", 0xFF9AD8F4u, true);
+        draw_text_centered(w / 2, h - 34, "WASD/ARROWS MOVE  SPACE/Z ACT  Q/E SWAP FAMILIAR", 0xFFC8D2DCu, true);
+        draw_text_centered(w / 2, h - 20, "F1 PPU  F2 CRT  F3 BOSS  F4 INTRO  M MUTE", 0xFF9AD8F4u, true);
     }
 
     /* Battle Victory / Defeat Banners */
@@ -1782,6 +2001,12 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
     if (ppu->flash_level > 0) {
         uint8_t a = (uint8_t)(ppu->flash_level * 12u);
         fill_rect_alpha(0, 0, w, h, 0xFFFFFFFFu, a);
+    }
+
+    /* Intro / Scene Crossfade Black Veil */
+    if (ppu->fade_level > 0) {
+        uint8_t a = (uint8_t)((ppu->fade_level >= 15u) ? 255u : (ppu->fade_level * 17u));
+        fill_rect_alpha(0, 0, w, h, 0xFF06050Cu, a);
     }
 
     /* Optional Toggleable CRT Scanlines (F2) */
@@ -1949,7 +2174,7 @@ int main(int argc, char **argv) {
                         hearth_start_battle(&g_state, ENCOUNTER_SHRINE_BOSS, BIOME_SHRINE, -1);
                         break;
                     case SDLK_F4:
-                        hearth_start_cutscene(&g_state, CUTSCENE_INTRO_DEMO);
+                        hearth_start_intro(&g_state);
                         break;
                     case SDLK_F5:
                         hearth_heal_party(&g_state);

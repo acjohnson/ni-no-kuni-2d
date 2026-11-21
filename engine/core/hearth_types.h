@@ -106,7 +106,8 @@ typedef enum {
     MODE_CUTSCENE       = 2,
     MODE_BATTLE         = 3,
     MODE_BATTLE_VICTORY = 4,
-    MODE_BATTLE_DEFEAT  = 5
+    MODE_BATTLE_DEFEAT  = 5,
+    MODE_INTRO          = 6
 } HearthMode;
 
 /* Battle Biomes & Lock Elements */
@@ -193,10 +194,14 @@ typedef enum {
 
 #define HEARTH_MAX_SFX_QUEUE 16
 
-/* OAM Flags */
+/* OAM Flags (bits 3..6 carry compact dir & walk-stride bits for 8-byte SNES OAM) */
 #define OAM_FLAG_FLIP_X      (1u << 0)
 #define OAM_FLAG_FLASH_WHITE (1u << 1)
 #define OAM_FLAG_SHADOW      (1u << 2)
+#define OAM_FLAG_DIR_SHIFT   3u
+#define OAM_FLAG_DIR_MASK    (3u << 3)
+#define OAM_FLAG_STEP_BIT    (1u << 5)
+#define OAM_FLAG_WALK_BIT    (1u << 6)
 #define OAM_FLAG_LAYER2      (1u << 7)
 
 /* Flat Hardware-Friendly OAM Sprite Entry */
@@ -207,7 +212,7 @@ typedef struct {
     int16_t  y;
     int16_t  sort_y;
     uint8_t  sprite_id;
-    uint8_t  flags;      /* bits 0..2 = OAM_FLAG_*, bit 7 = OAM_FLAG_LAYER2 */
+    uint8_t  flags;      /* 0..2=flip/flash/shadow, 3..4=dir, 5=step, 6=walk, 7=layer2 */
 } HearthOamSprite;
 #else
 typedef struct {
@@ -333,6 +338,19 @@ typedef struct {
     uint8_t  result;        /* 0=NONE, 1=PERFECT, 2=GOOD */
 } HearthTimedRing;
 
+/* Sea-of-Stars-Style Battle Choreography VFX Kinds */
+typedef enum {
+    BVFX_NONE         = 0,
+    BVFX_STAFF_ARC    = 1,
+    BVFX_ACORN_SPIN   = 2,
+    BVFX_SOLAR_METEOR = 3,
+    BVFX_STAR_BOLT    = 4,
+    BVFX_PRISM_NOVA   = 5,
+    BVFX_GUARD_SHIELD = 6,
+    BVFX_ENEMY_CLAW   = 7,
+    BVFX_HEAL_BLOOM   = 8
+} HearthBattleVfxKind;
+
 typedef struct {
     bool     active;
     uint8_t  biome;
@@ -350,7 +368,7 @@ typedef struct {
     uint8_t  selected_cmd;  /* 0=Strike, 1=Skill, 2=Guard, 3=Tonic */
     uint8_t  selected_enemy;
     uint8_t  active_action; /* 0=Strike, 1=Skill */
-    uint8_t  timed_buffer;  /* 6-frame early input buffer */
+    uint8_t  timed_buffer;  /* 9-frame early input buffer */
     uint8_t  timed_result;  /* 0=NONE, 1=PERFECT, 2=GOOD */
     uint8_t  enemy_turn_idx;
     uint8_t  enemy_count;
@@ -358,6 +376,11 @@ typedef struct {
     int8_t   field_enemy_idx;
     HearthBattleEnemy enemies[HEARTH_MAX_BATTLE_ENEMIES];
     HearthTimedRing   ring;
+    uint8_t  vfx_kind;
+    uint16_t vfx_timer;
+    uint16_t vfx_dur;
+    int16_t  vfx_x, vfx_y;
+    int16_t  vfx_tx, vfx_ty;
     char     banner[40];
     uint8_t  banner_frames;
     uint16_t combos;
@@ -365,6 +388,17 @@ typedef struct {
     uint16_t locks_broken;
     uint16_t exp_earned;
 } HearthBattleState;
+
+/* Retro Opening Cutscene State (Emerald Dragon / PC Engine CD Storybook Intro) */
+typedef struct {
+    uint8_t     scene;      /* 0..3 */
+    uint16_t    timer;      /* Frames elapsed in current scene */
+    uint8_t     fade;       /* 0=full bright .. 15=black */
+    uint16_t    chars;      /* Typewriter reveal count */
+    const char *title;
+    const char *line1;
+    const char *line2;
+} HearthIntroState;
 
 /* Dialogue & Choices */
 #define HEARTH_MAX_CHOICES 3
@@ -459,6 +493,7 @@ typedef struct {
     int16_t  cam_y;
     int8_t   shake_x;
     int8_t   shake_y;
+    uint8_t  fade_level;  /* 0=normal .. 15=solid black */
     uint8_t  flash_level; /* 0..16 */
     bool     hitstop_active;
     uint8_t  oam_count;

@@ -10,6 +10,7 @@ import {
   BattleBiome,
   BattleEnemyState,
   BattlePhase,
+  BattleVfxKind,
   CutsceneOpExport,
   DebugBox,
   DialogueChoice,
@@ -45,6 +46,8 @@ interface WasmExports {
   wasm_step(padBits: number): void;
   wasm_start_sandbox(): void;
   wasm_start_cutscene_demo(): void;
+  wasm_start_intro(): void;
+  wasm_skip_intro(): void;
   wasm_start_quick_battle(preset: number): void;
   wasm_return_to_title(): void;
   wasm_heal_party(): void;
@@ -93,6 +96,19 @@ const MODE_MAP: readonly GameMode[] = [
   'BATTLE',
   'BATTLE_VICTORY',
   'BATTLE_DEFEAT',
+  'INTRO',
+];
+
+const BVFX_MAP: readonly BattleVfxKind[] = [
+  'NONE',
+  'STAFF_ARC',
+  'ACORN_SPIN',
+  'SOLAR_METEOR',
+  'STAR_BOLT',
+  'PRISM_NOVA',
+  'ENEMY_CLAW',
+  'GUARD_SHIELD',
+  'HEAL_BLOOM',
 ];
 
 const SPRITE_MAP: readonly SpriteId[] = [
@@ -310,6 +326,14 @@ export class WasmHearthEngine {
 
   public startCutsceneDemo(): void {
     this.wasm.wasm_start_cutscene_demo();
+  }
+
+  public startIntro(): void {
+    this.wasm.wasm_start_intro();
+  }
+
+  public skipIntro(): void {
+    this.wasm.wasm_skip_intro();
   }
 
   public startQuickBattle(preset: EncounterPreset = 'SHRINE_BOSS'): void {
@@ -602,7 +626,7 @@ export class WasmHearthEngine {
       camY,
       shakeX: i32[s + 6],
       shakeY: i32[s + 7],
-      fadeLevel: 0,
+      fadeLevel: i32[s + 81],
       flashAlpha: Math.min(0.65, i32[s + 8] / 12),
       hitstopActive: i32[s + 9] !== 0,
       sprites,
@@ -615,6 +639,14 @@ export class WasmHearthEngine {
         x: i32[s + 13],
         y: i32[s + 14],
         label: this.readCString(i32[s + 15]),
+      },
+      intro: {
+        scene: i32[s + 82],
+        timer: i32[s + 83],
+        chars: i32[s + 84],
+        title: this.readCString(i32[s + 85]),
+        line1: this.readCString(i32[s + 86]),
+        line2: this.readCString(i32[s + 87]),
       },
       battle: {
         active: i32[s + 47] !== 0,
@@ -641,8 +673,17 @@ export class WasmHearthEngine {
           y: i32[s + 69],
           progress: i32[s + 70] / FP_ONE,
           sweetStart: i32[s + 71] / FP_ONE,
-          sweetEnd: 1.05,
+          sweetEnd: 1.08,
           result: ringResRaw === 1 ? 'PERFECT' : ringResRaw === 2 ? 'GOOD' : 'NONE',
+        },
+        vfx: {
+          kind: BVFX_MAP[i32[s + 88]] ?? 'NONE',
+          timer: i32[s + 89],
+          dur: i32[s + 90],
+          x: i32[s + 91],
+          y: i32[s + 92],
+          tx: i32[s + 93],
+          ty: i32[s + 94],
         },
         bannerText: this.readCString(i32[s + 73]),
         bannerFrames: i32[s + 74],

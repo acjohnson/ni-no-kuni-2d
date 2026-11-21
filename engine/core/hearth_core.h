@@ -73,6 +73,7 @@ typedef struct {
 
     /* Dialogue & Cutscene VM */
     HearthDialogue          dialogue;
+    HearthIntroState        intro;
     const HearthCutsceneOp *cs_script;
     uint16_t                cs_ip;
     uint16_t                cs_wait_frames;
@@ -81,7 +82,7 @@ typedef struct {
     HearthBattleState battle;
 
     /* Title Menu Cursor */
-    uint8_t title_cursor; /* 0=Start Sandbox, 1=Shrine Boss, 2=Cutscene Test */
+    uint8_t title_cursor; /* 0=Start Sandbox, 1=Shrine Boss, 2=Replay Opening Intro */
 
     /* Fixed-Capacity FX Pools */
     HearthParticle  particles[HEARTH_MAX_PARTICLES];
@@ -109,6 +110,8 @@ void hearth_default_tuning(HearthTuning *t);
 const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits);
 
 /* Direct Mode Launchers & Utility Hooks */
+void hearth_start_intro(HearthState *st);
+void hearth_skip_intro(HearthState *st);
 void hearth_start_sandbox(HearthState *st);
 void hearth_start_cutscene(HearthState *st, const HearthCutsceneOp *script);
 void hearth_start_battle(HearthState *st, uint8_t preset, uint8_t biome, int8_t field_idx);

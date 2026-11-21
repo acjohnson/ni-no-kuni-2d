@@ -74,13 +74,13 @@ export const BattleHudOverlay: React.FC<BattleHudOverlayProps> = ({
   ];
 
   return (
-    <div className="w-full shrink-0 border-t border-[#282E3F] bg-[#151924] px-4 py-3 text-[#ECE7DC]">
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+    <div className="w-full shrink-0 border-t-2 border-[#7C623B] bg-[#141620] px-4 py-2.5 text-[#ECE4D4]">
+      <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-12">
         {/* Familiar Hot-Swap Strip (Ni No Kuni L/R instant swap!) */}
         <div className="lg:col-span-5">
-          <div className="mb-1.5 flex items-center justify-between text-[11px] text-[#9AA3B8]">
-            <span>Active Party &amp; Familiars</span>
-            <span className="font-mono">Q / E or Click to Swap (Free)</span>
+          <div className="mb-1 flex items-center justify-between font-pixel text-[10px] text-[#A89E8A]">
+            <span>PARTY &amp; FAMILIARS</span>
+            <span className="text-[#8AC4E2]">[Q/E] OR CLICK SWAP</span>
           </div>
           <div className="grid grid-cols-3 gap-2">
             {party.map((member) => {
@@ -93,42 +93,43 @@ export const BattleHudOverlay: React.FC<BattleHudOverlayProps> = ({
                   type="button"
                   disabled={!isCommandReady || member.hp <= 0}
                   onClick={() => onSwapFamiliar(member.slot)}
-                  className={`flex flex-col rounded border p-2 text-left transition-colors ${
+                  className={`flex flex-col px-2 py-1.5 text-left font-pixel transition-colors ${
                     isActive
-                      ? 'border-[#D4942A] bg-[#21273A]'
-                      : 'border-[#272E40] bg-[#191E2C] hover:border-[#495572]'
+                      ? 'rpg-slot-active'
+                      : 'rpg-slot hover:border-[#8D7144]'
                   } disabled:opacity-60`}
                 >
                   <div className="flex items-baseline justify-between gap-1">
-                    <span className="truncate text-xs font-semibold text-[#F6F1E6]">
+                    <span className="truncate text-[11px] font-bold text-[#F6EFDF]">
+                      {isActive ? '>' : ''}
                       {member.name}
                     </span>
-                    <span className="font-mono text-[10px] text-[#D4942A]">
+                    <span className="text-[9px] text-[#E6B85C]">
                       {isActive ? 'OUT' : member.sign}
                     </span>
                   </div>
-                  <div className="mt-1.5 space-y-1 font-mono text-[10px] tabular-nums">
-                    <div className="flex justify-between text-[#C9D2E3]">
+                  <div className="mt-1 space-y-1 text-[9px] tabular-nums">
+                    <div className="flex justify-between text-[#C8D4B8]">
                       <span>HP</span>
                       <span>
                         {member.hp}/{member.maxHp}
                       </span>
                     </div>
-                    <div className="h-1 w-full overflow-hidden rounded-full bg-[#0E1118]">
+                    <div className="h-1.5 w-full bg-[#0C0E14] p-[1px]">
                       <div
-                        className="h-full bg-[#5DB068] transition-all"
+                        className="h-full bg-[#68B66B] transition-all"
                         style={{ width: `${hpPct}%` }}
                       />
                     </div>
-                    <div className="flex justify-between text-[#9CC7E8]">
+                    <div className="flex justify-between text-[#98C8E6]">
                       <span>MP</span>
                       <span>
                         {member.mp}/{member.maxMp}
                       </span>
                     </div>
-                    <div className="h-1 w-full overflow-hidden rounded-full bg-[#0E1118]">
+                    <div className="h-1.5 w-full bg-[#0C0E14] p-[1px]">
                       <div
-                        className="h-full bg-[#4EA5D9] transition-all"
+                        className="h-full bg-[#52A8DC] transition-all"
                         style={{ width: `${mpPct}%` }}
                       />
                     </div>
@@ -141,13 +142,13 @@ export const BattleHudOverlay: React.FC<BattleHudOverlayProps> = ({
 
         {/* 4 Tactile Battle Commands (overlays Timed Strike/Parry prompt in-place with zero height shift) */}
         <div className="relative lg:col-span-5">
-          <div className="mb-1.5 flex items-center justify-between text-[11px] text-[#9AA3B8]">
+          <div className="mb-1 flex items-center justify-between font-pixel text-[10px] text-[#A89E8A]">
             <span>
-              Commands · <span className="text-[#F5B841]">{active.name}</span>
+              COMMAND · <span className="text-[#F3C86A]">{active.name}</span>
             </span>
-            <span className="font-mono">Arrows + Space / Click</span>
+            <span>ARROWS + SPACE</span>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-1.5">
             {commands.map((cmd, idx) => {
               const Icon = cmd.icon;
               const isSelected = isCommandReady && selectedCommand === idx;
@@ -157,20 +158,20 @@ export const BattleHudOverlay: React.FC<BattleHudOverlayProps> = ({
                   type="button"
                   disabled={!isCommandReady || cmd.disabled}
                   onClick={() => onCommand(idx)}
-                  className={`flex items-center gap-2.5 rounded border px-3 py-2 text-left transition-colors ${
+                  className={`flex items-center gap-2 px-2.5 py-2 text-left font-pixel transition-colors ${
                     isSelected
-                      ? 'border-[#D4942A] bg-[#252C42] text-[#FFF6DE]'
-                      : 'border-[#272E40] bg-[#191E2C] text-[#D7DCE8] hover:border-[#4A5570]'
+                      ? 'rpg-slot-active text-[#FFF6DC]'
+                      : 'rpg-slot text-[#D6CEBC] hover:border-[#8D7144]'
                   } disabled:cursor-not-allowed disabled:opacity-45`}
                 >
                   <Icon
-                    className={`h-4 w-4 shrink-0 ${
-                      isSelected ? 'text-[#F5B841]' : 'text-[#8F98AE]'
+                    className={`h-3.5 w-3.5 shrink-0 ${
+                      isSelected ? 'text-[#F3C86A]' : 'text-[#8C8474]'
                     }`}
                   />
                   <div className="min-w-0">
-                    <div className="truncate text-xs font-semibold">{cmd.label}</div>
-                    <div className="truncate font-mono text-[10px] text-[#959FB5]">{cmd.sub}</div>
+                    <div className="truncate text-[11px] font-bold">{cmd.label}</div>
+                    <div className="truncate text-[9px] text-[#9E9584]">{cmd.sub}</div>
                   </div>
                 </button>
               );
@@ -179,38 +180,38 @@ export const BattleHudOverlay: React.FC<BattleHudOverlayProps> = ({
 
           {timedRingActive && (
             <div
-              className={`absolute inset-0 z-10 flex items-center justify-between gap-3 rounded-md border-2 px-4 py-3 shadow-lg ${
+              className={`rpg-window absolute inset-0 z-10 flex items-center justify-between gap-3 px-3.5 py-2 font-pixel ${
                 timedRingKind === 'OFFENSE'
-                  ? 'border-[#D4942A]/90 bg-[#1C2233]/96'
-                  : 'border-[#5AD2F4]/90 bg-[#182234]/96'
+                  ? '!border-[#E6B85C]'
+                  : '!border-[#6CC8E8]'
               }`}
             >
               <div className="min-w-0">
                 <div
-                  className={`font-mono text-[11px] font-semibold uppercase tracking-wider ${
-                    timedRingKind === 'OFFENSE' ? 'text-[#F5B841]' : 'text-[#5AD2F4]'
+                  className={`text-[11px] font-bold uppercase tracking-wider ${
+                    timedRingKind === 'OFFENSE' ? 'text-[#F5C864]' : 'text-[#6CC8E8]'
                   }`}
                 >
                   {timedRingKind === 'OFFENSE'
-                    ? 'Timed Strike Window'
-                    : 'Incoming Attack — Timed Parry'}
+                    ? 'TIMED STRIKE WINDOW!'
+                    : 'INCOMING ATTACK — PARRY!'}
                 </div>
-                <p className="mt-1 text-xs leading-snug text-[#FFF1C4]">
+                <p className="mt-1 text-[10px] leading-snug text-[#F6EBD0]">
                   {timedRingKind === 'OFFENSE'
-                    ? 'Tap SPACE / Z or Click right as the golden ring meets the target!'
-                    : 'Tap SPACE / Z or Click on impact (-55% DMG & +3 MP)!'}
+                    ? 'TAP [SPACE] OR CLICK AS THE RING CLOSES!'
+                    : 'TAP [SPACE] OR CLICK ON IMPACT (-55% DMG)!'}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={onTimedTap}
-                className={`shrink-0 rounded px-3.5 py-2 text-xs font-semibold text-[#151924] whitespace-nowrap transition-colors ${
+                className={`shrink-0 border-2 px-3 py-1.5 text-[11px] font-bold text-[#14121A] whitespace-nowrap transition-colors ${
                   timedRingKind === 'OFFENSE'
-                    ? 'bg-[#D4942A] hover:bg-[#E7AA40]'
-                    : 'bg-[#5AD2F4] hover:bg-[#7CE0FC]'
+                    ? 'border-[#FFF0B8] bg-[#DDA03A] hover:bg-[#F0B64E]'
+                    : 'border-[#D4F6FF] bg-[#5CC8EA] hover:bg-[#7CE0FC]'
                 }`}
               >
-                {timedRingKind === 'OFFENSE' ? 'Strike Now' : 'Parry Now'}
+                {timedRingKind === 'OFFENSE' ? 'STRIKE!' : 'PARRY!'}
               </button>
             </div>
           )}
@@ -218,7 +219,7 @@ export const BattleHudOverlay: React.FC<BattleHudOverlayProps> = ({
 
         {/* Target Enemy & Spell Lock Summary */}
         <div className="lg:col-span-2">
-          <div className="mb-1.5 text-[11px] text-[#9AA3B8]">Targets &amp; Locks</div>
+          <div className="mb-1 font-pixel text-[10px] text-[#A89E8A]">TARGETS &amp; LOCKS</div>
           <div className="space-y-1.5">
             {enemies.map((e, idx) => {
               const isTarget = e.alive && idx === selectedEnemy;
@@ -228,31 +229,30 @@ export const BattleHudOverlay: React.FC<BattleHudOverlayProps> = ({
                   type="button"
                   disabled={!isCommandReady || !e.alive}
                   onClick={() => onSelectEnemy(idx)}
-                  className={`w-full rounded border px-2.5 py-1.5 text-left transition-colors ${
+                  className={`w-full px-2 py-1.5 text-left font-pixel transition-colors ${
                     !e.alive
-                      ? 'border-[#222838] bg-[#141824] opacity-40'
+                      ? 'rpg-slot opacity-40'
                       : isTarget
-                        ? 'border-[#E04E4E] bg-[#261D26]'
-                        : 'border-[#272E40] bg-[#191E2C] hover:border-[#4A5570]'
+                        ? 'rpg-slot-active !border-[#D95C5C]'
+                        : 'rpg-slot hover:border-[#8D7144]'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-xs font-medium">
-                    <span className="truncate text-[#F6F1E6]">{e.name}</span>
-                    <span className="font-mono text-[10px] tabular-nums text-[#E98A8A]">
+                  <div className="flex items-center justify-between text-[10px] font-bold">
+                    <span className="truncate text-[#F6EFDF]">{e.name}</span>
+                    <span className="tabular-nums text-[#E88A8A]">
                       {e.hp}/{e.maxHp}
                     </span>
                   </div>
-                  <div className="mt-0.5 font-mono text-[10px] text-[#9AA3B8]">
+                  <div className="mt-0.5 text-[9px] text-[#A89E8A]">
                     {!e.alive
                       ? 'DEFEATED'
                       : e.staggered
-                        ? 'STAGGERED'
+                        ? 'STAGGERED!'
                         : e.locks.length > 0
-                          ? 'Locks: ' +
-                            e.locks
-                              .map((lk, li) => (e.brokenLocks[li] ? '—' : lk))
-                              .join(' · ')
-                          : 'Ready'}
+                          ? e.locks
+                              .map((lk, li) => (e.brokenLocks[li] ? '-' : lk))
+                              .join(' ')
+                          : 'READY'}
                   </div>
                 </button>
               );

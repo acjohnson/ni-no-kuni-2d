@@ -166,11 +166,19 @@ export default function App() {
     syncAfterUiAction();
   };
 
-  const handleStartCutscene = () => {
+  const handleStartIntro = () => {
     if (!engineRef.current) return;
     blurFocus();
     unlockAudio();
-    engineRef.current.startCutsceneDemo();
+    engineRef.current.startIntro();
+    syncAfterUiAction();
+  };
+
+  const handleSkipIntro = () => {
+    if (!engineRef.current) return;
+    blurFocus();
+    unlockAudio();
+    engineRef.current.skipIntro();
     syncAfterUiAction();
   };
 
@@ -268,10 +276,10 @@ export default function App() {
           </button>
           <button
             type="button"
-            onClick={handleStartCutscene}
+            onClick={handleStartIntro}
             className="whitespace-nowrap shrink-0 transition-colors hover:text-[#F6F1E6]"
           >
-            Cutscene Demo
+            Opening Intro
           </button>
           <button
             type="button"
@@ -339,91 +347,101 @@ export default function App() {
                 </div>
               )}
 
+              {/* INTRO MODE QUICK SKIP BUTTON (Keyboard Space/Enter/Esc also works) */}
+              {ui?.mode === 'INTRO' && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSkipIntro();
+                  }}
+                  className="rpg-slot font-pixel absolute top-3 right-3 z-20 px-2.5 py-1 text-[10px] tracking-wide text-[#F5D688] transition-colors hover:border-[#E7AA40] hover:text-[#FFF6DC]"
+                >
+                  SKIP &gt;&gt;
+                </button>
+              )}
+
               {/* TITLE SCREEN OVERLAY */}
               {ui?.mode === 'TITLE' && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-t from-[#11141E]/92 via-[#11141E]/62 to-[#11141E]/45 px-6 text-center">
-                  <div className="max-w-lg">
-                    <p className="font-mono text-xs tracking-wider text-[#F5B841]">
-                      16-BIT CUSTOM ENGINE VERTICAL SLICE · C99 WASM CORE
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-t from-[#0E1018]/88 via-[#0E1018]/52 to-[#0E1018]/35 px-5 text-center">
+                  <div className="rpg-window max-w-md px-6 py-5">
+                    <p className="font-pixel text-[10px] tracking-widest text-[#E5B85B]">
+                      CHRONICLE OF WINDMILL HAMLET
                     </p>
                     <h1
-                      className="mt-2 font-display text-4xl font-bold tracking-tight text-[#FBF7EE] sm:text-5xl"
+                      className="mt-2.5 font-pixel-title text-xl leading-snug tracking-tight text-[#FFF6DC] sm:text-2xl"
                       style={{ textWrap: 'balance' }}
                     >
-                      Project Hearth
+                      PROJECT HEARTH
                     </h1>
-                    <p className="mt-3 font-serif text-sm leading-relaxed text-[#D8D3C8] sm:text-base">
-                      Tactile 8-way sub-pixel exploration, fluid familiar hot-swapping, timed hits
-                      and parries, and bytecode cutscenes—driven directly by the native C99 core.
+                    <p className="mt-2.5 font-pixel text-[11px] leading-relaxed text-[#CFC8B8]">
+                      16-BIT STORYBOOK RPG · FAMILIAR SWAPPING &amp; TIMED COMBAT
                     </p>
 
-                    <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                    <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
                       <button
                         type="button"
                         onClick={handleStartSandbox}
-                        className="flex items-center gap-2 rounded-md bg-[#D4942A] px-5 py-2.5 text-sm font-semibold text-[#141721] whitespace-nowrap transition-colors hover:bg-[#E7AA40]"
+                        className="font-pixel flex items-center gap-2 border-2 border-[#F5D07A] bg-[#C98E32] px-4 py-2 text-xs font-bold text-[#14121A] whitespace-nowrap transition-colors hover:bg-[#E2A84A]"
                       >
-                        <Play className="h-4 w-4 fill-current" />
-                        Start Sandbox
+                        <Play className="h-3.5 w-3.5 fill-current" />
+                        START ADVENTURE
                       </button>
                       <button
                         type="button"
                         onClick={() => handleJumpBattle('SHRINE_BOSS')}
-                        className="flex items-center gap-2 rounded-md border border-[#404963] bg-[#1A1F2E]/90 px-4 py-2.5 text-sm font-medium text-[#F4EFE4] whitespace-nowrap transition-colors hover:border-[#D4942A]"
+                        className="rpg-slot font-pixel flex items-center gap-1.5 px-3.5 py-2 text-xs text-[#F2E9D4] whitespace-nowrap transition-colors hover:border-[#D4A454]"
                       >
-                        <Swords className="h-4 w-4 text-[#F5B841]" />
-                        Jump to Battle Arena
+                        <Swords className="h-3.5 w-3.5 text-[#F5B841]" />
+                        BOSS ARENA
                       </button>
                       <button
                         type="button"
-                        onClick={handleStartCutscene}
-                        className="flex items-center gap-2 rounded-md border border-[#404963] bg-[#1A1F2E]/90 px-4 py-2.5 text-sm font-medium text-[#F4EFE4] whitespace-nowrap transition-colors hover:border-[#5AD2F4]"
+                        onClick={handleStartIntro}
+                        className="rpg-slot font-pixel flex items-center gap-1.5 px-3.5 py-2 text-xs text-[#F2E9D4] whitespace-nowrap transition-colors hover:border-[#6CC8E8]"
                       >
-                        <Film className="h-4 w-4 text-[#5AD2F4]" />
-                        Cutscene Test
+                        <Film className="h-3.5 w-3.5 text-[#6CC8E8]" />
+                        REPLAY INTRO
                       </button>
                     </div>
 
-                    <div className="mt-5 flex flex-wrap items-center justify-center gap-3 font-mono text-[11px] text-[#AEB6C8]">
-                      <span>WASD / Arrows: Move</span>
-                      <span aria-hidden="true">·</span>
-                      <span>Shift: Dash</span>
-                      <span aria-hidden="true">·</span>
-                      <span>Space / Click: Interact &amp; Timed Hits</span>
-                      <span aria-hidden="true">·</span>
-                      <span>Q / E: Swap Familiar</span>
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-pixel text-[10px] text-[#ABA494]">
+                      <span>WASD/ARROWS: MOVE</span>
+                      <span>SHIFT: DASH</span>
+                      <span>SPACE: ACT/TIMED HIT</span>
+                      <span>Q/E: SWAP FAMILIAR</span>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* PAINTED PORTRAIT DIALOGUE & CUTSCENE OVERLAY */}
+              {/* COHESIVE 16-BIT STORYBOOK DIALOGUE OVERLAY */}
               {ui && ui.dialogue.active && (ui.mode === 'EXPLORE' || ui.mode === 'CUTSCENE') && (
                 <div
-                  className="absolute inset-x-3 bottom-3 z-20 rounded-md border-2 border-[#D4942A]/80 bg-[#171C2B]/96 p-3.5 shadow-2xl sm:inset-x-5 sm:bottom-4 sm:p-4"
+                  className="rpg-window absolute inset-x-3 bottom-2.5 z-20 px-3.5 py-3 sm:inset-x-4 sm:bottom-3.5"
                   onClick={handleCanvasClick}
                 >
-                  <div className="flex items-start gap-3.5 sm:gap-4">
+                  <div className="flex items-start gap-3">
                     <PortraitFrame
                       key={ui.dialogue.portrait}
                       portrait={ui.dialogue.portrait}
                       speaker={ui.dialogue.speaker}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-display text-sm font-semibold text-[#F5B841]">
+                      <div className="flex items-center justify-between gap-2 border-b border-[#3F3528] pb-1">
+                        <span className="font-pixel text-xs font-bold tracking-wide text-[#F3C86A]">
                           {ui.dialogue.speaker}
                         </span>
-                        <span className="font-mono text-[10px] text-[#8D97AE]">
-                          {ui.dialogue.finishedTyping ? 'Space / Click' : 'Typing...'}
+                        <span className="font-pixel text-[9px] text-[#9E9584]">
+                          {ui.dialogue.finishedTyping ? '[SPACE / CLICK]' : '...'}
                         </span>
                       </div>
-                      <p className="mt-1.5 font-serif text-sm leading-relaxed text-[#F4EFE4] sm:text-[15px]">
+                      <p className="mt-1.5 font-pixel text-xs leading-relaxed text-[#F2EBDC] sm:text-[13px]">
                         {ui.dialogue.fullText.slice(0, ui.dialogue.visibleChars)}
                       </p>
 
                       {ui.dialogue.finishedTyping && ui.dialogue.choices.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
+                        <div className="mt-2.5 flex flex-col gap-1.5">
                           {ui.dialogue.choices.map((ch, idx) => (
                             <button
                               key={`${ch.actionId}_${idx}`}
@@ -432,14 +450,14 @@ export default function App() {
                                 e.stopPropagation();
                                 handleSelectChoice(idx);
                               }}
-                              className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${
+                              className={`font-pixel flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[11px] transition-colors ${
                                 ui.dialogue.selectedChoice === idx
-                                  ? 'border-[#F5B841] bg-[#D4942A]/20 text-[#FFF3CE]'
-                                  : 'border-[#333C54] bg-[#1F2538] text-[#D7DCE8] hover:border-[#D4942A]'
+                                  ? 'rpg-slot-active text-[#FFF4CF]'
+                                  : 'rpg-slot text-[#CEC6B5] hover:border-[#B89152]'
                               }`}
                             >
-                              <ChevronRight className="h-3.5 w-3.5 text-[#F5B841]" />
-                              {ch.label}
+                              <ChevronRight className="h-3 w-3 shrink-0 text-[#F3C86A]" />
+                              <span>{ch.label}</span>
                             </button>
                           ))}
                         </div>
@@ -451,50 +469,50 @@ export default function App() {
 
               {/* BATTLE VICTORY / DEFEAT SUMMARY MODAL */}
               {ui && (ui.mode === 'BATTLE_VICTORY' || ui.mode === 'BATTLE_DEFEAT') && (
-                <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#10131C]/82 p-4">
-                  <div className="w-full max-w-sm rounded-lg border-2 border-[#D4942A]/80 bg-[#171C2B] p-5 text-center shadow-2xl">
-                    <h2 className="font-display text-2xl font-bold text-[#FBF7EE]">
-                      {ui.mode === 'BATTLE_VICTORY' ? 'Victory!' : 'Recovered at Waystone'}
+                <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#0C0E16]/78 p-4">
+                  <div className="rpg-window w-full max-w-sm p-5 text-center">
+                    <h2 className="font-pixel-title text-base text-[#FFF5D4]">
+                      {ui.mode === 'BATTLE_VICTORY' ? 'VICTORY!' : 'RECOVERED'}
                     </h2>
-                    <p className="mt-1 text-xs text-[#9AA3B8]">
+                    <p className="mt-2 font-pixel text-[11px] text-[#B8B0A0]">
                       {ui.mode === 'BATTLE_VICTORY'
-                        ? 'Smooth familiar work! Review your combat feel stats below.'
-                        : 'Your party was restored to full HP & MP at the Hamlet Waystone.'}
+                        ? 'SMOOTH FAMILIAR WORK!'
+                        : 'RESTORED AT THE HAMLET WAYSTONE.'}
                     </p>
 
                     {ui.mode === 'BATTLE_VICTORY' && (
-                      <div className="mt-4 grid grid-cols-3 gap-2 rounded border border-[#283044] bg-[#111520] p-3 font-mono text-xs tabular-nums">
+                      <div className="rpg-slot mt-3.5 grid grid-cols-3 gap-2 p-2.5 font-pixel text-[10px] tabular-nums">
                         <div>
-                          <div className="text-[10px] text-[#8B95AC]">Timed Hits</div>
-                          <div className="mt-0.5 text-base font-semibold text-[#F5B841]">
+                          <div className="text-[#9E9584]">TIMED HITS</div>
+                          <div className="mt-1 text-sm font-bold text-[#F5C45A]">
                             {ui.battleStats.combos}
                           </div>
                         </div>
                         <div>
-                          <div className="text-[10px] text-[#8B95AC]">Parries</div>
-                          <div className="mt-0.5 text-base font-semibold text-[#5AD2F4]">
+                          <div className="text-[#9E9584]">PARRIES</div>
+                          <div className="mt-1 text-sm font-bold text-[#6CC8E8]">
                             {ui.battleStats.parries}
                           </div>
                         </div>
                         <div>
-                          <div className="text-[10px] text-[#8B95AC]">Locks Broken</div>
-                          <div className="mt-0.5 text-base font-semibold text-[#74B461]">
+                          <div className="text-[#9E9584]">LOCKS</div>
+                          <div className="mt-1 text-sm font-bold text-[#7BC472]">
                             {ui.battleStats.locksBroken}
                           </div>
                         </div>
                       </div>
                     )}
 
-                    <div className="mt-5 flex items-center justify-center gap-2.5">
+                    <div className="mt-4 flex items-center justify-center gap-2.5">
                       <button
                         type="button"
                         onClick={() => {
                           engineRef.current?.uiFinishBattleSummary(false);
                           syncAfterUiAction();
                         }}
-                        className="rounded-md bg-[#D4942A] px-4 py-2 text-xs font-semibold text-[#141721] whitespace-nowrap hover:bg-[#E7AA40]"
+                        className="font-pixel border-2 border-[#F5D07A] bg-[#C98E32] px-3.5 py-1.5 text-xs font-bold text-[#14121A] whitespace-nowrap hover:bg-[#E2A84A]"
                       >
-                        Return to Field
+                        CONTINUE
                       </button>
                       <button
                         type="button"
@@ -502,10 +520,10 @@ export default function App() {
                           engineRef.current?.uiFinishBattleSummary(true);
                           syncAfterUiAction();
                         }}
-                        className="flex items-center gap-1.5 rounded-md border border-[#3B445E] bg-[#1E2436] px-3.5 py-2 text-xs font-medium text-[#ECE7DC] whitespace-nowrap hover:border-[#D4942A]"
+                        className="rpg-slot font-pixel flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#ECE4D2] whitespace-nowrap hover:border-[#D4A454]"
                       >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        Rematch
+                        <RotateCcw className="h-3 w-3" />
+                        REMATCH
                       </button>
                     </div>
                   </div>

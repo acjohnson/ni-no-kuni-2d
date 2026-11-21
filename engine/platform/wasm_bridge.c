@@ -10,7 +10,7 @@
 
 #define WASM_EXPORT(name) __attribute__((export_name(#name)))
 
-#define SCALAR_LEN       96
+#define SCALAR_LEN       112
 #define OAM_STRIDE       12
 #define PARTY_STRIDE     16
 #define ENEMY_STRIDE     28
@@ -266,6 +266,20 @@ static void sync_snapshot(void) {
     g_scalars[78] = b->exp_earned;
     g_scalars[79] = p_cnt;
     g_scalars[80] = f_cnt;
+    g_scalars[81] = p->fade_level;
+    g_scalars[82] = g_state.intro.scene;
+    g_scalars[83] = g_state.intro.timer;
+    g_scalars[84] = g_state.intro.chars;
+    g_scalars[85] = (int32_t)(uintptr_t)g_state.intro.title;
+    g_scalars[86] = (int32_t)(uintptr_t)g_state.intro.line1;
+    g_scalars[87] = (int32_t)(uintptr_t)g_state.intro.line2;
+    g_scalars[88] = b->vfx_kind;
+    g_scalars[89] = b->vfx_timer;
+    g_scalars[90] = b->vfx_dur;
+    g_scalars[91] = b->vfx_x;
+    g_scalars[92] = b->vfx_y;
+    g_scalars[93] = b->vfx_tx;
+    g_scalars[94] = b->vfx_ty;
 }
 
 static void inject_ui_pad(uint16_t mask) {
@@ -331,13 +345,27 @@ void wasm_start_quick_battle(uint32_t preset) {
     sync_snapshot();
 }
 
+WASM_EXPORT(wasm_start_intro)
+void wasm_start_intro(void) {
+    g_state.ppu.sfx_count = 0;
+    hearth_start_intro(&g_state);
+    append_ppu_sfx();
+    sync_snapshot();
+}
+
+WASM_EXPORT(wasm_skip_intro)
+void wasm_skip_intro(void) {
+    g_state.ppu.sfx_count = 0;
+    hearth_skip_intro(&g_state);
+    append_ppu_sfx();
+    sync_snapshot();
+}
+
 WASM_EXPORT(wasm_return_to_title)
 void wasm_return_to_title(void) {
-    g_state.mode = MODE_TITLE;
-    g_state.battle.active = false;
-    g_state.dialogue.active = false;
-    g_state.cam_override = false;
-    g_state.ppu.mode = MODE_TITLE;
+    g_state.ppu.sfx_count = 0;
+    hearth_skip_intro(&g_state);
+    append_ppu_sfx();
     sync_snapshot();
 }
 
@@ -440,7 +468,7 @@ void wasm_ui_battle_select_enemy(uint32_t idx) {
 
 WASM_EXPORT(wasm_ui_timed_tap)
 void wasm_ui_timed_tap(void) {
-    if (g_state.mode == MODE_BATTLE || g_state.dialogue.active) {
+    if (g_state.mode == MODE_BATTLE || g_state.mode == MODE_INTRO || g_state.dialogue.active) {
         inject_ui_pad(PAD_A);
         sync_snapshot();
     }

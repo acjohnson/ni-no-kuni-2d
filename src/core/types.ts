@@ -46,6 +46,7 @@ export const DIR_LEFT: Direction = 2;
 export const DIR_RIGHT: Direction = 3;
 
 export type GameMode =
+  | 'INTRO'
   | 'TITLE'
   | 'EXPLORE'
   | 'CUTSCENE'
@@ -258,11 +259,11 @@ export const DEFAULT_TUNING: EngineTuning = {
   dashSpeedFp: 614, // 2.4 px/frame
   accelFp: 128,
   followDistPx: 22,
-  hitstopNormalFrames: 3,
-  hitstopCritFrames: 7,
-  hitstopParryFrames: 5,
-  timedHitWindowFrames: 8,
-  parryWindowFrames: 9,
+  hitstopNormalFrames: 4,
+  hitstopCritFrames: 8,
+  hitstopParryFrames: 6,
+  timedHitWindowFrames: 15,
+  parryWindowFrames: 16,
   showHitboxes: false,
 };
 
@@ -362,6 +363,36 @@ export interface TimedRingVisual {
   result: 'NONE' | 'PERFECT' | 'GOOD' | 'MISS';
 }
 
+export type BattleVfxKind =
+  | 'NONE'
+  | 'STAFF_ARC'
+  | 'ACORN_SPIN'
+  | 'SOLAR_METEOR'
+  | 'STAR_BOLT'
+  | 'PRISM_NOVA'
+  | 'ENEMY_CLAW'
+  | 'GUARD_SHIELD'
+  | 'HEAL_BLOOM';
+
+export interface BattleVfxState {
+  kind: BattleVfxKind;
+  timer: number;
+  dur: number;
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+}
+
+export interface IntroState {
+  scene: number;
+  timer: number;
+  chars: number;
+  title: string;
+  line1: string;
+  line2: string;
+}
+
 export interface BattleRenderState {
   active: boolean;
   biome: BattleBiome;
@@ -381,6 +412,7 @@ export interface BattleRenderState {
   selectedEnemy: number;
   enemies: BattleEnemyState[];
   timedRing: TimedRingVisual;
+  vfx: BattleVfxState;
   bannerText: string;
   bannerFrames: number;
   comboCount: number;
@@ -432,6 +464,7 @@ export interface PpuFramePacket {
   particles: PpuParticle[];
   floatingTexts: FloatingText[];
   interactPrompt: InteractPrompt;
+  intro: IntroState;
   battle: BattleRenderState;
   debugBoxes: DebugBox[];
   sfxQueue: SfxId[];

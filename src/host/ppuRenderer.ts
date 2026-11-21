@@ -50,7 +50,9 @@ export class SoftwarePpuRenderer {
     ctx.clearRect(0, 0, packet.width, packet.height);
     ctx.translate(packet.shakeX, packet.shakeY);
 
-    if (
+    if (packet.mode === 'INTRO') {
+      this.renderIntroScene(ctx, packet, atlas);
+    } else if (
       packet.mode === 'BATTLE' ||
       packet.mode === 'BATTLE_VICTORY' ||
       packet.mode === 'BATTLE_DEFEAT'
@@ -66,7 +68,198 @@ export class SoftwarePpuRenderer {
       ctx.fillRect(-8, -8, packet.width + 16, packet.height + 16);
     }
 
+    // Hardware-style scene crossfade veil (0..15)
+    if (packet.fadeLevel > 0) {
+      const alpha = Math.min(1, packet.fadeLevel / 15);
+      ctx.fillStyle = `rgba(8, 7, 14, ${alpha.toFixed(3)})`;
+      ctx.fillRect(-8, -8, packet.width + 16, packet.height + 16);
+    }
+
     ctx.restore();
+  }
+
+  /* ========================================================================
+   * EMERALD DRAGON / PC ENGINE CD-STYLE 16-BIT STORYBOOK INTRO CUTSCENE
+   * ======================================================================== */
+  private renderIntroScene(
+    ctx: CanvasRenderingContext2D,
+    packet: PpuFramePacket,
+    atlas: PixelAtlas
+  ): void {
+    const { width, height, frameCount, intro } = packet;
+    const sc = intro.scene;
+
+    // 1. Rich Twilight / Storybook Sky Bands per scene
+    const skyPalettes: readonly (readonly string[])[] = [
+      ['#141938', '#222D5C', '#41477A', '#7A5975'], // Scene 0: Moonlit Windmill Hamlet
+      ['#1A1536', '#32204D', '#5B3358', '#8B535E'], // Scene 1: Radiant Heart-Locket
+      ['#101B3B', '#1C3460', '#2D5686', '#52839E'], // Scene 2: Sun & Starlight Familiars
+      ['#131024', '#231A3B', '#37234A', '#563154'], // Scene 3: Shadow of the Briar Warden
+    ];
+    const bands = skyPalettes[sc] ?? skyPalettes[0];
+    const bandH = 34;
+    bands.forEach((col, i) => {
+      ctx.fillStyle = col;
+      ctx.fillRect(0, 18 + i * bandH, width, bandH + 2);
+    });
+
+    // 2. Twinkling 16-bit Starfield
+    for (let i = 0; i < 32; i++) {
+      const sx = ((i * 53 + (frameCount >> 3)) % (width - 8)) + 4;
+      const sy = 22 + ((i * 29) % 72);
+      const bright = (((frameCount >> 3) + i) & 3) === 0;
+      ctx.fillStyle = bright ? '#FFF6CC' : '#9EB6EA';
+      ctx.fillRect(sx, sy, bright ? 2 : 1, 1);
+    }
+
+    // 3. Scene-specific iconic centerpiece backdrop
+    if (sc === 0) {
+      // Glowing crescent moon + evening clouds + Windmill tower silhouette
+      ctx.fillStyle = 'rgba(255, 236, 168, 0.22)';
+      ctx.beginPath();
+      ctx.arc(width - 56, 48, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#FFF5D0';
+      ctx.beginPath();
+      ctx.arc(width - 56, 48, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#1E2750';
+      ctx.beginPath();
+      ctx.arc(width - 51, 45, 9, 0, Math.PI * 2);
+      ctx.fill();
+
+      const wx = Math.round(width * 0.5) - 36;
+      ctx.fillStyle = '#2B2E46';
+      ctx.fillRect(wx - 11, 74, 22, 52);
+      ctx.fillStyle = '#403958';
+      ctx.fillRect(wx - 13, 68, 26, 7);
+      ctx.fillStyle = '#F5C45A';
+      ctx.fillRect(wx - 4, 108, 8, 14);
+    } else if (sc === 1) {
+      // Radiant Heart-Locket crest & golden sunbeams
+      const cx = Math.round(width * 0.5);
+      const cy = 84;
+      const pulse = 22 + Math.round(Math.sin(frameCount * 0.08) * 4);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(245, 184, 65, 0.28)';
+      ctx.lineWidth = 2;
+      for (let r = 0; r < 8; r++) {
+        const ang = (r * Math.PI) / 4 + frameCount * 0.01;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(ang) * 78, cy + Math.sin(ang) * 52);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = '#FFF1A8';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = '#E86A4A';
+      ctx.beginPath();
+      ctx.arc(cx, cy, pulse - 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    } else if (sc === 2) {
+      // Sun & Starlight Familiar Summoning Circle
+      const cx = Math.round(width * 0.5);
+      ctx.save();
+      ctx.fillStyle = 'rgba(90, 210, 244, 0.16)';
+      ctx.beginPath();
+      ctx.ellipse(cx, 128, 76, 15, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#F5B841';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, 102, 34 + ((frameCount >> 3) & 3), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = '#9AD8F4';
+      ctx.beginPath();
+      ctx.arc(cx, 102, 22, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      // Ancient Stone Shrine Monoliths & Violet Miasma Glow
+      const cx = Math.round(width * 0.5) + 44;
+      ctx.fillStyle = '#2B2840';
+      ctx.fillRect(cx - 40, 62, 11, 64);
+      ctx.fillRect(cx + 29, 62, 11, 64);
+      ctx.fillStyle = '#3E3757';
+      ctx.fillRect(cx - 44, 56, 88, 8);
+      ctx.fillStyle = 'rgba(176, 68, 200, 0.24)';
+      ctx.beginPath();
+      ctx.ellipse(cx, 106, 36, 28, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 4. Rolling Parallax Valley Hills & Foreground Terrace
+    for (let x = 0; x < width; x += 2) {
+      const h1 = Math.round(104 + Math.sin((x + frameCount * 0.2) * 0.03) * 8);
+      const h2 = Math.round(120 + Math.cos((x + frameCount * 0.35) * 0.045) * 5);
+      ctx.fillStyle = sc === 3 ? '#241D3A' : '#293E50';
+      ctx.fillRect(x, h1, 2, 148 - h1);
+      ctx.fillStyle = sc === 3 ? '#32284A' : '#3B6648';
+      ctx.fillRect(x, h2, 2, 148 - h2);
+    }
+    ctx.fillStyle = sc === 3 ? '#3A354C' : '#558F54';
+    ctx.fillRect(0, 128, width, 24);
+    ctx.fillStyle = sc === 3 ? '#625B7A' : '#8CC870';
+    ctx.fillRect(0, 128, width, 2);
+
+    // 5. Staged OAM Cast Actors (Rowan, Pip, Windmill, Familiars, Briar Warden)
+    for (const spr of packet.sprites) {
+      this.drawOamSprite(ctx, spr, atlas, frameCount);
+    }
+
+    // 6. Intro Sparkle Particles
+    this.renderParticles(ctx, packet, true);
+
+    // 7. Top PC Engine Cinema Letterbox Bar + Chapter Heading + Scene Pips
+    ctx.fillStyle = '#0D0B14';
+    ctx.fillRect(0, 0, width, 19);
+    ctx.fillStyle = '#B89152';
+    ctx.fillRect(0, 18, width, 1);
+    ctx.font = 'bold 8px monospace';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#FFF1A8';
+    ctx.fillText(intro.title || 'PROLOGUE', 8, 6);
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = i === sc ? '#FFF1A8' : '#4A415C';
+      ctx.fillRect(width - 42 + i * 9, 7, 5, 5);
+    }
+
+    // 8. Bottom Emerald Dragon Narrative Box with Typewriter Text
+    const ny = 152;
+    ctx.fillStyle = '#0F0D18';
+    ctx.fillRect(0, ny, width, height - ny);
+    ctx.fillStyle = '#B89152';
+    ctx.fillRect(0, ny, width, 1);
+    ctx.strokeStyle = '#6E552E';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(5.5, ny + 4.5, width - 11, height - ny - 9);
+
+    const vis = intro.chars;
+    const l1 = intro.line1 || '';
+    const l2 = intro.line2 || '';
+    const s1 = l1.slice(0, Math.min(vis, l1.length));
+    const s2 = vis > l1.length ? l2.slice(0, vis - l1.length) : '';
+
+    ctx.font = 'bold 8px monospace';
+    ctx.textBaseline = 'top';
+    const w1 = ctx.measureText(s1).width;
+    const w2 = ctx.measureText(s2).width;
+    ctx.fillStyle = '#14101C';
+    ctx.fillText(s1, Math.round((width - w1) / 2) + 1, ny + 14);
+    ctx.fillText(s2, Math.round((width - w2) / 2) + 1, ny + 28);
+    ctx.fillStyle = '#F7F0DC';
+    ctx.fillText(s1, Math.round((width - w1) / 2), ny + 13);
+    ctx.fillStyle = '#E8D8B8';
+    ctx.fillText(s2, Math.round((width - w2) / 2), ny + 27);
+
+    const hint = '[SPACE/CLICK] NEXT   [ESC/ENTER] SKIP';
+    const hw = ctx.measureText(hint).width;
+    ctx.fillStyle = '#8BC4E6';
+    ctx.fillText(hint, Math.round((width - hw) / 2), height - 15);
   }
 
   /* ========================================================================
@@ -334,6 +527,9 @@ export class SoftwarePpuRenderer {
       );
     });
 
+    // 6.5. Sea-of-Stars Choreographed Attack & Parry VFX
+    this.renderBattleVfx(ctx, packet);
+
     // 7. Battle Screen-Space Particles
     this.renderParticles(ctx, packet, true);
 
@@ -342,13 +538,19 @@ export class SoftwarePpuRenderer {
       const tr = battle.timedRing;
       const isParry = tr.kind === 'PARRY';
       const inSweet = tr.progress >= tr.sweetStart && tr.progress <= tr.sweetEnd;
-      const baseR = 8;
-      const shrinkR = Math.max(baseR - 2, Math.round(baseR + (1 - Math.min(1.05, tr.progress)) * 22));
+      const baseR = 10;
+      const shrinkR = Math.max(baseR - 2, Math.round(baseR + (1 - Math.min(1.06, tr.progress)) * 26));
 
       ctx.save();
+      if (inSweet) {
+        ctx.fillStyle = isParry ? 'rgba(90, 210, 244, 0.25)' : 'rgba(245, 184, 65, 0.28)';
+        ctx.beginPath();
+        ctx.arc(tr.x, tr.y, baseR + 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
       // Target inner anchor circle
-      ctx.strokeStyle = isParry ? 'rgba(90, 210, 244, 0.8)' : 'rgba(245, 184, 65, 0.8)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = isParry ? 'rgba(90, 210, 244, 0.9)' : 'rgba(245, 184, 65, 0.9)';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(tr.x, tr.y, baseR, 0, Math.PI * 2);
       ctx.stroke();
@@ -372,13 +574,16 @@ export class SoftwarePpuRenderer {
       // Micro cue prompt when inside sweet spot
       if (inSweet && tr.result === 'NONE') {
         ctx.font = 'bold 8px monospace';
-        const cue = isParry ? 'GUARD!' : 'TAP!';
+        const cue = isParry ? 'PARRY!' : 'STRIKE!';
         const cw = ctx.measureText(cue).width;
         ctx.fillStyle = '#141824';
-        ctx.fillRect(Math.round(tr.x - cw / 2 - 3), Math.round(tr.y - 22), Math.ceil(cw + 6), 10);
+        ctx.fillRect(Math.round(tr.x - cw / 2 - 4), Math.round(tr.y - 24), Math.ceil(cw + 8), 11);
+        ctx.strokeStyle = isParry ? '#5AD2F4' : '#FFF1A8';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(Math.round(tr.x - cw / 2 - 4) + 0.5, Math.round(tr.y - 24) + 0.5, Math.ceil(cw + 7), 10);
         ctx.fillStyle = isParry ? '#5AD2F4' : '#FFF1A8';
         ctx.textBaseline = 'top';
-        ctx.fillText(cue, Math.round(tr.x - cw / 2), Math.round(tr.y - 21));
+        ctx.fillText(cue, Math.round(tr.x - cw / 2), Math.round(tr.y - 22));
       }
       ctx.restore();
     }
@@ -400,6 +605,161 @@ export class SoftwarePpuRenderer {
       ctx.textBaseline = 'top';
       ctx.fillText(battle.bannerText, bx + 8, 9);
     }
+  }
+
+  private renderBattleVfx(ctx: CanvasRenderingContext2D, packet: PpuFramePacket): void {
+    const v = packet.battle.vfx;
+    if (v.kind === 'NONE' || v.dur <= 0) return;
+    const p = Math.max(0, Math.min(1, (v.dur - v.timer) / v.dur));
+    const cx = v.x + (v.tx - v.x) * p;
+    const cy = v.y + (v.ty - v.y) * p;
+
+    ctx.save();
+    switch (v.kind) {
+      case 'STAFF_ARC': {
+        const arcY = cy - Math.sin(p * Math.PI) * 16;
+        ctx.strokeStyle = '#FFF6CC';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, arcY, 10 + p * 8, -Math.PI * 0.75, Math.PI * 0.25);
+        ctx.stroke();
+        ctx.strokeStyle = '#F5B841';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx, arcY, 7 + p * 6, -Math.PI * 0.65, Math.PI * 0.35);
+        ctx.stroke();
+        break;
+      }
+      case 'ACORN_SPIN': {
+        const ang = p * Math.PI * 6;
+        ctx.translate(cx, cy);
+        ctx.rotate(ang);
+        ctx.strokeStyle = '#8CD674';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, 12, 0, Math.PI * 1.5);
+        ctx.stroke();
+        ctx.strokeStyle = '#FFF1A8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-11, 0);
+        ctx.lineTo(11, 0);
+        ctx.moveTo(0, -11);
+        ctx.lineTo(0, 11);
+        ctx.stroke();
+        break;
+      }
+      case 'SOLAR_METEOR': {
+        const my = cy - Math.sin(p * Math.PI) * 52;
+        ctx.fillStyle = 'rgba(232, 106, 74, 0.45)';
+        ctx.beginPath();
+        ctx.arc(cx, my, 15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#FFE066';
+        ctx.beginPath();
+        ctx.arc(cx, my, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#FFF6CC';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx, my, 17 + (packet.frameCount & 3), 0, Math.PI * 2);
+        ctx.stroke();
+        if (p > 0.8) {
+          const shock = (p - 0.8) * 140;
+          ctx.strokeStyle = '#FFE066';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.ellipse(v.tx, v.ty + 4, shock + 6, shock * 0.45 + 3, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'STAR_BOLT': {
+        const by = cy - Math.sin(p * Math.PI) * 28;
+        ctx.strokeStyle = 'rgba(90, 210, 244, 0.7)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(v.x, v.y);
+        ctx.quadraticCurveTo((v.x + v.tx) * 0.5, Math.min(v.y, v.ty) - 34, cx, by);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(90, 210, 244, 0.45)';
+        ctx.beginPath();
+        ctx.arc(cx, by, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(Math.round(cx - 3), Math.round(by - 3), 6, 6);
+        ctx.strokeStyle = '#FFF6CC';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx - 9, by);
+        ctx.lineTo(cx + 9, by);
+        ctx.moveTo(cx, by - 9);
+        ctx.lineTo(cx, by + 9);
+        ctx.stroke();
+        break;
+      }
+      case 'PRISM_NOVA': {
+        const r1 = 8 + p * 34;
+        const r2 = 4 + p * 22;
+        ctx.fillStyle = `rgba(90, 210, 244, ${(0.35 * (1 - p)).toFixed(2)})`;
+        ctx.beginPath();
+        ctx.arc(v.tx, v.ty, r2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#FFF1A8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(v.tx, v.ty, r1, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = '#5AD2F4';
+        ctx.beginPath();
+        ctx.moveTo(v.tx - r1, v.ty);
+        ctx.lineTo(v.tx + r1, v.ty);
+        ctx.moveTo(v.tx, v.ty - r1);
+        ctx.lineTo(v.tx, v.ty + r1);
+        ctx.stroke();
+        break;
+      }
+      case 'ENEMY_CLAW': {
+        ctx.strokeStyle = '#E85272';
+        ctx.lineWidth = 2;
+        for (let k = -1; k <= 1; k++) {
+          ctx.beginPath();
+          ctx.moveTo(cx - 10, cy - 8 + k * 4);
+          ctx.lineTo(cx + 10, cy + 8 + k * 4);
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'GUARD_SHIELD': {
+        const r = 14 + p * 10;
+        ctx.fillStyle = `rgba(90, 210, 244, ${(0.38 * (1 - p * 0.5)).toFixed(2)})`;
+        ctx.beginPath();
+        ctx.ellipse(v.x, v.y, r - 2, r + 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(v.x, v.y, r, r + 3, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        break;
+      }
+      case 'HEAL_BLOOM': {
+        const r = 10 + p * 20;
+        ctx.fillStyle = `rgba(116, 214, 128, ${(0.32 * (1 - p)).toFixed(2)})`;
+        ctx.beginPath();
+        ctx.ellipse(v.x, v.y, r, r * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#FFF1A8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(v.x, v.y - p * 18, r * 0.7, r * 0.35, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        break;
+      }
+      default:
+        break;
+    }
+    ctx.restore();
   }
 
   private drawBattleEnemy(

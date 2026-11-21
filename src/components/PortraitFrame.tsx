@@ -21,7 +21,7 @@ export const PortraitFrame: React.FC<PortraitFrameProps> = ({ portrait, speaker 
   const usePhoto = Boolean(src) && !imgFailed;
 
   return (
-    <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-md border-2 border-[#D4942A]/70 bg-[#252B3B] shadow-md sm:h-28 sm:w-28">
+    <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[2px] border-2 border-[#9B7A45] bg-[#1E202C] shadow-inner sm:h-22 sm:w-22">
       {usePhoto && src ? (
         <img
           src={src}

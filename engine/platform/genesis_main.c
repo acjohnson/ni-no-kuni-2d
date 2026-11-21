@@ -24,7 +24,7 @@ static HearthState g_hearth;
 #define VRAM_BG_BASE    ((u16)(TILE_USER_INDEX))
 #define VRAM_UI_BASE    ((u16)(VRAM_BG_BASE + 40u))
 #define VRAM_SPR_BASE   ((u16)(VRAM_UI_BASE + 16u))
-#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 80u))
+#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 104u))
 
 /* BG Tile IDs (offsets from VRAM_BG_BASE) */
 enum {
@@ -78,8 +78,14 @@ enum {
     GUI_BR
 };
 
-/* Sprite VRAM Slots (20 sprites x 4 tiles each = 80 tiles) */
-#define SPR_TIMED_RING_SLOT 19u
+/* Sprite VRAM Slots (26 sprites x 4 tiles each = 104 tiles) */
+#define SPR_TIMED_RING_SLOT  19u
+#define SPR_HERO_DOWN_1      20u
+#define SPR_HERO_UP_0        21u
+#define SPR_HERO_UP_1        22u
+#define SPR_HERO_SIDE_0      23u
+#define SPR_HERO_SIDE_1      24u
+#define SPR_BATTLE_VFX_SLOT  25u
 
 /* ============================================================================
  * 1. COMPACT 5x7 UPPERCASE ASCII FONT (ASCII 32..95) -> OPAQUE 4bpp VRAM
@@ -392,12 +398,13 @@ static void bake_bg_and_ui_tiles(void) {
 }
 
 static void bake_all_sprites(void) {
-    /* 0: SPR_HERO (Rowan - PAL1: forest tunic, red scarf, brown hair) */
+    /* 0: SPR_HERO (Rowan facing DOWN idle - PAL1: forest tunic, red scarf, chestnut hair) */
     p16_clear();
     p16_rect(4, 1, 8, 4, 4); p16_rect(5, 1, 6, 2, 5);      /* Hair */
     p16_rect(4, 4, 8, 4, 2); g_pix16[5*16+6]=1; g_pix16[5*16+9]=1; /* Face & eyes */
     p16_rect(4, 8, 8, 2, 9); p16_rect(3, 9, 2, 3, 8);      /* Red scarf */
-    p16_rect(4, 10, 8, 4, 6); p16_rect(5, 10, 6, 2, 7);    /* Green tunic */
+    p16_rect(3, 10, 10, 4, 6); p16_rect(5, 10, 6, 3, 7);   /* Green tunic + sleeves */
+    g_pix16[12*16+3]=2; g_pix16[12*16+12]=2;               /* Hands */
     p16_rect(5, 14, 2, 2, 4); p16_rect(9, 14, 2, 2, 4);    /* Boots */
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_HERO * 4);
 
@@ -519,6 +526,65 @@ static void bake_all_sprites(void) {
     p16_rect(1, 3, 2, 10, 11); p16_rect(13, 3, 2, 10, 11);
     p16_rect(6, 6, 4, 4, 15);
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_TIMED_RING_SLOT * 4);
+
+    /* 20: SPR_HERO_DOWN_1 (Rowan facing DOWN walking stride - PAL1) */
+    p16_clear();
+    p16_rect(4, 0, 8, 4, 4); p16_rect(5, 0, 6, 2, 5);
+    p16_rect(4, 3, 8, 4, 2); g_pix16[4*16+6]=1; g_pix16[4*16+9]=1;
+    p16_rect(4, 7, 8, 2, 9); p16_rect(2, 8, 2, 3, 8);
+    p16_rect(3, 9, 10, 4, 6); p16_rect(5, 9, 6, 3, 7);
+    g_pix16[11*16+3]=2; g_pix16[12*16+12]=2;
+    p16_rect(4, 13, 3, 3, 4); p16_rect(10, 13, 2, 2, 4);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_HERO_DOWN_1 * 4);
+
+    /* 21: SPR_HERO_UP_0 (Rowan facing UP idle - back of hair & red scarf - PAL1) */
+    p16_clear();
+    p16_rect(4, 1, 8, 6, 4); p16_rect(5, 1, 6, 3, 5);      /* Back of hair */
+    p16_rect(4, 7, 8, 2, 9); p16_rect(6, 9, 4, 3, 8);      /* Scarf tail on back */
+    p16_rect(3, 9, 10, 5, 6); p16_rect(5, 9, 6, 3, 7);     /* Green tunic back */
+    p16_rect(6, 9, 4, 3, 8);                               /* Scarf over tunic */
+    p16_rect(5, 14, 2, 2, 4); p16_rect(9, 14, 2, 2, 4);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_HERO_UP_0 * 4);
+
+    /* 22: SPR_HERO_UP_1 (Rowan facing UP walking stride - PAL1) */
+    p16_clear();
+    p16_rect(4, 0, 8, 6, 4); p16_rect(5, 0, 6, 3, 5);
+    p16_rect(4, 6, 8, 2, 9);
+    p16_rect(3, 8, 10, 5, 6); p16_rect(5, 8, 6, 3, 7);
+    p16_rect(7, 8, 3, 4, 8);                               /* Swaying scarf */
+    p16_rect(4, 13, 2, 2, 4); p16_rect(9, 13, 3, 3, 4);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_HERO_UP_1 * 4);
+
+    /* 23: SPR_HERO_SIDE_0 (Rowan facing RIGHT idle; hardware H-flipped for LEFT - PAL1) */
+    p16_clear();
+    p16_rect(4, 1, 8, 4, 4); p16_rect(5, 1, 6, 2, 5);      /* Hair crown */
+    p16_rect(4, 4, 3, 3, 4);                               /* Back hair */
+    p16_rect(7, 4, 5, 4, 2); g_pix16[5*16+10]=1;           /* Side profile face & eye */
+    p16_rect(4, 8, 8, 2, 9); p16_rect(2, 8, 3, 3, 8);      /* Streaming scarf behind */
+    p16_rect(5, 10, 6, 4, 6); p16_rect(6, 10, 4, 3, 7);    /* Tunic side */
+    g_pix16[12*16+10]=2;                                   /* Forward hand */
+    p16_rect(6, 14, 4, 2, 4);                              /* Boots together */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_HERO_SIDE_0 * 4);
+
+    /* 24: SPR_HERO_SIDE_1 (Rowan facing RIGHT walking stride; H-flipped for LEFT - PAL1) */
+    p16_clear();
+    p16_rect(4, 0, 8, 4, 4); p16_rect(5, 0, 6, 2, 5);
+    p16_rect(4, 3, 3, 3, 4);
+    p16_rect(7, 3, 5, 4, 2); g_pix16[4*16+10]=1;
+    p16_rect(4, 7, 8, 2, 9); p16_rect(1, 7, 4, 3, 8);      /* Scarf fluttering back */
+    p16_rect(5, 9, 6, 4, 6); p16_rect(6, 9, 4, 3, 7);
+    g_pix16[11*16+11]=2;                                   /* Swinging hand */
+    p16_rect(4, 13, 3, 3, 4); p16_rect(9, 13, 3, 3, 4);    /* Wide stride boots */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_HERO_SIDE_1 * 4);
+
+    /* 25: SPR_BATTLE_VFX_SLOT (Star / Solar / Slash Choreography Burst - PAL3) */
+    p16_clear();
+    p16_rect(7, 0, 2, 16, 11); p16_rect(0, 7, 16, 2, 11);
+    p16_rect(3, 3, 10, 10, 15);
+    p16_rect(5, 5, 6, 6, 12);
+    p16_rect(2, 2, 2, 2, 10); p16_rect(12, 2, 2, 2, 10);
+    p16_rect(2, 12, 2, 2, 10); p16_rect(12, 12, 2, 2, 10);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_BATTLE_VFX_SLOT * 4);
 }
 
 /* Pre-bake 4 animated frames for meadow grass, flowers, water, ford, tall grass,
@@ -723,7 +789,8 @@ static void write_metatile(s16 mx, s16 my) {
 
 static s16 g_last_cam_mx = -999;
 static s16 g_last_cam_my = -999;
-static u8  g_last_scene_battle = 255;
+static u8  g_last_scene_mode = 255;
+static u8  g_last_intro_scene = 255;
 
 static void draw_full_world_viewport(s16 cam_x, s16 cam_y) {
     s16 mx0 = (s16)((cam_x >> 4) - 2);
@@ -770,6 +837,34 @@ static void draw_battle_backdrop(u8 biome) {
     VDP_clearPlane(BG_B, TRUE);
     VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, sky_t), 0, 0, 40, 10);
     VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, gnd_t), 0, 10, 40, 18);
+    VDP_setHorizontalScrollVSync(BG_A, 0);
+    VDP_setVerticalScrollVSync(BG_A, 0);
+    VDP_setHorizontalScrollVSync(BG_B, 0);
+    VDP_setVerticalScrollVSync(BG_B, 0);
+}
+
+static void draw_intro_backdrop(u8 scene) {
+    u16 sky_t = (scene == 0u) ? (VRAM_BG_BASE + GT_BATTLE_SKY_MEADOW) : (VRAM_BG_BASE + GT_BATTLE_SKY_SHRINE);
+    u16 gnd_t = (scene == 3u) ? (VRAM_BG_BASE + GT_BATTLE_GROUND_SHRINE)
+              : (scene == 1u) ? (VRAM_BG_BASE + GT_SHRINE_FLOOR)
+              : (VRAM_BG_BASE + GT_BATTLE_GROUND_MEADOW);
+    VDP_clearPlane(BG_B, TRUE);
+    VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, sky_t), 0, 0, 40, 13);
+    VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, gnd_t), 0, 13, 40, 15);
+    if (scene == 0u) {
+        /* Stone Windmill tower silhouette on the left hillside */
+        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_WINDMILL_ROOF), 11, 8, 4, 2);
+        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_WINDMILL_WALL), 11, 10, 4, 5);
+        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_FLOWERS), 18, 14, 18, 2);
+    } else if (scene == 1u) {
+        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_SHRINE_RUNE), 18, 13, 4, 2);
+    } else if (scene == 2u) {
+        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_FLOWERS), 6, 14, 28, 2);
+    } else {
+        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_SHRINE_PILLAR), 8, 7, 2, 7);
+        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_SHRINE_PILLAR), 30, 7, 2, 7);
+        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_SHRINE_RUNE), 18, 14, 4, 2);
+    }
     VDP_setHorizontalScrollVSync(BG_A, 0);
     VDP_setVerticalScrollVSync(BG_A, 0);
     VDP_setHorizontalScrollVSync(BG_B, 0);
@@ -828,28 +923,45 @@ static void append_int(char *dst, u16 *pos, u16 cap, s16 val) {
 
 static u8  g_win_layout = 255;
 static u16 g_hud_tick = 0;
+static u8  g_last_title_cursor = 255;
+
+static void draw_genesis_title_cursor(void) {
+    static const char *opts[3] = {
+        "PLAY WINDMILL HAMLET  ",
+        "SHRINE BOSS BATTLE    ",
+        "REPLAY OPENING INTRO  "
+    };
+    for (u8 i = 0; i < 3u; i++) {
+        u16 pal = (i == g_hearth.title_cursor) ? PAL3 : PAL2;
+        u16 y = (u16)(16u + i * 2u);
+        win_text(7, y, pal, (i == g_hearth.title_cursor) ? ">" : " ");
+        win_text(9, y, pal, opts[i]);
+    }
+    g_last_title_cursor = g_hearth.title_cursor;
+}
 
 static void update_window_ui(const HearthPpuPacket *ppu) {
     u8 want_layout = 0;
-    if (g_hearth.mode == MODE_TITLE) want_layout = 1;
+    if (g_hearth.mode == MODE_INTRO) want_layout = 4;
+    else if (g_hearth.mode == MODE_TITLE) want_layout = 1;
     else if (g_hearth.mode == MODE_BATTLE || g_hearth.mode == MODE_BATTLE_VICTORY || g_hearth.mode == MODE_BATTLE_DEFEAT) want_layout = 3;
     else if (g_hearth.dialogue.active) want_layout = 2;
     else want_layout = 0;
 
     if (want_layout != g_win_layout) {
         g_win_layout = want_layout;
+        g_last_title_cursor = 255;
         if (want_layout == 1) {
             VDP_clearPlane(WINDOW, TRUE);
             VDP_setWindowFullScreen();
-            win_fill_box(2, 3, 36, 22);
-            win_text(13, 6,  PAL2, "PROJECT HEARTH");
-            win_text(8,  8,  PAL3, "16-BIT JRPG CORE (GENESIS)");
-            win_text(5,  11, PAL2, "DPAD  : MOVE    B : DASH");
-            win_text(5,  13, PAL2, "A     : ACT / TIMED HIT / PARRY");
-            win_text(5,  15, PAL2, "X / Z : HOT-SWAP FAMILIAR");
-            win_text(7,  18, PAL2, "EXPLORE WINDMILL HAMLET &");
-            win_text(7,  20, PAL2, "SHATTER THE BRIAR WARDEN!");
-            win_text(8,  23, PAL3, "PRESS START OR A TO BEGIN");
+            win_fill_box(2, 2, 36, 24);
+            win_text(13, 4,  PAL3, "PROJECT HEARTH");
+            win_text(8,  6,  PAL2, "16-BIT JRPG CORE (GENESIS)");
+            win_text(5,  9,  PAL2, "DPAD  : MOVE    B : DASH");
+            win_text(5,  11, PAL2, "A / C : ACT / TIMED HIT / PARRY");
+            win_text(5,  13, PAL2, "X / Z : SWAP FAMILIAR IN BATTLE");
+            draw_genesis_title_cursor();
+            win_text(7,  23, PAL3, "DPAD:PICK  START OR A:BEGIN");
         } else if (want_layout == 0) {
             VDP_setWindowOnTop(2);
             VDP_fillTileMapRect(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FILL), 0, 0, 40, 2);
@@ -861,14 +973,56 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
         g_hud_tick = 0;
     }
 
-    /* Throttle text redraws to ~10Hz (every 6 frames) for crisp responsiveness & light DMA */
-    if ((g_hud_tick % 6u) != 0u && want_layout != 1) {
+    if (want_layout == 1) {
+        if (g_hearth.title_cursor != g_last_title_cursor) {
+            draw_genesis_title_cursor();
+        }
+        return;
+    }
+
+    /* Throttle text redraws to ~15Hz (every 4 frames) for crisp responsiveness & light DMA */
+    if ((g_hud_tick & 3u) != 0u) {
         g_hud_tick++;
         return;
     }
     g_hud_tick++;
 
-    if (want_layout == 0) {
+    if (want_layout == 4) {
+        /* Emerald Dragon / PC Engine CD-Style Retro Opening Cutscene Caption Box */
+        const HearthIntroState *in = &g_hearth.intro;
+        char buf[128];
+        u16 total = 0u, vis, start = 0u;
+        const char *s;
+        VDP_fillTileMapRect(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FILL), 1, 21, 38, 6);
+        win_text_n(2, 21, PAL3, in->title ? in->title : "PROLOGUE", 36u);
+        if (in->line1) {
+            s = in->line1;
+            while (*s && total < 125u) buf[total++] = *s++;
+        }
+        if (in->line2 && total < 125u) {
+            if (total > 0u) buf[total++] = ' ';
+            s = in->line2;
+            while (*s && total < 126u) buf[total++] = *s++;
+        }
+        buf[total] = '\0';
+        vis = (in->chars > total) ? total : in->chars;
+        for (u16 row = 22u; row <= 24u && start < vis; row++) {
+            u16 end, cut;
+            while (start < vis && buf[start] == ' ') start++;
+            if (start >= vis) break;
+            end = (u16)(start + 36u);
+            if (end >= vis) {
+                cut = vis;
+            } else {
+                cut = end;
+                while (cut > start && buf[cut] != ' ') cut--;
+                if (cut == start) cut = end;
+            }
+            win_text_n(2, row, PAL2, buf + start, (u16)(cut - start));
+            start = cut;
+        }
+        win_text(2, 26, PAL3, "A:NEXT SCENE      START:SKIP INTRO");
+    } else if (want_layout == 0) {
         char line[40];
         u16 pos = 0;
         const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
@@ -920,61 +1074,83 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
 
         VDP_fillTileMapRect(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FILL), 1, 21, 38, 6);
         if (g_hearth.mode == MODE_BATTLE_VICTORY) {
-            win_text(11, 22, PAL3, "VICTORY! HEART STEADY!");
-            win_text(9,  24, PAL2, "PRESS A OR START TO RETURN");
+            win_text(10, 22, PAL3, "VICTORY! HEART STEADY!");
+            win_text(7,  24, PAL2, "PRESS A OR START TO RETURN");
             return;
         }
         if (g_hearth.mode == MODE_BATTLE_DEFEAT) {
-            win_text(10, 22, PAL3, "RETREATING TO WAYSTONE");
-            win_text(9,  24, PAL2, "PRESS A OR START TO CONTINUE");
+            win_text(9, 22, PAL3, "RETREATING TO WAYSTONE");
+            win_text(7, 24, PAL2, "PRESS A OR START TO CONTINUE");
             return;
         }
 
-        /* Row 21: Active Party Member HP/MP */
+        /* Row 21: Active Fighter, Slot Index, HP/MP, & Familiar Swap Cue */
         pos = 0;
         append_str(line, &pos, sizeof(line), pm->name);
-        append_str(line, &pos, sizeof(line), " HP:");
+        append_str(line, &pos, sizeof(line), " ");
+        append_int(line, &pos, sizeof(line), (s16)(b->active_slot + 1u));
+        append_str(line, &pos, sizeof(line), "/3 HP:");
         append_int(line, &pos, sizeof(line), pm->hp);
         append_str(line, &pos, sizeof(line), "/");
         append_int(line, &pos, sizeof(line), pm->max_hp);
         append_str(line, &pos, sizeof(line), " MP:");
         append_int(line, &pos, sizeof(line), pm->mp);
-        win_text(2, 21, PAL2, line);
+        win_text_n(2, 21, PAL2, line, 36u);
 
-        /* Row 22: Selected Enemy HP + Spell Locks */
+        /* Row 22: Selected Enemy HP, Spell Locks, and Charge Countdown */
         if (b->selected_enemy < b->enemy_count) {
             const HearthBattleEnemy *e = &b->enemies[b->selected_enemy];
             pos = 0;
+            append_str(line, &pos, sizeof(line), "TGT:");
             append_str(line, &pos, sizeof(line), e->name);
             append_str(line, &pos, sizeof(line), " HP:");
             append_int(line, &pos, sizeof(line), e->hp);
             if (e->lock_count > 0) {
-                append_str(line, &pos, sizeof(line), " L:");
+                append_str(line, &pos, sizeof(line), " [");
                 for (u8 l = 0; l < e->lock_count; l++) {
                     if (e->broken_locks[l]) append_str(line, &pos, sizeof(line), ".");
                     else if (e->locks[l] == LOCK_SWORD) append_str(line, &pos, sizeof(line), "W");
                     else if (e->locks[l] == LOCK_SUN)   append_str(line, &pos, sizeof(line), "S");
                     else append_str(line, &pos, sizeof(line), "*");
                 }
+                append_str(line, &pos, sizeof(line), "]");
             }
-            win_text(2, 22, PAL3, line);
+            win_text_n(2, 22, PAL3, line, 36u);
         }
 
-        /* Row 24-25: Command Menu or Timed-Hit Banner */
+        /* Rows 24-25: Timed-Hit/Parry Callout, Choreography Banner, or Real Move Menu */
         if (b->ring.active) {
-            win_text(9, 24, PAL3, b->ring.is_parry ? ">>> TAP A TO PARRY! <<<" : ">>> TAP A TIMED HIT! <<<");
+            u16 rpal = ((g_hearth.frame_count & 4u) != 0u) ? PAL3 : PAL2;
+            win_text(6, 24, rpal, b->ring.is_parry
+                ? ">>> PRESS A NOW TO PARRY! <<<"
+                : ">>> PRESS A FOR TIMED HIT! <<<");
         } else if (b->banner_frames > 0 && b->banner[0] != '\0') {
-            win_text(4, 24, PAL3, b->banner);
+            win_text_n(3, 24, PAL3, b->banner, 34u);
         } else {
-            static const char *cmds[4] = { "STRIKE", "SKILL ", "GUARD ", "TONIC " };
+            char opt[20];
             for (u8 c = 0; c < 4u; c++) {
-                u16 cx = (u16)(2u + (c & 1u) * 18u);
+                u16 cx = (u16)(2u + (c & 1u) * 19u);
                 u16 cy = (u16)(24u + (c >> 1));
-                win_text(cx, cy, (c == b->selected_cmd) ? PAL3 : PAL2, (c == b->selected_cmd) ? ">" : " ");
-                win_text((u16)(cx + 1u), cy, (c == b->selected_cmd) ? PAL3 : PAL2, cmds[c]);
+                u16 cpal = (c == b->selected_cmd) ? PAL3 : PAL2;
+                pos = 0;
+                if (c == 0u) {
+                    append_str(opt, &pos, sizeof(opt), pm->basic_name);
+                } else if (c == 1u) {
+                    append_str(opt, &pos, sizeof(opt), pm->skill_name);
+                    append_str(opt, &pos, sizeof(opt), " ");
+                    append_int(opt, &pos, sizeof(opt), (s16)pm->skill_cost);
+                    append_str(opt, &pos, sizeof(opt), "M");
+                } else if (c == 2u) {
+                    append_str(opt, &pos, sizeof(opt), "GUARD +6MP");
+                } else {
+                    append_str(opt, &pos, sizeof(opt), "TONIC x");
+                    append_int(opt, &pos, sizeof(opt), (s16)g_hearth.potions);
+                }
+                win_text(cx, cy, cpal, (c == b->selected_cmd) ? ">" : " ");
+                win_text_n((u16)(cx + 1u), cy, cpal, opt, 17u);
             }
         }
-        win_text(2, 26, PAL2, "X/Z:SWAP FAMILIAR  A:CONFIRM");
+        win_text(2, 26, PAL2, "DPAD:PICK  A:ACT  X/Z:SWAP FAMILIAR");
     }
 }
 
@@ -996,7 +1172,7 @@ static void render_sprites(const HearthPpuPacket *ppu) {
         return;
     }
 
-    for (u8 i = 0; i < ppu->oam_count && count < 60u; i++) {
+    for (u8 i = 0; i < ppu->oam_count && count < 58u; i++) {
         const HearthOamSprite *o = &ppu->oam[i];
         s16 sx = (s16)(o->x - 8 + ppu->shake_x);
         s16 sy = (s16)(o->y - ((o->layer == 2) ? 8 : 16) + ppu->shake_y);
@@ -1004,16 +1180,52 @@ static void render_sprites(const HearthPpuPacket *ppu) {
         u8 flip_x;
 
         if (sx < -16 || sx >= 320 || sy < -16 || sy >= 224) continue;
-        /* Keep sprites behind bottom dialogue/battle window */
-        if ((g_win_layout == 2 || g_win_layout == 3) && sy >= 148) continue;
+        /* Keep sprites behind bottom dialogue/battle/intro window */
+        if ((g_win_layout == 2 || g_win_layout == 3 || g_win_layout == 4) && sy >= 148) continue;
         if (g_win_layout == 0 && sy < 8) continue;
 
         pal = sprite_palette(o->sprite_id);
-        tile = (u16)(VRAM_SPR_BASE + (u16)o->sprite_id * 4u);
         flip_x = (o->flags & OAM_FLAG_FLIP_X) ? 1u : 0u;
+        if (o->sprite_id == SPR_HERO) {
+            u8 step = (u8)(o->frame & 1u);
+            u8 slot = SPR_HERO;
+            if (o->dir == DIR_DOWN) {
+                slot = step ? SPR_HERO_DOWN_1 : SPR_HERO;
+                flip_x = 0u;
+            } else if (o->dir == DIR_UP) {
+                slot = step ? SPR_HERO_UP_1 : SPR_HERO_UP_0;
+                flip_x = 0u;
+            } else if (o->dir == DIR_LEFT) {
+                slot = step ? SPR_HERO_SIDE_1 : SPR_HERO_SIDE_0;
+                flip_x = 1u;
+            } else {
+                slot = step ? SPR_HERO_SIDE_1 : SPR_HERO_SIDE_0;
+                flip_x = 0u;
+            }
+            tile = (u16)(VRAM_SPR_BASE + (u16)slot * 4u);
+        } else {
+            tile = (u16)(VRAM_SPR_BASE + (u16)o->sprite_id * 4u);
+        }
         VDP_setSpriteFull(count, sx, sy, SPRITE_SIZE(2, 2),
             TILE_ATTR_FULL(pal, 0, 0, flip_x, tile), (u8)(count + 1u));
         count++;
+    }
+
+    /* Battle Choreography VFX Burst Sprite (Solar Meteor / Star Bolt / Staff Arc / Guard) */
+    if (g_hearth.mode == MODE_BATTLE && g_hearth.battle.vfx_kind != BVFX_NONE && count < 60u) {
+        const HearthBattleState *b = &g_hearth.battle;
+        u16 dur = (b->vfx_dur > 0u) ? b->vfx_dur : 1u;
+        s32 t256 = ((s32)b->vfx_timer * 256) / (s32)dur;
+        s16 vx = (s16)(b->vfx_x + (((s32)(b->vfx_tx - b->vfx_x) * t256) >> 8) - 8);
+        s16 vy = (s16)(b->vfx_y + (((s32)(b->vfx_ty - b->vfx_y) * t256) >> 8) - 16);
+        u8 vflip = (u8)((g_hearth.frame_count >> 1) & 1u);
+        u8 hflip = (u8)((g_hearth.frame_count >> 2) & 1u);
+        if (vx >= -16 && vx < 320 && vy >= -16 && vy < 148) {
+            VDP_setSpriteFull(count, vx, vy, SPRITE_SIZE(2, 2),
+                TILE_ATTR_FULL(PAL3, 1, vflip, hflip, VRAM_SPR_BASE + SPR_BATTLE_VFX_SLOT * 4u),
+                (u8)(count + 1u));
+            count++;
+        }
     }
 
     /* Battle Timed-Hit / Parry indicator sprite */
@@ -1213,12 +1425,18 @@ int main(bool hard_reset) {
     g_hearth.tuning.ppu_mode = PPU_GENESIS_320x224;
     {
         const HearthPpuPacket *boot_ppu = hearth_step_60hz(&g_hearth, 0u);
-        g_last_scene_battle = 0u;
-        draw_full_world_viewport(boot_ppu->cam_x, boot_ppu->cam_y);
-        VDP_setHorizontalScrollVSync(BG_A, (s16)(-boot_ppu->cam_x));
-        VDP_setVerticalScrollVSync(BG_A,   (s16)( boot_ppu->cam_y));
-        VDP_setHorizontalScrollVSync(BG_B, (s16)(-boot_ppu->cam_x));
-        VDP_setVerticalScrollVSync(BG_B,   (s16)( boot_ppu->cam_y));
+        if (g_hearth.mode == MODE_INTRO) {
+            g_last_scene_mode = 2u;
+            g_last_intro_scene = g_hearth.intro.scene;
+            draw_intro_backdrop(g_hearth.intro.scene);
+        } else {
+            g_last_scene_mode = 0u;
+            draw_full_world_viewport(boot_ppu->cam_x, boot_ppu->cam_y);
+            VDP_setHorizontalScrollVSync(BG_A, (s16)(-boot_ppu->cam_x));
+            VDP_setVerticalScrollVSync(BG_A,   (s16)( boot_ppu->cam_y));
+            VDP_setHorizontalScrollVSync(BG_B, (s16)(-boot_ppu->cam_x));
+            VDP_setVerticalScrollVSync(BG_B,   (s16)( boot_ppu->cam_y));
+        }
         update_window_ui(boot_ppu);
         render_sprites(boot_ppu);
         SYS_doVBlankProcess();
@@ -1227,14 +1445,19 @@ int main(bool hard_reset) {
     while (TRUE) {
         uint16_t pad = read_genesis_pad();
         const HearthPpuPacket *ppu = hearth_step_60hz(&g_hearth, pad);
-        u8 is_battle = (g_hearth.mode == MODE_BATTLE ||
-                        g_hearth.mode == MODE_BATTLE_VICTORY ||
-                        g_hearth.mode == MODE_BATTLE_DEFEAT) ? 1u : 0u;
+        u8 scene_mode = (g_hearth.mode == MODE_INTRO) ? 2u
+                      : (g_hearth.mode == MODE_BATTLE ||
+                         g_hearth.mode == MODE_BATTLE_VICTORY ||
+                         g_hearth.mode == MODE_BATTLE_DEFEAT) ? 1u : 0u;
 
-        if (is_battle != g_last_scene_battle) {
-            g_last_scene_battle = is_battle;
+        if (scene_mode != g_last_scene_mode ||
+            (scene_mode == 2u && g_hearth.intro.scene != g_last_intro_scene)) {
+            g_last_scene_mode = scene_mode;
+            g_last_intro_scene = g_hearth.intro.scene;
             VDP_setEnable(FALSE);
-            if (is_battle) {
+            if (scene_mode == 2u) {
+                draw_intro_backdrop(g_hearth.intro.scene);
+            } else if (scene_mode == 1u) {
                 draw_battle_backdrop(g_hearth.battle.biome);
             } else {
                 draw_full_world_viewport(ppu->cam_x, ppu->cam_y);
@@ -1242,7 +1465,7 @@ int main(bool hard_reset) {
             VDP_setEnable(TRUE);
         }
 
-        if (!is_battle) {
+        if (scene_mode == 0u) {
             stream_world_viewport(ppu->cam_x, ppu->cam_y);
             tick_env_animations(g_hearth.frame_count);
             /* VSync scroll updates latch atomically in VBlank -> 0% screen tearing */
@@ -1250,6 +1473,10 @@ int main(bool hard_reset) {
             VDP_setVerticalScrollVSync(BG_A,   (s16)( (ppu->cam_y - ppu->shake_y)));
             VDP_setHorizontalScrollVSync(BG_B, (s16)(-(ppu->cam_x - ppu->shake_x)));
             VDP_setVerticalScrollVSync(BG_B,   (s16)( (ppu->cam_y - ppu->shake_y)));
+        } else if (scene_mode == 2u) {
+            tick_env_animations(g_hearth.frame_count);
+            VDP_setHorizontalScrollVSync(BG_A, 0);
+            VDP_setVerticalScrollVSync(BG_A,   0);
         } else {
             VDP_setHorizontalScrollVSync(BG_A, (s16)ppu->shake_x);
             VDP_setVerticalScrollVSync(BG_A,   (s16)ppu->shake_y);
