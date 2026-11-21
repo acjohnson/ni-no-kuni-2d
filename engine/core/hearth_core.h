@@ -94,6 +94,11 @@ typedef struct {
     HearthPpuPacket ppu;
 } HearthState;
 
+#if defined(HEARTH_TARGET_SNES)
+/* Single static Bank $7E WRAM instance for zero-overhead direct 65816 addressing */
+extern HearthState g_hearth;
+#endif
+
 /* Initialize engine state & sandbox map (zero malloc) */
 void hearth_init(HearthState *st);
 

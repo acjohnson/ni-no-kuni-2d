@@ -28,7 +28,7 @@ extern char SOUNDBANK__;
 /* ============================================================================
  * 1. STATIC SNES WRAM BUFFERS (Bank $7E — zero malloc, tiny 65816 stacks!)
  * ============================================================================ */
-static HearthState g_hearth;
+HearthState g_hearth;
 
 /* VRAM Word Addresses (Non-overlapping 64 KB layout: 0x0000..0x7FFF words) */
 #define VRAM_OBJ_GFX    0x0000u  /* 20 16x16 sprites -> 0x0000..0x05FF */
@@ -103,6 +103,7 @@ enum {
 /* Tilemap shadow buffers & pixel baker scratchpads in Bank $7E WRAM */
 static u16 g_bg0_map[1024];
 static u16 g_bg1_map[2048];
+static u16 g_world_tile[HEARTH_MAP_CELLS];
 static u8  g_pix8[64];
 static u8  g_pix16[256];
 static u8  g_tile32[32];
@@ -837,8 +838,25 @@ static const u16 TERRAIN_TILE_LUT[28] = {
     ST_FLOWER_BED      /* 27: T_FLOWER_BED */
 };
 
+static void bake_world_tile_cache(void) {
+    u16 idx, ov, t;
+    for (idx = 0u; idx < (u16)HEARTH_MAP_CELLS; idx++) {
+        ov = (u16)g_hearth.map_bg2[idx];
+        if (ov == 0u) {
+            t = (u16)g_hearth.map_bg1[idx];
+            g_world_tile[idx] = (t < 28u) ? TERRAIN_TILE_LUT[t] : (u16)ST_GRASS;
+        } else if (ov == O_ROOF_EAVE) {
+            g_world_tile[idx] = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
+        } else if (ov == O_SHRINE_ARCH) {
+            g_world_tile[idx] = SNES_TILE(ST_SHRINE_ARCH, 0u, 1u);
+        } else {
+            g_world_tile[idx] = SNES_TILE(ST_CANOPY, 0u, 1u);
+        }
+    }
+}
+
 static void stream_world_col(s16 mx, s16 my_start) {
-    u16 half_col, row_off, off, k, entry, idx, idx_valid, ov, t;
+    u16 half_col, row_off, off, k, entry, idx, idx_valid;
     s16 my;
 
     half_col = (u16)(((u16)mx & 15u) << 1);
@@ -874,17 +892,7 @@ static void stream_world_col(s16 mx, s16 my_start) {
                 idx = (u16)(((u16)my << 5) + ((u16)my << 3) + ((u16)my << 2) + (u16)mx);
                 idx_valid = 1u;
             }
-            ov = (u16)g_hearth.map_bg2[idx];
-            if (ov == 0u) {
-                t = (u16)g_hearth.map_bg1[idx];
-                entry = (t < 28u) ? TERRAIN_TILE_LUT[t] : (u16)ST_GRASS;
-            } else if (ov == O_ROOF_EAVE) {
-                entry = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
-            } else if (ov == O_SHRINE_ARCH) {
-                entry = SNES_TILE(ST_SHRINE_ARCH, 0u, 1u);
-            } else {
-                entry = SNES_TILE(ST_CANOPY, 0u, 1u);
-            }
+            entry = g_world_tile[idx];
             idx += (u16)HEARTH_MAP_W;
         }
         off = (u16)(half_col + row_off);
@@ -897,7 +905,7 @@ static void stream_world_col(s16 mx, s16 my_start) {
 }
 
 static void stream_world_row(s16 mx_start, s16 my) {
-    u16 row_off, off, k, entry, row_idx, idx, ov, t;
+    u16 row_off, off, k, entry, idx;
     s16 mx;
 
     row_off = (u16)(((u16)my & 15u) << 6);
@@ -905,50 +913,53 @@ static void stream_world_row(s16 mx_start, s16 my) {
     g_bg1_dirty_r = 1;
 
     mx = mx_start;
+    off = (u16)(row_off + (((u16)mx & 15u) << 1));
+    if (((u16)mx & 16u) != 0u) off = (u16)(off + 1024u);
+
     if (my < 0 || my >= HEARTH_MAP_H) {
         entry = (u16)ST_BUSH;
-        for (k = 0u; k < 20u; k++, mx++) {
-            off = (u16)(row_off + (((u16)mx & 15u) << 1));
-            if (((u16)mx & 16u) != 0u) off = (u16)(off + 1024u);
+        for (k = 0u; k < 18u; k++) {
             g_bg1_map[off]              = entry;
             g_bg1_map[(u16)(off + 1u)]  = entry;
             g_bg1_map[(u16)(off + 32u)] = entry;
             g_bg1_map[(u16)(off + 33u)] = entry;
+            off = (u16)(off + 2u);
+            if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
         }
         return;
     }
 
-    row_idx = (u16)(((u16)my << 5) + ((u16)my << 3) + ((u16)my << 2));
-    for (k = 0u; k < 20u; k++, mx++) {
-        if (mx < 0 || mx >= HEARTH_MAP_W) {
-            entry = (u16)ST_BUSH;
-        } else {
-            idx = (u16)(row_idx + (u16)mx);
-            ov = (u16)g_hearth.map_bg2[idx];
-            if (ov == 0u) {
-                t = (u16)g_hearth.map_bg1[idx];
-                entry = (t < 28u) ? TERRAIN_TILE_LUT[t] : (u16)ST_GRASS;
-            } else if (ov == O_ROOF_EAVE) {
-                entry = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
-            } else if (ov == O_SHRINE_ARCH) {
-                entry = SNES_TILE(ST_SHRINE_ARCH, 0u, 1u);
-            } else {
-                entry = SNES_TILE(ST_CANOPY, 0u, 1u);
-            }
+    idx = (u16)(((u16)my << 5) + ((u16)my << 3) + ((u16)my << 2));
+    if (mx >= 0 && (s16)(mx + 18) <= HEARTH_MAP_W) {
+        /* Fast interior path: zero per-tile bounds checks */
+        idx = (u16)(idx + (u16)mx);
+        for (k = 0u; k < 18u; k++) {
+            entry = g_world_tile[idx++];
+            g_bg1_map[off]              = entry;
+            g_bg1_map[(u16)(off + 1u)]  = entry;
+            g_bg1_map[(u16)(off + 32u)] = entry;
+            g_bg1_map[(u16)(off + 33u)] = entry;
+            off = (u16)(off + 2u);
+            if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
         }
-        off = (u16)(row_off + (((u16)mx & 15u) << 1));
-        if (((u16)mx & 16u) != 0u) off = (u16)(off + 1024u);
+        return;
+    }
+
+    for (k = 0u; k < 18u; k++, mx++) {
+        entry = (mx < 0 || mx >= HEARTH_MAP_W) ? (u16)ST_BUSH : g_world_tile[(u16)(idx + (u16)mx)];
         g_bg1_map[off]              = entry;
         g_bg1_map[(u16)(off + 1u)]  = entry;
         g_bg1_map[(u16)(off + 32u)] = entry;
         g_bg1_map[(u16)(off + 33u)] = entry;
+        off = (u16)(off + 2u);
+        if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
     }
 }
 
 static void build_full_world_bg1(s16 cam_x, s16 cam_y) {
     s16 mx0, my0, dy;
 
-    mx0 = (s16)((cam_x >> 4) - 2);
+    mx0 = (s16)((cam_x >> 4) - 1);
     my0 = (s16)((cam_y >> 4) - 1);
     for (dy = 0; dy < 16; dy++) {
         stream_world_row(mx0, (s16)(my0 + dy));
@@ -972,19 +983,19 @@ static void stream_world_bg1(s16 cam_x, s16 cam_y) {
 
     while (g_last_cam_mx < cmx) {
         g_last_cam_mx++;
-        stream_world_col((s16)(g_last_cam_mx + 17), (s16)(g_last_cam_my - 1));
+        stream_world_col((s16)(g_last_cam_mx + 16), (s16)(g_last_cam_my - 1));
     }
     while (g_last_cam_mx > cmx) {
         g_last_cam_mx--;
-        stream_world_col((s16)(g_last_cam_mx - 2), (s16)(g_last_cam_my - 1));
+        stream_world_col((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my - 1));
     }
     while (g_last_cam_my < cmy) {
         g_last_cam_my++;
-        stream_world_row((s16)(g_last_cam_mx - 2), (s16)(g_last_cam_my + 14));
+        stream_world_row((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my + 14));
     }
     while (g_last_cam_my > cmy) {
         g_last_cam_my--;
-        stream_world_row((s16)(g_last_cam_mx - 2), (s16)(g_last_cam_my - 1));
+        stream_world_row((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my - 1));
     }
 }
 
@@ -1188,6 +1199,7 @@ static u16 put_hud_str(u16 col, const char *s) {
 static void draw_explore_hud(const HearthPpuPacket *ppu) {
     const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
     u16 col = 1u;
+    (void)ppu;
 
     g_bg0_map[col++] = (u16)('H' | 0x3000u);
     g_bg0_map[col++] = (u16)('P' | 0x3000u);
@@ -1200,9 +1212,9 @@ static void draw_explore_hud(const HearthPpuPacket *ppu) {
     g_bg0_map[col++] = (u16)(':' | 0x3000u);
     col = put_hud_u16(col, (u16)((m->mp > 0) ? m->mp : 0));
 
-    if (ppu->interact_active && ppu->interact_label) {
+    if (g_hearth.ppu.interact_active && g_hearth.ppu.interact_label) {
         col = put_hud_str(col, " [A]");
-        col = put_hud_str(col, ppu->interact_label);
+        col = put_hud_str(col, g_hearth.ppu.interact_label);
     } else if (g_hearth.flag_guard_mended) {
         col = put_hud_str(col, " SHRINE->");
     } else if (g_hearth.flag_has_courage) {
@@ -1317,13 +1329,14 @@ static void draw_battle_ui(void) {
 /* Native 16-bit HUD dirty signature (zero 32-bit shifts or high bit-shifts on WDC 65816) */
 static u16 compute_hud_sig(u8 want, const HearthPpuPacket *ppu) {
     u16 sig = (u16)(((u16)g_hearth.mode << 4) | (u16)want);
+    (void)ppu;
     if (want == 0u) {
         const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
         sig = (u16)(sig + (u16)m->hp + (u16)(m->mp << 5));
         if (g_hearth.flag_has_courage) sig ^= 0x1000u;
         if (g_hearth.flag_guard_mended) sig ^= 0x2000u;
-        if (ppu->interact_active && ppu->interact_label) {
-            sig ^= (u16)(0x4000u ^ ((u16)(u8)ppu->interact_label[0] << 8) ^ (u16)(u8)ppu->interact_label[1]);
+        if (g_hearth.ppu.interact_active && g_hearth.ppu.interact_label) {
+            sig ^= (u16)(0x4000u ^ ((u16)(u8)g_hearth.ppu.interact_label[0] << 8) ^ (u16)(u8)g_hearth.ppu.interact_label[1]);
         }
         return sig;
     }
@@ -1420,50 +1433,48 @@ static const u16 SPR_TILE_ATTR_LUT[20] = {
 static const u8 HI_TAIL_MASK[4] = { 0x00u, 0x54u, 0x50u, 0x40u };
 
 static void render_snes_sprites(const HearthPpuPacket *ppu) {
-    u16 i, n, count, sid, ta, lay, flg, hi_byte, hi_mask, prev_cnt, end_lane;
-    const HearthOamSprite *o;
-    u16 *wdst;
-    u8 *hi_dst;
+    u16 i, n, count, sid, ta, flg, oidx, hi_idx, hi_byte, hi_mask, prev_cnt, end_lane;
     s16 sx, sy, shx, shy, min_y, max_y;
     u16 prog, rem, rpal;
+    (void)ppu;
 
     count = 0u;
-    wdst = (u16 *)oamMemory;
-    hi_dst = &oamMemory[512];
+    oidx = 0u;
+    hi_idx = 512u;
     hi_byte = 0u;
     hi_mask = 1u;
 
     if (g_hearth.mode != MODE_TITLE) {
-        shx = (s16)ppu->shake_x;
-        shy = (s16)ppu->shake_y;
+        shx = (s16)g_hearth.ppu.shake_x;
+        shy = (s16)g_hearth.ppu.shake_y;
         min_y = (g_ui_layout == 0u) ? 10 : -15;
         max_y = (g_ui_layout == 2u || g_ui_layout == 3u) ? 140 : 224;
-        n = (u16)ppu->oam_count;
+        n = (u16)g_hearth.ppu.oam_count;
         if (n > 48u) n = 48u;
-        o = ppu->oam;
 
-        for (i = 0u; i < n; i++, o++) {
-            lay = (u16)o->layer;
-            sy = (s16)(o->y - ((lay == 2u) ? 8 : 16) + shy);
+        for (i = 0u; i < n; i++) {
+            flg = (u16)g_hearth.ppu.oam[i].flags;
+            sy = (s16)(g_hearth.ppu.oam[i].y - ((flg & OAM_FLAG_LAYER2) ? 8 : 16) + shy);
             if (sy < min_y || sy >= max_y) continue;
-            sx = (s16)(o->x - 8 + shx);
+            sx = (s16)(g_hearth.ppu.oam[i].x - 8 + shx);
             if (sx < -15 || sx >= 256) continue;
 
-            sid = (u16)o->sprite_id;
+            sid = (u16)g_hearth.ppu.oam[i].sprite_id;
             if (sid >= 20u) sid = 0u;
             ta = SPR_TILE_ATTR_LUT[sid];
-            if (lay == 2u) ta |= 0x1000u;
-            flg = (u16)o->flags;
+            if (flg & OAM_FLAG_LAYER2) ta |= 0x1000u;
             if (flg & OAM_FLAG_FLIP_X) ta |= 0x4000u;
 
-            wdst[0] = (u16)(((u16)sy << 8) | ((u16)sx & 0x00FFu));
-            wdst[1] = ta;
-            wdst += 2;
+            oamMemory[oidx]               = (u8)sx;
+            oamMemory[(u16)(oidx + 1u)]   = (u8)sy;
+            oamMemory[(u16)(oidx + 2u)]   = (u8)ta;
+            oamMemory[(u16)(oidx + 3u)]   = (u8)(ta >> 8);
+            oidx = (u16)(oidx + 4u);
 
             if (sx < 0) hi_byte |= hi_mask;
             hi_mask <<= 2;
             if (hi_mask >= 0x0100u) {
-                *hi_dst++ = (u8)hi_byte;
+                oamMemory[hi_idx++] = (u8)hi_byte;
                 hi_byte = 0u;
                 hi_mask = 1u;
             }
@@ -1475,17 +1486,19 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             prog = g_hearth.battle.ring.progress_fp;
             rem = (prog < 256u) ? (u16)(256u - prog) : 0u;
             rpal = (prog >= g_hearth.battle.ring.sweet_start_fp)
-                ? ((((u16)g_hearth.frame_count & 2u) != 0u) ? 0x3200u : 0x3400u)
-                : 0x3600u;
+                ? ((((u16)g_hearth.frame_count & 2u) != 0u) ? 0x32u : 0x34u)
+                : 0x36u;
             sx = (s16)(g_hearth.battle.ring.x - 8);
             sy = (s16)(g_hearth.battle.ring.y - 20 - (s16)(rem >> 4));
             if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
-                wdst[0] = (u16)(((u16)sy << 8) | ((u16)sx & 0x00FFu));
-                wdst[1] = (u16)(rpal | 70u);
-                wdst += 2;
+                oamMemory[oidx]             = (u8)sx;
+                oamMemory[(u16)(oidx + 1u)] = (u8)sy;
+                oamMemory[(u16)(oidx + 2u)] = 70u;
+                oamMemory[(u16)(oidx + 3u)] = (u8)rpal;
+                oidx = (u16)(oidx + 4u);
                 hi_mask <<= 2;
                 if (hi_mask >= 0x0100u) {
-                    *hi_dst++ = (u8)hi_byte;
+                    oamMemory[hi_idx++] = (u8)hi_byte;
                     hi_byte = 0u;
                     hi_mask = 1u;
                 }
@@ -1497,12 +1510,13 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
     /* Delta OAM hide: clear previously used slots (x=255, y=240, x8=1, size=0) */
     prev_cnt = (u16)g_prev_oam_cnt;
     for (i = count; i < prev_cnt; i++) {
-        wdst[0] = 0xF0FFu;
-        wdst += 2;
+        oamMemory[oidx]             = 0xFFu;
+        oamMemory[(u16)(oidx + 1u)] = 0xF0u;
+        oidx = (u16)(oidx + 4u);
         hi_byte |= hi_mask;
         hi_mask <<= 2;
         if (hi_mask >= 0x0100u) {
-            *hi_dst++ = (u8)hi_byte;
+            oamMemory[hi_idx++] = (u8)hi_byte;
             hi_byte = 0u;
             hi_mask = 1u;
         }
@@ -1511,7 +1525,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
     /* Flush any partial 4-sprite high-table byte cleanly (unused upper lanes keep x8=1, size=0) */
     end_lane = (u16)(((count > prev_cnt) ? count : prev_cnt) & 3u);
     if (end_lane != 0u) {
-        *hi_dst = (u8)(hi_byte | (u16)HI_TAIL_MASK[end_lane]);
+        oamMemory[hi_idx] = (u8)(hi_byte | (u16)HI_TAIL_MASK[end_lane]);
     }
     g_prev_oam_cnt = (u8)count;
 }
@@ -1703,6 +1717,7 @@ int main(void) {
 
     /* 4. Boot Portable Engine Core in Native SNES 256x224 Mode */
     hearth_init(&g_hearth);
+    bake_world_tile_cache();
     g_hearth.tuning.ppu_mode = PPU_SNES_256x224;
     ppu = hearth_step_60hz(&g_hearth, 0u);
     g_last_battle = 0u;

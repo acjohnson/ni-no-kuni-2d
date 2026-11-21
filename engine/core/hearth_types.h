@@ -197,8 +197,19 @@ typedef enum {
 #define OAM_FLAG_FLIP_X      (1u << 0)
 #define OAM_FLAG_FLASH_WHITE (1u << 1)
 #define OAM_FLAG_SHADOW      (1u << 2)
+#define OAM_FLAG_LAYER2      (1u << 7)
 
 /* Flat Hardware-Friendly OAM Sprite Entry */
+#if defined(HEARTH_TARGET_SNES)
+/* Compact 8-byte power-of-two entry for WDC 65816 (<< 3 indexing, zero multiply) */
+typedef struct {
+    int16_t  x;
+    int16_t  y;
+    int16_t  sort_y;
+    uint8_t  sprite_id;
+    uint8_t  flags;      /* bits 0..2 = OAM_FLAG_*, bit 7 = OAM_FLAG_LAYER2 */
+} HearthOamSprite;
+#else
 typedef struct {
     int16_t  x;
     int16_t  y;
@@ -213,6 +224,7 @@ typedef struct {
     int16_t  sort_y;
     uint16_t rot_deg;
 } HearthOamSprite;
+#endif
 
 typedef struct {
     bool     active;
