@@ -10,7 +10,7 @@
 
 #define WASM_EXPORT(name) __attribute__((export_name(#name)))
 
-#define SCALAR_LEN       112
+#define SCALAR_LEN       144
 #define OAM_STRIDE       12
 #define PARTY_STRIDE     16
 #define ENEMY_STRIDE     28
@@ -278,8 +278,51 @@ static void sync_snapshot(void) {
     g_scalars[90] = b->vfx_dur;
     g_scalars[91] = b->vfx_x;
     g_scalars[92] = b->vfx_y;
-    g_scalars[93] = b->vfx_tx;
-    g_scalars[94] = b->vfx_ty;
+    g_scalars[93]  = b->vfx_tx;
+    g_scalars[94]  = b->vfx_ty;
+
+    /* Multi-Zone, Story, Economy, Shop & Fishing Registers */
+    g_scalars[95]  = p->zone_id;
+    g_scalars[96]  = p->terrain_pal_id;
+    g_scalars[97]  = p->bgm_id;
+    g_scalars[98]  = p->zone_is_dark ? 1 : 0;
+    g_scalars[99]  = p->zone_banner_frames;
+    g_scalars[100] = (int32_t)(uintptr_t)p->zone_name;
+    g_scalars[101] = g_state.story_stage;
+    g_scalars[102] = g_state.map_revision;
+    g_scalars[103] = g_state.guilders;
+    g_scalars[104] = g_state.star_drops;
+    g_scalars[105] = g_state.snacks;
+    g_scalars[106] = g_state.lure_tier;
+    g_scalars[107] = g_state.fish_total_caught;
+    g_scalars[108] = g_state.fish_bag[0];
+    g_scalars[109] = g_state.fish_bag[1];
+    g_scalars[110] = g_state.fish_bag[2];
+    g_scalars[111] = g_state.fish_bag[3];
+    g_scalars[112] = g_state.fish_bag[4];
+    g_scalars[113] = g_state.fish_bag[5];
+    g_scalars[114] = g_state.shop.active ? 1 : 0;
+    g_scalars[115] = g_state.shop.shop_id;
+    g_scalars[116] = g_state.shop.tab;
+    g_scalars[117] = g_state.shop.cursor;
+    g_scalars[118] = g_state.shop.msg_timer;
+    g_scalars[119] = (int32_t)(uintptr_t)g_state.shop.title;
+    g_scalars[120] = (int32_t)(uintptr_t)g_state.shop.msg;
+    g_scalars[121] = g_state.fishing.active ? 1 : 0;
+    g_scalars[122] = g_state.fishing.phase;
+    g_scalars[123] = g_state.fishing.bobber_x;
+    g_scalars[124] = g_state.fishing.bobber_y;
+    g_scalars[125] = g_state.fishing.fish_pos;
+    g_scalars[126] = g_state.fishing.bar_pos;
+    g_scalars[127] = g_state.fishing.bar_half_w;
+    g_scalars[128] = g_state.fishing.progress;
+    g_scalars[129] = g_state.fishing.tension;
+    g_scalars[130] = g_state.fishing.species;
+    g_scalars[131] = g_state.fishing.weight_oz;
+    g_scalars[132] = b->guilders_earned;
+    g_scalars[133] = b->encounter_preset;
+    g_scalars[134] = g_state.flag_has_wand ? 1 : 0;
+    g_scalars[135] = g_state.flag_sewer_key ? 1 : 0;
 }
 
 static void inject_ui_pad(uint16_t mask) {
@@ -307,10 +350,26 @@ void wasm_step(uint32_t pad_bits) {
     sync_snapshot();
 }
 
+WASM_EXPORT(wasm_start_story)
+void wasm_start_story(void) {
+    g_state.ppu.sfx_count = 0;
+    hearth_start_story(&g_state);
+    append_ppu_sfx();
+    sync_snapshot();
+}
+
 WASM_EXPORT(wasm_start_sandbox)
 void wasm_start_sandbox(void) {
     g_state.ppu.sfx_count = 0;
     hearth_start_sandbox(&g_state);
+    append_ppu_sfx();
+    sync_snapshot();
+}
+
+WASM_EXPORT(wasm_enter_zone)
+void wasm_enter_zone(uint32_t zone_id, uint32_t tx, uint32_t ty) {
+    g_state.ppu.sfx_count = 0;
+    hearth_enter_zone(&g_state, (uint8_t)zone_id, (uint8_t)tx, (uint8_t)ty);
     append_ppu_sfx();
     sync_snapshot();
 }
@@ -338,7 +397,10 @@ void wasm_start_cutscene_demo(void) {
 
 WASM_EXPORT(wasm_start_quick_battle)
 void wasm_start_quick_battle(uint32_t preset) {
-    uint8_t biome = (preset == ENCOUNTER_SHRINE_BOSS) ? (uint8_t)BIOME_SHRINE : (uint8_t)BIOME_MEADOW;
+    uint8_t biome = (uint8_t)BIOME_MEADOW;
+    if (preset == ENCOUNTER_SHRINE_BOSS) biome = (uint8_t)BIOME_SHRINE;
+    else if (preset == ENCOUNTER_SEWER_PACK || preset == ENCOUNTER_SEWER_BOSS) biome = (uint8_t)BIOME_SEWER;
+    else if (preset == ENCOUNTER_BOAR_GUARD || preset == ENCOUNTER_IRONFANG_BOSS) biome = (uint8_t)BIOME_BOARHOLD;
     g_state.ppu.sfx_count = 0;
     hearth_start_battle(&g_state, (uint8_t)preset, biome, -1);
     append_ppu_sfx();
@@ -490,6 +552,33 @@ void wasm_ui_finish_battle_summary(uint32_t rematch) {
     sync_snapshot();
 }
 
+WASM_EXPORT(wasm_ui_shop_tab)
+void wasm_ui_shop_tab(uint32_t tab) {
+    if (g_state.mode != MODE_SHOP || !g_state.shop.active) return;
+    g_state.shop.tab = (tab != 0u) ? 1u : 0u;
+    g_state.shop.cursor = 0;
+    push_bridge_sfx(SFX_CURSOR);
+    sync_snapshot();
+}
+
+WASM_EXPORT(wasm_ui_shop_select)
+void wasm_ui_shop_select(uint32_t idx) {
+    uint32_t max_rows;
+    if (g_state.mode != MODE_SHOP || !g_state.shop.active) return;
+    max_rows = (g_state.shop.tab == 0u) ? 5u : (uint32_t)HEARTH_FISH_SPECIES;
+    if (idx >= max_rows) return;
+    g_state.shop.cursor = (uint8_t)idx;
+    inject_ui_pad(PAD_A);
+    sync_snapshot();
+}
+
+WASM_EXPORT(wasm_ui_shop_close)
+void wasm_ui_shop_close(void) {
+    if (g_state.mode != MODE_SHOP || !g_state.shop.active) return;
+    inject_ui_pad(PAD_B);
+    sync_snapshot();
+}
+
 /* ============================================================================
  * MEMORY BUFFER POINTERS & CUTSCENE ROM TABLE READERS
  * ============================================================================ */
@@ -534,6 +623,34 @@ const uint8_t *wasm_get_col_ptr(void) { return g_state.map_col; }
 
 WASM_EXPORT(wasm_get_palettes_ptr)
 const uint32_t *wasm_get_palettes_ptr(void) { return &HEARTH_PALETTES_RGB[0][0]; }
+
+WASM_EXPORT(wasm_get_zone_palettes_ptr)
+const uint32_t *wasm_get_zone_palettes_ptr(void) { return &HEARTH_ZONE_PALETTES_RGB[0][0]; }
+
+WASM_EXPORT(wasm_get_shop_item_name)
+const char *wasm_get_shop_item_name(uint32_t i) {
+    return (i < 5u) ? HEARTH_SHOP_ITEMS[i].name : "";
+}
+
+WASM_EXPORT(wasm_get_shop_item_desc)
+const char *wasm_get_shop_item_desc(uint32_t i) {
+    return (i < 5u) ? HEARTH_SHOP_ITEMS[i].desc : "";
+}
+
+WASM_EXPORT(wasm_get_shop_item_price)
+uint32_t wasm_get_shop_item_price(uint32_t i) {
+    return (i < 5u) ? HEARTH_SHOP_ITEMS[i].price : 0u;
+}
+
+WASM_EXPORT(wasm_get_fish_name)
+const char *wasm_get_fish_name(uint32_t i) {
+    return (i < (uint32_t)HEARTH_FISH_SPECIES) ? HEARTH_FISH_TABLE[i].name : "";
+}
+
+WASM_EXPORT(wasm_get_fish_price)
+uint32_t wasm_get_fish_price(uint32_t i) {
+    return (i < (uint32_t)HEARTH_FISH_SPECIES) ? HEARTH_FISH_TABLE[i].sell_price : 0u;
+}
 
 WASM_EXPORT(wasm_get_cutscene_intro_count)
 uint32_t wasm_get_cutscene_intro_count(void) {

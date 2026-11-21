@@ -98,13 +98,13 @@ enum {
     ST_BATTLE_GROUND_SHRINE
 };
 
-#define SPR_TIMED_RING_SLOT  19u
-#define SPR_HERO_DOWN_1      20u  /* OBJ tile 0x48 */
-#define SPR_HERO_UP_0        21u  /* OBJ tile 0x4A */
-#define SPR_HERO_UP_1        22u  /* OBJ tile 0x4C */
-#define SPR_HERO_SIDE_0      23u  /* OBJ tile 0x4E */
-#define SPR_HERO_SIDE_1      24u  /* OBJ tile 0x60 */
-#define SPR_BATTLE_VFX_SLOT  25u  /* OBJ tile 0x62 */
+#define SPR_TIMED_RING_SLOT  32u  /* OBJ tile 0x80 */
+#define SPR_HERO_DOWN_1      33u  /* OBJ tile 0x82 */
+#define SPR_HERO_UP_0        34u  /* OBJ tile 0x84 */
+#define SPR_HERO_UP_1        35u  /* OBJ tile 0x86 */
+#define SPR_HERO_SIDE_0      36u  /* OBJ tile 0x88 */
+#define SPR_HERO_SIDE_1      37u  /* OBJ tile 0x8A */
+#define SPR_BATTLE_VFX_SLOT  38u  /* OBJ tile 0x8C */
 
 /* Tilemap shadow buffers & pixel baker scratchpads in Bank $7E WRAM */
 static u16 g_bg0_map[1024];
@@ -127,6 +127,9 @@ static s16 g_last_cam_mx      = -999;
 static s16 g_last_cam_my      = -999;
 static u8  g_last_scene_kind  = 255;
 static u8  g_last_intro_scene = 255;
+static u8  g_last_pal_id      = 255;
+static u8  g_pal_dirty        = 0;
+static u8  g_last_map_rev     = 255;
 static u8  g_ui_layout        = 255;
 static u8  g_ui_tick          = 0;
 static u16 g_last_hud_sig     = 0xFFFFu;
@@ -341,6 +344,19 @@ static void upload_all_palettes(void) {
     /* BG Palette 6: UI Arcane Cyan Accent (15=sky cyan) */
     g_pal16[15] = hearth_rgb_to_snes_bgr555(0x74E4FFu);
     dmaCopyCGram((u8 *)g_pal16, (u16)(PAL_UI_CYAN * 16u), 32u);
+    g_last_pal_id = ZPAL_HAMLET;
+}
+
+static void upload_zone_pal0(u8 pal_id) {
+    u16 c;
+    u8 pid;
+
+    pid = (pal_id < ZPAL_COUNT) ? pal_id : 0u;
+    for (c = 0u; c < 16u; c++) {
+        g_pal16[c] = hearth_rgb_to_snes_bgr555(HEARTH_ZONE_PALETTES_RGB[pid][c]);
+    }
+    g_pal16[0] = hearth_rgb_to_snes_bgr555(HEARTH_ZONE_PALETTES_RGB[pid][1]);
+    dmaCopyCGram((u8 *)g_pal16, 0u, 32u);
 }
 
 /* ============================================================================
@@ -570,12 +586,15 @@ static void bake_obj_sprites_part1(void) {
     g_pix16[102] = 12; g_pix16[105] = 12;
     upload_obj_sprite16(SPR_FAMILIAR_LUMINA);
 
-    /* 4: SPR_NPC_ELDER */
+    /* 4: SPR_NPC_ELDER (Elder Wren - clear eyes, brows, white beard & golden staff) */
     p16_clear();
-    p16_rect(4, 1, 8, 3, 4); p16_rect(5, 4, 6, 3, 2);
-    p16_rect(5, 7, 6, 3, 4);
-    p16_rect(4, 10, 8, 5, 8); p16_rect(5, 10, 6, 4, 9);
-    p16_rect(12, 4, 2, 11, 11);
+    p16_rect(4, 1, 8, 3, 15); p16_rect(5, 1, 6, 1, 4);
+    p16_rect(4, 4, 8, 4, 2);
+    g_pix16[69] = 15; g_pix16[70] = 15; g_pix16[73] = 15; g_pix16[74] = 15;
+    g_pix16[86] = 1;  g_pix16[89] = 1;
+    p16_rect(5, 7, 6, 3, 15); p16_rect(6, 9, 4, 2, 4);
+    p16_rect(4, 10, 8, 5, 8); p16_rect(5, 11, 6, 4, 9);
+    p16_rect(12, 3, 2, 12, 11); p16_rect(12, 2, 2, 2, 7);
     upload_obj_sprite16(SPR_NPC_ELDER);
 
     /* 5: SPR_NPC_CLARA */
@@ -665,12 +684,129 @@ static void bake_obj_sprites_part2(void) {
     p16_rect(7, 2, 2, 12, 12); p16_rect(2, 7, 12, 2, 12);
     upload_obj_sprite16(SPR_HEART_ORB);
 
-    /* 19: Timed-Hit / Parry Target Ring */
+    /* 32: Timed-Hit / Parry Target Ring */
     p16_clear();
     p16_rect(3, 1, 10, 2, 11); p16_rect(3, 13, 10, 2, 11);
     p16_rect(1, 3, 2, 10, 11); p16_rect(13, 3, 2, 10, 11);
     p16_rect(6, 6, 4, 4, 15);
     upload_obj_sprite16(SPR_TIMED_RING_SLOT);
+}
+
+static void bake_obj_sprites_part3(void) {
+    /* 19: SPR_CHEST_OPEN (Flipped-back lid, dark empty interior, brass latch) */
+    p16_clear();
+    p16_rect(2, 2, 12, 4, 11); p16_rect(3, 3, 10, 2, 12);
+    p16_rect(2, 5, 12, 1, 7);
+    p16_rect(3, 6, 10, 3, 1);
+    p16_rect(2, 9, 12, 5, 11); p16_rect(3, 10, 10, 3, 12);
+    p16_rect(2, 9, 12, 1, 7);  p16_rect(7, 9, 2, 2, 15);
+    upload_obj_sprite16(SPR_CHEST_OPEN);
+
+    /* 20: SPR_NPC_MOUSE */
+    p16_clear();
+    p16_rect(2, 1, 4, 4, 4);   p16_rect(10, 1, 4, 4, 4);
+    p16_rect(3, 2, 2, 2, 10);  p16_rect(11, 2, 2, 2, 10);
+    p16_rect(4, 4, 8, 4, 15);  p16_rect(5, 6, 6, 2, 2);
+    g_pix16[86] = 1; g_pix16[89] = 1; g_pix16[119] = 10; g_pix16[120] = 10;
+    p16_rect(4, 8, 8, 6, 8);   p16_rect(5, 9, 6, 4, 7);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_obj_sprite16(SPR_NPC_MOUSE);
+
+    /* 21: SPR_NPC_PIG */
+    p16_clear();
+    p16_rect(3, 1, 3, 3, 10);  p16_rect(10, 1, 3, 3, 10);
+    p16_rect(4, 3, 8, 5, 10);  p16_rect(5, 5, 6, 3, 2);
+    g_pix16[70] = 1; g_pix16[73] = 1; g_pix16[103] = 1; g_pix16[104] = 1;
+    p16_rect(3, 8, 10, 6, 5);  p16_rect(5, 9, 6, 4, 7);
+    p16_rect(4, 14, 3, 2, 11); p16_rect(9, 14, 3, 2, 11);
+    upload_obj_sprite16(SPR_NPC_PIG);
+
+    /* 22: SPR_NPC_SHADOW_GRAN */
+    p16_clear();
+    p16_rect(3, 1, 10, 6, 2);  p16_rect(4, 2, 8, 4, 3);
+    p16_rect(5, 4, 6, 3, 1);
+    g_pix16[86] = 11; g_pix16[89] = 11;
+    p16_rect(3, 7, 10, 8, 2);  p16_rect(5, 8, 6, 6, 3);
+    p16_rect(2, 12, 2, 3, 4);  p16_rect(12, 12, 2, 3, 4);
+    upload_obj_sprite16(SPR_NPC_SHADOW_GRAN);
+
+    /* 23: SPR_PET_MILO */
+    p16_clear();
+    p16_rect(3, 4, 3, 4, 4);   p16_rect(10, 4, 3, 4, 4);
+    p16_rect(5, 3, 6, 5, 10);  p16_rect(6, 4, 4, 3, 11);
+    g_pix16[86] = 1; g_pix16[89] = 1; g_pix16[119] = 1;
+    p16_rect(5, 8, 6, 2, 9);
+    p16_rect(4, 10, 8, 4, 10); p16_rect(12, 8, 2, 3, 11);
+    p16_rect(5, 14, 2, 2, 4);  p16_rect(9, 14, 2, 2, 4);
+    upload_obj_sprite16(SPR_PET_MILO);
+
+    /* 24: SPR_ENEMY_RAT */
+    p16_clear();
+    p16_rect(3, 3, 3, 3, 3);   p16_rect(10, 3, 3, 3, 3);
+    p16_rect(4, 5, 8, 7, 2);   p16_rect(5, 6, 6, 5, 4);
+    g_pix16[118] = 10; g_pix16[121] = 10;
+    p16_rect(12, 9, 3, 2, 5);
+    p16_rect(5, 12, 2, 3, 3);  p16_rect(9, 12, 2, 3, 3);
+    upload_obj_sprite16(SPR_ENEMY_RAT);
+}
+
+static void bake_obj_sprites_part4(void) {
+    /* 25: SPR_ENEMY_SLIME */
+    p16_clear();
+    p16_rect(3, 6, 10, 8, 6);  p16_rect(4, 4, 8, 8, 7);
+    p16_rect(5, 5, 3, 2, 15);
+    g_pix16[134] = 11; g_pix16[137] = 11;
+    p16_rect(2, 12, 12, 2, 6);
+    upload_obj_sprite16(SPR_ENEMY_SLIME);
+
+    /* 26: SPR_ENEMY_BOAR */
+    p16_clear();
+    p16_rect(4, 1, 8, 4, 2);   p16_rect(5, 2, 6, 2, 5);
+    p16_rect(4, 5, 8, 4, 4);   g_pix16[102] = 11; g_pix16[105] = 11;
+    g_pix16[132] = 12; g_pix16[139] = 12;
+    p16_rect(3, 9, 10, 5, 3);  p16_rect(5, 10, 6, 3, 10);
+    p16_rect(13, 1, 2, 14, 12);
+    upload_obj_sprite16(SPR_ENEMY_BOAR);
+
+    /* 27: SPR_BOSS_MUCKMAW */
+    p16_clear();
+    p16_rect(5, 0, 6, 3, 11);  g_pix16[6] = 12; g_pix16[9] = 12;
+    p16_rect(1, 3, 14, 12, 6); p16_rect(2, 4, 12, 9, 7);
+    p16_rect(3, 5, 3, 2, 11);  p16_rect(10, 5, 3, 2, 11);
+    p16_rect(3, 9, 10, 3, 1);  p16_rect(4, 9, 2, 2, 12); p16_rect(10, 9, 2, 2, 12);
+    upload_obj_sprite16(SPR_BOSS_MUCKMAW);
+
+    /* 28: SPR_BOSS_IRONFANG */
+    p16_clear();
+    p16_rect(2, 0, 2, 4, 12);  p16_rect(12, 0, 2, 4, 12);
+    p16_rect(3, 2, 10, 6, 2);  p16_rect(4, 3, 8, 4, 3);
+    p16_rect(4, 5, 3, 2, 10);  p16_rect(9, 5, 3, 2, 10);
+    p16_rect(2, 8, 12, 7, 10); p16_rect(4, 8, 8, 6, 2);
+    p16_rect(3, 7, 2, 2, 12);  p16_rect(11, 7, 2, 2, 12);
+    upload_obj_sprite16(SPR_BOSS_IRONFANG);
+
+    /* 29: SPR_HOLLOW_OAK */
+    p16_clear();
+    p16_rect(1, 0, 14, 15, 11); p16_rect(2, 1, 12, 13, 12);
+    p16_rect(5, 4, 6, 11, 1);
+    p16_rect(6, 5, 4, 8, 9);    p16_rect(7, 6, 2, 6, 15);
+    upload_obj_sprite16(SPR_HOLLOW_OAK);
+
+    /* 30: SPR_BOBBER */
+    p16_clear();
+    p16_rect(7, 2, 2, 3, 11);
+    p16_rect(5, 5, 6, 3, 9);
+    p16_rect(5, 8, 6, 3, 14);
+    p16_rect(3, 11, 10, 1, 13);
+    upload_obj_sprite16(SPR_BOBBER);
+
+    /* 31: SPR_NPC_TOWNSFOLK */
+    p16_clear();
+    p16_rect(4, 1, 8, 3, 11);  p16_rect(5, 4, 6, 4, 2);
+    g_pix16[86] = 1; g_pix16[89] = 1;
+    p16_rect(4, 8, 8, 6, 9);   p16_rect(5, 9, 6, 4, 7);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_obj_sprite16(SPR_NPC_TOWNSFOLK);
 }
 
 static void bake_obj_sprites_hero_ext(void) {
@@ -1071,9 +1207,11 @@ static void stream_world_bg1(s16 cam_x, s16 cam_y) {
 
 static void build_battle_bg1(u8 biome) {
     u16 sky_e, gnd_e, y, x;
+    u8 dark_arena;
 
-    sky_e = SNES_TILE((biome == BIOME_SHRINE) ? ST_BATTLE_SKY_SHRINE : ST_BATTLE_SKY_MEADOW, 0u, 0u);
-    gnd_e = SNES_TILE((biome == BIOME_SHRINE) ? ST_BATTLE_GROUND_SHRINE : ST_BATTLE_GROUND_MEADOW, 0u, 0u);
+    dark_arena = (biome == BIOME_SHRINE || biome == BIOME_SEWER || biome == BIOME_BOARHOLD) ? 1u : 0u;
+    sky_e = SNES_TILE(dark_arena ? ST_BATTLE_SKY_SHRINE : ST_BATTLE_SKY_MEADOW, 0u, 0u);
+    gnd_e = SNES_TILE(dark_arena ? ST_BATTLE_GROUND_SHRINE : ST_BATTLE_GROUND_MEADOW, 0u, 0u);
 
     for (y = 0; y < 32u; y++) {
         for (x = 0; x < 32u; x++) {
@@ -1253,8 +1391,8 @@ static void line_int(u16 *pos, s16 val) {
 
 static void draw_title_cursor(void) {
     static const char *opts[3] = {
-        "PLAY WINDMILL HAMLET ",
-        "SHRINE BOSS BATTLE   ",
+        "NEW STORY (AGE 5->10)",
+        "EXPLORE EVERTALE     ",
         "REPLAY OPENING INTRO "
     };
     u8 i;
@@ -1319,25 +1457,22 @@ static void draw_explore_hud(const HearthPpuPacket *ppu) {
     (void)ppu;
 
     g_bg0_map[col++] = (u16)('H' | 0x3000u);
-    g_bg0_map[col++] = (u16)('P' | 0x3000u);
     g_bg0_map[col++] = (u16)(':' | 0x3000u);
     col = put_hud_u16(col, (u16)((m->hp > 0) ? m->hp : 0));
-    g_bg0_map[col++] = (u16)('/' | 0x3000u);
-    col = put_hud_u16(col, (u16)((m->max_hp > 0) ? m->max_hp : 0));
     g_bg0_map[col++] = (u16)(' ' | 0x3000u);
     g_bg0_map[col++] = (u16)('M' | 0x3000u);
     g_bg0_map[col++] = (u16)(':' | 0x3000u);
     col = put_hud_u16(col, (u16)((m->mp > 0) ? m->mp : 0));
+    g_bg0_map[col++] = (u16)(' ' | 0x3000u);
+    col = put_hud_u16(col, g_hearth.guilders);
+    g_bg0_map[col++] = (u16)('G' | 0x3000u);
 
     if (g_hearth.ppu.interact_active && g_hearth.ppu.interact_label) {
         col = put_hud_str(col, " [A]");
         col = put_hud_str(col, g_hearth.ppu.interact_label);
-    } else if (g_hearth.flag_guard_mended) {
-        col = put_hud_str(col, " SHRINE->");
-    } else if (g_hearth.flag_has_courage) {
-        col = put_hud_str(col, " COURAGE!");
-    } else {
-        col = put_hud_str(col, " HAMLET");
+    } else if (g_hearth.ppu.zone_name) {
+        col = put_hud_str(col, " ");
+        col = put_hud_str(col, g_hearth.ppu.zone_name);
     }
     while (col < 31u) {
         g_bg0_map[col++] = 0x3020u;
@@ -1503,15 +1638,112 @@ static void draw_battle_ui(void) {
     bg0_text(3u, 26u, PAL_UI_CYAN, "L/R:SWAP  U/D:TGT  A:ACT");
 }
 
+static void draw_shop_ui(void) {
+    const HearthShopState *sh = &g_hearth.shop;
+    u16 pos, pal;
+    u8 count, start, r, idx;
+
+    bg0_fill_rect(1u, 20u, 30u, 7u, SNES_TILE(SUI_FILL, PAL_UI_TEXT, 1u));
+    line_reset(&pos);
+    line_str(&pos, (sh->tab == 0u) ? "[BUY] SELL " : " BUY [SELL] ");
+    line_int(&pos, (s16)g_hearth.guilders);
+    line_str(&pos, "G");
+    bg0_text_n(2u, 20u, PAL_UI_GOLD, g_line, 28u);
+
+    count = (sh->tab == 0u) ? 5u : (u8)HEARTH_FISH_SPECIES;
+    start = (sh->cursor >= 3u) ? (u8)(sh->cursor - 2u) : 0u;
+    for (r = 0u; r < 3u && (u8)(start + r) < count; r++) {
+        idx = (u8)(start + r);
+        pal = (idx == sh->cursor) ? PAL_UI_GOLD : PAL_UI_TEXT;
+        line_reset(&pos);
+        line_str(&pos, (idx == sh->cursor) ? ">" : " ");
+        if (sh->tab == 0u) {
+            line_str(&pos, HEARTH_SHOP_ITEMS[idx].name);
+            line_str(&pos, " ");
+            line_int(&pos, (s16)HEARTH_SHOP_ITEMS[idx].price);
+            line_str(&pos, "G");
+        } else {
+            line_str(&pos, HEARTH_FISH_TABLE[idx].name);
+            line_str(&pos, " x");
+            line_int(&pos, (s16)g_hearth.fish_bag[idx]);
+            line_str(&pos, " ");
+            line_int(&pos, (s16)HEARTH_FISH_TABLE[idx].sell_price);
+            line_str(&pos, "G");
+        }
+        bg0_text_n(2u, (u16)(21u + r), pal, g_line, 28u);
+    }
+    if (sh->msg_timer > 0u && sh->msg[0] != '\0') {
+        bg0_text_n(2u, 25u, PAL_UI_CYAN, sh->msg, 28u);
+    } else {
+        bg0_text(2u, 25u, PAL_UI_TEXT, "L/R:TAB  A:BUY/SELL  B:EXIT");
+    }
+    bg0_text_n(2u, 26u, PAL_UI_GOLD, sh->title ? sh->title : "MARKET", 28u);
+}
+
+static void draw_fishing_ui(void) {
+    const HearthFishingState *fs = &g_hearth.fishing;
+    u16 pos, pal;
+    u8 k, fi, bi, bw, d;
+
+    bg0_fill_rect(1u, 20u, 30u, 7u, SNES_TILE(SUI_FILL, PAL_UI_TEXT, 1u));
+    if (fs->phase == FISH_PHASE_CAST || fs->phase == FISH_PHASE_WAIT_BITE) {
+        bg0_text(2u, 20u, PAL_UI_GOLD, "FISHING - WAIT FOR BITE...");
+        bg0_text(2u, 22u, PAL_UI_TEXT, "PRESS A ON SPLASH!");
+        bg0_text(2u, 26u, PAL_UI_CYAN, "B:LEAVE PIER");
+    } else if (fs->phase == FISH_PHASE_BITE_ALERT) {
+        pal = ((((u16)g_hearth.frame_count) & 4u) != 0u) ? PAL_UI_GOLD : PAL_UI_CYAN;
+        bg0_text(3u, 22u, pal, ">> BITE! PRESS A NOW! <<");
+        bg0_text(2u, 26u, PAL_UI_TEXT, "HOLD A TO REEL ONCE HOOKED");
+    } else if (fs->phase == FISH_PHASE_REELING) {
+        fi = (u8)((fs->fish_pos * 20) / 100);
+        bi = (u8)((fs->bar_pos * 20) / 100);
+        bw = (u8)((fs->bar_half_w * 20) / 100);
+        if (bw < 2u) bw = 2u;
+        g_line[0] = '[';
+        for (k = 0u; k < 20u; k++) {
+            d = (k > bi) ? (u8)(k - bi) : (u8)(bi - k);
+            if (k == fi) g_line[1u + k] = 'O';
+            else if (d <= bw) g_line[1u + k] = '=';
+            else g_line[1u + k] = '-';
+        }
+        g_line[21] = ']';
+        g_line[22] = '\0';
+        bg0_text(2u, 20u, PAL_UI_GOLD, "REEL! HOLD A TO RAISE ZONE");
+        bg0_text(4u, 22u, PAL_UI_CYAN, g_line);
+        line_reset(&pos);
+        line_str(&pos, "CATCH:");
+        line_int(&pos, (s16)fs->progress);
+        line_str(&pos, "%  TENS:");
+        line_int(&pos, (s16)fs->tension);
+        line_str(&pos, "%");
+        bg0_text_n(2u, 24u, PAL_UI_TEXT, g_line, 28u);
+        bg0_text(2u, 26u, PAL_UI_CYAN, "KEEP O IN ===   B:RELEASE");
+    } else if (fs->phase == FISH_PHASE_CAUGHT) {
+        line_reset(&pos);
+        line_str(&pos, "CAUGHT ");
+        line_str(&pos, HEARTH_FISH_TABLE[fs->species % HEARTH_FISH_SPECIES].name);
+        line_str(&pos, "!");
+        bg0_text_n(2u, 21u, PAL_UI_GOLD, g_line, 28u);
+        line_reset(&pos);
+        line_str(&pos, "WEIGHT: ");
+        line_int(&pos, (s16)fs->weight_oz);
+        line_str(&pos, " OZ");
+        bg0_text_n(2u, 23u, PAL_UI_TEXT, g_line, 28u);
+        bg0_text(2u, 26u, PAL_UI_CYAN, "A:CONTINUE");
+    } else {
+        bg0_text(3u, 22u, PAL_UI_GOLD, "LINE SNAPPED! IT ESCAPED");
+        bg0_text(2u, 26u, PAL_UI_CYAN, "A:CONTINUE");
+    }
+}
+
 /* Native 16-bit HUD dirty signature (zero 32-bit shifts or high bit-shifts on WDC 65816) */
 static u16 compute_hud_sig(u8 want, const HearthPpuPacket *ppu) {
     u16 sig = (u16)(((u16)g_hearth.mode << 4) | (u16)want);
     (void)ppu;
     if (want == 0u) {
         const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
-        sig = (u16)(sig + (u16)m->hp + (u16)(m->mp << 5));
-        if (g_hearth.flag_has_courage) sig ^= 0x1000u;
-        if (g_hearth.flag_guard_mended) sig ^= 0x2000u;
+        sig = (u16)(sig + (u16)m->hp + (u16)(m->mp << 5) + g_hearth.guilders);
+        sig ^= (u16)((u16)g_hearth.zone_id << 8);
         if (g_hearth.ppu.interact_active && g_hearth.ppu.interact_label) {
             sig ^= (u16)(0x4000u ^ ((u16)(u8)g_hearth.ppu.interact_label[0] << 8) ^ (u16)(u8)g_hearth.ppu.interact_label[1]);
         }
@@ -1522,6 +1754,18 @@ static u16 compute_hud_sig(u8 want, const HearthPpuPacket *ppu) {
     }
     if (want == 4u) {
         return (u16)(sig ^ ((u16)g_hearth.intro.scene << 8) ^ (g_hearth.intro.chars << 1));
+    }
+    if (want == 5u) {
+        const HearthShopState *sh = &g_hearth.shop;
+        sig ^= (u16)(((u16)sh->tab << 8) ^ ((u16)sh->cursor << 2) ^ g_hearth.guilders);
+        if (sh->msg_timer > 0u) sig ^= 0x8000u;
+        return sig;
+    }
+    if (want == 6u) {
+        const HearthFishingState *fs = &g_hearth.fishing;
+        sig ^= (u16)(((u16)fs->phase << 8) ^ ((u16)fs->progress << 1) ^ (u16)fs->fish_pos ^ ((u16)fs->bar_pos << 4));
+        if (fs->phase == FISH_PHASE_BITE_ALERT && ((((u16)g_hearth.frame_count) & 4u) != 0u)) sig ^= 0x4000u;
+        return sig;
     }
     if (want == 2u) {
         const HearthDialogue *d = &g_hearth.dialogue;
@@ -1556,6 +1800,10 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
         want = 4;
     } else if (g_hearth.mode == MODE_TITLE) {
         want = 1;
+    } else if (g_hearth.mode == MODE_SHOP) {
+        want = 5;
+    } else if (g_hearth.mode == MODE_FISHING) {
+        want = 6;
     } else if (g_hearth.mode == MODE_BATTLE ||
                g_hearth.mode == MODE_BATTLE_VICTORY ||
                g_hearth.mode == MODE_BATTLE_DEFEAT) {
@@ -1592,7 +1840,8 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
 
     /* Throttle rapid typewriter updates to 15Hz; menu/HUD changes apply immediately */
     if ((want == 2u && !g_hearth.dialogue.finished) ||
-        (want == 4u && g_hearth.intro.chars > 0u && g_hearth.intro.scene == g_last_intro_scene)) {
+        (want == 4u && g_hearth.intro.chars > 0u && g_hearth.intro.scene == g_last_intro_scene) ||
+        (want == 6u && g_hearth.fishing.phase == FISH_PHASE_REELING)) {
         if (++g_ui_tick < 4u) return;
         g_ui_tick = 0;
     }
@@ -1602,30 +1851,39 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
     else if (want == 0u) draw_explore_hud(ppu);
     else if (want == 2u) draw_dialogue_ui();
     else if (want == 4u) draw_intro_ui();
+    else if (want == 5u) draw_shop_ui();
+    else if (want == 6u) draw_fishing_ui();
     else                 draw_battle_ui();
 }
 
 /* ============================================================================
  * 8. SNES HARDWARE OAM SPRITE RENDERER (Direct oamMemory[] Shadow Writes)
  * ============================================================================ */
-/* Pre-combined 16-bit word: ((0x20 | (pal << 1)) << 8) | tile */
-static const u16 SPR_TILE_ATTR_LUT[20] = {
-    0x2200u, 0x2202u, 0x2204u, 0x2206u,
-    0x2408u, 0x240Au, 0x240Cu,
-    0x260Eu, 0x2620u, 0x2622u, 0x2624u,
-    0x2426u, 0x2428u, 0x242Au,
-    0x262Cu, 0x262Eu, 0x2640u, 0x2642u, 0x2644u, 0x2646u
+/* Pre-combined 16-bit word: ((0x20 | (pal << 1)) << 8) | tile (32 core sprites) */
+static const u16 SPR_TILE_ATTR_LUT[32] = {
+    0x2200u, 0x2202u, 0x2204u, 0x2206u, /* 0..3: Hero, Pip, Bramble, Lumina (PAL1) */
+    0x2408u, 0x240Au, 0x240Cu,          /* 4..6: Elder, Clara, Guard (PAL2) */
+    0x260Eu, 0x2620u, 0x2622u, 0x2624u, /* 7..10: Gloomcap, Thornling, DuskMoth, Briar (PAL3) */
+    0x2426u, 0x2428u, 0x242Au,          /* 11..13: Windmill, Waystone, Chest Closed (PAL2) */
+    0x262Cu, 0x262Eu, 0x2640u, 0x2642u, 0x2644u, /* 14..18: Emotes + Heart Orb (PAL3) */
+    0x2446u, 0x2448u, 0x244Au,          /* 19..21: Chest Open, Mouse, Pig (PAL2) */
+    0x264Cu,                            /* 22: Shadow Grandma (PAL3) */
+    0x224Eu,                            /* 23: Milo Puppy (PAL1) */
+    0x2660u, 0x2662u, 0x2664u, 0x2666u, 0x2668u, /* 24..28: Rat, Slime, Boar, Muckmaw, Ironfang (PAL3) */
+    0x246Au,                            /* 29: Hollow Oak (PAL2) */
+    0x226Cu,                            /* 30: Fishing Bobber (PAL1) */
+    0x246Eu                             /* 31: Alderbrook Townsfolk (PAL2) */
 };
 
 static const u16 HERO_TA_LUT[8] = {
     0x2200u, /* 0: DOWN  step 0 (slot 0,  tile 0x00) */
-    0x224Au, /* 1: UP    step 0 (slot 21, tile 0x4A) */
-    0x624Eu, /* 2: LEFT  step 0 (slot 23, tile 0x4E + H-flip) */
-    0x224Eu, /* 3: RIGHT step 0 (slot 23, tile 0x4E) */
-    0x2248u, /* 4: DOWN  step 1 (slot 20, tile 0x48) */
-    0x224Cu, /* 5: UP    step 1 (slot 22, tile 0x4C) */
-    0x6260u, /* 6: LEFT  step 1 (slot 24, tile 0x60 + H-flip) */
-    0x2260u  /* 7: RIGHT step 1 (slot 24, tile 0x60) */
+    0x2284u, /* 1: UP    step 0 (slot 34, tile 0x84) */
+    0x6288u, /* 2: LEFT  step 0 (slot 36, tile 0x88 + H-flip) */
+    0x2288u, /* 3: RIGHT step 0 (slot 36, tile 0x88) */
+    0x2282u, /* 4: DOWN  step 1 (slot 33, tile 0x82) */
+    0x2286u, /* 5: UP    step 1 (slot 35, tile 0x86) */
+    0x628Au, /* 6: LEFT  step 1 (slot 37, tile 0x8A + H-flip) */
+    0x228Au  /* 7: RIGHT step 1 (slot 37, tile 0x8A) */
 };
 
 static const u8 HI_TAIL_MASK[4] = { 0x00u, 0x54u, 0x50u, 0x40u };
@@ -1661,7 +1919,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             if (sid == 0u) {
                 ta = HERO_TA_LUT[(flg >> 3) & 7u];
             } else {
-                if (sid >= 20u) sid = 0u;
+                if (sid >= 32u) sid = 0u;
                 ta = SPR_TILE_ATTR_LUT[sid];
                 if (flg & OAM_FLAG_FLIP_X) ta |= 0x4000u;
             }
@@ -1695,7 +1953,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
                 oamMemory[oidx]             = (u8)sx;
                 oamMemory[(u16)(oidx + 1u)] = (u8)sy;
-                oamMemory[(u16)(oidx + 2u)] = 0x62u;
+                oamMemory[(u16)(oidx + 2u)] = 0x8Cu;
                 oamMemory[(u16)(oidx + 3u)] = (u8)rpal;
                 oidx = (u16)(oidx + 4u);
                 hi_mask <<= 2;
@@ -1720,7 +1978,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
                 oamMemory[oidx]             = (u8)sx;
                 oamMemory[(u16)(oidx + 1u)] = (u8)sy;
-                oamMemory[(u16)(oidx + 2u)] = 70u;
+                oamMemory[(u16)(oidx + 2u)] = 0x80u;
                 oamMemory[(u16)(oidx + 3u)] = (u8)rpal;
                 oidx = (u16)(oidx + 4u);
                 hi_mask <<= 2;
@@ -1802,7 +2060,12 @@ static void play_snes_sfx(uint8_t sfx) {
         case SFX_CONFIRM:
         case SFX_EMOTE:
         case SFX_ENEMY_ALERT:
+        case SFX_COIN:
+        case SFX_FISH_BITE:
             spcEffect(4u, 1u, 0xE8u);
+            break;
+        case SFX_FISH_REEL:
+            spcEffect(4u, 0u, 0xA8u);
             break;
         case SFX_HIT_NORMAL:
         case SFX_HURT:
@@ -1822,6 +2085,8 @@ static void play_snes_sfx(uint8_t sfx) {
         case SFX_CHEST_OPEN:
         case SFX_VICTORY_FANFARE:
         case SFX_BATTLE_SWOOP:
+        case SFX_FISH_CATCH:
+        case SFX_PORTAL:
             spcEffect(4u, 5u, 0xE8u);
             break;
         default:
@@ -1880,6 +2145,10 @@ static void flush_env_vblank_dma(void) {
 
 static void flush_one_vblank_dma(void) {
     /* Stay well under SNES NTSC VBlank DMA budget: max 2048 bytes per frame! */
+    if (g_pal_dirty) {
+        upload_zone_pal0(g_last_pal_id);
+        g_pal_dirty = 0u;
+    }
     if (g_bg1_dirty_l) {
         dmaCopyVram((u8 *)g_bg1_map, VRAM_BG1_MAP, 2048u);
         g_bg1_dirty_l = 0;
@@ -1928,6 +2197,8 @@ int main(void) {
     bake_bg0_ui_and_font();
     bake_obj_sprites_part1();
     bake_obj_sprites_part2();
+    bake_obj_sprites_part3();
+    bake_obj_sprites_part4();
     bake_obj_sprites_hero_ext();
     bake_env_bg_frames();
     bake_env_windmill_frames();
@@ -1946,8 +2217,11 @@ int main(void) {
     /* 4. Boot Portable Engine Core in Native SNES 256x224 Mode */
     hearth_init(&g_hearth);
     bake_world_tile_cache();
+    g_last_map_rev = g_hearth.map_revision;
     g_hearth.tuning.ppu_mode = PPU_SNES_256x224;
     ppu = hearth_step_60hz(&g_hearth, 0u);
+    g_last_pal_id = ppu->terrain_pal_id;
+    upload_zone_pal0(g_last_pal_id);
     g_prev_oam_cnt = 0u;
     g_env_frame = 0u;
 
@@ -1986,6 +2260,20 @@ int main(void) {
             scene_kind = 0u;
         }
         scene_switched = 0;
+
+        if (ppu->terrain_pal_id != g_last_pal_id) {
+            g_last_pal_id = ppu->terrain_pal_id;
+            g_pal_dirty = 1u;
+        }
+
+        if (g_hearth.map_revision != g_last_map_rev) {
+            g_last_map_rev = g_hearth.map_revision;
+            bake_world_tile_cache();
+            scene_switched = 1;
+            if (scene_kind == 0u) {
+                build_full_world_bg1(ppu->cam_x, ppu->cam_y);
+            }
+        }
 
         if (scene_kind != g_last_scene_kind ||
             (scene_kind == 2u && g_hearth.intro.scene != g_last_intro_scene)) {
@@ -2026,6 +2314,10 @@ int main(void) {
 
         if (scene_switched) {
             setScreenOff();
+            if (g_pal_dirty) {
+                upload_zone_pal0(g_last_pal_id);
+                g_pal_dirty = 0u;
+            }
             want_mod = (scene_kind == 1u)
                 ? (u16)(g_hearth.battle.is_boss_battle ? MOD_HEARTH_BOSS : MOD_HEARTH_BATTLE)
                 : (u16)MOD_HEARTH_HAMLET;

@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ChevronRight,
+  Coins,
   Compass,
   Film,
+  Fish,
   Heart,
   Play,
   RotateCcw,
+  ShoppingBag,
   Sliders,
-  Swords,
   Volume2,
   VolumeX,
+  X,
 } from 'lucide-react';
 import { BattleHudOverlay } from './components/BattleHudOverlay';
 import { ControlsModal } from './components/ControlsModal';
@@ -89,7 +92,7 @@ export default function App() {
       .then((engine) => {
         if (cancelled) return;
         engineRef.current = engine;
-        atlasRef.current = new PixelAtlas(engine.palettes);
+        atlasRef.current = new PixelAtlas(engine.palettes, engine.zonePalettes);
         cutsceneOpsRef.current = engine.getCutsceneIntroOps();
         setUi(engine.getUiSnapshot());
 
@@ -109,8 +112,7 @@ export default function App() {
           while (accumulator >= STEP_MS && steps < 4) {
             const padBits = input.poll();
             latestPacket = engine.step(padBits);
-            const isBossBattle = latestPacket.battle?.enemies.some((e) => e.isBoss) ?? false;
-            audio.setMusicMode(latestPacket.mode, isBossBattle);
+            audio.setTrack(latestPacket.bgmId);
             if (latestPacket.sfxQueue.length > 0) {
               audio.processQueue(latestPacket.sfxQueue);
             }
@@ -156,6 +158,14 @@ export default function App() {
 
   const blurFocus = () => {
     (document.activeElement as HTMLElement | null)?.blur?.();
+  };
+
+  const handleStartStory = () => {
+    if (!engineRef.current) return;
+    blurFocus();
+    unlockAudio();
+    engineRef.current.startStory();
+    syncAfterUiAction();
   };
 
   const handleStartSandbox = () => {
@@ -238,6 +248,27 @@ export default function App() {
     syncAfterUiAction();
   };
 
+  const handleShopTab = (tab: number) => {
+    if (!engineRef.current) return;
+    unlockAudio();
+    engineRef.current.uiShopTab(tab);
+    syncAfterUiAction();
+  };
+
+  const handleShopSelect = (idx: number) => {
+    if (!engineRef.current) return;
+    unlockAudio();
+    engineRef.current.uiShopSelect(idx);
+    syncAfterUiAction();
+  };
+
+  const handleShopClose = () => {
+    if (!engineRef.current) return;
+    unlockAudio();
+    engineRef.current.uiShopClose();
+    syncAfterUiAction();
+  };
+
   const isSnes = ui?.tuning.ppuMode === 'SNES_256x224';
   const activeMember = ui ? ui.party[ui.activeSlot] : null;
 
@@ -258,14 +289,21 @@ export default function App() {
           Project Hearth
         </button>
 
-        {/* Zone 2: 4–5 Clean Single-Line Nav Actions */}
+        {/* Zone 2: 5 Clean Single-Line Nav Actions */}
         <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-[#A4ADBF]">
+          <button
+            type="button"
+            onClick={handleStartStory}
+            className="whitespace-nowrap shrink-0 transition-colors hover:text-[#F6F1E6]"
+          >
+            New Story
+          </button>
           <button
             type="button"
             onClick={handleStartSandbox}
             className="whitespace-nowrap shrink-0 transition-colors hover:text-[#F6F1E6]"
           >
-            Sandbox
+            Explore
           </button>
           <button
             type="button"
@@ -366,7 +404,7 @@ export default function App() {
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-t from-[#0E1018]/88 via-[#0E1018]/52 to-[#0E1018]/35 px-5 text-center">
                   <div className="rpg-window max-w-md px-6 py-5">
                     <p className="font-pixel text-[10px] tracking-widest text-[#E5B85B]">
-                      CHRONICLE OF WINDMILL HAMLET
+                      ALDERBROOK &amp; EVERTALE
                     </p>
                     <h1
                       className="mt-2.5 font-pixel-title text-xl leading-snug tracking-tight text-[#FFF6DC] sm:text-2xl"
@@ -375,25 +413,25 @@ export default function App() {
                       PROJECT HEARTH
                     </h1>
                     <p className="mt-2.5 font-pixel text-[11px] leading-relaxed text-[#CFC8B8]">
-                      16-BIT STORYBOOK RPG · FAMILIAR SWAPPING &amp; TIMED COMBAT
+                      FIVE-ZONE STORYBOOK RPG · SHOPS, FISHING &amp; TIMED COMBAT
                     </p>
 
                     <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
                       <button
                         type="button"
-                        onClick={handleStartSandbox}
+                        onClick={handleStartStory}
                         className="font-pixel flex items-center gap-2 border-2 border-[#F5D07A] bg-[#C98E32] px-4 py-2 text-xs font-bold text-[#14121A] whitespace-nowrap transition-colors hover:bg-[#E2A84A]"
                       >
                         <Play className="h-3.5 w-3.5 fill-current" />
-                        START ADVENTURE
+                        NEW STORY
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleJumpBattle('SHRINE_BOSS')}
+                        onClick={handleStartSandbox}
                         className="rpg-slot font-pixel flex items-center gap-1.5 px-3.5 py-2 text-xs text-[#F2E9D4] whitespace-nowrap transition-colors hover:border-[#D4A454]"
                       >
-                        <Swords className="h-3.5 w-3.5 text-[#F5B841]" />
-                        BOSS ARENA
+                        <Compass className="h-3.5 w-3.5 text-[#F5B841]" />
+                        EXPLORE EVERTALE
                       </button>
                       <button
                         type="button"
@@ -408,7 +446,7 @@ export default function App() {
                     <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-pixel text-[10px] text-[#ABA494]">
                       <span>WASD/ARROWS: MOVE</span>
                       <span>SHIFT: DASH</span>
-                      <span>SPACE: ACT/TIMED HIT</span>
+                      <span>SPACE: ACT / REEL</span>
                       <span>Q/E: SWAP FAMILIAR</span>
                     </div>
                   </div>
@@ -467,6 +505,214 @@ export default function App() {
                 </div>
               )}
 
+              {/* SHOP OVERLAY (BUY SUPPLIES / SELL FISH) */}
+              {ui && ui.mode === 'SHOP' && ui.shop.active && (
+                <div className="absolute inset-0 z-25 flex items-center justify-center bg-[#0A0C14]/72 p-3">
+                  <div className="rpg-window flex max-h-full w-full max-w-md flex-col p-3.5">
+                    <div className="flex items-center justify-between gap-2 border-b border-[#3F3528] pb-2">
+                      <div className="flex items-center gap-2">
+                        <ShoppingBag className="h-4 w-4 text-[#F3C86A]" />
+                        <span className="font-pixel text-xs font-bold text-[#FFF3C8]">
+                          {ui.shop.title}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-1 font-pixel text-xs font-bold text-[#F5C45A] tabular-nums">
+                          <Coins className="h-3.5 w-3.5" />
+                          {ui.guilders}G
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleShopClose}
+                          className="rpg-slot p-1 text-[#CFC8B8] hover:text-[#FFF6DC]"
+                          aria-label="Close Shop"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleShopTab(0)}
+                        className={`font-pixel flex-1 py-1 text-[10px] ${
+                          ui.shop.tab === 0 ? 'rpg-slot-active text-[#FFF4CF]' : 'rpg-slot text-[#B8B0A0]'
+                        }`}
+                      >
+                        BUY SUPPLIES
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleShopTab(1)}
+                        className={`font-pixel flex-1 py-1 text-[10px] ${
+                          ui.shop.tab === 1 ? 'rpg-slot-active text-[#FFF4CF]' : 'rpg-slot text-[#B8B0A0]'
+                        }`}
+                      >
+                        SELL FISH ({ui.fishBag.reduce((a, b) => a + b, 0)})
+                      </button>
+                    </div>
+
+                    <div className="mt-2.5 flex flex-col gap-1.5 overflow-y-auto">
+                      {ui.shop.tab === 0
+                        ? ui.shopCatalog.map((item, idx) => {
+                            const owned =
+                              idx === 0
+                                ? ui.potions
+                                : idx === 1
+                                  ? ui.starDrops
+                                  : idx === 2
+                                    ? ui.snacks
+                                    : idx === 3
+                                      ? ui.lureTier
+                                      : ui.hasSewerKey
+                                        ? 1
+                                        : 0;
+                            const active = ui.shop.cursor === idx;
+                            return (
+                              <button
+                                key={item.name}
+                                type="button"
+                                onClick={() => handleShopSelect(idx)}
+                                className={`font-pixel flex items-center justify-between gap-2 px-2.5 py-1.5 text-left text-[11px] ${
+                                  active ? 'rpg-slot-active text-[#FFF4CF]' : 'rpg-slot text-[#D6CEBC]'
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <div className="truncate font-bold">{item.name}</div>
+                                  <div className="truncate text-[9px] text-[#A8A08E]">{item.desc}</div>
+                                </div>
+                                <div className="shrink-0 text-right tabular-nums">
+                                  <div className="text-[#F5C45A]">{item.price}G</div>
+                                  <div className="text-[9px] text-[#8EC8E8]">OWN: {owned}</div>
+                                </div>
+                              </button>
+                            );
+                          })
+                        : ui.fishCatalog.map((fish, idx) => {
+                            const qty = ui.fishBag[idx] ?? 0;
+                            const active = ui.shop.cursor === idx;
+                            return (
+                              <button
+                                key={fish.name}
+                                type="button"
+                                onClick={() => handleShopSelect(idx)}
+                                className={`font-pixel flex items-center justify-between gap-2 px-2.5 py-1.5 text-left text-[11px] ${
+                                  active ? 'rpg-slot-active text-[#FFF4CF]' : 'rpg-slot text-[#D6CEBC]'
+                                }`}
+                              >
+                                <span className="truncate font-bold">{fish.name}</span>
+                                <span className="shrink-0 tabular-nums text-[#F5C45A]">
+                                  x{qty} · +{fish.sellPrice}G
+                                </span>
+                              </button>
+                            );
+                          })}
+                    </div>
+
+                    <div className="mt-2.5 flex items-center justify-between border-t border-[#3F3528] pt-2 font-pixel text-[10px]">
+                      <span className="truncate text-[#8EC8E8]">
+                        {ui.shop.msgTimer > 0 && ui.shop.msg
+                          ? ui.shop.msg
+                          : 'ARROWS: MOVE · SPACE/CLICK: TRADE · ESC: EXIT'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TIMED-REEL FISHING OVERLAY */}
+              {ui && ui.mode === 'FISHING' && ui.fishing.active && (
+                <div className="rpg-window absolute inset-x-3 bottom-2.5 z-20 px-3.5 py-2.5 sm:inset-x-4 sm:bottom-3.5">
+                  <div className="flex items-center justify-between gap-2 border-b border-[#3F3528] pb-1">
+                    <span className="flex items-center gap-1.5 font-pixel text-xs font-bold text-[#6CC8E8]">
+                      <Fish className="h-3.5 w-3.5" />
+                      FISHING · {ui.zoneLabel.toUpperCase()}
+                    </span>
+                    <span className="font-pixel text-[9px] text-[#CFC8B8]">
+                      [SPACE/HOLD]: REEL · [ESC]: CANCEL
+                    </span>
+                  </div>
+
+                  {ui.fishing.phase <= 1 && (
+                    <p className="mt-2 text-center font-pixel text-xs text-[#E8DFC8]">
+                      WATCH THE BOBBER... WAIT FOR A SPLASH!
+                    </p>
+                  )}
+
+                  {ui.fishing.phase === 2 && (
+                    <p className="mt-2 animate-pulse text-center font-pixel text-xs font-bold text-[#FFF1A8]">
+                      !! BITE !! PRESS [SPACE] OR CLICK NOW TO HOOK!
+                    </p>
+                  )}
+
+                  {ui.fishing.phase === 3 && (
+                    <div className="mt-2 space-y-2">
+                      {/* Sweet-spot tug-of-war track */}
+                      <div className="relative h-5 w-full overflow-hidden border border-[#6E552E] bg-[#131824]">
+                        {/* Catch bar */}
+                        <div
+                          className="absolute top-0 bottom-0 bg-[#52A868]/65 border-x border-[#A8F0B4]"
+                          style={{
+                            left: `${Math.max(0, Math.min(100, ((ui.fishing.barPos - ui.fishing.barHalfW) / 255) * 100))}%`,
+                            width: `${Math.min(100, ((ui.fishing.barHalfW * 2) / 255) * 100)}%`,
+                          }}
+                        />
+                        {/* Fish pip */}
+                        <div
+                          className="absolute top-0.5 bottom-0.5 w-2.5 -translate-x-1/2 bg-[#FFF1A8] border border-[#14121A]"
+                          style={{
+                            left: `${Math.max(2, Math.min(98, (ui.fishing.fishPos / 255) * 100))}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 font-pixel text-[10px]">
+                        <div>
+                          <div className="flex justify-between text-[#8AE098]">
+                            <span>REEL PROGRESS</span>
+                            <span>{Math.round((ui.fishing.progress / 255) * 100)}%</span>
+                          </div>
+                          <div className="mt-0.5 h-2 w-full bg-[#19202E]">
+                            <div
+                              className="h-full bg-[#64C878]"
+                              style={{ width: `${Math.min(100, (ui.fishing.progress / 255) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-[#F08870]">
+                            <span>LINE TENSION</span>
+                            <span>{Math.round((ui.fishing.tension / 255) * 100)}%</span>
+                          </div>
+                          <div className="mt-0.5 h-2 w-full bg-[#19202E]">
+                            <div
+                              className="h-full bg-[#E05858]"
+                              style={{ width: `${Math.min(100, (ui.fishing.tension / 255) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {ui.fishing.phase === 4 && (
+                    <div className="mt-2 flex items-center justify-between gap-2 font-pixel text-xs">
+                      <span className="font-bold text-[#FFF1A8]">
+                        CAUGHT {ui.fishCatalog[ui.fishing.species]?.name?.toUpperCase() ?? 'FISH'} ({ui.fishing.weightOz} OZ · +{ui.fishCatalog[ui.fishing.species]?.sellPrice ?? 15}G VALUE)
+                      </span>
+                      <span className="text-[10px] text-[#8EC8E8]">[SPACE] CONTINUE</span>
+                    </div>
+                  )}
+
+                  {ui.fishing.phase === 5 && (
+                    <div className="mt-2 flex items-center justify-between gap-2 font-pixel text-xs">
+                      <span className="text-[#E07070]">THE FISH SLIPPED AWAY!</span>
+                      <span className="text-[10px] text-[#8EC8E8]">[SPACE] TRY AGAIN</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* BATTLE VICTORY / DEFEAT SUMMARY MODAL */}
               {ui && (ui.mode === 'BATTLE_VICTORY' || ui.mode === 'BATTLE_DEFEAT') && (
                 <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#0C0E16]/78 p-4">
@@ -476,8 +722,8 @@ export default function App() {
                     </h2>
                     <p className="mt-2 font-pixel text-[11px] text-[#B8B0A0]">
                       {ui.mode === 'BATTLE_VICTORY'
-                        ? 'SMOOTH FAMILIAR WORK!'
-                        : 'RESTORED AT THE HAMLET WAYSTONE.'}
+                        ? `SMOOTH WORK! +${ui.battleStats.guildersEarned} GUILDERS`
+                        : 'RESTORED AT THE WAYSTONE.'}
                     </p>
 
                     {ui.mode === 'BATTLE_VICTORY' && (
@@ -566,6 +812,13 @@ export default function App() {
 
               {ui && activeMember && (
                 <div className="flex flex-wrap items-center gap-4 font-mono text-[11px] tabular-nums">
+                  <span className="flex items-center gap-1 font-semibold text-[#F5C45A] whitespace-nowrap">
+                    <Coins className="h-3.5 w-3.5" />
+                    {ui.guilders}G
+                  </span>
+                  <span aria-hidden="true" className="text-[#4B546B]">
+                    /
+                  </span>
                   <span className="flex items-center gap-1.5 whitespace-nowrap">
                     <Heart
                       className={`h-3.5 w-3.5 ${

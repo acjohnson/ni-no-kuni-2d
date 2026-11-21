@@ -11,15 +11,20 @@
 
 /* Choice Action IDs */
 enum {
-    ACT_CLOSE        = 0,
-    ACT_TAKE_COURAGE = 1,
-    ACT_GIVE_COURAGE = 2,
-    ACT_REPLAY_INTRO = 3,
-    ACT_JUMP_BOSS    = 4
+    ACT_CLOSE         = 0,
+    ACT_TAKE_COURAGE  = 1,
+    ACT_GIVE_COURAGE  = 2,
+    ACT_REPLAY_INTRO  = 3,
+    ACT_JUMP_BOSS     = 4,
+    ACT_OPEN_SHOP_0   = 5,
+    ACT_OPEN_SHOP_1   = 6,
+    ACT_MEND_CAPTAIN  = 7,
+    ACT_START_FISHING = 8
 };
 
-/* Forward declaration so hearth_init & hearth_toggle_ppu_mode always produce valid PPU state */
+/* Forward declarations */
 static void build_ppu_packet(HearthState *st);
+static void request_zone_warp(HearthState *st, uint8_t dst_zone, uint8_t tx, uint8_t ty);
 
 /* On SNES (65816), direct static WRAM access avoids 24-bit far-pointer overhead (~6x faster).
  * All other targets dereference the passed HearthState* parameter identically. */
@@ -261,7 +266,7 @@ static void step_fx_pools(HearthState *st) {
 }
 
 /* ============================================================================
- * INITIALIZATION & PARTY SETUP (C89-Clean Static Struct Templates)
+ * INITIALIZATION, PARTY & 5-ZONE WORLD BUILDERS
  * ============================================================================ */
 void hearth_default_tuning(HearthTuning *t) {
     t->ppu_mode           = PPU_GENESIS_320x224;
@@ -279,15 +284,19 @@ void hearth_default_tuning(HearthTuning *t) {
 
 static void init_party(HearthState *st) {
     static const HearthPartyMember default_party[3] = {
-        { 0, "Rowan",      "Locket Staff", "Mending Dew", SPR_HERO,             84, 84, 32, 32, 15,  8, LOCK_SWORD, LOCK_NONE, 7, true,  false },
-        { 1, "Bramblekit", "Acorn Rush",   "Solar Slam",  SPR_FAMILIAR_BRAMBLE, 96, 96, 24, 24, 19, 11, LOCK_SWORD, LOCK_SUN,  6, false, false },
-        { 2, "Lumina",     "Starlight",    "Prism Nova",  SPR_FAMILIAR_LUMINA,  72, 72, 40, 40, 17,  7, LOCK_STAR,  LOCK_STAR, 9, false, true  }
+        { 0, "Rowan",      "Hearth Wand",  "Mending Dew", SPR_HERO,             88, 88, 34, 34, 16,  8, LOCK_SWORD, LOCK_NONE, 7, true,  false },
+        { 1, "Bramblekit", "Acorn Rush",   "Solar Slam",  SPR_FAMILIAR_BRAMBLE, 98, 98, 26, 26, 20, 11, LOCK_SWORD, LOCK_SUN,  6, false, false },
+        { 2, "Lumina",     "Starlight",    "Prism Nova",  SPR_FAMILIAR_LUMINA,  74, 74, 42, 42, 18,  7, LOCK_STAR,  LOCK_STAR, 9, false, true  }
     };
     st->party[0] = default_party[0];
     st->party[1] = default_party[1];
     st->party[2] = default_party[2];
     st->active_slot = 1;
+    st->guilders = 45;
     st->potions = 3;
+    st->star_drops = 1;
+    st->snacks = 0;
+    st->lure_tier = 0;
 }
 
 static void snap_cam_to_hero(HearthState *st) {
@@ -301,6 +310,18 @@ static void snap_cam_to_hero(HearthState *st) {
     ty = iclamp16((int16_t)(FP_PX(st->hero_fy) - (int16_t)(h >> 1)), 0, max_y);
     st->cam_fx = TO_FP(tx);
     st->cam_fy = TO_FP(ty);
+}
+
+static void reset_trail_to_hero(HearthState *st) {
+    int i;
+    for (i = 0; i < HEARTH_TRAIL_LEN; i++) {
+        st->trail_x[i] = st->hero_fx - TO_FP(16);
+        st->trail_y[i] = st->hero_fy - TO_FP(2);
+    }
+    st->trail_head = 0;
+    st->pip_fx = st->hero_fx - TO_FP(16);
+    st->pip_fy = st->hero_fy - TO_FP(2);
+    st->pip_dir = DIR_RIGHT;
 }
 
 static void set_field_enemy(
@@ -328,18 +349,12 @@ static void set_field_enemy(
     e->anim_frame = 0;
 }
 
-void hearth_respawn_enemies(HearthState *st) {
-    set_field_enemy(&st->field_enemies[0], "Gloomcap",     SPR_ENEMY_GLOOMCAP,  ENCOUNTER_MEADOW_PACK, BIOME_MEADOW, false, 26, 15, DIR_LEFT, 30);
-    set_field_enemy(&st->field_enemies[1], "Thornling",    SPR_ENEMY_THORNLING, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 30, 10, DIR_DOWN, 55);
-    set_field_enemy(&st->field_enemies[2], "Dusk Moth",    SPR_ENEMY_DUSK_MOTH, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 31, 20, DIR_LEFT, 80);
-    set_field_enemy(&st->field_enemies[3], "Briar Warden", SPR_BOSS_BRIAR,      ENCOUNTER_SHRINE_BOSS, BIOME_SHRINE, true,  38, 13, DIR_LEFT,  0);
-}
-
 static void set_npc(
     HearthNpc *n, uint8_t id, const char *name, uint8_t sprite_id,
     int16_t tx, int16_t ty, uint8_t dir, uint8_t aura
 ) {
     n->id = id;
+    n->active = true;
     n->name = name;
     n->sprite_id = sprite_id;
     n->fx = TO_FP(tx * 16 + 8);
@@ -350,24 +365,255 @@ static void set_npc(
     n->emote_frames = 0;
 }
 
+static void set_portal(
+    HearthPortal *pt, uint8_t tx, uint8_t ty, uint8_t dst_zone,
+    uint8_t dst_tx, uint8_t dst_ty, uint8_t req_stage, const char *label
+) {
+    pt->active = true;
+    pt->tx = tx;
+    pt->ty = ty;
+    pt->dst_zone = dst_zone;
+    pt->dst_tx = dst_tx;
+    pt->dst_ty = dst_ty;
+    pt->req_stage = req_stage;
+    pt->label = label;
+}
+
+static void clear_zone_entities(HearthState *st) {
+    int i;
+    for (i = 0; i < HEARTH_MAX_NPCS; i++) st->npcs[i].active = false;
+    for (i = 0; i < HEARTH_MAX_FIELD_ENEMIES; i++) st->field_enemies[i].alive = false;
+    for (i = 0; i < HEARTH_MAX_PORTALS; i++) st->portals[i].active = false;
+    st->fish_spot.active = false;
+    st->chest.active = false;
+    st->has_waystone = false;
+    st->has_sign = false;
+    st->has_windmill = false;
+    st->zone_is_dark = false;
+}
+
+static void populate_zone_alderbrook(HearthState *st) {
+    st->terrain_pal_id = ZPAL_ALDERBROOK;
+    st->bgm_id = BGM_ALDERBROOK;
+    st->pip_visible = st->flag_has_wand;
+    st->has_sign = true;
+    st->sign_tx = 15;
+    st->sign_ty = 16;
+
+    set_npc(&st->npcs[0], 0, "Aunt Martha",  SPR_NPC_TOWNSFOLK, 12, 16, DIR_UP,   AURA_NONE);
+    set_npc(&st->npcs[1], 1, "Neighbor Tom", SPR_NPC_TOWNSFOLK, 20, 10, DIR_DOWN, AURA_NONE);
+    set_portal(&st->portals[0], 38, 14, ZONE_HAMLET, 4, 13, 0, "Hollow Oak");
+}
+
+static void populate_zone_hamlet(HearthState *st) {
+    st->terrain_pal_id = ZPAL_HAMLET;
+    st->bgm_id = BGM_HAMLET;
+    st->has_windmill = true;
+
+    if (st->story_stage == STORY_AGE5_FLASHBACK) {
+        st->pip_visible = false;
+        set_npc(&st->npcs[0], 0, "Milo", SPR_PET_MILO, 17, 13, DIR_RIGHT, AURA_NONE);
+        set_npc(&st->npcs[1], 1, "Shadow Matron", SPR_NPC_SHADOW_GRAN, 22, 13, DIR_LEFT, AURA_HOLLOW_FEAR);
+        st->npcs[1].active = false; /* Revealed by OP_SHOW_ACTOR during flashback */
+        return;
+    }
+
+    st->pip_visible = true;
+    st->has_waystone = true;
+    st->waystone_tx = 8;
+    st->waystone_ty = 17;
+    st->has_sign = true;
+    st->sign_tx = 16;
+    st->sign_ty = 15;
+
+    st->chest.active = true;
+    st->chest.tx = 26;
+    st->chest.ty = 6;
+    st->chest.chest_bit = 0;
+    st->chest.reward_kind = 0;
+
+    st->fish_spot.active = true;
+    st->fish_spot.tx = 17;
+    st->fish_spot.ty = 18;
+    st->fish_spot.cast_dx = 2;
+    st->fish_spot.cast_dy = 0;
+
+    set_npc(&st->npcs[0], 0, "Elder Wren", SPR_NPC_ELDER,  8, 11, DIR_DOWN, AURA_NONE);
+    set_npc(&st->npcs[1], 1, "Clara",      SPR_NPC_CLARA, 13, 16, DIR_DOWN,
+        (st->flag_has_courage || st->flag_guard_mended) ? AURA_MENDED : AURA_RADIANT_COURAGE);
+    set_npc(&st->npcs[2], 2, "Guard Bram", SPR_NPC_GUARD, 22, 13, DIR_LEFT,
+        st->flag_guard_mended ? AURA_MENDED : AURA_HOLLOW_FEAR);
+
+    set_portal(&st->portals[0], 2,  13, ZONE_ALDERBROOK,   36, 14, 0, "Hollow Oak");
+    set_portal(&st->portals[1], 42, 13, ZONE_WHISKERBURGH,  2, 13, 0, "To Whiskerburgh");
+
+    set_field_enemy(&st->field_enemies[0], "Gloomcap",     SPR_ENEMY_GLOOMCAP,  ENCOUNTER_MEADOW_PACK, BIOME_MEADOW, false, 26, 15, DIR_LEFT, 30);
+    set_field_enemy(&st->field_enemies[1], "Thornling",    SPR_ENEMY_THORNLING, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 30, 10, DIR_DOWN, 55);
+    set_field_enemy(&st->field_enemies[2], "Dusk Moth",    SPR_ENEMY_DUSK_MOTH, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 31, 20, DIR_LEFT, 80);
+    set_field_enemy(&st->field_enemies[3], "Briar Warden", SPR_BOSS_BRIAR,      ENCOUNTER_SHRINE_BOSS, BIOME_SHRINE, true,  38, 13, DIR_LEFT,  0);
+    if (st->flag_boss_defeated) st->field_enemies[3].alive = false;
+}
+
+static void populate_zone_whiskerburgh(HearthState *st) {
+    st->terrain_pal_id = ZPAL_WHISKERBURGH;
+    st->bgm_id = BGM_WHISKERBURGH;
+    st->pip_visible = true;
+    st->has_waystone = true;
+    st->waystone_tx = 11;
+    st->waystone_ty = 15;
+    st->has_sign = true;
+    st->sign_tx = 16;
+    st->sign_ty = 13;
+
+    st->chest.active = true;
+    st->chest.tx = 35;
+    st->chest.ty = 14;
+    st->chest.chest_bit = 1;
+    st->chest.reward_kind = 1;
+
+    st->fish_spot.active = true;
+    st->fish_spot.tx = 20;
+    st->fish_spot.ty = 20;
+    st->fish_spot.cast_dx = 0;
+    st->fish_spot.cast_dy = 2;
+
+    set_npc(&st->npcs[0], 0, "Mayor Brie",   SPR_NPC_MOUSE, 12,  9, DIR_DOWN, AURA_NONE);
+    set_npc(&st->npcs[1], 1, "Barnaby Shop", SPR_NPC_MOUSE, 29,  9, DIR_DOWN, AURA_NONE);
+    set_npc(&st->npcs[2], 2, "Angler Pippo", SPR_NPC_MOUSE, 22, 16, DIR_LEFT, AURA_NONE);
+
+    set_portal(&st->portals[0],  1, 13, ZONE_HAMLET, 40, 13, 0, "To Hamlet");
+    set_portal(&st->portals[1], 21,  2, ZONE_SEWERS, 21, 24, STORY_SEWER_KEY, "Sunken Sewers");
+}
+
+static void populate_zone_sewers(HearthState *st) {
+    st->terrain_pal_id = ZPAL_SEWERS;
+    st->bgm_id = BGM_SEWERS;
+    st->zone_is_dark = true;
+    st->pip_visible = true;
+    st->has_waystone = true;
+    st->waystone_tx = 23;
+    st->waystone_ty = 21;
+    st->has_sign = true;
+    st->sign_tx = 20;
+    st->sign_ty = 21;
+
+    st->chest.active = true;
+    st->chest.tx = 35;
+    st->chest.ty = 20;
+    st->chest.chest_bit = 2;
+    st->chest.reward_kind = 2;
+
+    st->fish_spot.active = true;
+    st->fish_spot.tx = 10;
+    st->fish_spot.ty = 20;
+    st->fish_spot.cast_dx = 0;
+    st->fish_spot.cast_dy = 2;
+
+    set_portal(&st->portals[0], 21, 25, ZONE_WHISKERBURGH, 21,  4, 0, "To Whiskerburgh");
+    set_portal(&st->portals[1], 21,  2, ZONE_BOARHOLD,     21, 24, STORY_MUCKMAW_DEFEATED, "Boarhold Sluice");
+
+    set_field_enemy(&st->field_enemies[0], "Gutter Rat",   SPR_ENEMY_RAT,    ENCOUNTER_SEWER_PACK, BIOME_SEWER, false, 14, 11, DIR_RIGHT, 25);
+    set_field_enemy(&st->field_enemies[1], "Mire Slime",   SPR_ENEMY_SLIME,  ENCOUNTER_SEWER_PACK, BIOME_SEWER, false, 29, 11, DIR_LEFT,  45);
+    set_field_enemy(&st->field_enemies[2], "Sewer Rat",    SPR_ENEMY_RAT,    ENCOUNTER_SEWER_PACK, BIOME_SEWER, false, 15, 16, DIR_DOWN,  70);
+    set_field_enemy(&st->field_enemies[3], "King Muckmaw", SPR_BOSS_MUCKMAW, ENCOUNTER_SEWER_BOSS, BIOME_SEWER, true,  21,  5, DIR_DOWN,   0);
+    if (st->flag_muckmaw_defeated) st->field_enemies[3].alive = false;
+}
+
+static void populate_zone_boarhold(HearthState *st) {
+    st->terrain_pal_id = ZPAL_BOARHOLD;
+    st->bgm_id = BGM_BOARHOLD;
+    st->pip_visible = true;
+    st->has_waystone = true;
+    st->waystone_tx = 12;
+    st->waystone_ty = 19;
+    st->has_sign = true;
+    st->sign_tx = 14;
+    st->sign_ty = 15;
+
+    st->chest.active = true;
+    st->chest.tx = 7;
+    st->chest.ty = 20;
+    st->chest.chest_bit = 3;
+    st->chest.reward_kind = 3;
+
+    set_npc(&st->npcs[0], 0, "Merchant Porkins", SPR_NPC_PIG,  9,  9, DIR_DOWN, AURA_NONE);
+    set_npc(&st->npcs[1], 1, "Captain Tusk",     SPR_NPC_PIG, 18,  9, DIR_DOWN,
+        st->flag_captain_mended ? AURA_MENDED : AURA_HOLLOW_FEAR);
+    set_npc(&st->npcs[2], 2, "Squire Snout",     SPR_NPC_PIG, 24, 13, DIR_LEFT, AURA_NONE);
+
+    set_portal(&st->portals[0], 21, 25, ZONE_SEWERS, 21, 4, 0, "To Sewers");
+
+    set_field_enemy(&st->field_enemies[0], "Boar Guard",    SPR_ENEMY_BOAR,    ENCOUNTER_BOAR_GUARD,    BIOME_BOARHOLD, false, 22, 17, DIR_LEFT, 35);
+    set_field_enemy(&st->field_enemies[1], "Iron Halberd",  SPR_ENEMY_BOAR,    ENCOUNTER_BOAR_GUARD,    BIOME_BOARHOLD, false, 33, 10, DIR_DOWN, 60);
+    set_field_enemy(&st->field_enemies[3], "Lord Ironfang", SPR_BOSS_IRONFANG, ENCOUNTER_IRONFANG_BOSS, BIOME_BOARHOLD, true,  37, 13, DIR_LEFT,  0);
+    if (st->flag_ironfang_defeated) st->field_enemies[3].alive = false;
+}
+
+void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint8_t tx, uint8_t ty) {
+    if (zone_id >= ZONE_COUNT) zone_id = ZONE_HAMLET;
+    st->zone_id = zone_id;
+    st->map_revision++;
+    st->zone_banner_frames = 120;
+    st->cam_override = false;
+    st->hero_vx = 0;
+    st->hero_vy = 0;
+    st->hero_fx = TO_FP((int16_t)tx * 16 + 8);
+    st->hero_fy = TO_FP((int16_t)ty * 16 + 8);
+    st->hero_safe_frames = 45;
+    reset_trail_to_hero(st);
+
+    clear_zone_entities(st);
+    hearth_build_zone_map(zone_id, st->map_bg1, st->map_bg2, st->map_col);
+
+    if (zone_id == ZONE_ALDERBROOK)        populate_zone_alderbrook(st);
+    else if (zone_id == ZONE_WHISKERBURGH) populate_zone_whiskerburgh(st);
+    else if (zone_id == ZONE_SEWERS)       populate_zone_sewers(st);
+    else if (zone_id == ZONE_BOARHOLD)     populate_zone_boarhold(st);
+    else                                   populate_zone_hamlet(st);
+
+    snap_cam_to_hero(st);
+    build_ppu_packet(st);
+}
+
+void hearth_respawn_enemies(HearthState *st) {
+    if (st->zone_id == ZONE_HAMLET && st->story_stage != STORY_AGE5_FLASHBACK) {
+        set_field_enemy(&st->field_enemies[0], "Gloomcap",     SPR_ENEMY_GLOOMCAP,  ENCOUNTER_MEADOW_PACK, BIOME_MEADOW, false, 26, 15, DIR_LEFT, 30);
+        set_field_enemy(&st->field_enemies[1], "Thornling",    SPR_ENEMY_THORNLING, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 30, 10, DIR_DOWN, 55);
+        set_field_enemy(&st->field_enemies[2], "Dusk Moth",    SPR_ENEMY_DUSK_MOTH, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 31, 20, DIR_LEFT, 80);
+        set_field_enemy(&st->field_enemies[3], "Briar Warden", SPR_BOSS_BRIAR,      ENCOUNTER_SHRINE_BOSS, BIOME_SHRINE, true,  38, 13, DIR_LEFT,  0);
+    } else if (st->zone_id == ZONE_SEWERS) {
+        set_field_enemy(&st->field_enemies[0], "Gutter Rat",   SPR_ENEMY_RAT,    ENCOUNTER_SEWER_PACK, BIOME_SEWER, false, 14, 11, DIR_RIGHT, 25);
+        set_field_enemy(&st->field_enemies[1], "Mire Slime",   SPR_ENEMY_SLIME,  ENCOUNTER_SEWER_PACK, BIOME_SEWER, false, 29, 11, DIR_LEFT,  45);
+        set_field_enemy(&st->field_enemies[2], "Sewer Rat",    SPR_ENEMY_RAT,    ENCOUNTER_SEWER_PACK, BIOME_SEWER, false, 15, 16, DIR_DOWN,  70);
+        set_field_enemy(&st->field_enemies[3], "King Muckmaw", SPR_BOSS_MUCKMAW, ENCOUNTER_SEWER_BOSS, BIOME_SEWER, true,  21,  5, DIR_DOWN,   0);
+    } else if (st->zone_id == ZONE_BOARHOLD) {
+        set_field_enemy(&st->field_enemies[0], "Boar Guard",    SPR_ENEMY_BOAR,    ENCOUNTER_BOAR_GUARD,    BIOME_BOARHOLD, false, 22, 17, DIR_LEFT, 35);
+        set_field_enemy(&st->field_enemies[1], "Iron Halberd",  SPR_ENEMY_BOAR,    ENCOUNTER_BOAR_GUARD,    BIOME_BOARHOLD, false, 33, 10, DIR_DOWN, 60);
+        set_field_enemy(&st->field_enemies[3], "Lord Ironfang", SPR_BOSS_IRONFANG, ENCOUNTER_IRONFANG_BOSS, BIOME_BOARHOLD, true,  37, 13, DIR_LEFT,  0);
+    }
+}
+
+/* ============================================================================
+ * RETRO EMERALD DRAGON INTRO & STORY LAUNCHERS
+ * ============================================================================ */
 static void apply_intro_scene_copy(HearthIntroState *in) {
     static const char *titles[4] = {
-        "WINDMILL VALLEY",
-        "THE HEART-LOCKET",
-        "SUN & STARLIGHT",
-        "THE BRIAR SHRINE"
+        "ALDERBROOK",
+        "THE HOLLOW OAK",
+        "EVERTALE",
+        "A FORGOTTEN DREAM"
     };
     static const char *lines1[4] = {
-        "Where golden winds turn over the valley of Hearth,",
-        "Rowan wakes to Pip's lantern chime and a brass locket,",
-        "Bramblekit of Sun and Lumina of Starlight answer,",
-        "East beyond the creek, the Briar Warden stirs..."
+        "By Grandmother's quiet rocking chair in Alderbrook,",
+        "A golden firefly drifts into the ancient Hollow Oak,",
+        "Beyond the roots shines Evertale: windmills, mice,",
+        "Yet a cold shadow wears a beloved face in the glade..."
     };
     static const char *lines2[4] = {
-        "every living heart shines like a lamp in the dusk.",
-        "forged to mend spirits chilled by hollow dread.",
-        "kindred familiars bound to a courageous soul.",
-        "Carry light into the mist. Your tale begins!"
+        "five-year-old Rowan clings to Milo's brass collar bell.",
+        "and little Milo barks with joy, bounding after its light!",
+        "and a lantern sprite named Pip waiting in the sun.",
+        "Step through the Hollow Oak. Remember the truth!"
     };
     uint8_t s = (in->scene < 4u) ? in->scene : 3u;
     in->title = titles[s];
@@ -380,7 +626,6 @@ static void frame_title_camera(HearthState *st) {
     uint8_t lim;
     int16_t tx, ty;
     get_ppu_dims(st, &w, &h, &lim);
-    /* Calm, steady storybook framing on Windmill, Cottage & Hamlet Plaza */
     tx = iclamp16((int16_t)(10 * 16 - (int16_t)(w >> 1)), 0, (int16_t)(HEARTH_MAP_W * 16 - (int)w));
     ty = iclamp16((int16_t)(10 * 16 + 8 - (int16_t)(h >> 1)), 0, (int16_t)(HEARTH_MAP_H * 16 - (int)h));
     st->cam_fx = TO_FP(tx);
@@ -391,6 +636,8 @@ void hearth_start_intro(HearthState *st) {
     st->mode = MODE_INTRO;
     st->battle.active = false;
     st->dialogue.active = false;
+    st->shop.active = false;
+    st->fishing.active = false;
     st->cam_override = false;
     st->intro.scene = 0;
     st->intro.timer = 0;
@@ -454,7 +701,7 @@ static void step_intro_cutscene(HearthState *st, uint16_t just_pressed) {
     if (in->timer >= 14u && in->chars < total_chars && ((in->timer & 1u) == 0u)) {
         in->chars++;
         if ((in->chars & 3u) == 0u) {
-            push_sfx(st, (in->scene == 1u) ? SFX_TEXT_PIP : SFX_TEXT_ELDER);
+            push_sfx(st, (in->scene == 2u) ? SFX_TEXT_PIP : SFX_TEXT_ELDER);
         }
     }
 
@@ -475,30 +722,16 @@ static void step_intro_cutscene(HearthState *st, uint16_t just_pressed) {
 }
 
 void hearth_init(HearthState *st) {
-    int i;
     hearth_memset(st, 0, (uint16_t)sizeof(*st));
     hearth_default_tuning(&st->tuning);
     hearth_prng_seed(&st->prng, (uint16_t)0x5EEDu);
-    hearth_build_sandbox_map(st->map_bg1, st->map_bg2, st->map_col);
     init_party(st);
 
-    st->hero_fx = TO_FP(10 * HEARTH_TILE_SIZE + 8);
-    st->hero_fy = TO_FP(14 * HEARTH_TILE_SIZE + 8);
-    st->hero_dir = DIR_DOWN;
-
-    for (i = 0; i < HEARTH_TRAIL_LEN; i++) {
-        st->trail_x[i] = st->hero_fx - TO_FP(18);
-        st->trail_y[i] = st->hero_fy - TO_FP(4);
-    }
-    st->pip_fx = st->hero_fx - TO_FP(18);
-    st->pip_fy = st->hero_fy - TO_FP(4);
-    st->pip_dir = DIR_RIGHT;
-
-    set_npc(&st->npcs[0], 0, "Elder Wren", SPR_NPC_ELDER,  8, 11, DIR_DOWN, AURA_NONE);
-    set_npc(&st->npcs[1], 1, "Clara",      SPR_NPC_CLARA, 13, 16, DIR_DOWN, AURA_RADIANT_COURAGE);
-    set_npc(&st->npcs[2], 2, "Guard Bram", SPR_NPC_GUARD, 22, 13, DIR_LEFT, AURA_HOLLOW_FEAR);
-
-    hearth_respawn_enemies(st);
+    /* Boot title backdrop in Windmill Hamlet */
+    st->story_stage = STORY_EVERTALE_AWAKENED;
+    st->flag_has_wand = true;
+    hearth_enter_zone(st, ZONE_HAMLET, 10, 14);
+    st->zone_banner_frames = 0;
     hearth_start_intro(st);
 }
 
@@ -521,13 +754,43 @@ void hearth_toggle_ppu_mode(HearthState *st) {
     build_ppu_packet(st);
 }
 
+void hearth_start_story(HearthState *st) {
+    /* Begin Age-5 Playable Flashback inside sunlit Evertale -> Shadow Grandma -> Age-10 Alderbrook! */
+    st->story_stage = STORY_AGE5_FLASHBACK;
+    st->flag_has_wand = false;
+    st->flag_has_courage = false;
+    st->flag_guard_mended = false;
+    st->flag_sewer_key = false;
+    st->flag_captain_mended = false;
+    st->flag_muckmaw_defeated = false;
+    st->flag_ironfang_defeated = false;
+    st->flag_boss_defeated = false;
+    st->flashback_triggered = false;
+    st->mode = MODE_EXPLORE;
+    st->intro.fade = 0;
+    st->dialogue.active = false;
+    st->battle.active = false;
+    st->shop.active = false;
+    st->fishing.active = false;
+    hearth_enter_zone(st, ZONE_HAMLET, 9, 13);
+    st->hero_dir = DIR_RIGHT;
+    push_sfx(st, SFX_PORTAL);
+}
+
 void hearth_start_sandbox(HearthState *st) {
+    /* Jump straight into Age-10 Evertale Windmill Hamlet with Hearthwood Wand & Pip ready */
+    if (st->story_stage < STORY_EVERTALE_AWAKENED) {
+        st->story_stage = STORY_EVERTALE_AWAKENED;
+    }
+    st->flag_has_wand = true;
     st->mode = MODE_EXPLORE;
     st->intro.fade = 0;
     st->cam_override = false;
     st->dialogue.active = false;
     st->battle.active = false;
-    snap_cam_to_hero(st);
+    st->shop.active = false;
+    st->fishing.active = false;
+    hearth_enter_zone(st, ZONE_HAMLET, 10, 14);
     push_sfx(st, SFX_CONFIRM);
 }
 
@@ -536,9 +799,20 @@ void hearth_start_cutscene(HearthState *st, const HearthCutsceneOp *script) {
     st->intro.fade = 0;
     st->battle.active = false;
     st->dialogue.active = false;
+    st->shop.active = false;
+    st->fishing.active = false;
     st->cs_script = script;
     st->cs_ip = 0;
     st->cs_wait_frames = 0;
+}
+
+static void request_zone_warp(HearthState *st, uint8_t dst_zone, uint8_t tx, uint8_t ty) {
+    st->warp_pending = true;
+    st->warp_fade = 1;
+    st->warp_dst_zone = dst_zone;
+    st->warp_dst_tx = tx;
+    st->warp_dst_ty = ty;
+    push_sfx(st, SFX_PORTAL);
 }
 
 /* ============================================================================
@@ -556,7 +830,7 @@ static uint8_t get_col_at_px(const HearthState *st, int16_t px, int16_t py) {
 
 static bool collides_world_px(const HearthState *st, int16_t cx, int16_t cy) {
     uint16_t tx0, tx1, ty0, ty1, row0, row1, c;
-    int16_t dx, dy;
+    int16_t dx, dy, i;
     ST_UNUSED(st);
 
     if (cx < 5 || cy < 3) return true;
@@ -583,32 +857,27 @@ static bool collides_world_px(const HearthState *st, int16_t cx, int16_t cy) {
         }
     }
 
-    /* 3 static NPCs (unrolled for zero far-pointer indexing on 65816) */
-    dx = (int16_t)(cx - FP_PX(HS.npcs[0].fx));
-    if (dx > -11 && dx < 11) {
-        dy = (int16_t)(cy - FP_PX(HS.npcs[0].fy));
-        if (dy > -9 && dy < 9) return true;
+    for (i = 0; i < HEARTH_MAX_NPCS; i++) {
+        if (!HS.npcs[i].active) continue;
+        dx = (int16_t)(cx - FP_PX(HS.npcs[i].fx));
+        if (dx > -11 && dx < 11) {
+            dy = (int16_t)(cy - FP_PX(HS.npcs[i].fy));
+            if (dy > -9 && dy < 9) return true;
+        }
     }
-    dx = (int16_t)(cx - FP_PX(HS.npcs[1].fx));
-    if (dx > -11 && dx < 11) {
-        dy = (int16_t)(cy - FP_PX(HS.npcs[1].fy));
-        if (dy > -9 && dy < 9) return true;
+    if (HS.has_waystone) {
+        dx = (int16_t)(cx - ((int16_t)HS.waystone_tx * 16 + 8));
+        if (dx > -11 && dx < 11) {
+            dy = (int16_t)(cy - ((int16_t)HS.waystone_ty * 16 + 8));
+            if (dy > -9 && dy < 9) return true;
+        }
     }
-    dx = (int16_t)(cx - FP_PX(HS.npcs[2].fx));
-    if (dx > -11 && dx < 11) {
-        dy = (int16_t)(cy - FP_PX(HS.npcs[2].fy));
-        if (dy > -9 && dy < 9) return true;
-    }
-    /* Waystone (8,17) & Chest (26,6) */
-    dx = (int16_t)(cx - (8 * 16 + 8));
-    if (dx > -11 && dx < 11) {
-        dy = (int16_t)(cy - (17 * 16 + 8));
-        if (dy > -9 && dy < 9) return true;
-    }
-    dx = (int16_t)(cx - (26 * 16 + 8));
-    if (dx > -10 && dx < 10) {
-        dy = (int16_t)(cy - (6 * 16 + 8));
-        if (dy > -8 && dy < 8) return true;
+    if (HS.chest.active) {
+        dx = (int16_t)(cx - ((int16_t)HS.chest.tx * 16 + 8));
+        if (dx > -10 && dx < 10) {
+            dy = (int16_t)(cy - ((int16_t)HS.chest.ty * 16 + 8));
+            if (dy > -8 && dy < 8) return true;
+        }
     }
     return false;
 }
@@ -620,7 +889,6 @@ static void step_hero_collide_xy(HearthState *st) {
     hx = FP_PX(HS.hero_fx);
     hy = FP_PX(HS.hero_fy);
 
-    /* Axis-separated collision with 5px automatic corner-nudging! */
     if (HS.hero_vx != 0) {
         nfx = HS.hero_fx + HS.hero_vx;
         nx = FP_PX(nfx);
@@ -702,7 +970,6 @@ static void step_hero_movement(HearthState *st, uint16_t pad) {
     max_spd = HS.hero_dashing ? HS.tuning.dash_speed_fp : HS.tuning.walk_speed_fp;
 
     if (ix != 0 && iy != 0) {
-        /* 181/256 ~= 0.7071 integer diagonal normalization (128+32+16+4+1, zero multiply) */
         dspd = (int16_t)((max_spd >> 1) + (max_spd >> 3) + (max_spd >> 4) + (max_spd >> 6) + (max_spd >> 8));
         tvx = (ix > 0) ? dspd : (int16_t)(-dspd);
         tvy = (iy > 0) ? dspd : (int16_t)(-dspd);
@@ -751,6 +1018,7 @@ static void step_pip_follower(HearthState *st) {
     fp16_t dx, dy;
     ST_UNUSED(st);
 
+    if (!HS.pip_visible) return;
     if (back < 4) back = 4;
     if (back > HEARTH_TRAIL_LEN - 2) back = HEARTH_TRAIL_LEN - 2;
     idx = (int16_t)((int16_t)HS.trail_head - back);
@@ -764,7 +1032,7 @@ static void step_pip_follower(HearthState *st) {
 }
 
 /* ============================================================================
- * TACTILE FAMILIAR COMBAT ENGINE (TIMED HITS, PARRIES, LOCK BREAKS, SWAP ARC)
+ * TACTILE FAMILIAR COMBAT ENGINE (7 ENCOUNTERS + TIMED HITS + LOCK BREAKS)
  * ============================================================================ */
 static uint8_t first_alive_enemy(const HearthBattleState *b) {
     uint8_t i;
@@ -810,6 +1078,64 @@ static void set_battle_enemy(
     e->anim_frame = 0;
 }
 
+static void populate_battle_preset(HearthBattleState *b, uint8_t preset, int8_t field_idx, int16_t right_base) {
+    if (preset == ENCOUNTER_SHRINE_BOSS) {
+        b->enemy_count = 1;
+        set_battle_enemy(&b->enemies[0], "Briar Warden", "Bramble Tempest", SPR_BOSS_BRIAR,
+            field_idx, true, 165, 21, 5, right_base, 126, (int16_t)(right_base + 56),
+            2, 2, 3, LOCK_SWORD, LOCK_SUN, LOCK_STAR);
+        copy_str_safe(b->banner, sizeof(b->banner), "SHRINE GUARDIAN: BRIAR WARDEN!");
+    } else if (preset == ENCOUNTER_SEWER_BOSS) {
+        b->enemy_count = 1;
+        set_battle_enemy(&b->enemies[0], "King Muckmaw", "Sludge Deluge", SPR_BOSS_MUCKMAW,
+            field_idx, true, 185, 22, 5, right_base, 126, (int16_t)(right_base + 56),
+            2, 2, 3, LOCK_SUN, LOCK_STAR, LOCK_SWORD);
+        copy_str_safe(b->banner, sizeof(b->banner), "SEWER MINI-BOSS: KING MUCKMAW!");
+    } else if (preset == ENCOUNTER_IRONFANG_BOSS) {
+        b->enemy_count = 1;
+        set_battle_enemy(&b->enemies[0], "Lord Ironfang", "Tusk Cataclysm", SPR_BOSS_IRONFANG,
+            field_idx, true, 220, 24, 6, right_base, 126, (int16_t)(right_base + 56),
+            2, 2, 3, LOCK_SWORD, LOCK_SUN, LOCK_STAR);
+        copy_str_safe(b->banner, sizeof(b->banner), "CITADEL BOSS: LORD IRONFANG!");
+    } else if (preset == ENCOUNTER_SEWER_PACK) {
+        b->enemy_count = 2;
+        set_battle_enemy(&b->enemies[0], "Gutter Rat", "Fang Flurry", SPR_ENEMY_RAT,
+            field_idx, false, 60, 15, 3, (int16_t)(right_base - 14), 108, (int16_t)(right_base + 54),
+            2, 2, 2, LOCK_SWORD, LOCK_SUN, LOCK_NONE);
+        set_battle_enemy(&b->enemies[1], "Mire Slime", "Ooze Splash", SPR_ENEMY_SLIME,
+            field_idx, false, 56, 14, 3, (int16_t)(right_base + 14), 142, (int16_t)(right_base + 74),
+            1, 2, 1, LOCK_STAR, LOCK_NONE, LOCK_NONE);
+        copy_str_safe(b->banner, sizeof(b->banner), "SEWER AMBUSH!");
+    } else if (preset == ENCOUNTER_BOAR_GUARD) {
+        b->enemy_count = 2;
+        set_battle_enemy(&b->enemies[0], "Boar Halberd", "Iron Charge", SPR_ENEMY_BOAR,
+            field_idx, false, 72, 17, 4, (int16_t)(right_base - 12), 110, (int16_t)(right_base + 54),
+            2, 2, 2, LOCK_SWORD, LOCK_STAR, LOCK_NONE);
+        set_battle_enemy(&b->enemies[1], "Mire Slime", "Ooze Splash", SPR_ENEMY_SLIME,
+            field_idx, false, 58, 15, 3, (int16_t)(right_base + 16), 142, (int16_t)(right_base + 74),
+            0, 2, 0, LOCK_NONE, LOCK_NONE, LOCK_NONE);
+        copy_str_safe(b->banner, sizeof(b->banner), "BOARHOLD SENTINELS!");
+    } else if (preset == ENCOUNTER_GLADE_DUO) {
+        b->enemy_count = 2;
+        set_battle_enemy(&b->enemies[0], "Thornling", "Briar Flurry", SPR_ENEMY_THORNLING,
+            field_idx, false, 58, 14, 3, (int16_t)(right_base - 14), 108, (int16_t)(right_base + 56),
+            2, 2, 2, LOCK_SWORD, LOCK_SUN, LOCK_NONE);
+        set_battle_enemy(&b->enemies[1], "Dusk Moth", "Hollow Dust", SPR_ENEMY_DUSK_MOTH,
+            field_idx, false, 48, 13, 2, (int16_t)(right_base + 16), 142, (int16_t)(right_base + 76),
+            1, 2, 1, LOCK_STAR, LOCK_NONE, LOCK_NONE);
+        copy_str_safe(b->banner, sizeof(b->banner), "GLADE ENCOUNTER!");
+    } else {
+        b->enemy_count = 2;
+        set_battle_enemy(&b->enemies[0], "Gloomcap", "Spore Burst", SPR_ENEMY_GLOOMCAP,
+            field_idx, false, 52, 13, 2, (int16_t)(right_base - 12), 112, (int16_t)(right_base + 52),
+            2, 2, 2, LOCK_SUN, LOCK_STAR, LOCK_NONE);
+        set_battle_enemy(&b->enemies[1], "Thornling", "Briar Flurry", SPR_ENEMY_THORNLING,
+            field_idx, false, 54, 14, 3, (int16_t)(right_base + 14), 142, (int16_t)(right_base + 74),
+            0, 2, 0, LOCK_NONE, LOCK_NONE, LOCK_NONE);
+        copy_str_safe(b->banner, sizeof(b->banner), "MEADOW ENCOUNTER!");
+    }
+}
+
 void hearth_start_battle(HearthState *st, uint8_t preset, uint8_t biome, int8_t field_idx) {
     uint16_t w, h;
     uint8_t lim;
@@ -838,7 +1164,8 @@ void hearth_start_battle(HearthState *st, uint8_t preset, uint8_t biome, int8_t 
     b->wizard_back_x = (int16_t)((left_base > 46) ? (left_base - 42) : 24);
     b->wizard_back_y = 130;
     b->field_enemy_idx = field_idx;
-    b->is_boss_battle = (preset == ENCOUNTER_SHRINE_BOSS);
+    b->encounter_preset = preset;
+    b->is_boss_battle = (preset == ENCOUNTER_SHRINE_BOSS || preset == ENCOUNTER_SEWER_BOSS || preset == ENCOUNTER_IRONFANG_BOSS);
 
     if (field_idx < 0) {
         for (i = 0; i < 3; i++) {
@@ -848,34 +1175,12 @@ void hearth_start_battle(HearthState *st, uint8_t preset, uint8_t biome, int8_t 
         if (st->potions < 2) st->potions = 2;
     }
 
-    if (preset == ENCOUNTER_SHRINE_BOSS) {
-        b->enemy_count = 1;
-        set_battle_enemy(&b->enemies[0], "Briar Warden", "Bramble Tempest", SPR_BOSS_BRIAR,
-            field_idx, true, 165, 21, 5, right_base, 126, (int16_t)(right_base + 56),
-            2, 2, 3, LOCK_SWORD, LOCK_SUN, LOCK_STAR);
-        copy_str_safe(b->banner, sizeof(b->banner), "SHRINE GUARDIAN: BRIAR WARDEN!");
-    } else if (preset == ENCOUNTER_GLADE_DUO) {
-        b->enemy_count = 2;
-        set_battle_enemy(&b->enemies[0], "Thornling", "Briar Flurry", SPR_ENEMY_THORNLING,
-            field_idx, false, 58, 14, 3, (int16_t)(right_base - 14), 108, (int16_t)(right_base + 56),
-            2, 2, 2, LOCK_SWORD, LOCK_SUN, LOCK_NONE);
-        set_battle_enemy(&b->enemies[1], "Dusk Moth", "Hollow Dust", SPR_ENEMY_DUSK_MOTH,
-            field_idx, false, 48, 13, 2, (int16_t)(right_base + 16), 142, (int16_t)(right_base + 76),
-            1, 2, 1, LOCK_STAR, LOCK_NONE, LOCK_NONE);
-        copy_str_safe(b->banner, sizeof(b->banner), "GLADE ENCOUNTER!");
-    } else {
-        b->enemy_count = 2;
-        set_battle_enemy(&b->enemies[0], "Gloomcap", "Spore Burst", SPR_ENEMY_GLOOMCAP,
-            field_idx, false, 52, 13, 2, (int16_t)(right_base - 12), 112, (int16_t)(right_base + 52),
-            2, 2, 2, LOCK_SUN, LOCK_STAR, LOCK_NONE);
-        set_battle_enemy(&b->enemies[1], "Thornling", "Briar Flurry", SPR_ENEMY_THORNLING,
-            field_idx, false, 54, 14, 3, (int16_t)(right_base + 14), 142, (int16_t)(right_base + 74),
-            0, 2, 0, LOCK_NONE, LOCK_NONE, LOCK_NONE);
-        copy_str_safe(b->banner, sizeof(b->banner), "MEADOW ENCOUNTER!");
-    }
+    populate_battle_preset(b, preset, field_idx, right_base);
 
     b->banner_frames = 60;
     st->dialogue.active = false;
+    st->shop.active = false;
+    st->fishing.active = false;
     st->mode = MODE_BATTLE;
     push_sfx(st, SFX_BATTLE_SWOOP);
     build_ppu_packet(st);
@@ -952,7 +1257,6 @@ static void resolve_player_strike(HearthState *st, bool is_followup) {
                     (int16_t)(e->home_y - (is_followup ? 34 : 24)),
                     dmg_txt, 3, (is_followup || is_perfect) ? 11 : 12, false);
 
-        /* Spell Lock Shattering! */
         if (e->charge_turns > 0 && e->lock_count > 0 && e->hp > 0) {
             match = -1;
             for (li = 0; li < e->lock_count; li++) {
@@ -1043,10 +1347,47 @@ static void set_battle_vfx(
     b->vfx_ty = ty;
 }
 
+static void use_battle_item(HearthState *st) {
+    HearthBattleState *b = &st->battle;
+    int p_idx;
+    if (st->potions > 0) {
+        st->potions--;
+        for (p_idx = 0; p_idx < 3; p_idx++) {
+            st->party[p_idx].hp = (int16_t)((st->party[p_idx].hp + 45 > st->party[p_idx].max_hp) ? st->party[p_idx].max_hp : st->party[p_idx].hp + 45);
+            st->party[p_idx].mp = (int16_t)((st->party[p_idx].mp + 10 > st->party[p_idx].max_mp) ? st->party[p_idx].max_mp : st->party[p_idx].mp + 10);
+        }
+        push_sfx(st, SFX_HEAL);
+        spawn_burst(st, 5, b->hero_x, (int16_t)(b->hero_y - 10), 12, 0, 4, true);
+        spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), "TONIC +45HP", 0, 4, false);
+        begin_enemy_turn(b);
+    } else if (st->snacks > 0) {
+        st->snacks--;
+        for (p_idx = 0; p_idx < 3; p_idx++) {
+            st->party[p_idx].hp = st->party[p_idx].max_hp;
+            st->party[p_idx].mp = st->party[p_idx].max_mp;
+        }
+        push_sfx(st, SFX_HEAL);
+        spawn_burst(st, 5, b->hero_x, (int16_t)(b->hero_y - 10), 14, 3, 11, true);
+        spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), "SNACK FULL!", 3, 11, false);
+        begin_enemy_turn(b);
+    } else if (st->star_drops > 0) {
+        st->star_drops--;
+        for (p_idx = 0; p_idx < 3; p_idx++) {
+            st->party[p_idx].mp = (int16_t)((st->party[p_idx].mp + 15 > st->party[p_idx].max_mp) ? st->party[p_idx].max_mp : st->party[p_idx].mp + 15);
+        }
+        push_sfx(st, SFX_HEAL);
+        spawn_burst(st, 5, b->hero_x, (int16_t)(b->hero_y - 10), 10, 3, 15, true);
+        spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), "STAR +15MP", 3, 15, false);
+        begin_enemy_turn(b);
+    } else {
+        push_sfx(st, SFX_CANCEL);
+        spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 26), "NO ITEMS!", 3, 10, false);
+    }
+}
+
 static void step_battle_command(HearthState *st, uint16_t just_pressed) {
     HearthBattleState *b = &st->battle;
     HearthPartyMember *actor = &st->party[b->active_slot];
-    int p_idx;
 
     if (b->phase == BPHASE_SWAP_ARC) {
         const uint16_t dur = 16;
@@ -1072,7 +1413,6 @@ static void step_battle_command(HearthState *st, uint16_t just_pressed) {
 
     if (!b->enemies[b->selected_enemy].alive) b->selected_enemy = first_alive_enemy(b);
 
-    /* Free Ni No Kuni Familiar Hot-Swap with L / R! */
     if (just_pressed & (PAD_L | PAD_R)) {
         uint8_t next = (just_pressed & PAD_L)
             ? (uint8_t)((b->active_slot + 2) % 3)
@@ -1131,20 +1471,7 @@ static void step_battle_command(HearthState *st, uint16_t just_pressed) {
             spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), "GUARD +6 MP", 3, 15, false);
             begin_enemy_turn(b);
         } else {
-            if (st->potions == 0) {
-                push_sfx(st, SFX_CANCEL);
-                spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 26), "NO TONICS!", 3, 10, false);
-            } else {
-                st->potions--;
-                for (p_idx = 0; p_idx < 3; p_idx++) {
-                    st->party[p_idx].hp = (int16_t)((st->party[p_idx].hp + 45 > st->party[p_idx].max_hp) ? st->party[p_idx].max_hp : st->party[p_idx].hp + 45);
-                    st->party[p_idx].mp = (int16_t)((st->party[p_idx].mp + 10 > st->party[p_idx].max_mp) ? st->party[p_idx].max_mp : st->party[p_idx].mp + 10);
-                }
-                push_sfx(st, SFX_HEAL);
-                spawn_burst(st, 5, b->hero_x, (int16_t)(b->hero_y - 10), 12, 0, 4, true);
-                spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), "+45 HP / +10 MP", 0, 4, false);
-                begin_enemy_turn(b);
-            }
+            use_battle_item(st);
         }
     }
 }
@@ -1157,7 +1484,6 @@ static void step_battle_player_windup(HearthState *st) {
     int p_idx;
 
     if (actor->slot == 2) {
-        /* Lumina levitates upward in a luminous crescent orbit */
         int16_t ox = (int16_t)((HEARTH_SIN64[(b->phase_timer * 2u) & 63u] * 8) >> 7);
         b->hero_x = (int16_t)(b->hero_home_x - 4 + ox);
         b->hero_y = (int16_t)(b->hero_home_y - sin_arc(b->phase_timer, dur, 18));
@@ -1168,7 +1494,6 @@ static void step_battle_player_windup(HearthState *st) {
                 (int16_t)(b->hero_y - 12), 0, -60, 14, 2, 3, 15, true);
         }
     } else if (actor->slot == 1) {
-        /* Bramblekit coils deeply like a spring with solar sparks */
         b->hero_x = (int16_t)(b->hero_home_x - sin_arc(b->phase_timer, dur, 14));
         b->hero_y = (int16_t)(b->hero_home_y - ((b->active_action == 1) ? sin_arc(b->phase_timer, dur, 10) : 0));
         b->hero_scale_x_fp = 315;
@@ -1178,7 +1503,6 @@ static void step_battle_player_windup(HearthState *st) {
                 hearth_prng_range(&st->prng, -90, 60), -110, 14, 2, 3, 11, true);
         }
     } else {
-        /* Rowan steps back & raises Locket Staff with golden heart glow */
         b->hero_x = (int16_t)(b->hero_home_x - sin_arc(b->phase_timer, dur, 10));
         b->hero_y = (int16_t)(b->hero_home_y - sin_arc(b->phase_timer, dur, 6));
         b->hero_scale_x_fp = 285;
@@ -1237,25 +1561,15 @@ static void step_battle_player_lunge(HearthState *st) {
     uint16_t win = (st->tuning.timed_hit_window_f < 6) ? 6 : st->tuning.timed_hit_window_f;
     uint16_t sweet_start = (dur > win) ? (uint16_t)(dur - win) : 1;
 
-    if (actor->slot == 1 && b->active_action == 1) {
-        /* Sea-of-Stars Solar Slam: soaring high meteor vault! */
-        arc_h = 56;
-    } else if (actor->slot == 1) {
-        /* Acorn Rush: kinetic spinning dash arc */
-        arc_h = 26;
-    } else if (actor->slot == 2) {
-        /* Lumina hovers upward while projecting comet / nova */
-        arc_h = (b->active_action == 1) ? 28 : 16;
-    } else {
-        /* Rowan graceful leaping staff strike */
-        arc_h = 22;
-    }
+    if (actor->slot == 1 && b->active_action == 1) arc_h = 56;
+    else if (actor->slot == 1) arc_h = 26;
+    else if (actor->slot == 2) arc_h = (b->active_action == 1) ? 28 : 16;
+    else arc_h = 22;
 
     b->hero_x = (int16_t)(b->hero_home_x + ((dest_x - b->hero_home_x) * (int16_t)b->phase_timer) / (int16_t)dur);
     b->hero_y = (int16_t)(b->hero_home_y + ((dest_y - b->hero_home_y) * (int16_t)b->phase_timer) / (int16_t)dur - sin_arc(b->phase_timer, dur, arc_h));
 
     if (actor->slot == 1) {
-        /* Squash & stretch spin rhythm */
         b->hero_scale_x_fp = ((b->phase_timer & 4u) != 0u) ? 290 : 220;
         b->hero_scale_y_fp = ((b->phase_timer & 4u) != 0u) ? 225 : 295;
         if ((b->phase_timer & 3u) == 0u) {
@@ -1341,7 +1655,6 @@ static void step_battle_player_aftermath(HearthState *st) {
         HearthBattleEnemy *e = &b->enemies[ti];
         const uint16_t dur = 30;
         int16_t base_x = (actor->slot == 2) ? (int16_t)(b->hero_home_x + 36) : (int16_t)(e->home_x - 24);
-        /* Sea-of-Stars acrobatic rebound somersault & diving finisher! */
         b->hero_x = (int16_t)(base_x - sin_arc(b->phase_timer, dur, 22));
         b->hero_y = (int16_t)(e->home_y - sin_arc(b->phase_timer, dur, 40));
         b->hero_scale_x_fp = (b->phase_timer < 15) ? 235 : 325;
@@ -1374,7 +1687,9 @@ static void step_battle_player_aftermath(HearthState *st) {
             all_dead = true;
             for (i = 0; i < b->enemy_count; i++) if (b->enemies[i].alive) all_dead = false;
             if (all_dead) {
-                b->exp_earned = b->is_boss_battle ? 120 : 48;
+                b->exp_earned = b->is_boss_battle ? 120u : 48u;
+                b->guilders_earned = b->is_boss_battle ? 95u : 28u;
+                st->guilders = (uint16_t)(st->guilders + b->guilders_earned);
                 b->phase = BPHASE_VICTORY_POSE;
                 b->phase_timer = 0;
                 push_sfx(st, SFX_VICTORY_FANFARE);
@@ -1639,7 +1954,15 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
                 if (b->field_enemy_idx >= 0 && b->field_enemy_idx < HEARTH_MAX_FIELD_ENEMIES) {
                     st->field_enemies[(int)b->field_enemy_idx].alive = false;
                 }
-                if (b->is_boss_battle) st->flag_boss_defeated = true;
+                if (b->encounter_preset == ENCOUNTER_SHRINE_BOSS) {
+                    st->flag_boss_defeated = true;
+                } else if (b->encounter_preset == ENCOUNTER_SEWER_BOSS) {
+                    st->flag_muckmaw_defeated = true;
+                    if (st->story_stage < STORY_MUCKMAW_DEFEATED) st->story_stage = STORY_MUCKMAW_DEFEATED;
+                } else if (b->encounter_preset == ENCOUNTER_IRONFANG_BOSS) {
+                    st->flag_ironfang_defeated = true;
+                    st->story_stage = STORY_IRONFANG_DEFEATED;
+                }
                 st->mode = MODE_BATTLE_VICTORY;
             }
             break;
@@ -1652,12 +1975,245 @@ static void step_battle(HearthState *st, uint16_t just_pressed) {
                     st->party[p_idx].hp = st->party[p_idx].max_hp;
                     st->party[p_idx].mp = st->party[p_idx].max_mp;
                 }
-                st->hero_fx = TO_FP(8 * 16 + 8);
-                st->hero_fy = TO_FP(18 * 16 + 8);
+                if (st->has_waystone) {
+                    st->hero_fx = TO_FP((int16_t)st->waystone_tx * 16 + 8);
+                    st->hero_fy = TO_FP((int16_t)(st->waystone_ty + 1) * 16 + 8);
+                }
                 snap_cam_to_hero(st);
                 st->mode = MODE_BATTLE_DEFEAT;
             }
             break;
+        }
+    }
+}
+
+/* ============================================================================
+ * MERCHANT SHOPS (MODE_SHOP: BUY ITEMS OR SELL CAUGHT FISH FOR GUILDERS)
+ * ============================================================================ */
+void hearth_open_shop(HearthState *st, uint8_t shop_id) {
+    HearthShopState *sh = &st->shop;
+    sh->active = true;
+    sh->shop_id = shop_id;
+    sh->tab = 0;
+    sh->cursor = 0;
+    sh->msg_timer = 90;
+    sh->title = (shop_id == 1u) ? "PORKINS' CITADEL PROVISIONS" : "BARNABY'S MOUSE MARKET";
+    copy_str_safe(sh->msg, sizeof(sh->msg), "L/R: Switch BUY / SELL FISH  B: Exit");
+    st->dialogue.active = false;
+    st->mode = MODE_SHOP;
+    push_sfx(st, SFX_CONFIRM);
+}
+
+static void shop_buy_item(HearthState *st, uint8_t idx) {
+    const HearthShopItem *it;
+    HearthShopState *sh = &st->shop;
+    if (idx >= 5u) return;
+    it = &HEARTH_SHOP_ITEMS[idx];
+    if (it->item_kind == 3u && st->lure_tier >= 1u) {
+        copy_str_safe(sh->msg, sizeof(sh->msg), "You already own River Lure!");
+        push_sfx(st, SFX_CANCEL);
+        return;
+    }
+    if (it->item_kind == 4u && st->lure_tier >= 2u) {
+        copy_str_safe(sh->msg, sizeof(sh->msg), "You already own Glow Lure!");
+        push_sfx(st, SFX_CANCEL);
+        return;
+    }
+    if (st->guilders < it->price) {
+        copy_str_safe(sh->msg, sizeof(sh->msg), "Not enough Guilders!");
+        push_sfx(st, SFX_CANCEL);
+        return;
+    }
+    st->guilders = (uint16_t)(st->guilders - it->price);
+    if (it->item_kind == 0u) st->potions++;
+    else if (it->item_kind == 1u) st->star_drops++;
+    else if (it->item_kind == 2u) st->snacks++;
+    else if (it->item_kind == 3u) st->lure_tier = 1;
+    else if (it->item_kind == 4u) st->lure_tier = 2;
+
+    copy_str_safe(sh->msg, sizeof(sh->msg), "Purchased! Thank you!");
+    sh->msg_timer = 75;
+    push_sfx(st, SFX_COIN);
+}
+
+static void shop_sell_fish(HearthState *st, uint8_t idx) {
+    HearthShopState *sh = &st->shop;
+    if (idx >= HEARTH_FISH_SPECIES) return;
+    if (st->fish_bag[idx] == 0u) {
+        copy_str_safe(sh->msg, sizeof(sh->msg), "None in your creel to sell!");
+        push_sfx(st, SFX_CANCEL);
+        return;
+    }
+    st->fish_bag[idx]--;
+    st->guilders = (uint16_t)(st->guilders + HEARTH_FISH_TABLE[idx].sell_price);
+    fmt_int_text(sh->msg, sizeof(sh->msg), "Sold for +", (int16_t)HEARTH_FISH_TABLE[idx].sell_price, "G!");
+    sh->msg_timer = 75;
+    push_sfx(st, SFX_COIN);
+}
+
+static void step_shop(HearthState *st, uint16_t just_pressed) {
+    HearthShopState *sh = &st->shop;
+    uint8_t max_rows = (sh->tab == 0u) ? 5u : (uint8_t)HEARTH_FISH_SPECIES;
+
+    if (sh->msg_timer > 0) sh->msg_timer--;
+
+    if (just_pressed & (PAD_B | PAD_START)) {
+        sh->active = false;
+        st->mode = MODE_EXPLORE;
+        push_sfx(st, SFX_CANCEL);
+        return;
+    }
+    if (just_pressed & (PAD_LEFT | PAD_RIGHT | PAD_L | PAD_R)) {
+        sh->tab = (uint8_t)(sh->tab ^ 1u);
+        sh->cursor = 0;
+        push_sfx(st, SFX_CURSOR);
+        return;
+    }
+    if (just_pressed & PAD_UP) {
+        sh->cursor = (uint8_t)((sh->cursor + max_rows - 1u) % max_rows);
+        push_sfx(st, SFX_CURSOR);
+    } else if (just_pressed & PAD_DOWN) {
+        sh->cursor = (uint8_t)((sh->cursor + 1u) % max_rows);
+        push_sfx(st, SFX_CURSOR);
+    } else if (just_pressed & PAD_A) {
+        if (sh->tab == 0u) shop_buy_item(st, sh->cursor);
+        else shop_sell_fish(st, sh->cursor);
+    }
+}
+
+/* ============================================================================
+ * ZELDA / SEA-OF-STARS TIMED-REEL FISHING MINIGAME (MODE_FISHING)
+ * ============================================================================ */
+static uint8_t roll_fish_species(HearthState *st) {
+    int16_t r = hearth_prng_range(&st->prng, 0, 99);
+    if (r < 7) return 5u; /* Sunken Boot */
+    if (st->lure_tier >= 1u && r >= 84) return 4u; /* Golden Koi! */
+    if (st->zone_id == ZONE_SEWERS) return (r < 68) ? 3u : 4u; /* Sewer Glow-Eel */
+    if (st->zone_id == ZONE_WHISKERBURGH) return (r < 65) ? 2u : 1u; /* Whisker Perch */
+    return (r < 55) ? 0u : 1u; /* Sun Carp or Meadow Trout */
+}
+
+void hearth_start_fishing(HearthState *st) {
+    HearthFishingState *f = &st->fishing;
+    if (!st->fish_spot.active) return;
+
+    hearth_memset(f, 0, (uint16_t)sizeof(*f));
+    f->active = true;
+    f->phase = FISH_PHASE_CAST;
+    f->timer = 0;
+    f->bite_delay = (uint16_t)hearth_prng_range(&st->prng, 65, 145);
+    f->bobber_x = (int16_t)(((int16_t)st->fish_spot.tx + (int16_t)st->fish_spot.cast_dx) * 16 + 8);
+    f->bobber_y = (int16_t)(((int16_t)st->fish_spot.ty + (int16_t)st->fish_spot.cast_dy) * 16 + 8);
+    f->fish_pos = 50;
+    f->fish_vel = 1;
+    f->bar_pos = 50;
+    f->bar_half_w = (uint8_t)(15u + st->lure_tier * 4u);
+    f->progress = 26;
+    f->tension = 18;
+    f->species = roll_fish_species(st);
+    f->weight_oz = (uint8_t)hearth_prng_range(&st->prng, 10, 48);
+
+    st->hero_dir = (st->fish_spot.cast_dx > 0) ? (uint8_t)DIR_RIGHT : (uint8_t)DIR_DOWN;
+    st->dialogue.active = false;
+    st->mode = MODE_FISHING;
+    push_sfx(st, SFX_WATER_SPLASH);
+}
+
+static void step_fishing_reeling(HearthState *st, uint16_t pad_bits) {
+    HearthFishingState *f = &st->fishing;
+    uint8_t agil = HEARTH_FISH_TABLE[f->species].agility;
+    int16_t diff;
+
+    /* Move player's sweet-spot bar with Left/Right or hold A to pull right */
+    if (pad_bits & PAD_LEFT) f->bar_pos -= 3;
+    if (pad_bits & PAD_RIGHT) f->bar_pos += 3;
+    if (pad_bits & PAD_A) {
+        if ((pad_bits & (PAD_LEFT | PAD_RIGHT)) == 0u) f->bar_pos += 2;
+        if ((f->timer & 7u) == 0u) push_sfx(st, SFX_FISH_REEL);
+    } else if ((pad_bits & (PAD_LEFT | PAD_RIGHT)) == 0u) {
+        f->bar_pos -= 1;
+    }
+    f->bar_pos = iclamp16(f->bar_pos, 12, 88);
+
+    /* Fish darts playfully inside 10..90 */
+    if ((f->timer % (uint16_t)(28u - agil * 4u)) == 0u) {
+        int16_t spd = (int16_t)agil;
+        f->fish_vel = (int8_t)hearth_prng_range(&st->prng, (int16_t)(-spd), spd);
+        if (f->fish_vel == 0) f->fish_vel = (int8_t)((f->fish_pos > 50) ? -1 : 1);
+    }
+    f->fish_pos = (int16_t)(f->fish_pos + f->fish_vel);
+    if (f->fish_pos < 10) { f->fish_pos = 10; f->fish_vel = (int8_t)(-f->fish_vel); }
+    if (f->fish_pos > 90) { f->fish_pos = 90; f->fish_vel = (int8_t)(-f->fish_vel); }
+
+    diff = (int16_t)(f->fish_pos - f->bar_pos);
+    if (diff < 0) diff = (int16_t)(-diff);
+
+    if (diff <= (int16_t)f->bar_half_w) {
+        /* Inside sweet spot -> reel progress climbs & tension eases! */
+        if ((f->timer & 1u) == 0u && f->progress < 100u) f->progress++;
+        if ((pad_bits & PAD_A) && (f->timer % 3u) == 0u && f->progress < 100u) f->progress++;
+        if (f->tension > 0u && (f->timer % 3u) == 0u) f->tension--;
+    } else {
+        /* Outside sweet spot -> tension rises */
+        if ((f->timer & 1u) == 0u && f->tension < 100u) f->tension++;
+        if (f->progress > 4u && (f->timer % 5u) == 0u) f->progress--;
+    }
+
+    if (f->progress >= 100u) {
+        f->phase = FISH_PHASE_CAUGHT;
+        f->timer = 0;
+        if (st->fish_bag[f->species] < 99u) st->fish_bag[f->species]++;
+        st->fish_total_caught++;
+        push_sfx(st, SFX_FISH_CATCH);
+        spawn_burst(st, 2, f->bobber_x, f->bobber_y, 12, 0, 14, false);
+        spawn_ftext(st, FP_PX(st->hero_fx), (int16_t)(FP_PX(st->hero_fy) - 24), HEARTH_FISH_TABLE[f->species].name, 3, 11, true);
+    } else if (f->tension >= 100u) {
+        f->phase = FISH_PHASE_ESCAPED;
+        f->timer = 0;
+        push_sfx(st, SFX_CANCEL);
+    }
+}
+
+static void step_fishing(HearthState *st, uint16_t pad_bits, uint16_t just_pressed) {
+    HearthFishingState *f = &st->fishing;
+    f->timer++;
+
+    if (just_pressed & PAD_B) {
+        f->active = false;
+        st->mode = MODE_EXPLORE;
+        push_sfx(st, SFX_CANCEL);
+        return;
+    }
+
+    if (f->phase == FISH_PHASE_CAST) {
+        if (f->timer >= 20u) {
+            f->phase = FISH_PHASE_WAIT_BITE;
+            f->timer = 0;
+            spawn_burst(st, 2, f->bobber_x, f->bobber_y, 6, 0, 14, false);
+        }
+    } else if (f->phase == FISH_PHASE_WAIT_BITE) {
+        if (f->timer >= f->bite_delay) {
+            f->phase = FISH_PHASE_BITE_ALERT;
+            f->timer = 0;
+            push_sfx(st, SFX_FISH_BITE);
+            add_shake(st, 2, 6);
+        }
+    } else if (f->phase == FISH_PHASE_BITE_ALERT) {
+        if (just_pressed & PAD_A) {
+            f->phase = FISH_PHASE_REELING;
+            f->timer = 0;
+            push_sfx(st, SFX_FISH_REEL);
+        } else if (f->timer >= 54u) {
+            f->phase = FISH_PHASE_ESCAPED;
+            f->timer = 0;
+            push_sfx(st, SFX_CANCEL);
+        }
+    } else if (f->phase == FISH_PHASE_REELING) {
+        step_fishing_reeling(st, pad_bits);
+    } else {
+        /* CAUGHT or ESCAPED summary: A casts again, B exits */
+        if (f->timer > 18u && (just_pressed & PAD_A)) {
+            hearth_start_fishing(st);
         }
     }
 }
@@ -1690,10 +2246,14 @@ static void confirm_dialogue_choice(HearthState *st) {
     uint8_t act = st->dialogue.choices[st->dialogue.selected_choice].action_id;
     st->dialogue.active = false;
     push_sfx(st, SFX_CONFIRM);
-    if (act == ACT_TAKE_COURAGE) hearth_start_cutscene(st, CUTSCENE_TAKE_COURAGE);
-    else if (act == ACT_GIVE_COURAGE) hearth_start_cutscene(st, CUTSCENE_GIVE_COURAGE);
-    else if (act == ACT_REPLAY_INTRO) hearth_start_cutscene(st, CUTSCENE_INTRO_DEMO);
-    else if (act == ACT_JUMP_BOSS) hearth_start_battle(st, ENCOUNTER_SHRINE_BOSS, BIOME_SHRINE, -1);
+    if (act == ACT_TAKE_COURAGE)       hearth_start_cutscene(st, CUTSCENE_TAKE_COURAGE);
+    else if (act == ACT_GIVE_COURAGE)  hearth_start_cutscene(st, CUTSCENE_GIVE_COURAGE);
+    else if (act == ACT_REPLAY_INTRO)  hearth_start_cutscene(st, CUTSCENE_INTRO_DEMO);
+    else if (act == ACT_JUMP_BOSS)     hearth_start_battle(st, ENCOUNTER_SHRINE_BOSS, BIOME_SHRINE, -1);
+    else if (act == ACT_OPEN_SHOP_0)   hearth_open_shop(st, 0);
+    else if (act == ACT_OPEN_SHOP_1)   hearth_open_shop(st, 1);
+    else if (act == ACT_MEND_CAPTAIN)  hearth_start_cutscene(st, CUTSCENE_MEND_CAPTAIN);
+    else if (act == ACT_START_FISHING) hearth_start_fishing(st);
 }
 
 static void step_dialogue(HearthState *st, uint16_t just_pressed) {
@@ -1740,13 +2300,50 @@ static void get_actor_px(const HearthState *st, int16_t actor_id, int16_t *ox, i
     int idx;
     if (actor_id == ACTOR_HERO) { *ox = FROM_FP(st->hero_fx); *oy = FROM_FP(st->hero_fy); return; }
     if (actor_id == ACTOR_PIP)  { *ox = FROM_FP(st->pip_fx);  *oy = FROM_FP(st->pip_fy);  return; }
-    idx = actor_id - ACTOR_ELDER;
+    idx = actor_id - ACTOR_NPC0;
     if (idx >= 0 && idx < HEARTH_MAX_NPCS) {
         *ox = FROM_FP(st->npcs[idx].fx);
         *oy = FROM_FP(st->npcs[idx].fy);
         return;
     }
     *ox = FROM_FP(st->hero_fx); *oy = FROM_FP(st->hero_fy);
+}
+
+static void apply_cutscene_flag(HearthState *st, int16_t flag_id) {
+    if (flag_id == FLAG_HAS_COURAGE) {
+        st->flag_has_courage = true;
+        st->npcs[1].aura = AURA_MENDED;
+    } else if (flag_id == FLAG_GUARD_MENDED) {
+        st->flag_guard_mended = true;
+        st->flag_has_courage = false;
+        st->potions++;
+        st->guilders = (uint16_t)(st->guilders + 25u);
+        st->npcs[2].aura = AURA_MENDED;
+        spawn_ftext(st, FROM_FP(st->npcs[2].fx), (int16_t)(FROM_FP(st->npcs[2].fy) - 24), "HEART MENDED!", 3, 11, true);
+    } else if (flag_id == FLAG_ELDER_SEEN) {
+        st->flag_elder_seen = true;
+    } else if (flag_id == FLAG_FLASHBACK_DONE) {
+        st->story_stage = STORY_AGE10_ALDERBROOK;
+        st->flashback_triggered = true;
+    } else if (flag_id == FLAG_WAND_RECEIVED) {
+        st->flag_has_wand = true;
+        st->pip_visible = true;
+        if (st->story_stage < STORY_EVERTALE_AWAKENED) st->story_stage = STORY_EVERTALE_AWAKENED;
+    } else if (flag_id == FLAG_SEWER_KEY) {
+        st->flag_sewer_key = true;
+        if (st->story_stage < STORY_SEWER_KEY) st->story_stage = STORY_SEWER_KEY;
+    } else if (flag_id == FLAG_CAPTAIN_MENDED) {
+        st->flag_captain_mended = true;
+        st->flag_has_courage = false;
+        st->npcs[1].aura = AURA_MENDED;
+        st->guilders = (uint16_t)(st->guilders + 40u);
+    } else if (flag_id == FLAG_MUCKMAW_DEFEATED) {
+        st->flag_muckmaw_defeated = true;
+        if (st->story_stage < STORY_MUCKMAW_DEFEATED) st->story_stage = STORY_MUCKMAW_DEFEATED;
+    } else if (flag_id == FLAG_IRONFANG_DEFEATED) {
+        st->flag_ironfang_defeated = true;
+        st->story_stage = STORY_IRONFANG_DEFEATED;
+    }
 }
 
 static void step_cutscene(HearthState *st, uint16_t just_pressed) {
@@ -1805,16 +2402,16 @@ static void step_cutscene(HearthState *st, uint16_t just_pressed) {
             case OP_FACE_ACTOR:
                 if (op->a0 == ACTOR_HERO) st->hero_dir = (uint8_t)op->a1;
                 else if (op->a0 == ACTOR_PIP) st->pip_dir = (uint8_t)op->a1;
-                else if (op->a0 >= ACTOR_ELDER && op->a0 < ACTOR_ELDER + HEARTH_MAX_NPCS) {
-                    st->npcs[op->a0 - ACTOR_ELDER].dir = (uint8_t)op->a1;
+                else if (op->a0 >= ACTOR_NPC0 && op->a0 < ACTOR_NPC0 + HEARTH_MAX_NPCS) {
+                    st->npcs[op->a0 - ACTOR_NPC0].dir = (uint8_t)op->a1;
                 }
                 break;
             case OP_EMOTE:
                 if (op->a0 == ACTOR_HERO) { st->hero_emote = (uint8_t)op->a1; st->hero_emote_frames = op->a2; }
                 else if (op->a0 == ACTOR_PIP) { st->pip_emote = (uint8_t)op->a1; st->pip_emote_frames = op->a2; }
-                else if (op->a0 >= ACTOR_ELDER && op->a0 < ACTOR_ELDER + HEARTH_MAX_NPCS) {
-                    st->npcs[op->a0 - ACTOR_ELDER].emote = (uint8_t)op->a1;
-                    st->npcs[op->a0 - ACTOR_ELDER].emote_frames = op->a2;
+                else if (op->a0 >= ACTOR_NPC0 && op->a0 < ACTOR_NPC0 + HEARTH_MAX_NPCS) {
+                    st->npcs[op->a0 - ACTOR_NPC0].emote = (uint8_t)op->a1;
+                    st->npcs[op->a0 - ACTOR_NPC0].emote_frames = op->a2;
                 }
                 st->cs_wait_frames = 16;
                 return;
@@ -1839,17 +2436,24 @@ static void step_cutscene(HearthState *st, uint16_t just_pressed) {
                 return;
             }
             case OP_SET_FLAG:
-                if (op->a0 == FLAG_HAS_COURAGE) {
-                    st->flag_has_courage = true;
-                    st->npcs[1].aura = AURA_MENDED;
-                } else if (op->a0 == FLAG_GUARD_MENDED) {
-                    st->flag_guard_mended = true;
-                    st->flag_has_courage = false;
-                    st->potions++;
-                    st->npcs[2].aura = AURA_MENDED;
-                    spawn_ftext(st, FROM_FP(st->npcs[2].fx), (int16_t)(FROM_FP(st->npcs[2].fy) - 24), "HEART MENDED!", 3, 11, true);
-                } else if (op->a0 == FLAG_ELDER_SEEN) {
-                    st->flag_elder_seen = true;
+                apply_cutscene_flag(st, op->a0);
+                break;
+            case OP_SET_PAL:
+                st->terrain_pal_id = (uint8_t)op->a0;
+                st->bgm_id = (uint8_t)op->a1;
+                break;
+            case OP_WARP_ZONE:
+                hearth_enter_zone(st, (uint8_t)op->a0, (uint8_t)op->a1, op->a2);
+                break;
+            case OP_SHOW_ACTOR:
+                if (op->a0 >= 0 && op->a0 < HEARTH_MAX_NPCS) {
+                    if (op->a1 < 0) {
+                        st->npcs[op->a0].active = false;
+                    } else {
+                        st->npcs[op->a0].active = true;
+                        st->npcs[op->a0].fx = TO_FP(op->a1 * 16 + 8);
+                        st->npcs[op->a0].fy = TO_FP((int16_t)op->a2 * 16 + 8);
+                    }
                 }
                 break;
             case OP_SAY:
@@ -1865,7 +2469,7 @@ static void step_cutscene(HearthState *st, uint16_t just_pressed) {
 }
 
 /* ============================================================================
- * ROAMING ENEMIES & WORLD INTERACTABLES
+ * ROAMING ENEMIES, PORTAL WARPS & MULTI-ZONE INTERACTABLES
  * ============================================================================ */
 static void retarget_enemy_patrol(HearthState *st, HearthFieldEnemy *e) {
     int16_t hdx, hdy, pick;
@@ -1999,91 +2603,261 @@ static void step_field_enemies(HearthState *st, bool can_engage) {
     }
 }
 
+static bool near_point_px(int16_t hx, int16_t hy, int16_t tx, int16_t ty, int16_t rad) {
+    int16_t dx = (int16_t)(hx - tx);
+    int16_t dy = (int16_t)(hy - ty);
+    int16_t adx, ady, doct;
+    if (dx <= -rad || dx >= rad || dy <= -rad || dy >= rad) return false;
+    adx = (dx < 0) ? (int16_t)(-dx) : dx;
+    ady = (dy < 0) ? (int16_t)(-dy) : dy;
+    doct = (adx > ady) ? (int16_t)(adx + (ady >> 1)) : (int16_t)(ady + (adx >> 1));
+    return (doct < (int16_t)(rad + 2));
+}
+
 static int find_interactable(const HearthState *st, int16_t *ox, int16_t *oy, const char **olabel) {
     int16_t hx = FP_PX(HS.hero_fx);
     int16_t hy = FP_PX(HS.hero_fy);
-    int16_t px, py, dx, dy, adx, ady, doct, nx, ny;
+    int16_t px = hx, py = hy, nx, ny;
     int16_t i;
-    const HearthNpc *n = HS.npcs;
     ST_UNUSED(st);
 
-    px = hx; py = hy;
     if (HS.hero_dir == DIR_UP) py -= 15;
     else if (HS.hero_dir == DIR_DOWN) py += 15;
     else if (HS.hero_dir == DIR_LEFT) px -= 15;
     else px += 15;
 
-    for (i = 0; i < HEARTH_MAX_NPCS; i++, n++) {
-        nx = FP_PX(n->fx);
-        dx = (int16_t)(hx - nx);
-        if (dx <= -37 || dx >= 37) continue;
-        ny = FP_PX(n->fy);
-        dy = (int16_t)(hy - ny);
-        if (dy <= -37 || dy >= 37) continue;
-
-        if (dx > -22 && dx < 22 && dy > -22 && dy < 22) {
-            adx = (dx < 0) ? (int16_t)(-dx) : dx;
-            ady = (dy < 0) ? (int16_t)(-dy) : dy;
-            doct = (adx > ady) ? (int16_t)(adx + (ady >> 1)) : (int16_t)(ady + (adx >> 1));
-            if (doct < 24) {
-                *ox = nx; *oy = (int16_t)(ny - 24); *olabel = n->name;
-                return (int)i;
-            }
-        }
-        dx = (int16_t)(px - nx);
-        dy = (int16_t)(py - ny);
-        if (dx > -19 && dx < 19 && dy > -19 && dy < 19) {
-            adx = (dx < 0) ? (int16_t)(-dx) : dx;
-            ady = (dy < 0) ? (int16_t)(-dy) : dy;
-            doct = (adx > ady) ? (int16_t)(adx + (ady >> 1)) : (int16_t)(ady + (adx >> 1));
-            if (doct < 21) {
-                *ox = nx; *oy = (int16_t)(ny - 24); *olabel = n->name;
-                return (int)i;
-            }
+    for (i = 0; i < HEARTH_MAX_NPCS; i++) {
+        if (!HS.npcs[i].active) continue;
+        nx = FP_PX(HS.npcs[i].fx);
+        ny = FP_PX(HS.npcs[i].fy);
+        if (near_point_px(hx, hy, nx, ny, 22) || near_point_px(px, py, nx, ny, 19)) {
+            *ox = nx; *oy = (int16_t)(ny - 24); *olabel = HS.npcs[i].name;
+            return (int)i;
         }
     }
-    dx = (int16_t)(hx - (8 * 16 + 8));
-    if (dx > -22 && dx < 22) {
-        dy = (int16_t)(hy - (17 * 16 + 8));
-        if (dy > -22 && dy < 22) {
-            adx = (dx < 0) ? (int16_t)(-dx) : dx;
-            ady = (dy < 0) ? (int16_t)(-dy) : dy;
-            doct = (adx > ady) ? (int16_t)(adx + (ady >> 1)) : (int16_t)(ady + (adx >> 1));
-            if (doct < 24) {
-                *ox = 8 * 16 + 8; *oy = (int16_t)(17 * 16 + 8 - 22); *olabel = "Waystone";
-                return 10;
-            }
+    if (HS.has_waystone) {
+        nx = (int16_t)((int16_t)HS.waystone_tx * 16 + 8);
+        ny = (int16_t)((int16_t)HS.waystone_ty * 16 + 8);
+        if (near_point_px(hx, hy, nx, ny, 22)) {
+            *ox = nx; *oy = (int16_t)(ny - 22); *olabel = "Waystone";
+            return 10;
         }
     }
-    if (!HS.flag_chest_opened) {
-        dx = (int16_t)(hx - (26 * 16 + 8));
-        if (dx > -22 && dx < 22) {
-            dy = (int16_t)(hy - (6 * 16 + 8));
-            if (dy > -22 && dy < 22) {
-                adx = (dx < 0) ? (int16_t)(-dx) : dx;
-                ady = (dy < 0) ? (int16_t)(-dy) : dy;
-                doct = (adx > ady) ? (int16_t)(adx + (ady >> 1)) : (int16_t)(ady + (adx >> 1));
-                if (doct < 24) {
-                    *ox = 26 * 16 + 8; *oy = (int16_t)(6 * 16 + 8 - 18); *olabel = "Chest";
-                    return 11;
-                }
-            }
+    if (HS.chest.active && ((HS.chests_opened_mask & (uint16_t)(1u << HS.chest.chest_bit)) == 0u)) {
+        nx = (int16_t)((int16_t)HS.chest.tx * 16 + 8);
+        ny = (int16_t)((int16_t)HS.chest.ty * 16 + 8);
+        if (near_point_px(hx, hy, nx, ny, 22)) {
+            *ox = nx; *oy = (int16_t)(ny - 18); *olabel = "Chest";
+            return 11;
         }
     }
-    dx = (int16_t)(hx - (16 * 16 + 8));
-    if (dx > -21 && dx < 21) {
-        dy = (int16_t)(hy - (15 * 16 + 8));
-        if (dy > -21 && dy < 21) {
-            adx = (dx < 0) ? (int16_t)(-dx) : dx;
-            ady = (dy < 0) ? (int16_t)(-dy) : dy;
-            doct = (adx > ady) ? (int16_t)(adx + (ady >> 1)) : (int16_t)(ady + (adx >> 1));
-            if (doct < 23) {
-                *ox = 16 * 16 + 8; *oy = (int16_t)(15 * 16 + 8 - 18); *olabel = "Read Sign";
-                return 12;
-            }
+    if (HS.has_sign) {
+        nx = (int16_t)((int16_t)HS.sign_tx * 16 + 8);
+        ny = (int16_t)((int16_t)HS.sign_ty * 16 + 8);
+        if (near_point_px(hx, hy, nx, ny, 21)) {
+            *ox = nx; *oy = (int16_t)(ny - 18); *olabel = "Read Sign";
+            return 12;
+        }
+    }
+    if (HS.fish_spot.active) {
+        nx = (int16_t)((int16_t)HS.fish_spot.tx * 16 + 8);
+        ny = (int16_t)((int16_t)HS.fish_spot.ty * 16 + 8);
+        if (near_point_px(hx, hy, nx, ny, 22)) {
+            *ox = nx; *oy = (int16_t)(ny - 18); *olabel = "Fish Here";
+            return 13;
+        }
+    }
+    for (i = 0; i < HEARTH_MAX_PORTALS; i++) {
+        if (!HS.portals[i].active) continue;
+        nx = (int16_t)((int16_t)HS.portals[i].tx * 16 + 8);
+        ny = (int16_t)((int16_t)HS.portals[i].ty * 16 + 8);
+        if (near_point_px(hx, hy, nx, ny, 22)) {
+            *ox = nx; *oy = (int16_t)(ny - 20); *olabel = HS.portals[i].label;
+            return 20 + (int)i;
         }
     }
     return -1;
+}
+
+static void interact_chest(HearthState *st, int16_t ox, int16_t oy) {
+    uint8_t rk = st->chest.reward_kind;
+    st->chests_opened_mask |= (uint16_t)(1u << st->chest.chest_bit);
+    if (st->chest.chest_bit == 0u) st->flag_chest_opened = true;
+    push_sfx(st, SFX_CHEST_OPEN);
+    spawn_burst(st, 3, ox, (int16_t)(oy + 10), 12, 3, 11, false);
+    if (rk == 0u) {
+        st->potions += 2;
+        st->guilders = (uint16_t)(st->guilders + 25u);
+        spawn_ftext(st, ox, oy, "+2 TONICS +25G", 3, 11, true);
+        open_dialogue(st, "Treasure Chest", SFX_TEXT_HERO,
+            "Found 2 Sun Tonics and 25 Guilders!", 0, NULL);
+    } else if (rk == 1u) {
+        st->star_drops += 2;
+        st->guilders = (uint16_t)(st->guilders + 35u);
+        spawn_ftext(st, ox, oy, "+2 STARS +35G", 3, 15, true);
+        open_dialogue(st, "Treasure Chest", SFX_TEXT_HERO,
+            "Found 2 Star Drops and 35 Guilders hidden behind the market!", 0, NULL);
+    } else if (rk == 2u) {
+        st->snacks += 1;
+        st->guilders = (uint16_t)(st->guilders + 50u);
+        spawn_ftext(st, ox, oy, "+1 SNACK +50G", 3, 11, true);
+        open_dialogue(st, "Treasure Chest", SFX_TEXT_HERO,
+            "Found a Courage Snack (full party restore) and 50 Guilders!", 0, NULL);
+    } else {
+        st->potions += 1;
+        st->guilders = (uint16_t)(st->guilders + 90u);
+        spawn_ftext(st, ox, oy, "+1 TONIC +90G", 3, 11, true);
+        open_dialogue(st, "Treasure Chest", SFX_TEXT_HERO,
+            "Boarhold royal coffer! Found 90 Guilders and a Sun Tonic!", 0, NULL);
+    }
+}
+
+static void interact_signpost(HearthState *st) {
+    push_sfx(st, SFX_CONFIRM);
+    if (st->zone_id == ZONE_ALDERBROOK) {
+        open_dialogue(st, "Alderbrook Sign", SFX_TEXT_ELDER,
+            "ALDERBROOK VILLAGE | EAST across the brook: Ancient Hollow Oak Woods.", 0, NULL);
+    } else if (st->zone_id == ZONE_WHISKERBURGH) {
+        open_dialogue(st, "Market Sign", SFX_TEXT_ELDER,
+            "WEST: Windmill Hamlet | NORTH: Sunken Sewers | SOUTH: Canal Fishing Jetty | EAST: Barnaby's Shop.", 0, NULL);
+    } else if (st->zone_id == ZONE_SEWERS) {
+        open_dialogue(st, "Sewer Marker", SFX_TEXT_ELDER,
+            "WEST: Cistern Pool (Glow-Eels!) | NORTH: King Muckmaw & Boarhold Sluice | SOUTH: Whiskerburgh.", 0, NULL);
+    } else if (st->zone_id == ZONE_BOARHOLD) {
+        open_dialogue(st, "Citadel Banner", SFX_TEXT_ELDER,
+            "BOARHOLD CITADEL | WEST: Porkins' Shop & Captain Tusk | EAST across Moat: Lord Ironfang's Sanctum.", 0, NULL);
+    } else {
+        open_dialogue(st, "Hamlet Sign", SFX_TEXT_ELDER,
+            "WEST: Hollow Oak | SOUTH: Creek Fishing Pier | EAST: Briar Shrine & Whiskerburgh Mouse Town.", 0, NULL);
+    }
+}
+
+static void interact_portal(HearthState *st, int pidx) {
+    const HearthPortal *pt = &st->portals[pidx];
+    if (pt->req_stage > 0u && st->story_stage < pt->req_stage) {
+        push_sfx(st, SFX_CANCEL);
+        if (pt->req_stage == STORY_SEWER_KEY) {
+            open_dialogue(st, "Locked Grate", SFX_TEXT_PIP,
+                "The iron sewer grate is locked! Speak with Mayor Brie in Whiskerburgh for the key and Lantern Charm.", 0, NULL);
+        } else {
+            open_dialogue(st, "Sealed Sluice", SFX_TEXT_PIP,
+                "Heavy sludge seals the northern sluice! Defeat King Muckmaw in the sewer hall to clear the way to Boarhold.", 0, NULL);
+        }
+        return;
+    }
+    request_zone_warp(st, pt->dst_zone, pt->dst_tx, pt->dst_ty);
+}
+
+static void interact_npc_hamlet(HearthState *st, int hit) {
+    if (st->story_stage == STORY_AGE5_FLASHBACK && hit == 0) {
+        st->flashback_triggered = true;
+        hearth_start_cutscene(st, CUTSCENE_SHADOW_GRANDMA);
+        return;
+    }
+    if (hit == 0) {
+        if (!st->flag_elder_seen) {
+            hearth_start_cutscene(st, CUTSCENE_ELDER_TALK);
+        } else {
+            static const HearthChoice elder_opts[3] = {
+                { "Replay Tour",        ACT_REPLAY_INTRO },
+                { "Fight Shrine Boss",  ACT_JUMP_BOSS },
+                { "Keep Exploring",     ACT_CLOSE }
+            };
+            open_dialogue(st, "Elder Wren", SFX_TEXT_ELDER,
+                "Fish at the south creek pier, or take the east road past the Shrine to Whiskerburgh Mouse Town!",
+                3, elder_opts);
+        }
+    } else if (hit == 1) {
+        if (!st->flag_has_courage) {
+            static const HearthChoice clara_opts[2] = {
+                { "Take Heart (Courage)", ACT_TAKE_COURAGE },
+                { "Maybe Later",          ACT_CLOSE }
+            };
+            open_dialogue(st, "Clara", SFX_TEXT_PIP,
+                "My heart brims with Courage! Want a spark in your locket for anyone who feels hollow?",
+                2, clara_opts);
+        } else {
+            open_dialogue(st, "Clara", SFX_TEXT_PIP,
+                "You already hold a bright spark of Courage—share it with Guard Bram or Captain Tusk!", 0, NULL);
+        }
+    } else if (hit == 2) {
+        if (st->flag_guard_mended) {
+            open_dialogue(st, "Guard Bram", SFX_TEXT_ELDER,
+                "Sturdy as oak! Follow the eastern road past the Stone Shrine to reach Whiskerburgh!", 0, NULL);
+        } else if (st->flag_has_courage) {
+            static const HearthChoice guard_opts[2] = {
+                { "Give Heart (Courage)", ACT_GIVE_COURAGE },
+                { "Hold On",              ACT_CLOSE }
+            };
+            open_dialogue(st, "Guard Bram", SFX_TEXT_ELDER,
+                "B-brr... the mist chills my bones. Wait—is that golden Courage glowing in your locket?",
+                2, guard_opts);
+        } else {
+            open_dialogue(st, "Guard Bram", SFX_TEXT_ELDER,
+                "My heart feels hollow with dread. Ask Clara by the square for a spark of Courage!", 0, NULL);
+        }
+    }
+}
+
+static void interact_npc_other_zones(HearthState *st, int hit) {
+    if (st->zone_id == ZONE_ALDERBROOK) {
+        if (hit == 0) {
+            open_dialogue(st, "Aunt Martha", SFX_TEXT_PIP,
+                "Rowan, dear! You've been staring east toward the old Hollow Oak all morning. Did you find Milo's brass bell?", 0, NULL);
+        } else {
+            open_dialogue(st, "Neighbor Tom", SFX_TEXT_ELDER,
+                "Four years since that ginger pup vanished by the brook! Cross the footbridge east if you're checking the Hollow Oak.", 0, NULL);
+        }
+    } else if (st->zone_id == ZONE_WHISKERBURGH) {
+        if (hit == 0) {
+            if (!st->flag_sewer_key) {
+                hearth_start_cutscene(st, CUTSCENE_MAYOR_SEWER_KEY);
+            } else {
+                open_dialogue(st, "Mayor Brie", SFX_TEXT_PIP,
+                    "Take my Lantern Charm north into the Sunken Sewers! Beyond King Muckmaw lies Boarhold Citadel.", 0, NULL);
+            }
+        } else if (hit == 1) {
+            static const HearthChoice shop0_opts[2] = {
+                { "Open Market Shop", ACT_OPEN_SHOP_0 },
+                { "Just Browsing",    ACT_CLOSE }
+            };
+            open_dialogue(st, "Barnaby", SFX_TEXT_PIP,
+                "Squeak! Finest tonics, fishing lures, and top Guilders paid for fresh fish! Care to trade?",
+                2, shop0_opts);
+        } else {
+            open_dialogue(st, "Angler Pippo", SFX_TEXT_PIP,
+                "Cast from the south canal jetty! Keep the fish inside your reel bar and tap A to reel in Golden Koi!", 0, NULL);
+        }
+    } else if (st->zone_id == ZONE_BOARHOLD) {
+        if (hit == 0) {
+            static const HearthChoice shop1_opts[2] = {
+                { "Open Citadel Shop", ACT_OPEN_SHOP_1 },
+                { "Not Right Now",     ACT_CLOSE }
+            };
+            open_dialogue(st, "Merchant Porkins", SFX_TEXT_ELDER,
+                "Snort! Stock up on Sun Tonics and Courage Snacks before crossing the moat to face Lord Ironfang!",
+                2, shop1_opts);
+        } else if (hit == 1) {
+            if (st->flag_captain_mended) {
+                open_dialogue(st, "Captain Tusk", SFX_TEXT_ELDER,
+                    "Cross the eastern bridge into the Twilight Sanctum and shatter Lord Ironfang's Spell Locks!", 0, NULL);
+            } else if (st->flag_has_courage) {
+                static const HearthChoice cap_opts[2] = {
+                    { "Mend Captain Tusk", ACT_MEND_CAPTAIN },
+                    { "Not Yet",           ACT_CLOSE }
+                };
+                open_dialogue(st, "Captain Tusk", SFX_TEXT_ELDER,
+                    "Snort... my courage drained away when Lord Ironfang turned cruel. Wait—that locket glows!",
+                    2, cap_opts);
+            } else {
+                open_dialogue(st, "Captain Tusk", SFX_TEXT_ELDER,
+                    "My heart feels hollow... Clara back in Windmill Hamlet carries spare Courage, or you can brave Lord Ironfang directly!", 0, NULL);
+            }
+        } else {
+            open_dialogue(st, "Squire Snout", SFX_TEXT_ELDER,
+                "A ginger pup with a ringing brass bell dashed right past the ramparts! Lord Ironfang locked the sanctum east.", 0, NULL);
+        }
+    }
 }
 
 static void try_interact(HearthState *st) {
@@ -2097,62 +2871,79 @@ static void try_interact(HearthState *st) {
         open_dialogue(st, "Waystone", SFX_TEXT_PIP,
             "Warm spring light fills Rowan, Bramblekit, and Lumina! Full HP & MP restored.", 0, NULL);
     } else if (hit == 11) {
-        st->flag_chest_opened = true;
-        st->potions += 2;
-        push_sfx(st, SFX_CHEST_OPEN);
-        spawn_burst(st, 3, ox, (int16_t)(oy + 10), 12, 3, 11, false);
-        spawn_ftext(st, ox, oy, "+2 STAR TONICS!", 3, 11, true);
-        open_dialogue(st, "Treasure Chest", SFX_TEXT_HERO,
-            "Found 2 Star Tonics! Use them in battle to restore party HP and MP.", 0, NULL);
+        interact_chest(st, ox, oy);
     } else if (hit == 12) {
-        push_sfx(st, SFX_CONFIRM);
-        open_dialogue(st, "Hamlet Signpost", SFX_TEXT_ELDER,
-            "WEST: Windmill Hamlet | EAST: Timber Bridge, Whispering Meadow & Briar Shrine | SOUTH: Pebble Ford.", 0, NULL);
-    } else if (hit == 0) {
-        if (!st->flag_elder_seen) {
-            hearth_start_cutscene(st, CUTSCENE_ELDER_TALK);
-        } else {
-            static const HearthChoice elder_opts[3] = {
-                { "Replay Cutscene Demo", ACT_REPLAY_INTRO },
-                { "Fight Shrine Boss",    ACT_JUMP_BOSS },
-                { "Keep Exploring",       ACT_CLOSE }
-            };
-            open_dialogue(st, "Elder Wren", SFX_TEXT_ELDER,
-                "Press Q/E (L/R) in combat to hot-swap Familiars for free, and tap Space/Z on impact for a double follow-up!",
-                3, elder_opts);
-        }
-    } else if (hit == 1) {
-        if (!st->flag_has_courage && !st->flag_guard_mended) {
-            static const HearthChoice clara_opts[2] = {
-                { "Cast Take Heart (Courage)", ACT_TAKE_COURAGE },
-                { "Maybe Later",               ACT_CLOSE }
-            };
-            open_dialogue(st, "Clara", SFX_TEXT_PIP,
-                "My heart is brimming with Courage! Want a spark in your locket to help Guard Bram by the bridge?",
-                2, clara_opts);
-        } else {
-            open_dialogue(st, "Clara", SFX_TEXT_PIP,
-                st->flag_guard_mended
-                    ? "Guard Bram looks sturdy as oak again! Sharing courage lifts two hearts at once."
-                    : "You already carry Courage in your locket - bring it east to Guard Bram!", 0, NULL);
-        }
-    } else if (hit == 2) {
-        if (st->flag_guard_mended) {
-            open_dialogue(st, "Guard Bram", SFX_TEXT_ELDER,
-                "My knees stopped shaking! Head east into the Stone Shrine and show the Briar Warden what you can do!", 0, NULL);
-        } else if (st->flag_has_courage) {
-            static const HearthChoice guard_opts[2] = {
-                { "Cast Give Heart (Courage)", ACT_GIVE_COURAGE },
-                { "Hold On",                   ACT_CLOSE }
-            };
-            open_dialogue(st, "Guard Bram", SFX_TEXT_ELDER,
-                "B-brr... the mist from the Shrine chills my bones. Wait - is that golden Courage glowing in your locket?",
-                2, guard_opts);
-        } else {
-            open_dialogue(st, "Guard Bram", SFX_TEXT_ELDER,
-                "My heart feels hollow with dread. You can still walk past me into the Meadow, or ask Clara for a spark of Courage!", 0, NULL);
+        interact_signpost(st);
+    } else if (hit == 13) {
+        static const HearthChoice fish_opts[2] = {
+            { "Cast Fishing Line", ACT_START_FISHING },
+            { "Step Away",         ACT_CLOSE }
+        };
+        open_dialogue(st, "Fishing Pier", SFX_TEXT_PIP,
+            "Ripples dance on the water! Cast your line and keep the fish inside the reel bar?",
+            2, fish_opts);
+    } else if (hit >= 20 && hit < 20 + HEARTH_MAX_PORTALS) {
+        interact_portal(st, hit - 20);
+    } else if (st->zone_id == ZONE_HAMLET) {
+        interact_npc_hamlet(st, hit);
+    } else {
+        interact_npc_other_zones(st, hit);
+    }
+}
+
+static void check_explore_triggers(HearthState *st) {
+    int16_t hx = FP_PX(HS.hero_fx);
+    int16_t hy = FP_PX(HS.hero_fy);
+    int i;
+
+    /* Age-5 Flashback trigger: walking east toward Milo sparks Shadow Grandmother cutscene! */
+    if (st->zone_id == ZONE_HAMLET && st->story_stage == STORY_AGE5_FLASHBACK && !st->flashback_triggered) {
+        if (hx >= 14 * 16) {
+            st->flashback_triggered = true;
+            hearth_start_cutscene(st, CUTSCENE_SHADOW_GRANDMA);
+            return;
         }
     }
+
+    /* Automatic walk-in portal transitions (edges & open archways) */
+    for (i = 0; i < HEARTH_MAX_PORTALS; i++) {
+        const HearthPortal *pt = &st->portals[i];
+        int16_t px, py;
+        if (!pt->active) continue;
+        px = (int16_t)((int16_t)pt->tx * 16 + 8);
+        py = (int16_t)((int16_t)pt->ty * 16 + 8);
+        if (near_point_px(hx, hy, px, py, 13)) {
+            if (pt->req_stage > 0u && st->story_stage < pt->req_stage) {
+                /* Gently push hero back 6px & explain locked gate */
+                st->hero_fy += TO_FP(8);
+                interact_portal(st, i);
+                return;
+            }
+            request_zone_warp(st, pt->dst_zone, pt->dst_tx, pt->dst_ty);
+            return;
+        }
+    }
+}
+
+static bool step_zone_warp(HearthState *st) {
+    if (!st->warp_pending) return false;
+    if (st->warp_fade < 15u) {
+        st->warp_fade += 2u;
+        if (st->warp_fade >= 15u) {
+            uint8_t prev_zone = st->zone_id;
+            st->warp_fade = 15u;
+            hearth_enter_zone(st, st->warp_dst_zone, st->warp_dst_tx, st->warp_dst_ty);
+            /* Stepping from Age-10 Alderbrook back into Evertale triggers Pip Reunion & Wand! */
+            if (prev_zone == ZONE_ALDERBROOK && st->zone_id == ZONE_HAMLET && !st->flag_has_wand) {
+                st->warp_pending = false;
+                st->warp_fade = 0;
+                hearth_start_cutscene(st, CUTSCENE_PIP_REUNION);
+                return true;
+            }
+            st->warp_pending = false;
+        }
+    }
+    return true;
 }
 
 /* ============================================================================
@@ -2323,79 +3114,19 @@ static void sort_ppu_oam(HearthPpuPacket *p, int16_t sort_cnt) {
     }
 }
 
-static uint16_t build_explore_ppu_props_and_actors(
-    HearthState *st, HearthPpuPacket *p, int16_t cx, int16_t cy, int16_t max_sx
+static uint16_t build_explore_ppu_enemies(
+    const HearthState *st, HearthPpuPacket *p, uint16_t cnt, int16_t cx, int16_t cy, int16_t max_sx
 ) {
-    int16_t i, sx, sy, nx, ny, ex, ey;
-    uint16_t fc16 = (uint16_t)HS.frame_count;
-    uint16_t cnt = 0u;
+    int16_t i, sx, sy, ey;
     const HearthFieldEnemy *e = HS.field_enemies;
-    uint8_t npc_f = (uint8_t)((fc16 >> 5) & 1u);
     uint8_t fl;
     ST_UNUSED(st);
 #if defined(HEARTH_TARGET_SNES)
     (void)p;
 #endif
-
-    /* Emit static props/NPCs in ascending sort_y order & cull offscreen actors */
-    /* 1. Chest (y=108) */
-    sx = (int16_t)(26 * 16 + 8 - cx);
-    sy = (int16_t)(6 * 16 + 12 - cy);
-    if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
-        OAM_SET_IDX(p, cnt, sx, sy, SPR_CHEST, HS.flag_chest_opened ? 1 : 0, DIR_DOWN, OAM_FLAG_SHADOW,
-            FP_ONE, FP_ONE, AURA_NONE, 1, 6 * 16 + 12, 0);
-        cnt++;
-    }
-
-    /* 2. NPCs (ordered Elder 184, Guard 216, Clara 264 -> ascending Y, zero far-pointer indexing!) */
-    nx = FP_PX(HS.npcs[0].fx);
-    sx = (int16_t)(nx - cx);
-    if (sx >= -24 && sx <= max_sx && cnt < HEARTH_MAX_OAM) {
-        ny = FP_PX(HS.npcs[0].fy);
-        sy = (int16_t)(ny - cy);
-        if (sy >= -24 && sy <= 248) {
-            OAM_SET_IDX(p, cnt, sx, sy, HS.npcs[0].sprite_id, npc_f, HS.npcs[0].dir, OAM_FLAG_SHADOW,
-                FP_ONE, FP_ONE, HS.npcs[0].aura, 1, ny, 0);
-            cnt++;
-        }
-    }
-    nx = FP_PX(HS.npcs[2].fx);
-    sx = (int16_t)(nx - cx);
-    if (sx >= -24 && sx <= max_sx && cnt < HEARTH_MAX_OAM) {
-        ny = FP_PX(HS.npcs[2].fy);
-        sy = (int16_t)(ny - cy);
-        if (sy >= -24 && sy <= 248) {
-            OAM_SET_IDX(p, cnt, sx, sy, HS.npcs[2].sprite_id, npc_f, HS.npcs[2].dir, OAM_FLAG_SHADOW,
-                FP_ONE, FP_ONE, HS.npcs[2].aura, 1, ny, 0);
-            cnt++;
-        }
-    }
-    nx = FP_PX(HS.npcs[1].fx);
-    sx = (int16_t)(nx - cx);
-    if (sx >= -24 && sx <= max_sx && cnt < HEARTH_MAX_OAM) {
-        ny = FP_PX(HS.npcs[1].fy);
-        sy = (int16_t)(ny - cy);
-        if (sy >= -24 && sy <= 248) {
-            OAM_SET_IDX(p, cnt, sx, sy, HS.npcs[1].sprite_id, npc_f, HS.npcs[1].dir, OAM_FLAG_SHADOW,
-                FP_ONE, FP_ONE, HS.npcs[1].aura, 1, ny, 0);
-            cnt++;
-        }
-    }
-
-    /* 3. Waystone (y=284) */
-    sx = (int16_t)(8 * 16 + 8 - cx);
-    sy = (int16_t)(17 * 16 + 12 - cy);
-    if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
-        OAM_SET_IDX(p, cnt, sx, sy, SPR_WAYSTONE, (uint8_t)((fc16 >> 4) & 3u), DIR_DOWN, OAM_FLAG_SHADOW,
-            FP_ONE, FP_ONE, AURA_NONE, 1, 17 * 16 + 12, 0);
-        cnt++;
-    }
-
-    /* 4. Roaming Field Enemies */
     for (i = 0; i < HEARTH_MAX_FIELD_ENEMIES && cnt < HEARTH_MAX_OAM; i++, e++) {
         if (!e->alive) continue;
-        ex = FP_PX(e->fx);
-        sx = (int16_t)(ex - cx);
+        sx = (int16_t)(FP_PX(e->fx) - cx);
         if (sx < -24 || sx > max_sx) continue;
         ey = FP_PX(e->fy);
         sy = (int16_t)(ey - cy);
@@ -2406,8 +3137,86 @@ static uint16_t build_explore_ppu_props_and_actors(
             FP_ONE, FP_ONE, AURA_NONE, 1, ey, 0);
         cnt++;
     }
-
     return cnt;
+}
+
+static uint16_t build_explore_ppu_props_and_actors(
+    HearthState *st, HearthPpuPacket *p, int16_t cx, int16_t cy, int16_t max_sx
+) {
+    int16_t i, sx, sy, ny;
+    uint16_t fc16 = (uint16_t)HS.frame_count;
+    uint16_t cnt = 0u;
+    uint8_t npc_f = (uint8_t)((fc16 >> 5) & 1u);
+    uint8_t c_spr;
+    ST_UNUSED(st);
+#if defined(HEARTH_TARGET_SNES)
+    (void)p;
+#endif
+
+    /* 1. Treasure Chest (emits dedicated SPR_CHEST_OPEN when opened!) */
+    if (HS.chest.active) {
+        ny = (int16_t)((int16_t)HS.chest.ty * 16 + 12);
+        sx = (int16_t)((int16_t)HS.chest.tx * 16 + 8 - cx);
+        sy = (int16_t)(ny - cy);
+        if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
+            c_spr = ((HS.chests_opened_mask & (uint16_t)(1u << HS.chest.chest_bit)) != 0u)
+                ? (uint8_t)SPR_CHEST_OPEN : (uint8_t)SPR_CHEST;
+            OAM_SET_IDX(p, cnt, sx, sy, c_spr, (c_spr == (uint8_t)SPR_CHEST_OPEN) ? 1u : 0u,
+                DIR_DOWN, OAM_FLAG_SHADOW, FP_ONE, FP_ONE, AURA_NONE, 1, ny, 0);
+            cnt++;
+        }
+    }
+
+    /* 2. Hollow Oak Gateway Arch Sprite in Alderbrook & Windmill Hamlet */
+    if (HS.zone_id == ZONE_ALDERBROOK || HS.zone_id == ZONE_HAMLET) {
+        ny = (HS.zone_id == ZONE_ALDERBROOK) ? (int16_t)(14 * 16 + 8) : (int16_t)(13 * 16 + 8);
+        sx = (int16_t)(((HS.zone_id == ZONE_ALDERBROOK) ? (int16_t)(38 * 16 + 8) : (int16_t)(2 * 16 + 8)) - cx);
+        sy = (int16_t)(ny - cy);
+        if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
+            OAM_SET_IDX(p, cnt, sx, sy, SPR_HOLLOW_OAK, npc_f, DIR_DOWN, OAM_FLAG_SHADOW,
+                FP_ONE, FP_ONE, AURA_NONE, 1, (int16_t)(ny - 4), 0);
+            cnt++;
+        }
+    }
+
+    /* 3. Active Zone NPCs */
+    for (i = 0; i < HEARTH_MAX_NPCS && cnt < HEARTH_MAX_OAM; i++) {
+        if (!HS.npcs[i].active) continue;
+        sx = (int16_t)(FP_PX(HS.npcs[i].fx) - cx);
+        if (sx < -24 || sx > max_sx) continue;
+        ny = FP_PX(HS.npcs[i].fy);
+        sy = (int16_t)(ny - cy);
+        if (sy < -24 || sy > 248) continue;
+        OAM_SET_IDX(p, cnt, sx, sy, HS.npcs[i].sprite_id, npc_f, HS.npcs[i].dir, OAM_FLAG_SHADOW,
+            FP_ONE, FP_ONE, HS.npcs[i].aura, 1, ny, 0);
+        cnt++;
+    }
+
+    /* 4. Waystone */
+    if (HS.has_waystone) {
+        ny = (int16_t)((int16_t)HS.waystone_ty * 16 + 12);
+        sx = (int16_t)((int16_t)HS.waystone_tx * 16 + 8 - cx);
+        sy = (int16_t)(ny - cy);
+        if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
+            OAM_SET_IDX(p, cnt, sx, sy, SPR_WAYSTONE, (uint8_t)((fc16 >> 4) & 3u), DIR_DOWN, OAM_FLAG_SHADOW,
+                FP_ONE, FP_ONE, AURA_NONE, 1, ny, 0);
+            cnt++;
+        }
+    }
+
+    /* 5. Fishing Bobber when active */
+    if (HS.mode == MODE_FISHING && HS.fishing.active && cnt < HEARTH_MAX_OAM) {
+        ny = (HS.fishing.phase == FISH_PHASE_BITE_ALERT) ? 3
+            : (int16_t)((HEARTH_SIN64[(fc16 >> 2) & 63u] * 2) >> 7);
+        sx = (int16_t)(HS.fishing.bobber_x - cx);
+        sy = (int16_t)(HS.fishing.bobber_y + ny - cy);
+        OAM_SET_IDX(p, cnt, sx, sy, SPR_BOBBER, (uint8_t)((fc16 >> 3) & 1u), DIR_DOWN, 0,
+            FP_ONE, FP_ONE, AURA_NONE, 1, HS.fishing.bobber_y, 0);
+        cnt++;
+    }
+
+    /* 6. Roaming Field Enemies */
+    return build_explore_ppu_enemies(st, p, cnt, cx, cy, max_sx);
 }
 
 static void emit_heart_orb_oam(const HearthState *st, HearthPpuPacket *p, uint16_t idx, int16_t cx, int16_t cy) {
@@ -2439,33 +3248,34 @@ static uint16_t build_explore_ppu_layer2(
     (void)p;
 #endif
 
-    /* Layer 2 Overhead Sprites emitted LAST so sort_ppu_oam never touches them */
-    sx = (int16_t)(6 * 16 + 8 - cx);
-    sy = (int16_t)(5 * 16 + 4 - cy);
-    if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
-        OAM_SET_IDX(p, cnt, sx, sy, SPR_WINDMILL_BLADES, 0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2000,
-            HS.windmill_rot);
-        cnt++;
+    if (HS.has_windmill) {
+        sx = (int16_t)(6 * 16 + 8 - cx);
+        sy = (int16_t)(5 * 16 + 4 - cy);
+        if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
+            OAM_SET_IDX(p, cnt, sx, sy, SPR_WINDMILL_BLADES, 0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2000,
+                HS.windmill_rot);
+            cnt++;
+        }
     }
 
-    if (HS.npcs[0].emote_frames > 0 && HS.npcs[0].emote != 0 && cnt < HEARTH_MAX_OAM) {
-        emit_emote_oam(p, cnt++, (int16_t)(FP_PX(HS.npcs[0].fx) - cx), (int16_t)(FP_PX(HS.npcs[0].fy) - 25 - cy), HS.npcs[0].emote);
-    }
-    if (HS.npcs[1].emote_frames > 0 && HS.npcs[1].emote != 0 && cnt < HEARTH_MAX_OAM) {
-        emit_emote_oam(p, cnt++, (int16_t)(FP_PX(HS.npcs[1].fx) - cx), (int16_t)(FP_PX(HS.npcs[1].fy) - 25 - cy), HS.npcs[1].emote);
-    }
-    if (HS.npcs[2].emote_frames > 0 && HS.npcs[2].emote != 0 && cnt < HEARTH_MAX_OAM) {
-        emit_emote_oam(p, cnt++, (int16_t)(FP_PX(HS.npcs[2].fx) - cx), (int16_t)(FP_PX(HS.npcs[2].fy) - 25 - cy), HS.npcs[2].emote);
+    for (i = 0; i < HEARTH_MAX_NPCS && cnt < HEARTH_MAX_OAM; i++) {
+        if (HS.npcs[i].active && HS.npcs[i].emote_frames > 0 && HS.npcs[i].emote != 0) {
+            emit_emote_oam(p, cnt++, (int16_t)(FP_PX(HS.npcs[i].fx) - cx),
+                (int16_t)(FP_PX(HS.npcs[i].fy) - 25 - cy), HS.npcs[i].emote);
+        }
     }
     for (i = 0; i < HEARTH_MAX_FIELD_ENEMIES && cnt < HEARTH_MAX_OAM; i++, e++) {
         if (e->alive && e->alert_frames > 0) {
             emit_emote_oam(p, cnt++, (int16_t)(FP_PX(e->fx) - cx), (int16_t)(FP_PX(e->fy) - 26 - cy), SPR_EMOTE_BANG);
         }
     }
+    if (HS.mode == MODE_FISHING && HS.fishing.phase == FISH_PHASE_BITE_ALERT && cnt < HEARTH_MAX_OAM) {
+        emit_emote_oam(p, cnt++, (int16_t)(HS.fishing.bobber_x - cx), (int16_t)(HS.fishing.bobber_y - 18 - cy), SPR_EMOTE_BANG);
+    }
     if (HS.hero_emote_frames > 0 && HS.hero_emote != 0 && cnt < HEARTH_MAX_OAM) {
         emit_emote_oam(p, cnt++, (int16_t)(hx - cx), (int16_t)(hy - 26 - cy), HS.hero_emote);
     }
-    if (HS.pip_emote_frames > 0 && HS.pip_emote != 0 && cnt < HEARTH_MAX_OAM) {
+    if (HS.pip_visible && HS.pip_emote_frames > 0 && HS.pip_emote != 0 && cnt < HEARTH_MAX_OAM) {
         emit_emote_oam(p, cnt++, (int16_t)(px - cx), (int16_t)(py - 24 - cy), HS.pip_emote);
     }
     if (HS.heart_orb.active && cnt < HEARTH_MAX_OAM) {
@@ -2496,12 +3306,12 @@ static void build_explore_ppu_oam(HearthState *st, HearthPpuPacket *p) {
         cnt++;
     }
 
-    /* Pip Hovering Companion (Layer 1) */
+    /* Pip Hovering Companion (visible once reunited in Evertale) */
     px = FP_PX(HS.pip_fx);
     py = FP_PX(HS.pip_fy);
-    bob = (int16_t)((HEARTH_SIN64[(fc16 >> 1) & 63u] * 3) >> 7);
-    pfl = (uint8_t)(OAM_FLAG_SHADOW | ((HS.pip_dir == DIR_LEFT) ? OAM_FLAG_FLIP_X : 0));
-    if (cnt < HEARTH_MAX_OAM) {
+    if (HS.pip_visible && cnt < HEARTH_MAX_OAM) {
+        bob = (int16_t)((HEARTH_SIN64[(fc16 >> 1) & 63u] * 3) >> 7);
+        pfl = (uint8_t)(OAM_FLAG_SHADOW | ((HS.pip_dir == DIR_LEFT) ? OAM_FLAG_FLIP_X : 0));
         OAM_SET_IDX(p, cnt, (int16_t)(px - cx), (int16_t)(py - 4 + bob - cy), SPR_PIP,
             (uint8_t)((fc16 >> 3) & 1u), HS.pip_dir, pfl,
             FP_ONE, FP_ONE, AURA_NONE, 1, py, 0);
@@ -2513,7 +3323,6 @@ static void build_explore_ppu_oam(HearthState *st, HearthPpuPacket *p) {
     HP.oam_count = (uint8_t)cnt;
     sort_ppu_oam(p, (int16_t)layer1_cnt);
 
-    /* Interact Prompt */
     if (HS.mode == MODE_EXPLORE && !HS.dialogue.active) {
         int16_t ix = 0, iy = 0;
         const char *ilbl = NULL;
@@ -2568,31 +3377,36 @@ static void build_intro_ppu_oam(HearthState *st, HearthPpuPacket *p) {
     ST_UNUSED(st);
 
     if (sc == 0u) {
-        /* Windmill sails turning peacefully over the valley ridge */
+        /* Scene 0: Alderbrook — 5yo Rowan & Milo beside golden firefly */
+        emit_oam_std(p, (int16_t)(cx - 24), 124, SPR_HERO, (uint8_t)((fc16 >> 5) & 1u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 124);
+        emit_oam_std(p, (int16_t)(cx + 18), 126, SPR_PET_MILO, (uint8_t)((fc16 >> 4) & 1u), DIR_LEFT, OAM_FLAG_SHADOW, 1, 126);
+        emit_oam_std(p, (int16_t)(cx + 42), (int16_t)(98 + bob), SPR_HEART_ORB, (uint8_t)((fc16 >> 2) & 1u), DIR_DOWN, 0, 2, 130);
+    } else if (sc == 1u) {
+        /* Scene 1: The Hollow Oak — Milo bounding into the glowing tree doorway */
+        emit_oam_std(p, (int16_t)(cx + 38), 122, SPR_HOLLOW_OAK, 0, DIR_DOWN, OAM_FLAG_SHADOW, 1, 118);
+        emit_oam_std(p, (int16_t)(cx + 4), 126, SPR_PET_MILO, (uint8_t)((fc16 >> 3) & 1u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 126);
+        emit_oam_std(p, (int16_t)(cx - 42), 124, SPR_HERO, (uint8_t)((fc16 >> 3) & 3u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 124);
+        emit_oam_std(p, (int16_t)(cx + 38), (int16_t)(94 - bob), SPR_EMOTE_SPARK, 0, DIR_DOWN, 0, 2, 135);
+    } else if (sc == 2u) {
+        /* Scene 2: Evertale — Windmills, Pip, Familiars & Mouse Folk */
         emit_oam(p, (int16_t)(cx - 56), 88, SPR_WINDMILL_BLADES, 0, DIR_DOWN, 0,
             FP_ONE, FP_ONE, AURA_NONE, 2, 100, HS.windmill_rot);
-        emit_oam_std(p, (int16_t)(cx + 36), 124, SPR_HERO, (uint8_t)((fc16 >> 5) & 1u), DIR_LEFT, OAM_FLAG_SHADOW, 1, 124);
-        emit_oam_std(p, (int16_t)(cx + 54), (int16_t)(112 + bob), SPR_PIP, (uint8_t)((fc16 >> 3) & 1u), DIR_LEFT, OAM_FLAG_FLIP_X, 1, 120);
-    } else if (sc == 1u) {
-        /* Rowan & Pip beside the gleaming Brass Heart-Locket */
-        emit_oam_std(p, (int16_t)(cx - 26), 124, SPR_HERO, (uint8_t)((fc16 >> 4) & 3u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 124);
-        emit_oam_std(p, (int16_t)(cx + 26), (int16_t)(112 + bob), SPR_PIP, (uint8_t)((fc16 >> 3) & 1u), DIR_LEFT, OAM_FLAG_FLIP_X, 1, 120);
-        emit_oam_std(p, cx, (int16_t)(98 - bob), SPR_HEART_ORB, (uint8_t)((fc16 >> 2) & 1u), DIR_DOWN, 0, 2, 130);
-    } else if (sc == 2u) {
-        /* Kindred Familiars: Bramblekit of Sun & Lumina of Starlight orbiting the Locket */
-        int16_t orb_x = (int16_t)((HEARTH_SIN64[(fc16 >> 1) & 63u] * 38) >> 7);
-        int16_t orb_y = (int16_t)((HEARTH_SIN64[((fc16 >> 1) + 16u) & 63u] * 10) >> 7);
-        emit_oam_std(p, cx, 126, SPR_HERO, 0, DIR_DOWN, OAM_FLAG_SHADOW, 1, 126);
-        emit_oam_std(p, (int16_t)(cx - 42 + (orb_x >> 2)), (int16_t)(118 + (orb_y >> 1)), SPR_FAMILIAR_BRAMBLE, (uint8_t)((fc16 >> 4) & 1u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 118);
-        emit_oam_std(p, (int16_t)(cx + 42 - (orb_x >> 2)), (int16_t)(110 - (orb_y >> 1)), SPR_FAMILIAR_LUMINA, (uint8_t)((fc16 >> 3) & 1u), DIR_LEFT, OAM_FLAG_SHADOW, 1, 110);
-        emit_oam_std(p, cx, (int16_t)(92 + bob), SPR_HEART_ORB, (uint8_t)((fc16 >> 2) & 1u), DIR_DOWN, 0, 2, 130);
+        emit_oam_std(p, (int16_t)(cx - 18), 124, SPR_FAMILIAR_BRAMBLE, (uint8_t)((fc16 >> 4) & 1u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 124);
+        emit_oam_std(p, (int16_t)(cx + 16), (int16_t)(112 + bob), SPR_PIP, (uint8_t)((fc16 >> 3) & 1u), DIR_LEFT, OAM_FLAG_FLIP_X, 1, 120);
+        emit_oam_std(p, (int16_t)(cx + 46), 126, SPR_NPC_MOUSE, (uint8_t)((fc16 >> 5) & 1u), DIR_LEFT, OAM_FLAG_SHADOW, 1, 126);
     } else {
-        /* Briar Warden awakening over the ancient Stone Shrine */
-        emit_oam_std(p, (int16_t)(cx + 28), 124, SPR_BOSS_BRIAR, (uint8_t)((fc16 >> 4) & 1u), DIR_LEFT, OAM_FLAG_SHADOW, 1, 124);
-        emit_oam_std(p, (int16_t)(cx - 48), 126, SPR_HERO, (uint8_t)((fc16 >> 4) & 3u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 126);
-        emit_oam_std(p, (int16_t)(cx - 30), (int16_t)(114 + bob), SPR_PIP, (uint8_t)((fc16 >> 3) & 1u), DIR_RIGHT, 0, 1, 120);
-        emit_oam_std(p, (int16_t)(cx + 28), (int16_t)(88 - bob), SPR_EMOTE_SPARK, 0, DIR_DOWN, 0, 2, 140);
+        /* Scene 3: A Forgotten Dream — Shadow Matron looming opposite Rowan & Pip */
+        emit_oam_std(p, (int16_t)(cx + 32), 124, SPR_NPC_SHADOW_GRAN, (uint8_t)((fc16 >> 4) & 1u), DIR_LEFT, OAM_FLAG_SHADOW, 1, 124);
+        emit_oam_std(p, (int16_t)(cx - 46), 126, SPR_HERO, (uint8_t)((fc16 >> 4) & 3u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 126);
+        emit_oam_std(p, (int16_t)(cx - 26), (int16_t)(112 + bob), SPR_PIP, (uint8_t)((fc16 >> 3) & 1u), DIR_RIGHT, 0, 1, 120);
+        emit_oam_std(p, (int16_t)(cx + 32), (int16_t)(88 - bob), SPR_EMOTE_SPARK, 0, DIR_DOWN, 0, 2, 140);
     }
+}
+
+static uint8_t resolve_active_bgm(const HearthState *st) {
+    if (HS.mode == MODE_BATTLE) return HS.battle.is_boss_battle ? (uint8_t)BGM_BOSS : (uint8_t)BGM_BATTLE;
+    if (HS.mode == MODE_BATTLE_VICTORY) return (uint8_t)BGM_VICTORY;
+    return HS.bgm_id;
 }
 
 static void build_ppu_packet(HearthState *st) {
@@ -2603,11 +3417,18 @@ static void build_ppu_packet(HearthState *st) {
     HP.oam_limit = 64;
     HP.frame_count = HS.frame_count;
     HP.mode = HS.mode;
+    HP.zone_id = HS.zone_id;
+    HP.terrain_pal_id = HS.terrain_pal_id;
+    HP.bgm_id = resolve_active_bgm(st);
+    HP.zone_is_dark = HS.zone_is_dark;
+    HP.zone_banner_frames = HS.zone_banner_frames;
+    HP.zone_name = HEARTH_ZONE_NAMES[(HS.zone_id < ZONE_COUNT) ? HS.zone_id : 1u];
     HP.cam_x = FP_PX(HS.cam_fx);
     HP.cam_y = FP_PX(HS.cam_fy);
     HP.shake_x = (HS.shake_frames > 0) ? (int8_t)hearth_prng_range(&HS.prng, -(int16_t)HS.shake_intensity, (int16_t)HS.shake_intensity) : 0;
     HP.shake_y = (HS.shake_frames > 0) ? (int8_t)hearth_prng_range(&HS.prng, -(int16_t)HS.shake_intensity, (int16_t)HS.shake_intensity) : 0;
-    HP.fade_level = (HS.mode == MODE_INTRO) ? HS.intro.fade : 0u;
+    if (HS.mode == MODE_INTRO) HP.fade_level = HS.intro.fade;
+    else HP.fade_level = HS.warp_fade;
     HP.flash_level = HS.flash_level;
     HP.hitstop_active = (HS.hitstop_frames > 0);
     HP.oam_count = 0;
@@ -2627,6 +3448,7 @@ static void build_ppu_packet(HearthState *st) {
  * ============================================================================ */
 const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
     uint16_t just_pressed;
+    int i;
 
     HP.sfx_count = 0;
     just_pressed = (uint16_t)(pad_bits & (uint16_t)(~HS.prev_pad));
@@ -2639,6 +3461,7 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
 
     if (HS.shake_frames > 0) HS.shake_frames--;
     if (HS.flash_level > 0) HS.flash_level--;
+    if (HS.zone_banner_frames > 0) HS.zone_banner_frames--;
 
     if (HS.hitstop_frames > 0) {
         HS.hitstop_frames--;
@@ -2650,9 +3473,18 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
 
     if (HS.hero_emote_frames > 0) HS.hero_emote_frames--; else HS.hero_emote = 0;
     if (HS.pip_emote_frames > 0) HS.pip_emote_frames--; else HS.pip_emote = 0;
-    if (HS.npcs[0].emote_frames > 0) HS.npcs[0].emote_frames--; else HS.npcs[0].emote = 0;
-    if (HS.npcs[1].emote_frames > 0) HS.npcs[1].emote_frames--; else HS.npcs[1].emote = 0;
-    if (HS.npcs[2].emote_frames > 0) HS.npcs[2].emote_frames--; else HS.npcs[2].emote = 0;
+    for (i = 0; i < HEARTH_MAX_NPCS; i++) {
+        if (HS.npcs[i].emote_frames > 0) HS.npcs[i].emote_frames--; else HS.npcs[i].emote = 0;
+    }
+
+    /* Smooth zone transition fade-out / fade-in */
+    if (HS.warp_pending) {
+        step_zone_warp(st);
+        build_ppu_packet(st);
+        return &HP;
+    } else if (HS.warp_fade > 0) {
+        HS.warp_fade = (HS.warp_fade >= 2u) ? (uint8_t)(HS.warp_fade - 2u) : 0u;
+    }
 
     switch (HS.mode) {
         case MODE_INTRO:
@@ -2660,7 +3492,6 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
             break;
 
         case MODE_TITLE: {
-            /* Calm, composed Windmill Hamlet framing (no sliding screen motion!) */
             frame_title_camera(st);
             step_field_enemies(st, false);
 
@@ -2671,8 +3502,8 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
                 HS.title_cursor = (uint8_t)((HS.title_cursor + 1) % 3);
                 push_sfx(st, SFX_CURSOR);
             } else if (just_pressed & (PAD_A | PAD_START)) {
-                if (HS.title_cursor == 0) hearth_start_sandbox(st);
-                else if (HS.title_cursor == 1) hearth_start_battle(st, ENCOUNTER_SHRINE_BOSS, BIOME_SHRINE, -1);
+                if (HS.title_cursor == 0) hearth_start_story(st);
+                else if (HS.title_cursor == 1) hearth_start_sandbox(st);
                 else hearth_start_intro(st);
             }
             break;
@@ -2686,9 +3517,12 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
                 step_hero_movement(st, pad_bits);
                 step_pip_follower(st);
                 step_field_enemies(st, true);
-                if (just_pressed & PAD_A) try_interact(st);
-                if (just_pressed & PAD_L) { HS.active_slot = (uint8_t)((HS.active_slot + 2) % 3); push_sfx(st, SFX_CURSOR); }
-                if (just_pressed & PAD_R) { HS.active_slot = (uint8_t)((HS.active_slot + 1) % 3); push_sfx(st, SFX_CURSOR); }
+                if (HS.mode == MODE_EXPLORE) check_explore_triggers(st);
+                if (HS.mode == MODE_EXPLORE && !HS.warp_pending) {
+                    if (just_pressed & PAD_A) try_interact(st);
+                    if (just_pressed & PAD_L) { HS.active_slot = (uint8_t)((HS.active_slot + 2) % 3); push_sfx(st, SFX_CURSOR); }
+                    if (just_pressed & PAD_R) { HS.active_slot = (uint8_t)((HS.active_slot + 1) % 3); push_sfx(st, SFX_CURSOR); }
+                }
             }
             step_camera(st);
             break;
@@ -2700,6 +3534,15 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
             step_camera(st);
             break;
 
+        case MODE_SHOP:
+            step_shop(st, just_pressed);
+            break;
+
+        case MODE_FISHING:
+            step_fishing(st, pad_bits, just_pressed);
+            step_camera(st);
+            break;
+
         case MODE_BATTLE:
             step_battle(st, just_pressed);
             break;
@@ -2707,13 +3550,17 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
         case MODE_BATTLE_VICTORY:
         case MODE_BATTLE_DEFEAT:
             if (just_pressed & (PAD_A | PAD_START)) {
+                bool won_ironfang = (HS.mode == MODE_BATTLE_VICTORY && HS.battle.encounter_preset == ENCOUNTER_IRONFANG_BOSS);
                 HS.battle.active = false;
-                HS.mode = MODE_EXPLORE;
                 HS.hero_safe_frames = 90;
                 push_sfx(st, SFX_CONFIRM);
+                if (won_ironfang) {
+                    hearth_start_cutscene(st, CUTSCENE_IRONFANG_VICTORY);
+                } else {
+                    HS.mode = MODE_EXPLORE;
+                }
             } else if (just_pressed & PAD_B) {
-                hearth_start_battle(st, HS.battle.is_boss_battle ? ENCOUNTER_SHRINE_BOSS : ENCOUNTER_MEADOW_PACK,
-                                    HS.battle.biome, -1);
+                hearth_start_battle(st, HS.battle.encounter_preset, HS.battle.biome, -1);
             }
             break;
     }

@@ -1,5 +1,5 @@
 /* ============================================================================
- * hearth_data.h — Static ROM Palettes, Tile IDs, Map Builders & Cutscenes
+ * hearth_data.h — Static ROM Palettes, 5-Zone Map Builders, Shop/Fish Tables & Cutscenes
  * ============================================================================ */
 
 #ifndef HEARTH_DATA_H
@@ -63,6 +63,10 @@ enum {
 enum {
     ACTOR_HERO  = 0,
     ACTOR_PIP   = 1,
+    ACTOR_NPC0  = 2,
+    ACTOR_NPC1  = 3,
+    ACTOR_NPC2  = 4,
+    ACTOR_NPC3  = 5,
     ACTOR_ELDER = 2,
     ACTOR_CLARA = 3,
     ACTOR_GUARD = 4
@@ -70,18 +74,53 @@ enum {
 
 /* Flag IDs for Cutscene OP_SET_FLAG */
 enum {
-    FLAG_HAS_COURAGE = 1,
-    FLAG_GUARD_MENDED = 2,
-    FLAG_ELDER_SEEN = 3
+    FLAG_HAS_COURAGE        = 1,
+    FLAG_GUARD_MENDED       = 2,
+    FLAG_ELDER_SEEN         = 3,
+    FLAG_FLASHBACK_DONE     = 4,
+    FLAG_WAND_RECEIVED      = 5,
+    FLAG_SEWER_KEY          = 6,
+    FLAG_CAPTAIN_MENDED     = 7,
+    FLAG_MUCKMAW_DEFEATED   = 8,
+    FLAG_IRONFANG_DEFEATED  = 9
 };
 
-/* 4 x 16-Color Master Hardware Sub-Palettes (0xRRGGBB) */
+/* Fish Species Metadata */
+typedef struct {
+    const char *name;
+    uint16_t    sell_price;
+    uint8_t     heal_hp;
+    uint8_t     min_lure;
+    uint8_t     zone_pref; /* 255 = any, else HearthZoneId */
+    uint8_t     agility;   /* 1..4 */
+} HearthFishInfo;
+
+/* Shop Buy Catalog Entry */
+typedef struct {
+    const char *name;
+    const char *desc;
+    uint16_t    price;
+    uint8_t     item_kind; /* 0=Tonic, 1=StarDrop, 2=Snack, 3=RiverLure, 4=GlowLure */
+} HearthShopItem;
+
+/* 4 x 16-Color Master Hardware Sub-Palettes (Default PAL0..PAL3, 0xRRGGBB) */
 extern const uint32_t HEARTH_PALETTES_RGB[4][16];
+
+/* 6 x 16-Color Per-Zone Terrain Sub-Palettes (Loaded into PAL0 per zone/mood) */
+extern const uint32_t HEARTH_ZONE_PALETTES_RGB[ZPAL_COUNT][16];
+
+/* Zone Display Names */
+extern const char * const HEARTH_ZONE_NAMES[ZONE_COUNT];
+
+/* Fish & Shop Static Tables */
+extern const HearthFishInfo HEARTH_FISH_TABLE[HEARTH_FISH_SPECIES];
+extern const HearthShopItem HEARTH_SHOP_ITEMS[5];
 
 /* Integer Sine Lookup Table (64 steps, range -127..+127) — zero <math.h> needed! */
 extern const int8_t HEARTH_SIN64[64];
 
-/* Build the 44x28 Windmill Hamlet + Whispering Meadow + Stone Shrine map */
+/* Procedural 44x28 Zone Map Builders (write in-place into RAM buffer — zero extra RAM!) */
+void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t *col);
 void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col);
 
 /* Cutscene ROM Bytecode Scripts */
@@ -89,6 +128,11 @@ extern const HearthCutsceneOp CUTSCENE_INTRO_DEMO[];
 extern const HearthCutsceneOp CUTSCENE_ELDER_TALK[];
 extern const HearthCutsceneOp CUTSCENE_TAKE_COURAGE[];
 extern const HearthCutsceneOp CUTSCENE_GIVE_COURAGE[];
+extern const HearthCutsceneOp CUTSCENE_SHADOW_GRANDMA[];
+extern const HearthCutsceneOp CUTSCENE_PIP_REUNION[];
+extern const HearthCutsceneOp CUTSCENE_MAYOR_SEWER_KEY[];
+extern const HearthCutsceneOp CUTSCENE_MEND_CAPTAIN[];
+extern const HearthCutsceneOp CUTSCENE_IRONFANG_VICTORY[];
 
 /* Hardware Palette Packers for Sega Genesis (BGR333) & SNES (BGR555) */
 HEARTH_INLINE uint16_t hearth_rgb_to_genesis_bgr333(uint32_t rgb) {

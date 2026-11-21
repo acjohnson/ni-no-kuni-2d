@@ -37,11 +37,69 @@ export const PortraitFrame: React.FC<PortraitFrameProps> = ({ portrait, speaker 
   );
 };
 
-/** Hand-painted stylized vector portrait fallback for Clara, Guard Bram, or image errors */
+/** Hand-painted stylized vector portrait fallback for Clara, Guard Bram, Mousefolk, Boarfolk, Shadow Grandma, or image errors */
 const StylizedFallbackPortrait: React.FC<{ portrait: PortraitId; speaker: string }> = ({
   portrait,
   speaker,
 }) => {
+  if (portrait === 'mouse') {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[#2E2634]" aria-label={speaker}>
+        <svg viewBox="0 0 64 64" className="h-full w-full">
+          <rect width="64" height="64" fill="#2E2634" />
+          <circle cx="17" cy="20" r="10" fill="#B8B2BA" stroke="#1B181E" strokeWidth="2" />
+          <circle cx="17" cy="20" r="6" fill="#E6A4A8" />
+          <circle cx="47" cy="20" r="10" fill="#B8B2BA" stroke="#1B181E" strokeWidth="2" />
+          <circle cx="47" cy="20" r="6" fill="#E6A4A8" />
+          <circle cx="32" cy="60" r="22" fill="#A63A3A" stroke="#1B181E" strokeWidth="2" />
+          <path d="M23 44 L32 52 L41 44" fill="none" stroke="#F4E7C8" strokeWidth="3" />
+          <ellipse cx="32" cy="30" rx="14" ry="13" fill="#CFC9D0" stroke="#1B181E" strokeWidth="2" />
+          <circle cx="26" cy="28" r="2" fill="#1B181E" />
+          <circle cx="38" cy="28" r="2" fill="#1B181E" />
+          <ellipse cx="32" cy="34" rx="3" ry="2.2" fill="#D46A7E" />
+          <path d="M16 33 L24 33 M17 36 L24 35 M40 33 L48 33 M40 35 L47 36" stroke="#4D4852" strokeWidth="1.2" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (portrait === 'pig') {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[#362222]" aria-label={speaker}>
+        <svg viewBox="0 0 64 64" className="h-full w-full">
+          <rect width="64" height="64" fill="#362222" />
+          <polygon points="14,12 24,20 16,27" fill="#E6A4A0" stroke="#1B181E" strokeWidth="2" />
+          <polygon points="50,12 40,20 48,27" fill="#E6A4A0" stroke="#1B181E" strokeWidth="2" />
+          <circle cx="32" cy="60" r="22" fill="#5D6678" stroke="#1B181E" strokeWidth="2" />
+          <path d="M20 45 L32 52 L44 45" fill="none" stroke="#D4A454" strokeWidth="3" />
+          <circle cx="32" cy="29" r="15" fill="#F0B5AD" stroke="#1B181E" strokeWidth="2" />
+          <circle cx="26" cy="25" r="2" fill="#1B181E" />
+          <circle cx="38" cy="25" r="2" fill="#1B181E" />
+          <ellipse cx="32" cy="33" rx="7" ry="5" fill="#DC8E88" stroke="#1B181E" strokeWidth="1.8" />
+          <circle cx="29.5" cy="33" r="1.4" fill="#1B181E" />
+          <circle cx="34.5" cy="33" r="1.4" fill="#1B181E" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (portrait === 'shadow_gran') {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[#181024]" aria-label={speaker}>
+        <svg viewBox="0 0 64 64" className="h-full w-full">
+          <rect width="64" height="64" fill="#181024" />
+          <circle cx="32" cy="60" r="23" fill="#2A1D3D" stroke="#0C0814" strokeWidth="2" />
+          <path d="M12 48 Q32 4 52 48 Z" fill="#231634" stroke="#0C0814" strokeWidth="2" />
+          <circle cx="32" cy="29" r="12" fill="#3B2B4E" stroke="#0C0814" strokeWidth="2" />
+          <path d="M20 26 Q32 14 44 26" fill="none" stroke="#B6AEC8" strokeWidth="3.5" />
+          <ellipse cx="27" cy="29" rx="2.4" ry="1.6" fill="#E59CFF" />
+          <ellipse cx="37" cy="29" rx="2.4" ry="1.6" fill="#E59CFF" />
+          <path d="M27 36 Q32 34 37 36" fill="none" stroke="#160E20" strokeWidth="1.8" />
+        </svg>
+      </div>
+    );
+  }
+
   const palette =
     portrait === 'clara'
       ? { bg: '#3E2D38', hair: '#E8B852', tunic: '#8C3B58', accent: '#F4E7C8' }

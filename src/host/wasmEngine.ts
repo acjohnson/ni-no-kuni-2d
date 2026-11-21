@@ -11,6 +11,7 @@ import {
   BattleEnemyState,
   BattlePhase,
   BattleVfxKind,
+  BgmTrackId,
   CutsceneOpExport,
   DebugBox,
   DialogueChoice,
@@ -18,6 +19,8 @@ import {
   EncounterPreset,
   EngineTuning,
   FamiliarSlot,
+  FishingSnapshot,
+  FishSpeciesInfo,
   FloatingText,
   FP_ONE,
   fromFp,
@@ -34,17 +37,22 @@ import {
   PpuMode,
   PpuParticle,
   SfxId,
+  ShopItemInfo,
+  ShopSnapshot,
   SpriteId,
   TILE_SIZE,
   UiSnapshot,
   WorldMapData,
+  ZoneId,
 } from '../core/types';
 
 interface WasmExports {
   memory: WebAssembly.Memory;
   wasm_init(): void;
   wasm_step(padBits: number): void;
+  wasm_start_story(): void;
   wasm_start_sandbox(): void;
+  wasm_enter_zone(zoneId: number, tx: number, ty: number): void;
   wasm_start_cutscene_demo(): void;
   wasm_start_intro(): void;
   wasm_skip_intro(): void;
@@ -71,6 +79,9 @@ interface WasmExports {
   wasm_ui_timed_tap(): void;
   wasm_ui_select_choice(idx: number): void;
   wasm_ui_finish_battle_summary(rematch: number): void;
+  wasm_ui_shop_tab(tab: number): void;
+  wasm_ui_shop_select(idx: number): void;
+  wasm_ui_shop_close(): void;
   wasm_get_scalars_ptr(): number;
   wasm_get_oam_ptr(): number;
   wasm_get_party_ptr(): number;
@@ -85,6 +96,12 @@ interface WasmExports {
   wasm_get_bg2_ptr(): number;
   wasm_get_col_ptr(): number;
   wasm_get_palettes_ptr(): number;
+  wasm_get_zone_palettes_ptr(): number;
+  wasm_get_shop_item_name(i: number): number;
+  wasm_get_shop_item_desc(i: number): number;
+  wasm_get_shop_item_price(i: number): number;
+  wasm_get_fish_name(i: number): number;
+  wasm_get_fish_price(i: number): number;
   wasm_get_cutscene_intro_count(): number;
   wasm_read_cutscene_intro_op(idx: number): number;
 }
@@ -97,6 +114,22 @@ const MODE_MAP: readonly GameMode[] = [
   'BATTLE_VICTORY',
   'BATTLE_DEFEAT',
   'INTRO',
+  'SHOP',
+  'FISHING',
+];
+
+const BIOME_MAP: readonly BattleBiome[] = ['MEADOW', 'SHRINE', 'SEWER', 'BOARHOLD'];
+
+const BGM_MAP: readonly BgmTrackId[] = [
+  'HAMLET',
+  'ALDERBROOK',
+  'WHISKERBURGH',
+  'SEWERS',
+  'BOARHOLD',
+  'SHADOW',
+  'BATTLE',
+  'BOSS',
+  'VICTORY',
 ];
 
 const BVFX_MAP: readonly BattleVfxKind[] = [
@@ -106,8 +139,8 @@ const BVFX_MAP: readonly BattleVfxKind[] = [
   'SOLAR_METEOR',
   'STAR_BOLT',
   'PRISM_NOVA',
-  'ENEMY_CLAW',
   'GUARD_SHIELD',
+  'ENEMY_CLAW',
   'HEAL_BLOOM',
 ];
 
@@ -131,6 +164,19 @@ const SPRITE_MAP: readonly SpriteId[] = [
   'emote_question',
   'emote_spark',
   'heart_orb',
+  'chest_open',
+  'npc_mouse',
+  'npc_pig',
+  'npc_shadow_gran',
+  'pet_milo',
+  'enemy_rat',
+  'enemy_slime',
+  'enemy_boar',
+  'boss_muckmaw',
+  'boss_ironfang',
+  'hollow_oak',
+  'bobber',
+  'npc_townsfolk',
 ];
 
 const AURA_MAP: readonly HeartAura[] = [
@@ -188,32 +234,46 @@ const FTEXT_STRIDE = 6;
 const FIELD_BOX_STRIDE = 3;
 
 function portraitFromSpeaker(speaker: string): PortraitId {
-  switch (speaker) {
-    case 'Elder Wren':
-      return 'elder';
-    case 'Clara':
-      return 'clara';
-    case 'Guard Bram':
-      return 'guard';
-    case 'Pip':
-      return 'pip';
-    case 'Rowan':
-      return 'hero';
-    default:
-      return 'none';
+  if (!speaker) return 'none';
+  if (speaker.includes('Elder') || speaker.includes('Wren')) return 'elder';
+  if (speaker.includes('Clara') || speaker.includes('Grandma')) {
+    return speaker.includes('Shadow') ? 'shadow_gran' : 'clara';
   }
+  if (speaker.includes('Guard') || speaker.includes('Bram')) return 'guard';
+  if (speaker.includes('Pippo') || speaker.includes('Brie') || speaker.includes('Barnaby')) return 'mouse';
+  if (speaker.includes('Tusk') || speaker.includes('Porkins') || speaker.includes('Ironfang')) return 'pig';
+  if (speaker.includes('Shadow')) return 'shadow_gran';
+  if (speaker.includes('Pip')) return 'pip';
+  if (speaker.includes('Rowan')) return 'hero';
+  return 'none';
 }
 
 function presetToCode(preset: EncounterPreset): number {
-  if (preset === 'SHRINE_BOSS') return 2;
-  if (preset === 'GLADE_DUO') return 1;
-  return 0;
+  switch (preset) {
+    case 'GLADE_DUO':
+      return 1;
+    case 'SHRINE_BOSS':
+      return 2;
+    case 'SEWER_PACK':
+      return 3;
+    case 'SEWER_BOSS':
+      return 4;
+    case 'BOAR_GUARD':
+      return 5;
+    case 'IRONFANG_BOSS':
+      return 6;
+    default:
+      return 0;
+  }
 }
 
 export class WasmHearthEngine {
   private readonly wasm: WasmExports;
   private readonly decoder = new TextDecoder('utf-8');
   public readonly palettes: readonly (readonly string[])[];
+  public readonly zonePalettes: readonly (readonly string[])[];
+  public readonly shopCatalog: readonly ShopItemInfo[];
+  public readonly fishCatalog: readonly FishSpeciesInfo[];
   public readonly map: WorldMapData;
 
   private readonly scalarsIdx: number;
@@ -224,6 +284,10 @@ export class WasmHearthEngine {
   private readonly ftextsIdx: number;
   private readonly fieldBoxesIdx: number;
   private readonly sfxPtr: number;
+  private readonly bg1Ptr: number;
+  private readonly bg2Ptr: number;
+  private readonly colPtr: number;
+  private lastMapRevision = -1;
 
   private constructor(wasm: WasmExports) {
     this.wasm = wasm;
@@ -237,6 +301,9 @@ export class WasmHearthEngine {
     this.ftextsIdx = (wasm.wasm_get_ftexts_ptr() >>> 0) >> 2;
     this.fieldBoxesIdx = (wasm.wasm_get_field_boxes_ptr() >>> 0) >> 2;
     this.sfxPtr = wasm.wasm_get_sfx_ptr() >>> 0;
+    this.bg1Ptr = wasm.wasm_get_bg1_ptr() >>> 0;
+    this.bg2Ptr = wasm.wasm_get_bg2_ptr() >>> 0;
+    this.colPtr = wasm.wasm_get_col_ptr() >>> 0;
 
     // Load exact 4 x 16-color palettes directly from C ROM table HEARTH_PALETTES_RGB
     const u32 = new Uint32Array(wasm.memory.buffer);
@@ -252,19 +319,61 @@ export class WasmHearthEngine {
     }
     this.palettes = loadedPalettes;
 
-    // View/copy generated 44x28 sandbox tilemaps directly from C core memory
-    const u8 = new Uint8Array(wasm.memory.buffer);
+    // Load 6 x 16-color per-zone terrain palettes from HEARTH_ZONE_PALETTES_RGB
+    const zpalBase = (wasm.wasm_get_zone_palettes_ptr() >>> 0) >> 2;
+    const loadedZonePals: string[][] = [];
+    for (let z = 0; z < 6; z++) {
+      const row: string[] = [];
+      for (let c = 0; c < 16; c++) {
+        const rgb = u32[zpalBase + z * 16 + c] & 0xffffff;
+        row.push('#' + rgb.toString(16).toUpperCase().padStart(6, '0'));
+      }
+      loadedZonePals.push(row);
+    }
+    this.zonePalettes = loadedZonePals;
+
+    // Load static Shop & Fish catalog metadata from C ROM tables
+    const shopItems: ShopItemInfo[] = [];
+    for (let i = 0; i < 5; i++) {
+      shopItems.push({
+        name: this.readCString(wasm.wasm_get_shop_item_name(i)),
+        desc: this.readCString(wasm.wasm_get_shop_item_desc(i)),
+        price: wasm.wasm_get_shop_item_price(i),
+      });
+    }
+    this.shopCatalog = shopItems;
+
+    const fishItems: FishSpeciesInfo[] = [];
+    for (let i = 0; i < 6; i++) {
+      fishItems.push({
+        name: this.readCString(wasm.wasm_get_fish_name(i)),
+        sellPrice: wasm.wasm_get_fish_price(i),
+      });
+    }
+    this.fishCatalog = fishItems;
+
+    // Allocate 44x28 tilemaps and sync initial zone data
     const cells = MAP_W * MAP_H;
-    const bg1Ptr = wasm.wasm_get_bg1_ptr() >>> 0;
-    const bg2Ptr = wasm.wasm_get_bg2_ptr() >>> 0;
-    const colPtr = wasm.wasm_get_col_ptr() >>> 0;
     this.map = {
       width: MAP_W,
       height: MAP_H,
-      bg1: u8.slice(bg1Ptr, bg1Ptr + cells),
-      bg2: u8.slice(bg2Ptr, bg2Ptr + cells),
-      col: u8.slice(colPtr, colPtr + cells),
+      bg1: new Uint8Array(cells),
+      bg2: new Uint8Array(cells),
+      col: new Uint8Array(cells),
     };
+    this.syncMapIfChanged();
+  }
+
+  private syncMapIfChanged(): void {
+    const i32 = new Int32Array(this.wasm.memory.buffer);
+    const rev = i32[this.scalarsIdx + 102];
+    if (rev === this.lastMapRevision) return;
+    this.lastMapRevision = rev;
+    const u8 = new Uint8Array(this.wasm.memory.buffer);
+    const cells = MAP_W * MAP_H;
+    this.map.bg1.set(u8.subarray(this.bg1Ptr, this.bg1Ptr + cells));
+    this.map.bg2.set(u8.subarray(this.bg2Ptr, this.bg2Ptr + cells));
+    this.map.col.set(u8.subarray(this.colPtr, this.colPtr + cells));
   }
 
   public static async create(wasmUrl = '/hearth_core.wasm'): Promise<WasmHearthEngine> {
@@ -317,15 +426,28 @@ export class WasmHearthEngine {
 
   public step(padBits: number): PpuFramePacket {
     this.wasm.wasm_step(padBits);
+    this.syncMapIfChanged();
     return this.buildFramePacket();
+  }
+
+  public startStory(): void {
+    this.wasm.wasm_start_story();
+    this.syncMapIfChanged();
   }
 
   public startSandbox(): void {
     this.wasm.wasm_start_sandbox();
+    this.syncMapIfChanged();
+  }
+
+  public enterZone(zoneId: ZoneId, tx: number, ty: number): void {
+    this.wasm.wasm_enter_zone(zoneId, tx, ty);
+    this.syncMapIfChanged();
   }
 
   public startCutsceneDemo(): void {
     this.wasm.wasm_start_cutscene_demo();
+    this.syncMapIfChanged();
   }
 
   public startIntro(): void {
@@ -392,6 +514,19 @@ export class WasmHearthEngine {
 
   public uiFinishBattleSummary(rematch: boolean): void {
     this.wasm.wasm_ui_finish_battle_summary(rematch ? 1 : 0);
+    this.syncMapIfChanged();
+  }
+
+  public uiShopTab(tab: number): void {
+    this.wasm.wasm_ui_shop_tab(tab);
+  }
+
+  public uiShopSelect(idx: number): void {
+    this.wasm.wasm_ui_shop_select(idx);
+  }
+
+  public uiShopClose(): void {
+    this.wasm.wasm_ui_shop_close();
   }
 
   public getCutsceneIntroOps(): CutsceneOpExport[] {
@@ -617,11 +752,33 @@ export class WasmHearthEngine {
     const ringResRaw = i32[s + 72];
     const enemies = this.readBattleEnemies();
 
+    const readFishing = (): FishingSnapshot => ({
+      active: i32[s + 121] !== 0,
+      phase: i32[s + 122],
+      bobberX: i32[s + 123],
+      bobberY: i32[s + 124],
+      fishPos: i32[s + 125],
+      barPos: i32[s + 126],
+      barHalfW: i32[s + 127],
+      progress: i32[s + 128],
+      tension: i32[s + 129],
+      species: i32[s + 130],
+      weightOz: i32[s + 131],
+    });
+
     return {
       width,
       height,
       frameCount,
       mode,
+      zoneId: (i32[s + 95] as ZoneId) ?? 1,
+      terrainPalId: i32[s + 96],
+      bgmId: BGM_MAP[i32[s + 97]] ?? 'HAMLET',
+      zoneIsDark: i32[s + 98] !== 0,
+      zoneBannerFrames: i32[s + 99],
+      zoneName: this.readCString(i32[s + 100]) || 'Windmill Hamlet',
+      heroWorldX: fromFp(i32[s + 18]),
+      heroWorldY: fromFp(i32[s + 19]),
       camX,
       camY,
       shakeX: i32[s + 6],
@@ -650,7 +807,7 @@ export class WasmHearthEngine {
       },
       battle: {
         active: i32[s + 47] !== 0,
-        biome: (i32[s + 48] === 1 ? 'SHRINE' : 'MEADOW') as BattleBiome,
+        biome: BIOME_MAP[i32[s + 48]] ?? 'MEADOW',
         phase,
         activeSlot: (i32[s + 51] as FamiliarSlot) ?? 1,
         previousSlot: (i32[s + 52] as FamiliarSlot) ?? 1,
@@ -694,12 +851,14 @@ export class WasmHearthEngine {
         potions: i32[s + 17],
         introProgress: phase === 'INTRO' ? Math.min(1, phaseTimer / 24) : 1,
       },
+      fishing: readFishing(),
       debugBoxes,
       sfxQueue: this.consumePendingSfx(),
     };
   }
 
   public getUiSnapshot(): UiSnapshot {
+    this.syncMapIfChanged();
     const i32 = new Int32Array(this.wasm.memory.buffer);
     const s = this.scalarsIdx;
 
@@ -712,20 +871,25 @@ export class WasmHearthEngine {
     const elderCutsceneSeen = (locketMask & 8) !== 0;
     const bossDefeated = (locketMask & 16) !== 0;
 
-    const zoneLabel =
-      tx >= 35
-        ? 'Ancient Stone Shrine'
-        : tx >= 21
-          ? 'Whispering Meadow'
-          : 'Windmill Hamlet';
+    const zoneId = (i32[s + 95] as ZoneId) ?? 1;
+    const storyStage = i32[s + 101];
+    const zoneLabel = this.readCString(i32[s + 100]) || 'Windmill Hamlet';
+    const hasWand = i32[s + 134] !== 0;
+    const hasSewerKey = i32[s + 135] !== 0;
 
-    let objectiveLabel = 'Talk to Clara or cross the bridge to test combat';
-    if (bossDefeated && guardMended) {
-      objectiveLabel = 'Sandbox complete — tune feel, swap assets, or rematch!';
-    } else if (hasCourage && !guardMended) {
-      objectiveLabel = 'Bring Courage from your Locket to Guard Bram at the bridge';
-    } else if (guardMended && !bossDefeated) {
-      objectiveLabel = 'Challenge the Briar Warden at the eastern Stone Shrine';
+    let objectiveLabel = 'Explore Evertale, fish at piers, or visit shops';
+    if (storyStage === 0) {
+      objectiveLabel = 'Age 5 Memory: Follow Milo east into the shimmering glade';
+    } else if (storyStage === 1) {
+      objectiveLabel = 'Age 10 Alderbrook: Walk east to the Hollow Oak beyond the creek';
+    } else if (storyStage === 2) {
+      objectiveLabel = 'Travel north to Whiskerburgh (Mouse Market) & speak to Mayor Brie';
+    } else if (storyStage === 3) {
+      objectiveLabel = 'Enter the Sunken Sewers (north gate) & defeat King Muckmaw';
+    } else if (storyStage === 4) {
+      objectiveLabel = 'Ascend to Boarhold Citadel & challenge Lord Ironfang';
+    } else {
+      objectiveLabel = 'Chapter 1 Complete! Explore all 5 zones, fish, shop, or rematch bosses';
     }
 
     const speaker = this.readCString(i32[s + 34]);
@@ -740,9 +904,35 @@ export class WasmHearthEngine {
 
     const enemies = this.readBattleEnemies();
 
+    const shop: ShopSnapshot = {
+      active: i32[s + 114] !== 0,
+      shopId: i32[s + 115],
+      tab: i32[s + 116],
+      cursor: i32[s + 117],
+      msgTimer: i32[s + 118],
+      title: this.readCString(i32[s + 119]) || 'Evertale Shop',
+      msg: this.readCString(i32[s + 120]),
+    };
+
+    const fishing: FishingSnapshot = {
+      active: i32[s + 121] !== 0,
+      phase: i32[s + 122],
+      bobberX: i32[s + 123],
+      bobberY: i32[s + 124],
+      fishPos: i32[s + 125],
+      barPos: i32[s + 126],
+      barHalfW: i32[s + 127],
+      progress: i32[s + 128],
+      tension: i32[s + 129],
+      species: i32[s + 130],
+      weightOz: i32[s + 131],
+    };
+
     return {
       mode: MODE_MAP[i32[s + 3]] ?? 'TITLE',
+      zoneId,
       zoneLabel,
+      storyStage,
       objectiveLabel,
       dialogue: {
         active: i32[s + 33] !== 0,
@@ -758,6 +948,25 @@ export class WasmHearthEngine {
       party: this.readParty(),
       activeSlot: (i32[s + 16] as FamiliarSlot) ?? 1,
       potions: i32[s + 17],
+      guilders: i32[s + 103],
+      starDrops: i32[s + 104],
+      snacks: i32[s + 105],
+      lureTier: i32[s + 106],
+      fishBag: [
+        i32[s + 108],
+        i32[s + 109],
+        i32[s + 110],
+        i32[s + 111],
+        i32[s + 112],
+        i32[s + 113],
+      ],
+      fishTotalCaught: i32[s + 107],
+      hasWand,
+      hasSewerKey,
+      shop,
+      fishing,
+      shopCatalog: this.shopCatalog,
+      fishCatalog: this.fishCatalog,
       locket: {
         hasCourage,
         guardMended,
@@ -785,6 +994,7 @@ export class WasmHearthEngine {
         parries: i32[s + 76],
         locksBroken: i32[s + 77],
         expEarned: i32[s + 78],
+        guildersEarned: i32[s + 132],
       },
       timedRingActive: i32[s + 66] !== 0,
       timedRingKind: i32[s + 67] !== 0 ? 'PARRY' : 'OFFENSE',

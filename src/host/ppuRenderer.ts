@@ -14,6 +14,7 @@ import {
   OamSprite,
   PartyMemberState,
   PpuFramePacket,
+  T_LANTERN_POST,
   TILE_SIZE,
   WorldMapData,
 } from '../core/types';
@@ -22,12 +23,18 @@ import { PixelAtlas } from './pixelAtlas';
 export class SoftwarePpuRenderer {
   private scratchCanvas: HTMLCanvasElement;
   private scratchCtx: CanvasRenderingContext2D;
+  private darkCanvas: HTMLCanvasElement;
+  private darkCtx: CanvasRenderingContext2D;
 
   constructor() {
     this.scratchCanvas = document.createElement('canvas');
     this.scratchCanvas.width = 48;
     this.scratchCanvas.height = 48;
     this.scratchCtx = this.scratchCanvas.getContext('2d')!;
+    this.darkCanvas = document.createElement('canvas');
+    this.darkCanvas.width = 320;
+    this.darkCanvas.height = 224;
+    this.darkCtx = this.darkCanvas.getContext('2d')!;
   }
 
   public render(
@@ -41,6 +48,8 @@ export class SoftwarePpuRenderer {
       canvas.width = packet.width;
       canvas.height = packet.height;
     }
+
+    atlas.setTerrainPalette(packet.terrainPalId);
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -317,8 +326,66 @@ export class SoftwarePpuRenderer {
       }
     }
 
+    // 4.5. Fishing Rod Line from Rowan to Bobber during MODE_FISHING
+    if (packet.mode === 'FISHING' && packet.fishing.active) {
+      const rx = Math.round(packet.heroWorldX - camX);
+      const ry = Math.round(packet.heroWorldY - camY - 12);
+      const bx = Math.round(packet.fishing.bobberX - camX);
+      const by = Math.round(packet.fishing.bobberY - camY - 2);
+      ctx.save();
+      ctx.strokeStyle = '#E8DEC8';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry);
+      ctx.quadraticCurveTo(
+        Math.round((rx + bx) * 0.5),
+        Math.min(ry, by) - 10,
+        bx,
+        by
+      );
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // 5. World-Space Particles
     this.renderParticles(ctx, packet, false);
+
+    // 5.5. Sunken Sewers Atmospheric Lantern Lighting Mask
+    if (packet.zoneIsDark) {
+      if (this.darkCanvas.width !== width || this.darkCanvas.height !== height) {
+        this.darkCanvas.width = width;
+        this.darkCanvas.height = height;
+      }
+      const dctx = this.darkCtx;
+      dctx.globalCompositeOperation = 'source-over';
+      dctx.clearRect(0, 0, width, height);
+      dctx.fillStyle = 'rgba(7, 11, 18, 0.76)';
+      dctx.fillRect(0, 0, width, height);
+
+      const punchLight = (lx: number, ly: number, r: number) => {
+        const g = dctx.createRadialGradient(lx, ly, r * 0.18, lx, ly, r);
+        g.addColorStop(0, 'rgba(0, 0, 0, 1)');
+        g.addColorStop(0.62, 'rgba(0, 0, 0, 0.72)');
+        g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        dctx.fillStyle = g;
+        dctx.beginPath();
+        dctx.arc(lx, ly, r, 0, Math.PI * 2);
+        dctx.fill();
+      };
+
+      dctx.globalCompositeOperation = 'destination-out';
+      const flicker = Math.sin(frameCount * 0.12) * 3;
+      punchLight(packet.heroWorldX - camX, packet.heroWorldY - camY - 6, 62 + flicker);
+      for (let r = startRow; r <= endRow; r++) {
+        for (let c = startCol; c <= endCol; c++) {
+          if (map.bg1[r * MAP_W + c] === T_LANTERN_POST) {
+            punchLight(c * TILE_SIZE + 8 - camX, r * TILE_SIZE + 6 - camY, 48 + flicker * 0.6);
+          }
+        }
+      }
+      dctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(this.darkCanvas, 0, 0);
+    }
 
     // 6. Floating World Pop-up Text
     this.renderFloatingTexts(ctx, packet, true);
@@ -348,6 +415,22 @@ export class SoftwarePpuRenderer {
       ctx.textBaseline = 'top';
       ctx.fillText(text, bx + 4, by + 2);
     }
+
+    // 9. Zone Title Ribbon on Area Entry
+    if (packet.zoneBannerFrames > 0 && packet.mode === 'EXPLORE' && packet.zoneName) {
+      ctx.font = 'bold 8px monospace';
+      const label = packet.zoneName.toUpperCase();
+      const bw = Math.ceil(ctx.measureText(label).width) + 18;
+      const bx = Math.round((width - bw) / 2);
+      ctx.fillStyle = 'rgba(16, 18, 30, 0.88)';
+      ctx.fillRect(bx, 6, bw, 14);
+      ctx.strokeStyle = '#D4A454';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx + 0.5, 6.5, bw - 1, 13);
+      ctx.fillStyle = '#FFF3C4';
+      ctx.textBaseline = 'top';
+      ctx.fillText(label, bx + 9, 9);
+    }
   }
 
   /* ========================================================================
@@ -360,67 +443,117 @@ export class SoftwarePpuRenderer {
     party: PartyMemberState[]
   ): void {
     const { width, height, frameCount, battle } = packet;
-    const isShrine = battle.biome === 'SHRINE';
+    const biome = battle.biome;
+    const isShrine = biome === 'SHRINE';
+    const isSewer = biome === 'SEWER';
+    const isBoarhold = biome === 'BOARHOLD';
 
     // 1. Layered 16-bit Sky & Horizon Backdrop (cohesive with world biome!)
-    const skyBands = isShrine
-      ? ['#1D2236', '#28314C', '#384666', '#4E5D7B']
-      : ['#5AA0D8', '#7BBCE8', '#A6D7F2', '#DCEFC8'];
+    const skyBands = isSewer
+      ? ['#0C141A', '#13212A', '#1B2E38', '#233B44']
+      : isBoarhold
+        ? ['#241418', '#422024', '#68302A', '#924834']
+        : isShrine
+          ? ['#1D2236', '#28314C', '#384666', '#4E5D7B']
+          : ['#5AA0D8', '#7BBCE8', '#A6D7F2', '#DCEFC8'];
     const bandH = 19;
     skyBands.forEach((col, i) => {
       ctx.fillStyle = col;
       ctx.fillRect(0, i * bandH, width, bandH + 1);
     });
 
-    // Drifting pixel clouds
-    ctx.fillStyle = isShrine ? '#495472' : '#F4F7EE';
-    for (let i = 0; i < 4; i++) {
-      const cx = ((i * 96 + Math.floor(frameCount * 0.15)) % (width + 64)) - 32;
-      const cy = 14 + (i % 2) * 14;
-      ctx.fillRect(cx, cy, 34, 7);
-      ctx.fillRect(cx + 6, cy - 4, 20, 5);
-    }
-
-    // Distant rolling hills silhouette + windmill / shrine monoliths
-    ctx.fillStyle = isShrine ? '#2A3548' : '#4A884E';
-    for (let x = 0; x < width; x += 4) {
-      const h = Math.round(14 + Math.sin(x * 0.03) * 6 + Math.cos(x * 0.015) * 5);
-      ctx.fillRect(x, 76 - h, 4, h + 12);
-    }
-
-    if (isShrine) {
-      // Distant Shrine stone pillars
-      ctx.fillStyle = '#3E4656';
-      ctx.fillRect(40, 34, 14, 48);
-      ctx.fillRect(width - 62, 30, 16, 52);
-      ctx.fillStyle = '#748094';
-      ctx.fillRect(42, 36, 4, 44);
-      ctx.fillRect(width - 60, 32, 5, 48);
+    if (isSewer) {
+      // Arched sewer vault bricks & glowing lantern sconces
+      ctx.fillStyle = '#16252E';
+      for (let x = 0; x < width; x += 64) {
+        ctx.fillRect(x, 0, 14, 78);
+        ctx.fillStyle = '#2B424D';
+        ctx.fillRect(x + 2, 0, 4, 78);
+        ctx.fillStyle = '#F5C45A';
+        ctx.fillRect(x + 4, 28, 6, 8);
+        ctx.fillStyle = '#16252E';
+      }
+    } else if (isBoarhold) {
+      // Fortress crenellations & torchlight braziers
+      ctx.fillStyle = '#342426';
+      ctx.fillRect(0, 44, width, 34);
+      for (let x = 0; x < width; x += 24) {
+        ctx.fillRect(x, 34, 14, 12);
+      }
+      ctx.fillStyle = '#E88838';
+      ctx.fillRect(46, 26, 6, 8);
+      ctx.fillRect(width - 54, 26, 6, 8);
     } else {
-      // Distant Windmill silhouette on the horizon!
-      ctx.fillStyle = '#6A7586';
-      ctx.fillRect(width - 78, 36, 16, 36);
-      ctx.fillStyle = '#3B5998';
-      ctx.fillRect(width - 80, 30, 20, 8);
-      // Rotating mini sails
-      const sails = atlas.getSprite('windmill_blades', 0, 0);
-      ctx.save();
-      ctx.translate(width - 70, 36);
-      ctx.rotate(((frameCount * 0.8) * Math.PI) / 180);
-      ctx.drawImage(sails, -12, -12, 24, 24);
-      ctx.restore();
+      // Drifting pixel clouds
+      ctx.fillStyle = isShrine ? '#495472' : '#F4F7EE';
+      for (let i = 0; i < 4; i++) {
+        const cx = ((i * 96 + Math.floor(frameCount * 0.15)) % (width + 64)) - 32;
+        const cy = 14 + (i % 2) * 14;
+        ctx.fillRect(cx, cy, 34, 7);
+        ctx.fillRect(cx + 6, cy - 4, 20, 5);
+      }
+
+      // Distant rolling hills silhouette + windmill / shrine monoliths
+      ctx.fillStyle = isShrine ? '#2A3548' : '#4A884E';
+      for (let x = 0; x < width; x += 4) {
+        const h = Math.round(14 + Math.sin(x * 0.03) * 6 + Math.cos(x * 0.015) * 5);
+        ctx.fillRect(x, 76 - h, 4, h + 12);
+      }
+
+      if (isShrine) {
+        ctx.fillStyle = '#3E4656';
+        ctx.fillRect(40, 34, 14, 48);
+        ctx.fillRect(width - 62, 30, 16, 52);
+        ctx.fillStyle = '#748094';
+        ctx.fillRect(42, 36, 4, 44);
+        ctx.fillRect(width - 60, 32, 5, 48);
+      } else {
+        ctx.fillStyle = '#6A7586';
+        ctx.fillRect(width - 78, 36, 16, 36);
+        ctx.fillStyle = '#3B5998';
+        ctx.fillRect(width - 80, 30, 20, 8);
+        const sails = atlas.getSprite('windmill_blades', 0, 0);
+        ctx.save();
+        ctx.translate(width - 70, 36);
+        ctx.rotate(((frameCount * 0.8) * Math.PI) / 180);
+        ctx.drawImage(sails, -12, -12, 24, 24);
+        ctx.restore();
+      }
     }
 
     // 2. Ground Battle Stage Plane
     const groundY = 76;
-    ctx.fillStyle = isShrine ? '#3D4555' : '#5EA055';
+    ctx.fillStyle = isSewer
+      ? '#21333B'
+      : isBoarhold
+        ? '#584440'
+        : isShrine
+          ? '#3D4555'
+          : '#5EA055';
     ctx.fillRect(0, groundY, width, height - groundY);
 
-    // Textured perspective strips & Shrine Rune Circle or Meadow Grass Tufts
-    if (isShrine) {
+    // Textured perspective strips & biome floor landmarks
+    if (isSewer) {
+      // Glowing moss-green water canal across top of arena
+      ctx.fillStyle = '#1E645C';
+      ctx.fillRect(0, groundY + 4, width, 16);
+      ctx.fillStyle = (frameCount >> 4) & 1 ? '#58C4A0' : '#3C9E82';
+      ctx.fillRect(0, groundY + 10, width, 2);
+      ctx.fillStyle = '#33464E';
+      ctx.fillRect(0, groundY + 24, width, 66);
+      ctx.fillStyle = '#172329';
+      ctx.fillRect(0, 166, width, height - 166);
+    } else if (isBoarhold) {
+      ctx.fillStyle = '#7A5B50';
+      ctx.fillRect(0, groundY + 16, width, 70);
+      ctx.fillStyle = '#A86E42';
+      ctx.fillRect(0, groundY + 16, width, 3);
+      ctx.fillRect(0, groundY + 84, width, 3);
+      ctx.fillStyle = '#3A2828';
+      ctx.fillRect(0, 166, width, height - 166);
+    } else if (isShrine) {
       ctx.fillStyle = '#535E72';
       ctx.fillRect(0, groundY + 14, width, 74);
-      // Glowing carved stone rune circle
       ctx.strokeStyle = (frameCount >> 4) & 1 ? '#5AD2F4' : '#A6D7F2';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -431,7 +564,6 @@ export class SoftwarePpuRenderer {
     } else {
       ctx.fillStyle = '#74B461';
       ctx.fillRect(0, groundY + 4, width, 16);
-      // Sunlit path band where combatants duel
       ctx.fillStyle = '#C89B62';
       ctx.fillRect(0, 102, width, 54);
       ctx.fillStyle = '#DFBA84';
@@ -916,7 +1048,16 @@ export class SoftwarePpuRenderer {
     }
 
     if (spr.shadow) {
-      const sw = spr.spriteId === 'boss_briar_warden' ? 24 : 12;
+      const sw =
+        spr.spriteId === 'boss_briar_warden' ||
+        spr.spriteId === 'boss_muckmaw' ||
+        spr.spriteId === 'boss_ironfang'
+          ? 24
+          : spr.spriteId === 'hollow_oak'
+            ? 20
+            : spr.spriteId === 'pet_milo' || spr.spriteId === 'bobber'
+              ? 8
+              : 12;
       this.drawShadow(ctx, spr.x, spr.y, sw);
     }
 

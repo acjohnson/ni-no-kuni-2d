@@ -1,7 +1,7 @@
 /* ============================================================================
  * hearth_core.h — Project Hearth Platform-Agnostic 16-Bit Simulation Core
  *
- * Pure C99. Zero dynamic allocation. Zero floating-point simulation math.
+ * Pure C99/C89. Zero dynamic allocation. Zero floating-point simulation math.
  * Pass a pointer to a static/stack HearthState (fits comfortably inside
  * Sega Genesis 64KB RAM and SNES 128KB WRAM!).
  * ============================================================================ */
@@ -14,7 +14,7 @@
 #include "hearth_types.h"
 
 typedef struct {
-    /* World ROM/RAM Map Buffers */
+    /* World ROM/RAM Map Buffers (rebuilt in-place per active zone!) */
     uint8_t map_bg1[HEARTH_MAP_CELLS];
     uint8_t map_bg2[HEARTH_MAP_CELLS];
     uint8_t map_col[HEARTH_MAP_CELLS];
@@ -25,6 +25,31 @@ typedef struct {
     uint8_t      mode;
     uint32_t     frame_count;
     uint16_t     prev_pad;
+
+    /* Multi-Zone World & Story Progression */
+    uint8_t      zone_id;
+    uint8_t      terrain_pal_id;
+    uint8_t      bgm_id;
+    bool         zone_is_dark;
+    uint8_t      zone_banner_frames;
+    uint8_t      story_stage;
+    uint8_t      map_revision;
+    uint8_t      warp_fade;       /* 0..15 fade out/in on zone warp */
+    bool         warp_pending;
+    uint8_t      warp_dst_zone;
+    uint8_t      warp_dst_tx;
+    uint8_t      warp_dst_ty;
+    bool         flashback_triggered;
+
+    /* Active Zone Interactive Props & Portals */
+    HearthPortal    portals[HEARTH_MAX_PORTALS];
+    HearthFishSpot  fish_spot;
+    HearthChestProp chest;
+    uint8_t         waystone_tx, waystone_ty;
+    bool            has_waystone;
+    uint8_t         sign_tx, sign_ty;
+    bool            has_sign;
+    bool            has_windmill;
 
     /* Hero Fixed-Point 16.8 State */
     fp16_t   hero_fx, hero_fy;
@@ -45,6 +70,7 @@ typedef struct {
     uint8_t  pip_dir;
     uint8_t  pip_emote;
     uint8_t  pip_emote_frames;
+    bool     pip_visible;
 
     /* Camera & Screen Juice Registers */
     fp16_t   cam_fx, cam_fy;
@@ -56,24 +82,38 @@ typedef struct {
     uint8_t  hitstop_frames;
     uint8_t  flash_level;
 
-    /* Party, Inventory & Heart Locket Flags */
+    /* Party, Economy, Inventory & Heart Locket Flags */
     HearthPartyMember party[3];
     uint8_t  active_slot;
+    uint16_t guilders;
     uint8_t  potions;
+    uint8_t  star_drops;
+    uint8_t  snacks;
+    uint8_t  lure_tier;
+    uint8_t  fish_bag[HEARTH_FISH_SPECIES];
+    uint16_t fish_total_caught;
+    uint16_t chests_opened_mask;
     bool     flag_has_courage;
     bool     flag_guard_mended;
     bool     flag_chest_opened;
     bool     flag_elder_seen;
     bool     flag_boss_defeated;
+    bool     flag_has_wand;
+    bool     flag_sewer_key;
+    bool     flag_captain_mended;
+    bool     flag_muckmaw_defeated;
+    bool     flag_ironfang_defeated;
 
     /* World Actors */
     HearthNpc        npcs[HEARTH_MAX_NPCS];
     HearthFieldEnemy field_enemies[HEARTH_MAX_FIELD_ENEMIES];
     HearthHeartOrb   heart_orb;
 
-    /* Dialogue & Cutscene VM */
+    /* Dialogue, Intro, Cutscene VM, Shop & Fishing */
     HearthDialogue          dialogue;
     HearthIntroState        intro;
+    HearthShopState         shop;
+    HearthFishingState      fishing;
     const HearthCutsceneOp *cs_script;
     uint16_t                cs_ip;
     uint16_t                cs_wait_frames;
@@ -81,8 +121,8 @@ typedef struct {
     /* Combat State */
     HearthBattleState battle;
 
-    /* Title Menu Cursor */
-    uint8_t title_cursor; /* 0=Start Sandbox, 1=Shrine Boss, 2=Replay Opening Intro */
+    /* Title Menu Cursor: 0=New Story (Age 5->10), 1=Explore Evertale, 2=Replay Intro */
+    uint8_t title_cursor;
 
     /* Fixed-Capacity FX Pools */
     HearthParticle  particles[HEARTH_MAX_PARTICLES];
@@ -100,7 +140,7 @@ typedef struct {
 extern HearthState g_hearth;
 #endif
 
-/* Initialize engine state & sandbox map (zero malloc) */
+/* Initialize engine state & world (zero malloc) */
 void hearth_init(HearthState *st);
 
 /* Reset tuning registers to default feel */
@@ -112,9 +152,13 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits);
 /* Direct Mode Launchers & Utility Hooks */
 void hearth_start_intro(HearthState *st);
 void hearth_skip_intro(HearthState *st);
+void hearth_start_story(HearthState *st);
 void hearth_start_sandbox(HearthState *st);
+void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint8_t tx, uint8_t ty);
 void hearth_start_cutscene(HearthState *st, const HearthCutsceneOp *script);
 void hearth_start_battle(HearthState *st, uint8_t preset, uint8_t biome, int8_t field_idx);
+void hearth_open_shop(HearthState *st, uint8_t shop_id);
+void hearth_start_fishing(HearthState *st);
 void hearth_respawn_enemies(HearthState *st);
 void hearth_heal_party(HearthState *st);
 void hearth_toggle_ppu_mode(HearthState *st);

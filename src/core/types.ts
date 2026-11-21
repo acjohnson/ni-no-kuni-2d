@@ -53,11 +53,33 @@ export type GameMode =
   | 'BATTLE_INTRO'
   | 'BATTLE'
   | 'BATTLE_VICTORY'
-  | 'BATTLE_DEFEAT';
+  | 'BATTLE_DEFEAT'
+  | 'SHOP'
+  | 'FISHING';
 
-export type BattleBiome = 'MEADOW' | 'SHRINE';
+export type ZoneId = 0 | 1 | 2 | 3 | 4;
 
-export type EncounterPreset = 'MEADOW_PACK' | 'GLADE_DUO' | 'SHRINE_BOSS';
+export type BgmTrackId =
+  | 'HAMLET'
+  | 'ALDERBROOK'
+  | 'WHISKERBURGH'
+  | 'SEWERS'
+  | 'BOARHOLD'
+  | 'SHADOW'
+  | 'BATTLE'
+  | 'BOSS'
+  | 'VICTORY';
+
+export type BattleBiome = 'MEADOW' | 'SHRINE' | 'SEWER' | 'BOARHOLD';
+
+export type EncounterPreset =
+  | 'MEADOW_PACK'
+  | 'GLADE_DUO'
+  | 'SHRINE_BOSS'
+  | 'SEWER_PACK'
+  | 'SEWER_BOSS'
+  | 'BOAR_GUARD'
+  | 'IRONFANG_BOSS';
 
 export type LockKind = 'SWORD' | 'SUN' | 'STAR';
 
@@ -157,6 +179,11 @@ export enum SfxId {
   CHEST_OPEN = 24,
   VICTORY_FANFARE = 25,
   HURT = 26,
+  COIN = 27,
+  FISH_BITE = 28,
+  FISH_REEL = 29,
+  FISH_CATCH = 30,
+  PORTAL = 31,
 }
 
 export type SpriteId =
@@ -178,9 +205,31 @@ export type SpriteId =
   | 'emote_heart'
   | 'emote_question'
   | 'emote_spark'
-  | 'heart_orb';
+  | 'heart_orb'
+  | 'chest_open'
+  | 'npc_mouse'
+  | 'npc_pig'
+  | 'npc_shadow_gran'
+  | 'pet_milo'
+  | 'enemy_rat'
+  | 'enemy_slime'
+  | 'enemy_boar'
+  | 'boss_muckmaw'
+  | 'boss_ironfang'
+  | 'hollow_oak'
+  | 'bobber'
+  | 'npc_townsfolk';
 
-export type PortraitId = 'hero' | 'pip' | 'elder' | 'clara' | 'guard' | 'none';
+export type PortraitId =
+  | 'hero'
+  | 'pip'
+  | 'elder'
+  | 'clara'
+  | 'guard'
+  | 'mouse'
+  | 'pig'
+  | 'shadow_gran'
+  | 'none';
 
 export interface OamSprite {
   x: number; // Screen-space integer pixel X (anchor center-bottom or top-left per sprite)
@@ -446,11 +495,54 @@ export interface DebugBox {
   color: string;
 }
 
+export interface ShopItemInfo {
+  name: string;
+  desc: string;
+  price: number;
+}
+
+export interface FishSpeciesInfo {
+  name: string;
+  sellPrice: number;
+}
+
+export interface ShopSnapshot {
+  active: boolean;
+  shopId: number;
+  tab: number; // 0=Buy, 1=Sell Fish
+  cursor: number;
+  msgTimer: number;
+  title: string;
+  msg: string;
+}
+
+export interface FishingSnapshot {
+  active: boolean;
+  phase: number; // 0=cast, 1=wait, 2=bite, 3=reeling, 4=caught, 5=escaped
+  bobberX: number;
+  bobberY: number;
+  fishPos: number;
+  barPos: number;
+  barHalfW: number;
+  progress: number;
+  tension: number;
+  species: number;
+  weightOz: number;
+}
+
 export interface PpuFramePacket {
   width: number;
   height: number;
   frameCount: number;
   mode: GameMode;
+  zoneId: ZoneId;
+  terrainPalId: number;
+  bgmId: BgmTrackId;
+  zoneIsDark: boolean;
+  zoneBannerFrames: number;
+  zoneName: string;
+  heroWorldX: number;
+  heroWorldY: number;
   camX: number;
   camY: number;
   shakeX: number;
@@ -466,18 +558,33 @@ export interface PpuFramePacket {
   interactPrompt: InteractPrompt;
   intro: IntroState;
   battle: BattleRenderState;
+  fishing: FishingSnapshot;
   debugBoxes: DebugBox[];
   sfxQueue: SfxId[];
 }
 
 export interface UiSnapshot {
   mode: GameMode;
+  zoneId: ZoneId;
   zoneLabel: string;
+  storyStage: number;
   objectiveLabel: string;
   dialogue: DialogueState;
   party: PartyMemberState[];
   activeSlot: FamiliarSlot;
   potions: number;
+  guilders: number;
+  starDrops: number;
+  snacks: number;
+  lureTier: number;
+  fishBag: number[];
+  fishTotalCaught: number;
+  hasWand: boolean;
+  hasSewerKey: boolean;
+  shop: ShopSnapshot;
+  fishing: FishingSnapshot;
+  shopCatalog: readonly ShopItemInfo[];
+  fishCatalog: readonly FishSpeciesInfo[];
   locket: HeartLocketState;
   battlePhase: BattlePhase;
   battleSelectedCommand: number;
@@ -499,6 +606,7 @@ export interface UiSnapshot {
     parries: number;
     locksBroken: number;
     expEarned: number;
+    guildersEarned: number;
   };
   timedRingActive: boolean;
   timedRingKind: 'OFFENSE' | 'PARRY';

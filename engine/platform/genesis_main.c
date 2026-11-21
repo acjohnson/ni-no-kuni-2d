@@ -24,7 +24,7 @@ static HearthState g_hearth;
 #define VRAM_BG_BASE    ((u16)(TILE_USER_INDEX))
 #define VRAM_UI_BASE    ((u16)(VRAM_BG_BASE + 40u))
 #define VRAM_SPR_BASE   ((u16)(VRAM_UI_BASE + 16u))
-#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 104u))
+#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 160u))
 
 /* BG Tile IDs (offsets from VRAM_BG_BASE) */
 enum {
@@ -78,14 +78,14 @@ enum {
     GUI_BR
 };
 
-/* Sprite VRAM Slots (26 sprites x 4 tiles each = 104 tiles) */
-#define SPR_TIMED_RING_SLOT  19u
-#define SPR_HERO_DOWN_1      20u
-#define SPR_HERO_UP_0        21u
-#define SPR_HERO_UP_1        22u
-#define SPR_HERO_SIDE_0      23u
-#define SPR_HERO_SIDE_1      24u
-#define SPR_BATTLE_VFX_SLOT  25u
+/* Sprite VRAM Slots (32 core sprites + 7 host internal slots = 39 x 4 = 156 tiles) */
+#define SPR_TIMED_RING_SLOT  32u
+#define SPR_HERO_DOWN_1      33u
+#define SPR_HERO_UP_0        34u
+#define SPR_HERO_UP_1        35u
+#define SPR_HERO_SIDE_0      36u
+#define SPR_HERO_SIDE_1      37u
+#define SPR_BATTLE_VFX_SLOT  38u
 
 /* ============================================================================
  * 1. COMPACT 5x7 UPPERCASE ASCII FONT (ASCII 32..95) -> OPAQUE 4bpp VRAM
@@ -432,12 +432,16 @@ static void bake_all_sprites(void) {
     g_pix16[6*16+6]=12; g_pix16[6*16+9]=12;
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_FAMILIAR_LUMINA * 4);
 
-    /* 4: SPR_NPC_ELDER (Elder Wren - PAL2) */
+    /* 4: SPR_NPC_ELDER (Elder Wren - PAL2, clear face & eyes!) */
     p16_clear();
-    p16_rect(4, 1, 8, 3, 4); p16_rect(5, 4, 6, 3, 2);
-    p16_rect(5, 7, 6, 3, 4);                               /* Beard */
-    p16_rect(4, 10, 8, 5, 8); p16_rect(5, 10, 6, 4, 9);    /* Blue robe */
-    p16_rect(12, 4, 2, 11, 11);                            /* Staff */
+    p16_rect(4, 1, 8, 3, 15); p16_rect(5, 1, 6, 1, 4);     /* Silver hair crown */
+    p16_rect(4, 4, 8, 4, 2);                               /* Warm face */
+    g_pix16[4*16+5]=15; g_pix16[4*16+6]=15;                /* Silver brows */
+    g_pix16[4*16+9]=15; g_pix16[4*16+10]=15;
+    g_pix16[5*16+6]=1; g_pix16[5*16+9]=1;                  /* Crisp dark eyes */
+    p16_rect(5, 7, 6, 3, 15); p16_rect(6, 9, 4, 2, 4);     /* White wizard beard */
+    p16_rect(4, 10, 8, 5, 8); p16_rect(5, 11, 6, 4, 9);    /* Blue robe */
+    p16_rect(12, 3, 2, 12, 11); p16_rect(12, 2, 2, 2, 7);  /* Staff & gold orb */
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_ELDER * 4);
 
     /* 5: SPR_NPC_CLARA (Clara with golden courage apron - PAL2) */
@@ -520,7 +524,121 @@ static void bake_all_sprites(void) {
     p16_rect(7, 2, 2, 12, 12); p16_rect(2, 7, 12, 2, 12);
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_HEART_ORB * 4);
 
-    /* 19: Timed-Hit / Parry Ring Marker (PAL3) */
+    /* 19: SPR_CHEST_OPEN (Opened Treasure Chest with flipped lid & empty interior - PAL2) */
+    p16_clear();
+    p16_rect(2, 2, 12, 4, 11); p16_rect(3, 3, 10, 2, 12);  /* Flipped-back lid */
+    p16_rect(2, 5, 12, 1, 7);                              /* Brass rim */
+    p16_rect(3, 6, 10, 3, 1);                              /* Dark hollow interior */
+    p16_rect(2, 9, 12, 5, 11); p16_rect(3, 10, 10, 3, 12); /* Lower chest front */
+    p16_rect(2, 9, 12, 1, 7); p16_rect(7, 9, 2, 2, 15);    /* Open brass clasp */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_CHEST_OPEN * 4);
+
+    /* 20: SPR_NPC_MOUSE (Whiskerburgh Anthropomorphic Mouse - PAL2) */
+    p16_clear();
+    p16_rect(2, 1, 4, 4, 4); p16_rect(10, 1, 4, 4, 4);     /* Round mouse ears */
+    p16_rect(3, 2, 2, 2, 10); p16_rect(11, 2, 2, 2, 10);   /* Pink inner ears */
+    p16_rect(4, 4, 8, 4, 15); p16_rect(5, 6, 6, 2, 2);     /* Snout & cheeks */
+    g_pix16[5*16+6]=1; g_pix16[5*16+9]=1; g_pix16[7*16+7]=10; g_pix16[7*16+8]=10;
+    p16_rect(4, 8, 8, 6, 8); p16_rect(5, 9, 6, 4, 7);      /* Market vest */
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_MOUSE * 4);
+
+    /* 21: SPR_NPC_PIG (Boarhold Anthropomorphic Pig - PAL2) */
+    p16_clear();
+    p16_rect(3, 1, 3, 3, 10); p16_rect(10, 1, 3, 3, 10);   /* Pig ears */
+    p16_rect(4, 3, 8, 5, 10); p16_rect(5, 5, 6, 3, 2);     /* Face & snout */
+    g_pix16[4*16+6]=1; g_pix16[4*16+9]=1;                  /* Eyes */
+    g_pix16[6*16+7]=1; g_pix16[6*16+8]=1;                  /* Snout nostrils */
+    p16_rect(3, 8, 10, 6, 5); p16_rect(5, 9, 6, 4, 7);     /* Apron / jerkin */
+    p16_rect(4, 14, 3, 2, 11); p16_rect(9, 14, 3, 2, 11);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_PIG * 4);
+
+    /* 22: SPR_NPC_SHADOW_GRAN (Twisted Shadow of Grandmother - PAL3) */
+    p16_clear();
+    p16_rect(3, 1, 10, 6, 2); p16_rect(4, 2, 8, 4, 3);     /* Dark violet hood */
+    p16_rect(5, 4, 6, 3, 1);                               /* Hollow shadowed face */
+    g_pix16[5*16+6]=11; g_pix16[5*16+9]=11;                /* Uncanny glowing eyes */
+    p16_rect(3, 7, 10, 8, 2); p16_rect(5, 8, 6, 6, 3);     /* Tattered cloak */
+    p16_rect(2, 12, 2, 3, 4); p16_rect(12, 12, 2, 3, 4);   /* Shadow wisps */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_SHADOW_GRAN * 4);
+
+    /* 23: SPR_PET_MILO (Rowan's Puppy Milo with red ribbon - PAL1) */
+    p16_clear();
+    p16_rect(3, 4, 3, 4, 4); p16_rect(10, 4, 3, 4, 4);     /* Floppy ears */
+    p16_rect(5, 3, 6, 5, 10); p16_rect(6, 4, 4, 3, 11);    /* Golden pup head */
+    g_pix16[5*16+6]=1; g_pix16[5*16+9]=1; g_pix16[7*16+7]=1; /* Eyes & nose */
+    p16_rect(5, 8, 6, 2, 9);                               /* Red ribbon collar */
+    p16_rect(4, 10, 8, 4, 10); p16_rect(12, 8, 2, 3, 11);  /* Body & wagging tail */
+    p16_rect(5, 14, 2, 2, 4); p16_rect(9, 14, 2, 2, 4);    /* Paws */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_PET_MILO * 4);
+
+    /* 24: SPR_ENEMY_RAT (Gutter Rat - PAL3) */
+    p16_clear();
+    p16_rect(3, 3, 3, 3, 3); p16_rect(10, 3, 3, 3, 3);     /* Rat ears */
+    p16_rect(4, 5, 8, 7, 2); p16_rect(5, 6, 6, 5, 4);      /* Fur body */
+    g_pix16[7*16+6]=10; g_pix16[7*16+9]=10;                /* Red eyes */
+    p16_rect(12, 9, 3, 2, 5);                              /* Tail */
+    p16_rect(5, 12, 2, 3, 3); p16_rect(9, 12, 2, 3, 3);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_ENEMY_RAT * 4);
+
+    /* 25: SPR_ENEMY_SLIME (Mire Slime - PAL3) */
+    p16_clear();
+    p16_rect(3, 6, 10, 8, 6); p16_rect(4, 4, 8, 8, 7);     /* Ooze dome */
+    p16_rect(5, 5, 3, 2, 15);                              /* Specular highlight */
+    g_pix16[8*16+6]=11; g_pix16[8*16+9]=11;                /* Bright eyes */
+    p16_rect(2, 12, 12, 2, 6);                             /* Puddle base */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_ENEMY_SLIME * 4);
+
+    /* 26: SPR_ENEMY_BOAR (Boar Halberdier - PAL3) */
+    p16_clear();
+    p16_rect(4, 1, 8, 4, 2); p16_rect(5, 2, 6, 2, 5);      /* Iron helm */
+    p16_rect(4, 5, 8, 4, 4); g_pix16[6*16+6]=11; g_pix16[6*16+9]=11;
+    g_pix16[8*16+4]=12; g_pix16[8*16+11]=12;               /* Ivory tusks */
+    p16_rect(3, 9, 10, 5, 3); p16_rect(5, 10, 6, 3, 10);   /* Crimson armor */
+    p16_rect(13, 1, 2, 14, 12);                            /* Halberd */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_ENEMY_BOAR * 4);
+
+    /* 27: SPR_BOSS_MUCKMAW (King Muckmaw Sewer Boss - PAL3) */
+    p16_clear();
+    p16_rect(5, 0, 6, 3, 11); g_pix16[0*16+6]=12; g_pix16[0*16+9]=12; /* Gold crown */
+    p16_rect(1, 3, 14, 12, 6); p16_rect(2, 4, 12, 9, 7);   /* Hulking ooze toad */
+    p16_rect(3, 5, 3, 2, 11); p16_rect(10, 5, 3, 2, 11);   /* Glowing eyes */
+    p16_rect(3, 9, 10, 3, 1); p16_rect(4, 9, 2, 2, 12); p16_rect(10, 9, 2, 2, 12); /* Maw */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_BOSS_MUCKMAW * 4);
+
+    /* 28: SPR_BOSS_IRONFANG (Lord Ironfang Arc Boss - PAL3) */
+    p16_clear();
+    p16_rect(2, 0, 2, 4, 12); p16_rect(12, 0, 2, 4, 12);   /* Great horns */
+    p16_rect(3, 2, 10, 6, 2); p16_rect(4, 3, 8, 4, 3);     /* Dark iron visor */
+    p16_rect(4, 5, 3, 2, 10); p16_rect(9, 5, 3, 2, 10);    /* Crimson eyes */
+    p16_rect(2, 8, 12, 7, 10); p16_rect(4, 8, 8, 6, 2);    /* Cape & breastplate */
+    p16_rect(3, 7, 2, 2, 12); p16_rect(11, 7, 2, 2, 12);   /* Ironfang tusks */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_BOSS_IRONFANG * 4);
+
+    /* 29: SPR_HOLLOW_OAK (Ancient Hollow Oak Tree Gate - PAL2) */
+    p16_clear();
+    p16_rect(1, 0, 14, 15, 11); p16_rect(2, 1, 12, 13, 12);/* Gnarled oak bark */
+    p16_rect(5, 4, 6, 11, 1);                              /* Deep hollow doorway */
+    p16_rect(6, 5, 4, 8, 9); p16_rect(7, 6, 2, 6, 15);     /* Shimmering Evertale light */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_HOLLOW_OAK * 4);
+
+    /* 30: SPR_BOBBER (Fishing Bobber - PAL1) */
+    p16_clear();
+    p16_rect(7, 2, 2, 3, 11);                              /* Tip stem */
+    p16_rect(5, 5, 6, 3, 9);                               /* Red top half */
+    p16_rect(5, 8, 6, 3, 14);                              /* White bottom half */
+    p16_rect(3, 11, 10, 1, 13);                            /* Water ripple */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_BOBBER * 4);
+
+    /* 31: SPR_NPC_TOWNSFOLK (Alderbrook Villager - PAL2) */
+    p16_clear();
+    p16_rect(4, 1, 8, 3, 11); p16_rect(5, 4, 6, 4, 2);     /* Brown cap & warm face */
+    g_pix16[5*16+6]=1; g_pix16[5*16+9]=1;                  /* Crisp dark eyes */
+    p16_rect(4, 8, 8, 6, 9); p16_rect(5, 9, 6, 4, 7);      /* Cozy sweater */
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_TOWNSFOLK * 4);
+
+    /* 32: Timed-Hit / Parry Ring Marker (PAL3) */
     p16_clear();
     p16_rect(3, 1, 10, 2, 11); p16_rect(3, 13, 10, 2, 11);
     p16_rect(1, 3, 2, 10, 11); p16_rect(13, 3, 2, 10, 11);
@@ -791,6 +909,8 @@ static s16 g_last_cam_mx = -999;
 static s16 g_last_cam_my = -999;
 static u8  g_last_scene_mode = 255;
 static u8  g_last_intro_scene = 255;
+static u8  g_last_pal_id = 255;
+static u8  g_last_map_rev = 255;
 
 static void draw_full_world_viewport(s16 cam_x, s16 cam_y) {
     s16 mx0 = (s16)((cam_x >> 4) - 2);
@@ -832,8 +952,9 @@ static void stream_world_viewport(s16 cam_x, s16 cam_y) {
 }
 
 static void draw_battle_backdrop(u8 biome) {
-    u16 sky_t = (biome == BIOME_SHRINE) ? (VRAM_BG_BASE + GT_BATTLE_SKY_SHRINE) : (VRAM_BG_BASE + GT_BATTLE_SKY_MEADOW);
-    u16 gnd_t = (biome == BIOME_SHRINE) ? (VRAM_BG_BASE + GT_BATTLE_GROUND_SHRINE) : (VRAM_BG_BASE + GT_BATTLE_GROUND_MEADOW);
+    u8 dark_arena = (biome == BIOME_SHRINE || biome == BIOME_SEWER || biome == BIOME_BOARHOLD) ? 1u : 0u;
+    u16 sky_t = dark_arena ? (VRAM_BG_BASE + GT_BATTLE_SKY_SHRINE) : (VRAM_BG_BASE + GT_BATTLE_SKY_MEADOW);
+    u16 gnd_t = dark_arena ? (VRAM_BG_BASE + GT_BATTLE_GROUND_SHRINE) : (VRAM_BG_BASE + GT_BATTLE_GROUND_MEADOW);
     VDP_clearPlane(BG_B, TRUE);
     VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, sky_t), 0, 0, 40, 10);
     VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, gnd_t), 0, 10, 40, 18);
@@ -927,8 +1048,8 @@ static u8  g_last_title_cursor = 255;
 
 static void draw_genesis_title_cursor(void) {
     static const char *opts[3] = {
-        "PLAY WINDMILL HAMLET  ",
-        "SHRINE BOSS BATTLE    ",
+        "NEW STORY (AGE 5->10) ",
+        "EXPLORE EVERTALE      ",
         "REPLAY OPENING INTRO  "
     };
     for (u8 i = 0; i < 3u; i++) {
@@ -944,6 +1065,8 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
     u8 want_layout = 0;
     if (g_hearth.mode == MODE_INTRO) want_layout = 4;
     else if (g_hearth.mode == MODE_TITLE) want_layout = 1;
+    else if (g_hearth.mode == MODE_SHOP) want_layout = 5;
+    else if (g_hearth.mode == MODE_FISHING) want_layout = 6;
     else if (g_hearth.mode == MODE_BATTLE || g_hearth.mode == MODE_BATTLE_VICTORY || g_hearth.mode == MODE_BATTLE_DEFEAT) want_layout = 3;
     else if (g_hearth.dialogue.active) want_layout = 2;
     else want_layout = 0;
@@ -1028,19 +1151,17 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
         const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
         append_str(line, &pos, sizeof(line), "HP:");
         append_int(line, &pos, sizeof(line), m->hp);
-        append_str(line, &pos, sizeof(line), "/");
-        append_int(line, &pos, sizeof(line), m->max_hp);
         append_str(line, &pos, sizeof(line), " MP:");
         append_int(line, &pos, sizeof(line), m->mp);
+        append_str(line, &pos, sizeof(line), " ");
+        append_int(line, &pos, sizeof(line), (s16)g_hearth.guilders);
+        append_str(line, &pos, sizeof(line), "G");
         if (ppu->interact_active && ppu->interact_label) {
             append_str(line, &pos, sizeof(line), " [A]");
             append_str(line, &pos, sizeof(line), ppu->interact_label);
-        } else if (g_hearth.flag_guard_mended) {
-            append_str(line, &pos, sizeof(line), " SHRINE->");
-        } else if (g_hearth.flag_has_courage) {
-            append_str(line, &pos, sizeof(line), " COURAGE!");
-        } else {
-            append_str(line, &pos, sizeof(line), " HAMLET");
+        } else if (ppu->zone_name) {
+            append_str(line, &pos, sizeof(line), " ");
+            append_str(line, &pos, sizeof(line), ppu->zone_name);
         }
         while (pos < 38u) line[pos++] = ' ';
         line[pos] = '\0';
@@ -1151,6 +1272,97 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
             }
         }
         win_text(2, 26, PAL2, "DPAD:PICK  A:ACT  X/Z:SWAP FAMILIAR");
+    } else if (want_layout == 5) {
+        /* Interactive Merchant Shop (Buy Supplies / Sell Caught Fish) */
+        const HearthShopState *sh = &g_hearth.shop;
+        char line[40];
+        u16 pos = 0;
+        u8 count = (sh->tab == 0u) ? 5u : (u8)HEARTH_FISH_SPECIES;
+        u8 start = (sh->cursor >= 3u) ? (u8)(sh->cursor - 2u) : 0u;
+
+        VDP_fillTileMapRect(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FILL), 1, 21, 38, 6);
+        append_str(line, &pos, sizeof(line), sh->tab == 0u ? "[BUY] SELL  " : " BUY [SELL] ");
+        append_int(line, &pos, sizeof(line), (s16)g_hearth.guilders);
+        append_str(line, &pos, sizeof(line), "G");
+        win_text_n(2, 21, PAL3, line, 36u);
+
+        for (u8 r = 0; r < 3u && (u8)(start + r) < count; r++) {
+            u8 idx = (u8)(start + r);
+            u16 pal = (idx == sh->cursor) ? PAL3 : PAL2;
+            pos = 0;
+            append_str(line, &pos, sizeof(line), (idx == sh->cursor) ? ">" : " ");
+            if (sh->tab == 0u) {
+                append_str(line, &pos, sizeof(line), HEARTH_SHOP_ITEMS[idx].name);
+                append_str(line, &pos, sizeof(line), " - ");
+                append_int(line, &pos, sizeof(line), (s16)HEARTH_SHOP_ITEMS[idx].price);
+                append_str(line, &pos, sizeof(line), "G");
+            } else {
+                append_str(line, &pos, sizeof(line), HEARTH_FISH_TABLE[idx].name);
+                append_str(line, &pos, sizeof(line), " x");
+                append_int(line, &pos, sizeof(line), (s16)g_hearth.fish_bag[idx]);
+                append_str(line, &pos, sizeof(line), " (");
+                append_int(line, &pos, sizeof(line), (s16)HEARTH_FISH_TABLE[idx].sell_price);
+                append_str(line, &pos, sizeof(line), "G)");
+            }
+            win_text_n(2, (u16)(22u + r), pal, line, 36u);
+        }
+        if (sh->msg_timer > 0u && sh->msg[0] != '\0') {
+            win_text_n(2, 25, PAL3, sh->msg, 36u);
+        } else {
+            win_text(2, 25, PAL2, "L/R:TAB  U/D:PICK  A:BUY/SELL  B:OUT");
+        }
+        win_text(2, 26, PAL2, sh->title ? sh->title : "EVERTALE MARKET");
+    } else if (want_layout == 6) {
+        /* Zelda / Sea-of-Stars Timed-Reel Fishing Gauge */
+        const HearthFishingState *fs = &g_hearth.fishing;
+        char line[40];
+        u16 pos = 0;
+        VDP_fillTileMapRect(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FILL), 1, 21, 38, 6);
+        if (fs->phase == FISH_PHASE_CAST || fs->phase == FISH_PHASE_WAIT_BITE) {
+            win_text(2, 21, PAL3, "FISHING PIER - WAIT FOR A BITE...");
+            win_text(2, 23, PAL2, "WATCH THE BOBBER! PRESS A ON SPLASH");
+            win_text(2, 26, PAL2, "B:PACK UP ROD");
+        } else if (fs->phase == FISH_PHASE_BITE_ALERT) {
+            u16 bpal = ((g_hearth.frame_count & 4u) != 0u) ? PAL3 : PAL2;
+            win_text(6, 22, bpal, ">>> BITE! PRESS A TO HOOK! <<<");
+            win_text(2, 26, PAL2, "HOLD A TO REEL ONCE HOOKED!");
+        } else if (fs->phase == FISH_PHASE_REELING) {
+            char bar[28];
+            u8 fi = (u8)((fs->fish_pos * 24) / 100);
+            u8 bi = (u8)((fs->bar_pos * 24) / 100);
+            u8 bw = (u8)((fs->bar_half_w * 24) / 100);
+            if (bw < 2u) bw = 2u;
+            bar[0] = '[';
+            for (u8 k = 0; k < 24u; k++) {
+                u8 d = (k > bi) ? (u8)(k - bi) : (u8)(bi - k);
+                if (k == fi) bar[1u + k] = 'O';
+                else if (d <= bw) bar[1u + k] = '=';
+                else bar[1u + k] = '-';
+            }
+            bar[25] = ']';
+            bar[26] = '\0';
+            win_text(2, 21, PAL3, "REELING! HOLD A TO RAISE ZONE");
+            win_text(6, 23, PAL3, bar);
+            append_str(line, &pos, sizeof(line), "CATCH:");
+            append_int(line, &pos, sizeof(line), (s16)fs->progress);
+            append_str(line, &pos, sizeof(line), "%   TENSION:");
+            append_int(line, &pos, sizeof(line), (s16)fs->tension);
+            append_str(line, &pos, sizeof(line), "%");
+            win_text_n(2, 25, PAL2, line, 36u);
+            win_text(2, 26, PAL2, "KEEP [O] INSIDE [===]  B:RELEASE");
+        } else if (fs->phase == FISH_PHASE_CAUGHT) {
+            append_str(line, &pos, sizeof(line), "CAUGHT: ");
+            append_str(line, &pos, sizeof(line), HEARTH_FISH_TABLE[fs->species % HEARTH_FISH_SPECIES].name);
+            append_str(line, &pos, sizeof(line), " (");
+            append_int(line, &pos, sizeof(line), (s16)fs->weight_oz);
+            append_str(line, &pos, sizeof(line), " OZ)");
+            win_text_n(2, 22, PAL3, line, 36u);
+            win_text(2, 25, PAL2, "SELL IT AT WHISKERBURGH MARKET!");
+            win_text(2, 26, PAL3, "A:CONTINUE");
+        } else {
+            win_text(6, 22, PAL3, "THE LINE SNAPPED! IT GOT AWAY.");
+            win_text(2, 26, PAL2, "A:TRY AGAIN");
+        }
     }
 }
 
@@ -1158,8 +1370,10 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
  * 5. HARDWARE SPRITE TABLE (SAT) UPLOAD
  * ============================================================================ */
 static u16 sprite_palette(u8 spr_id) {
-    if (spr_id <= SPR_FAMILIAR_LUMINA) return PAL1;
-    if (spr_id <= SPR_NPC_GUARD || spr_id == SPR_WINDMILL_BLADES || spr_id == SPR_WAYSTONE || spr_id == SPR_CHEST) return PAL2;
+    if (spr_id <= SPR_FAMILIAR_LUMINA || spr_id == SPR_PET_MILO || spr_id == SPR_BOBBER) return PAL1;
+    if (spr_id <= SPR_NPC_GUARD || spr_id == SPR_WINDMILL_BLADES || spr_id == SPR_WAYSTONE ||
+        spr_id == SPR_CHEST || spr_id == SPR_CHEST_OPEN || spr_id == SPR_NPC_MOUSE ||
+        spr_id == SPR_NPC_PIG || spr_id == SPR_HOLLOW_OAK || spr_id == SPR_NPC_TOWNSFOLK) return PAL2;
     return PAL3;
 }
 
@@ -1180,9 +1394,9 @@ static void render_sprites(const HearthPpuPacket *ppu) {
         u8 flip_x;
 
         if (sx < -16 || sx >= 320 || sy < -16 || sy >= 224) continue;
-        /* Keep sprites behind bottom dialogue/battle/intro window */
-        if ((g_win_layout == 2 || g_win_layout == 3 || g_win_layout == 4) && sy >= 148) continue;
-        if (g_win_layout == 0 && sy < 8) continue;
+        /* Keep sprites behind bottom dialogue/battle/intro/shop/fishing window */
+        if (g_win_layout >= 2u && sy >= 148) continue;
+        if (g_win_layout == 0u && sy < 8) continue;
 
         pal = sprite_palette(o->sprite_id);
         flip_x = (o->flags & OAM_FLAG_FLIP_X) ? 1u : 0u;
@@ -1249,15 +1463,19 @@ static void render_sprites(const HearthPpuPacket *ppu) {
 }
 
 /* ============================================================================
- * 6. DECAYING SN76489 PSG SFX + PASTORAL / BATTLE BGM SEQUENCER (ZERO STUCK BEEP!)
+ * 6. CLEAN SN76489 PSG SFX + MULTI-ZONE BGM SEQUENCER
+ *    - Z80 halted at boot so 68000 has exclusive PSG bus ownership
+ *    - Mute-before-latch inside SYS_disableInts() eliminates 2-byte pitch blips
+ *    - Fixed noise clock dividers (no TONE3 cross-talk with SFX channel 2)
  * ============================================================================ */
 static u8  g_psg_env[4]   = { 15, 15, 15, 15 };
 static u8  g_psg_decay[4] = { 4, 4, 2, 2 };
 static u8  g_psg_cnt[4]   = { 0, 0, 0, 0 };
 static u8  g_bgm_step     = 0;
 static u8  g_bgm_timer    = 0;
+static u8  g_last_bgm_id  = 255;
 
-/* Gentle pastoral 3/4 waltz melody & bass (Hz, 0 = rest) */
+/* Windmill Hamlet (3/4 Pastoral Waltz) */
 static const u16 PSG_HAMLET_LEAD[24] = {
     392, 494, 587, 587, 659, 587,  494, 494, 392, 0,   440, 494,
     523, 523, 659, 587, 523, 494,  440, 440, 494, 523, 587, 392
@@ -1266,6 +1484,43 @@ static const u16 PSG_HAMLET_BASS[24] = {
     196, 294, 294, 165, 247, 247,  196, 294, 294, 147, 220, 220,
     262, 196, 196, 147, 220, 220,  220, 165, 147, 220, 196, 196
 };
+/* Alderbrook Hometown (Gentle Lullaby) */
+static const u16 PSG_ALDER_LEAD[16] = {
+    523, 659, 784, 659, 587, 523, 440, 0,
+    523, 659, 880, 784, 659, 587, 523, 0
+};
+static const u16 PSG_ALDER_BASS[16] = {
+    262, 196, 262, 196, 220, 165, 220, 196,
+    175, 220, 262, 220, 196, 147, 262, 196
+};
+/* Whiskerburgh Mouse Market (Bouncy Ragtime) */
+static const u16 PSG_MOUSE_LEAD[16] = {
+    587, 659, 740, 880, 740, 659, 587, 494,
+    523, 587, 659, 784, 659, 587, 523, 440
+};
+static const u16 PSG_MOUSE_BASS[16] = {
+    294, 220, 294, 220, 247, 196, 247, 196,
+    262, 196, 262, 196, 220, 165, 220, 196
+};
+/* Sunken Sewers / Shadow Mood (Suspenseful Minor) */
+static const u16 PSG_SEWER_LEAD[16] = {
+    330, 0,   392, 370, 330, 0,   294, 247,
+    330, 0,   440, 392, 370, 330, 247, 0
+};
+static const u16 PSG_SEWER_BASS[16] = {
+    165, 165, 196, 165, 147, 147, 165, 147,
+    131, 131, 165, 131, 123, 147, 165, 123
+};
+/* Boarhold Citadel (Sturdy Brass March) */
+static const u16 PSG_BOAR_LEAD[16] = {
+    392, 392, 466, 523, 587, 523, 466, 392,
+    440, 440, 523, 587, 659, 587, 523, 440
+};
+static const u16 PSG_BOAR_BASS[16] = {
+    196, 147, 196, 147, 233, 175, 233, 175,
+    220, 165, 220, 165, 262, 196, 220, 165
+};
+/* Battle & Boss Theme */
 static const u16 PSG_BATTLE_LEAD[16] = {
     440, 523, 659, 880, 784, 659, 587, 659,
     523, 659, 784, 880, 784, 659, 587, 494
@@ -1277,16 +1532,22 @@ static const u16 PSG_BATTLE_BASS[16] = {
 
 static void psg_trigger_tone(u8 ch, u16 hz, u8 start_env, u8 decay_frames) {
     if (hz < 110u) return;
+    SYS_disableInts();
+    PSG_setEnvelope(ch, PSG_ENVELOPE_MIN);
     PSG_setFrequency(ch, hz);
     PSG_setEnvelope(ch, start_env);
+    SYS_enableInts();
     g_psg_env[ch]   = start_env;
     g_psg_decay[ch] = decay_frames;
     g_psg_cnt[ch]   = 0;
 }
 
 static void psg_trigger_noise(u8 type, u8 freq, u8 start_env, u8 decay_frames) {
+    SYS_disableInts();
+    PSG_setEnvelope(3, PSG_ENVELOPE_MIN);
     PSG_setNoise(type, freq);
     PSG_setEnvelope(3, start_env);
+    SYS_enableInts();
     g_psg_env[3]   = start_env;
     g_psg_decay[3] = decay_frames;
     g_psg_cnt[3]   = 0;
@@ -1296,51 +1557,77 @@ static void play_genesis_sfx(uint8_t sfx) {
     switch (sfx) {
         case SFX_STEP:
         case SFX_GRASS_RUSTLE:
-            psg_trigger_noise(PSG_NOISE_TYPE_WHITE, PSG_NOISE_FREQ_CLOCK2, 10, 1);
+            psg_trigger_noise(PSG_NOISE_TYPE_WHITE, PSG_NOISE_FREQ_CLOCK2, 11, 1);
             break;
         case SFX_DASH:
         case SFX_WATER_SPLASH:
-            psg_trigger_noise(PSG_NOISE_TYPE_WHITE, PSG_NOISE_FREQ_CLOCK4, 7, 2);
+            psg_trigger_noise(PSG_NOISE_TYPE_WHITE, PSG_NOISE_FREQ_CLOCK4, 8, 2);
             break;
         case SFX_CURSOR:
-            psg_trigger_tone(2, 660, 6, 1);
+            psg_trigger_tone(2, 660, 7, 1);
             break;
         case SFX_CONFIRM:
         case SFX_EMOTE:
-            psg_trigger_tone(2, 880, 5, 2);
+            psg_trigger_tone(2, 880, 6, 2);
             break;
         case SFX_CANCEL:
-            psg_trigger_tone(2, 330, 6, 2);
+            psg_trigger_tone(2, 330, 7, 2);
             break;
         case SFX_TEXT_HERO:
         case SFX_TEXT_PIP:
         case SFX_TEXT_ELDER:
-            psg_trigger_tone(2, (sfx == SFX_TEXT_PIP) ? 740 : 420, 9, 1);
+            psg_trigger_tone(2, (sfx == SFX_TEXT_PIP) ? 740 : 420, 10, 1);
             break;
         case SFX_HIT_NORMAL:
         case SFX_HURT:
-            psg_trigger_noise(PSG_NOISE_TYPE_WHITE, PSG_NOISE_FREQ_TONE3, 4, 2);
-            psg_trigger_tone(2, 220, 5, 2);
+            psg_trigger_noise(PSG_NOISE_TYPE_WHITE, PSG_NOISE_FREQ_CLOCK8, 5, 2);
+            psg_trigger_tone(2, 220, 6, 2);
             break;
         case SFX_HIT_CRITICAL:
         case SFX_PARRY_CLANG:
         case SFX_LOCK_BREAK:
         case SFX_LOCK_ALL_BREAK:
-            psg_trigger_tone(2, 1047, 3, 3);
-            psg_trigger_noise(PSG_NOISE_TYPE_WHITE, PSG_NOISE_FREQ_CLOCK2, 5, 2);
+            psg_trigger_tone(2, 1047, 4, 3);
+            psg_trigger_noise(PSG_NOISE_TYPE_WHITE, PSG_NOISE_FREQ_CLOCK2, 6, 2);
             break;
+        case SFX_COIN:
+            psg_trigger_tone(2, 1175, 5, 2);
+            break;
+        case SFX_FISH_BITE:
+            psg_trigger_tone(2, 988, 4, 3);
+            psg_trigger_noise(PSG_NOISE_TYPE_WHITE, PSG_NOISE_FREQ_CLOCK4, 6, 2);
+            break;
+        case SFX_FISH_REEL:
+            psg_trigger_tone(2, 523, 8, 1);
+            break;
+        case SFX_FISH_CATCH:
+        case SFX_PORTAL:
         case SFX_HEAL:
         case SFX_HEART_TAKE:
         case SFX_HEART_GIVE:
+        case SFX_CHEST_OPEN:
         case SFX_VICTORY_FANFARE:
-            psg_trigger_tone(2, 784, 4, 4);
+            psg_trigger_tone(2, 784, 5, 4);
             break;
         default:
             break;
     }
 }
 
-static void psg_tick_60hz(void) {
+static void psg_tick_60hz(u8 bgm_id) {
+    /* 0. Cleanly reset BGM voices whenever active track changes */
+    if (bgm_id != g_last_bgm_id) {
+        g_last_bgm_id = bgm_id;
+        g_bgm_step = 0;
+        g_bgm_timer = 0;
+        SYS_disableInts();
+        PSG_setEnvelope(0, PSG_ENVELOPE_MIN);
+        PSG_setEnvelope(1, PSG_ENVELOPE_MIN);
+        SYS_enableInts();
+        g_psg_env[0] = PSG_ENVELOPE_MIN;
+        g_psg_env[1] = PSG_ENVELOPE_MIN;
+    }
+
     /* 1. Decay all 4 PSG channels smoothly back to silence (PSG_ENVELOPE_MIN = 15) */
     for (u8 ch = 0; ch < 4u; ch++) {
         if (g_psg_env[ch] < PSG_ENVELOPE_MIN) {
@@ -1348,25 +1635,47 @@ static void psg_tick_60hz(void) {
             if (g_psg_cnt[ch] >= g_psg_decay[ch]) {
                 g_psg_cnt[ch] = 0;
                 g_psg_env[ch]++;
+                SYS_disableInts();
                 PSG_setEnvelope(ch, g_psg_env[ch]);
+                SYS_enableInts();
             }
         }
     }
 
-    /* 2. Step gentle 2-channel PSG BGM (Ch 0 lead, Ch 1 bass) */
+    /* 2. Step clean 2-channel PSG BGM (Ch 0 lead, Ch 1 bass) */
     if (g_bgm_timer > 0) {
         g_bgm_timer--;
         return;
     }
-    if (g_hearth.mode == MODE_BATTLE) {
+    if (bgm_id == BGM_BATTLE || bgm_id == BGM_BOSS) {
         u8 idx = (u8)(g_bgm_step & 15u);
-        psg_trigger_tone(0, PSG_BATTLE_LEAD[idx], 7, 3);
-        psg_trigger_tone(1, PSG_BATTLE_BASS[idx], 9, 3);
-        g_bgm_timer = 10;
+        psg_trigger_tone(0, PSG_BATTLE_LEAD[idx], 8, 3);
+        psg_trigger_tone(1, PSG_BATTLE_BASS[idx], 10, 3);
+        g_bgm_timer = (bgm_id == BGM_BOSS) ? 9 : 11;
+    } else if (bgm_id == BGM_ALDERBROOK) {
+        u8 idx = (u8)(g_bgm_step & 15u);
+        if (PSG_ALDER_LEAD[idx] > 0) psg_trigger_tone(0, PSG_ALDER_LEAD[idx], 9, 5);
+        if (PSG_ALDER_BASS[idx] > 0) psg_trigger_tone(1, PSG_ALDER_BASS[idx], 11, 5);
+        g_bgm_timer = 17;
+    } else if (bgm_id == BGM_WHISKERBURGH) {
+        u8 idx = (u8)(g_bgm_step & 15u);
+        psg_trigger_tone(0, PSG_MOUSE_LEAD[idx], 8, 3);
+        psg_trigger_tone(1, PSG_MOUSE_BASS[idx], 10, 3);
+        g_bgm_timer = 12;
+    } else if (bgm_id == BGM_SEWERS || bgm_id == BGM_SHADOW) {
+        u8 idx = (u8)(g_bgm_step & 15u);
+        if (PSG_SEWER_LEAD[idx] > 0) psg_trigger_tone(0, PSG_SEWER_LEAD[idx], 9, 5);
+        if (PSG_SEWER_BASS[idx] > 0) psg_trigger_tone(1, PSG_SEWER_BASS[idx], 11, 5);
+        g_bgm_timer = 18;
+    } else if (bgm_id == BGM_BOARHOLD) {
+        u8 idx = (u8)(g_bgm_step & 15u);
+        psg_trigger_tone(0, PSG_BOAR_LEAD[idx], 8, 3);
+        psg_trigger_tone(1, PSG_BOAR_BASS[idx], 10, 4);
+        g_bgm_timer = 13;
     } else {
         u8 idx = (u8)(g_bgm_step % 24u);
-        if (PSG_HAMLET_LEAD[idx] > 0) psg_trigger_tone(0, PSG_HAMLET_LEAD[idx], 8, 4);
-        if (PSG_HAMLET_BASS[idx] > 0) psg_trigger_tone(1, PSG_HAMLET_BASS[idx], 10, 4);
+        if (PSG_HAMLET_LEAD[idx] > 0) psg_trigger_tone(0, PSG_HAMLET_LEAD[idx], 9, 4);
+        if (PSG_HAMLET_BASS[idx] > 0) psg_trigger_tone(1, PSG_HAMLET_BASS[idx], 11, 4);
         g_bgm_timer = 15;
     }
     g_bgm_step++;
@@ -1394,6 +1703,16 @@ static uint16_t read_genesis_pad(void) {
     return bits;
 }
 
+static void upload_zone_pal0_to_cram(u8 pal_id, TransferMethod tm) {
+    u16 cram[16];
+    u8 pid = (pal_id < ZPAL_COUNT) ? pal_id : 0u;
+    for (u16 c = 0; c < 16u; c++) {
+        cram[c] = hearth_rgb_to_genesis_bgr333(HEARTH_ZONE_PALETTES_RGB[pid][c]);
+    }
+    PAL_setColors(0, cram, 16, tm);
+    g_last_pal_id = pid;
+}
+
 static void upload_palettes_to_cram(void) {
     u16 cram[16];
     for (u16 p = 0; p < 4u; p++) {
@@ -1402,11 +1721,14 @@ static void upload_palettes_to_cram(void) {
         }
         PAL_setColors((u16)(p * 16u), cram, 16, CPU);
     }
+    g_last_pal_id = ZPAL_HAMLET;
 }
 
 int main(bool hard_reset) {
     (void)hard_reset;
 
+    /* Halt Z80 PSG bus contention before initializing SN76489 hardware! */
+    Z80_loadDriver(Z80_DRIVER_NULL, TRUE);
     PSG_reset();
     VDP_setScreenWidth320();
     VDP_setScreenHeight224();
@@ -1425,6 +1747,8 @@ int main(bool hard_reset) {
     g_hearth.tuning.ppu_mode = PPU_GENESIS_320x224;
     {
         const HearthPpuPacket *boot_ppu = hearth_step_60hz(&g_hearth, 0u);
+        g_last_map_rev = g_hearth.map_revision;
+        upload_zone_pal0_to_cram(boot_ppu->terrain_pal_id, CPU);
         if (g_hearth.mode == MODE_INTRO) {
             g_last_scene_mode = 2u;
             g_last_intro_scene = g_hearth.intro.scene;
@@ -1449,11 +1773,17 @@ int main(bool hard_reset) {
                       : (g_hearth.mode == MODE_BATTLE ||
                          g_hearth.mode == MODE_BATTLE_VICTORY ||
                          g_hearth.mode == MODE_BATTLE_DEFEAT) ? 1u : 0u;
+        u8 map_changed = (g_hearth.map_revision != g_last_map_rev) ? 1u : 0u;
 
-        if (scene_mode != g_last_scene_mode ||
+        if (ppu->terrain_pal_id != g_last_pal_id) {
+            upload_zone_pal0_to_cram(ppu->terrain_pal_id, DMA_QUEUE);
+        }
+
+        if (scene_mode != g_last_scene_mode || map_changed ||
             (scene_mode == 2u && g_hearth.intro.scene != g_last_intro_scene)) {
             g_last_scene_mode = scene_mode;
             g_last_intro_scene = g_hearth.intro.scene;
+            g_last_map_rev = g_hearth.map_revision;
             VDP_setEnable(FALSE);
             if (scene_mode == 2u) {
                 draw_intro_backdrop(g_hearth.intro.scene);
@@ -1488,7 +1818,7 @@ int main(bool hard_reset) {
         for (uint8_t i = 0; i < ppu->sfx_count; i++) {
             play_genesis_sfx(ppu->sfx_queue[i]);
         }
-        psg_tick_60hz();
+        psg_tick_60hz(ppu->bgm_id);
 
         SYS_doVBlankProcess();
     }

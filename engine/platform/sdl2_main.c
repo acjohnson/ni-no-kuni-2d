@@ -52,12 +52,24 @@ static inline uint32_t pal_col(uint8_t pal, uint8_t idx) {
     return g_pal_argb[pal & 3u][idx & 15u];
 }
 
+static uint8_t g_last_terrain_pal = 255u;
+
+static void apply_zone_palette(uint8_t pal_id) {
+    if (pal_id >= ZPAL_COUNT) pal_id = 0;
+    if (g_last_terrain_pal == pal_id) return;
+    g_last_terrain_pal = pal_id;
+    for (int i = 0; i < 16; i++) {
+        g_pal_argb[0][i] = (i == 0) ? 0u : rgb_to_argb(HEARTH_ZONE_PALETTES_RGB[pal_id][i]);
+    }
+}
+
 static void init_palettes(void) {
     for (int p = 0; p < 4; p++) {
         for (int i = 0; i < 16; i++) {
             g_pal_argb[p][i] = (i == 0) ? 0u : rgb_to_argb(HEARTH_PALETTES_RGB[p][i]);
         }
     }
+    g_last_terrain_pal = 0;
 }
 
 static inline void put_px(int x, int y, uint32_t col) {
@@ -329,18 +341,8 @@ static SynthVoice g_voices[SYNTH_MAX_VOICES];
 static SDL_AudioDeviceID g_audio_dev = 0;
 
 /* ----------------------------------------------------------------------------
- * 4-Track Procedural 16-Bit JRPG BGM Sequencer (Zero external audio files!)
- *   Track 0: Windmill Hamlet (3/4 Pastoral Waltz in G Major)
- *   Track 1: Whispering Meadow Battle (4/4 Heroic JRPG Battle in A Minor)
- *   Track 2: Briar Warden Boss (4/4 Urgent Shrine Boss in D Minor)
- *   Track 3: Victory Fanfare (4/4 Bright Celebratory Loop in C Major)
+ * 9-Track Procedural 16-Bit JRPG BGM Sequencer (Matches HearthBgmId 0..8)
  * ---------------------------------------------------------------------------- */
-enum {
-    BGM_HAMLET  = 0,
-    BGM_BATTLE  = 1,
-    BGM_BOSS    = 2,
-    BGM_VICTORY = 3
-};
 
 #define BGM_REST 0u
 #define BGM_HOLD 255u
@@ -510,11 +512,136 @@ static const uint8_t VICTORY_DRUM[32] = {
     3, 1, 2, 1, 3, 1, 2, 1,  3, 1, 2, 2, 3, 1, 2, 1
 };
 
-static const BgmTrack BGM_TRACKS[4] = {
-    { 48, 240, HAMLET_LEAD,  HAMLET_ARP,  HAMLET_BASS,  HAMLET_DRUM  },
-    { 64, 155, BATTLE_LEAD,  BATTLE_ARP,  BATTLE_BASS,  BATTLE_DRUM  },
-    { 64, 140, BOSS_LEAD,    BOSS_ARP,    BOSS_BASS,    BOSS_DRUM    },
-    { 32, 165, VICTORY_LEAD, VICTORY_ARP, VICTORY_BASS, VICTORY_DRUM }
+/* Track 1: Alderbrook Hometown — Warm Nostalgic Lullaby (32 steps, C Major) */
+static const uint8_t ALDER_LEAD[32] = {
+    N_E4, BGM_HOLD, N_G4, N_C5, N_B4, BGM_HOLD, N_A4, N_G4,
+    N_F4, BGM_HOLD, N_A4, N_G4, N_E4, BGM_HOLD, BGM_REST, N_D4,
+    N_E4, BGM_HOLD, N_G4, N_C5, N_D5, BGM_HOLD, N_C5, N_A4,
+    N_G4, N_F4, N_E4, N_D4, N_C4, BGM_HOLD, BGM_HOLD, BGM_REST
+};
+static const uint8_t ALDER_ARP[32] = {
+    N_C4, N_E4, N_G4, N_E4, N_G3, N_B3, N_D4, N_B3,
+    N_F3, N_A3, N_C4, N_A3, N_C4, N_E4, N_G4, N_E4,
+    N_C4, N_E4, N_G4, N_E4, N_F3, N_A3, N_C4, N_A3,
+    N_G3, N_B3, N_D4, N_B3, N_C4, N_E4, N_G4, N_C4
+};
+static const uint8_t ALDER_BASS[32] = {
+    N_C3, BGM_HOLD, N_G2, BGM_HOLD, N_G2, BGM_HOLD, N_D3, BGM_HOLD,
+    N_F2, BGM_HOLD, N_C3, BGM_HOLD, N_C3, BGM_HOLD, N_G2, BGM_HOLD,
+    N_A2, BGM_HOLD, N_E3, BGM_HOLD, N_F2, BGM_HOLD, N_C3, BGM_HOLD,
+    N_G2, BGM_HOLD, N_D3, BGM_HOLD, N_C3, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t ALDER_DRUM[32] = {
+    3, 0, 1, 0, 0, 0, 1, 0,  3, 0, 1, 0, 0, 0, 1, 0,
+    3, 0, 1, 0, 0, 0, 1, 0,  3, 0, 1, 0, 3, 0, 0, 0
+};
+
+/* Track 2: Whiskerburgh — Jaunty Mouse Market Jig (32 steps, F Major) */
+static const uint8_t WHISK_LEAD[32] = {
+    N_F4, N_A4, N_C5, N_A4, N_D5, N_C5, N_Bb4, N_A4,
+    N_G4, N_Bb4, N_D5, N_C5, N_A4, BGM_HOLD, N_F4, BGM_REST,
+    N_C5, N_D5, N_F5, N_E5, N_D5, N_C5, N_Bb4, N_G4,
+    N_A4, N_C5, N_Bb4, N_G4, N_F4, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t WHISK_ARP[32] = {
+    N_F3, N_A3, N_C4, N_A3, N_Bb3, N_D4, N_F4, N_D4,
+    N_C4, N_E4, N_G4, N_E4, N_F3, N_A3, N_C4, N_A3,
+    N_A3, N_C4, N_F4, N_C4, N_Bb3, N_D4, N_G4, N_D4,
+    N_C4, N_E4, N_G4, N_E4, N_F3, N_A3, N_C4, N_F4
+};
+static const uint8_t WHISK_BASS[32] = {
+    N_F2, N_C3, N_F2, N_C3, N_Bb2, N_F3, N_Bb2, N_F2,
+    N_C3, N_G2, N_C3, N_G2, N_F2, N_C3, N_F2, BGM_REST,
+    N_F2, N_C3, N_A2, N_C3, N_Bb2, N_F3, N_G2, N_D3,
+    N_C3, N_G2, N_C3, N_G2, N_F2, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t WHISK_DRUM[32] = {
+    3, 1, 2, 1, 3, 1, 2, 1,  3, 1, 2, 1, 3, 1, 2, 0,
+    3, 1, 2, 1, 3, 1, 2, 1,  3, 1, 2, 1, 3, 2, 1, 0
+};
+
+/* Track 3: Sunken Sewers — Mysterious Eerie Minor Pluck (32 steps, E Minor) */
+static const uint8_t SEWER_LEAD[32] = {
+    N_E4, BGM_REST, N_G4, BGM_REST, N_Fs4, N_E4, N_B3, BGM_HOLD,
+    N_C4, BGM_REST, N_B3, BGM_REST, N_A3, BGM_HOLD, BGM_REST, BGM_REST,
+    N_E4, N_Fs4, N_G4, BGM_REST, N_A4, N_G4, N_Fs4, BGM_HOLD,
+    N_D4, BGM_REST, N_Fs4, N_E4, N_E4, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t SEWER_ARP[32] = {
+    N_E3, N_B3, N_G3, N_B3, N_E3, N_B3, N_Fs3, N_B3,
+    N_C3, N_G3, N_E3, N_G3, N_B2, N_Fs3, N_D3, N_Fs3,
+    N_E3, N_B3, N_G3, N_B3, N_A2, N_E3, N_C3, N_E3,
+    N_B2, N_Fs3, N_Eb3, N_Fs3, N_E3, N_B3, N_G3, BGM_REST
+};
+static const uint8_t SEWER_BASS[32] = {
+    N_E2, BGM_REST, BGM_REST, N_E2, N_G2, BGM_REST, N_Fs2, BGM_REST,
+    N_C2, BGM_REST, BGM_REST, N_C2, N_B2, BGM_REST, N_B2, BGM_REST,
+    N_E2, BGM_REST, N_G2, BGM_REST, N_A2, BGM_REST, N_Fs2, BGM_REST,
+    N_B2, BGM_REST, N_B2, BGM_REST, N_E2, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t SEWER_DRUM[32] = {
+    3, 0, 0, 1, 0, 0, 2, 0,  3, 0, 0, 1, 0, 0, 1, 0,
+    3, 0, 1, 0, 0, 0, 2, 0,  3, 0, 1, 0, 3, 0, 0, 0
+};
+
+/* Track 4: Boarhold Citadel — Brassy Iron March (32 steps, G Minor) */
+static const uint8_t BOAR_LEAD[32] = {
+    N_G4, BGM_HOLD, N_G4, N_A4, N_Bb4, BGM_HOLD, N_A4, N_G4,
+    N_F4, BGM_HOLD, N_G4, N_A4, N_D4, BGM_HOLD, BGM_REST, N_D4,
+    N_Bb4, BGM_HOLD, N_C5, N_D5, N_C5, N_Bb4, N_A4, N_G4,
+    N_A4, BGM_HOLD, N_Fs4, N_A4, N_G4, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t BOAR_ARP[32] = {
+    N_G3, N_Bb3, N_D4, N_Bb3, N_G3, N_Bb3, N_D4, N_Bb3,
+    N_F3, N_A3, N_C4, N_A3, N_D3, N_Fs3, N_A3, N_Fs3,
+    N_Eb3, N_G3, N_Bb3, N_G3, N_C3, N_Eb3, N_G3, N_Eb3,
+    N_D3, N_Fs3, N_A3, N_Fs3, N_G3, N_Bb3, N_D4, N_G3
+};
+static const uint8_t BOAR_BASS[32] = {
+    N_G2, N_G2, N_D2, N_G2, N_G2, N_G2, N_F2, N_G2,
+    N_F2, N_F2, N_C2, N_F2, N_D2, N_D2, N_A2, N_D2,
+    N_Eb2, N_Eb2, N_Bb2, N_Eb2, N_C2, N_C2, N_G2, N_C2,
+    N_D2, N_D2, N_D2, N_D2, N_G2, BGM_HOLD, N_D2, N_G2
+};
+static const uint8_t BOAR_DRUM[32] = {
+    3, 1, 2, 3, 3, 1, 2, 1,  3, 1, 2, 3, 3, 2, 2, 1,
+    3, 1, 2, 3, 3, 1, 2, 1,  3, 2, 2, 2, 3, 1, 2, 2
+};
+
+/* Track 5: Shadow Grandma Motif — Ominous Nightmare Music Box (32 steps, C Minor) */
+static const uint8_t SHADOW_LEAD[32] = {
+    N_C5, BGM_HOLD, N_Eb5, BGM_HOLD, N_D5, BGM_HOLD, N_B4, BGM_HOLD,
+    N_C5, BGM_HOLD, N_Gs4, BGM_HOLD, N_G4, BGM_HOLD, BGM_REST, BGM_REST,
+    N_Eb5, BGM_HOLD, N_Fs5, BGM_HOLD, N_F5, BGM_HOLD, N_D5, BGM_HOLD,
+    N_Eb5, BGM_HOLD, N_D5, N_B4, N_C5, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t SHADOW_ARP[32] = {
+    N_C4, N_Eb4, N_G4, BGM_REST, N_B3, N_D4, N_G4, BGM_REST,
+    N_Gs3, N_C4, N_Eb4, BGM_REST, N_G3, N_B3, N_D4, BGM_REST,
+    N_C4, N_Eb4, N_Fs4, BGM_REST, N_B3, N_D4, N_F4, BGM_REST,
+    N_Gs3, N_C4, N_G3, N_B3, N_C4, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t SHADOW_BASS[32] = {
+    N_C2, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_B2, BGM_HOLD, BGM_HOLD, BGM_HOLD,
+    N_Gs2, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_G2, BGM_HOLD, BGM_HOLD, BGM_HOLD,
+    N_C2, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_F2, BGM_HOLD, BGM_HOLD, BGM_HOLD,
+    N_Gs2, BGM_HOLD, N_G2, BGM_HOLD, N_C2, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t SHADOW_DRUM[32] = {
+    3, 0, 0, 0, 0, 0, 1, 0,  3, 0, 0, 0, 0, 0, 1, 0,
+    3, 0, 0, 0, 0, 0, 1, 0,  3, 0, 0, 0, 3, 0, 0, 0
+};
+
+static const BgmTrack BGM_TRACKS[9] = {
+    /* 0: BGM_HAMLET       */ { 48, 240, HAMLET_LEAD,  HAMLET_ARP,  HAMLET_BASS,  HAMLET_DRUM  },
+    /* 1: BGM_ALDERBROOK   */ { 32, 260, ALDER_LEAD,   ALDER_ARP,   ALDER_BASS,   ALDER_DRUM   },
+    /* 2: BGM_WHISKERBURGH */ { 32, 185, WHISK_LEAD,   WHISK_ARP,   WHISK_BASS,   WHISK_DRUM   },
+    /* 3: BGM_SEWERS       */ { 32, 235, SEWER_LEAD,   SEWER_ARP,   SEWER_BASS,   SEWER_DRUM   },
+    /* 4: BGM_BOARHOLD     */ { 32, 175, BOAR_LEAD,    BOAR_ARP,    BOAR_BASS,    BOAR_DRUM    },
+    /* 5: BGM_SHADOW       */ { 32, 300, SHADOW_LEAD,  SHADOW_ARP,  SHADOW_BASS,  SHADOW_DRUM  },
+    /* 6: BGM_BATTLE       */ { 64, 155, BATTLE_LEAD,  BATTLE_ARP,  BATTLE_BASS,  BATTLE_DRUM  },
+    /* 7: BGM_BOSS         */ { 64, 140, BOSS_LEAD,    BOSS_ARP,    BOSS_BASS,    BOSS_DRUM    },
+    /* 8: BGM_VICTORY      */ { 32, 165, VICTORY_LEAD, VICTORY_ARP, VICTORY_BASS, VICTORY_DRUM }
 };
 
 typedef struct {
@@ -567,14 +694,17 @@ static void bgm_set_track(uint8_t track_id) {
         g_bgm.ch[i].env_fp = 0;
     }
     /* Tailor timbres to track mood */
-    if (track_id == BGM_HAMLET) {
-        g_bgm.ch[0].wave = WAVE_TRIANGLE;  /* Warm pastoral ocarina/flute */
+    if (track_id == BGM_HAMLET || track_id == BGM_ALDERBROOK) {
+        g_bgm.ch[0].wave = WAVE_TRIANGLE;  /* Warm pastoral flute / lullaby */
         g_bgm.ch[1].wave = WAVE_SQUARE25;  /* Plucked harp arpeggio */
-    } else if (track_id == BGM_BOSS) {
-        g_bgm.ch[0].wave = WAVE_SQUARE50;  /* Bold dramatic boss lead */
+    } else if (track_id == BGM_SEWERS || track_id == BGM_SHADOW) {
+        g_bgm.ch[0].wave = WAVE_TRIANGLE;  /* Haunting hollow chime */
+        g_bgm.ch[1].wave = WAVE_SQUARE25;
+    } else if (track_id == BGM_BOSS || track_id == BGM_BOARHOLD) {
+        g_bgm.ch[0].wave = WAVE_SQUARE50;  /* Bold dramatic brass/lead */
         g_bgm.ch[1].wave = WAVE_SQUARE25;
     } else {
-        g_bgm.ch[0].wave = WAVE_SQUARE25;  /* Bright heroic JRPG lead */
+        g_bgm.ch[0].wave = WAVE_SQUARE25;  /* Bright heroic/jaunty lead */
         g_bgm.ch[1].wave = WAVE_SQUARE50;
     }
     g_bgm.ch[2].wave = WAVE_TRIANGLE;
@@ -585,7 +715,7 @@ static void bgm_set_track(uint8_t track_id) {
 static void bgm_trigger_step(void) {
     const BgmTrack *tr = &BGM_TRACKS[g_bgm.track_id];
     uint8_t s = g_bgm.step_idx;
-    bool pastoral = (g_bgm.track_id == BGM_HAMLET);
+    bool pastoral = (g_bgm.track_id == BGM_HAMLET || g_bgm.track_id == BGM_ALDERBROOK || g_bgm.track_id == BGM_SHADOW);
 
     /* Lead */
     uint8_t n0 = tr->lead[s];
@@ -771,6 +901,25 @@ static void synth_play_sfx(uint8_t sfx) {
         case SFX_HURT:
             synth_push_note(WAVE_SQUARE50, 190, -700, 110, 3200);
             synth_push_note(WAVE_NOISE, 320, -900, 95, 2800);
+            break;
+        case SFX_COIN:
+            synth_push_note(WAVE_SQUARE25, 988, 1200, 65, 2400);
+            synth_push_note(WAVE_TRIANGLE, 1319, 200, 95, 2200);
+            break;
+        case SFX_FISH_BITE:
+            synth_push_note(WAVE_SQUARE25, 880, 1600, 85, 2800);
+            synth_push_note(WAVE_NOISE, 1100, -1400, 70, 2100);
+            break;
+        case SFX_FISH_REEL:
+            synth_push_note(WAVE_SQUARE25, 520, 400, 30, 1400);
+            break;
+        case SFX_FISH_CATCH:
+            synth_push_note(WAVE_SQUARE25, 587, 900, 160, 2600);
+            synth_push_note(WAVE_TRIANGLE, 880, 800, 220, 2600);
+            break;
+        case SFX_PORTAL:
+            synth_push_note(WAVE_TRIANGLE, 392, 1100, 220, 2500);
+            synth_push_note(WAVE_SQUARE25, 587, 1400, 180, 1900);
             break;
         default:
             break;
@@ -1201,7 +1350,9 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
     int16_t sy = o->scale_y_fp ? o->scale_y_fp : FP_ONE;
 
     if (o->flags & OAM_FLAG_SHADOW) {
-        int r = (o->sprite_id == SPR_BOSS_BRIAR) ? 15 : 6;
+        int r = (o->sprite_id == SPR_BOSS_BRIAR || o->sprite_id == SPR_BOSS_MUCKMAW || o->sprite_id == SPR_BOSS_IRONFANG) ? 15
+              : (o->sprite_id == SPR_HOLLOW_OAK) ? 12
+              : (o->sprite_id == SPR_PET_MILO || o->sprite_id == SPR_BOBBER) ? 4 : 6;
         fill_ellipse_alpha(ox, oy + 1, r, 3, 0xFF10141Au, 115);
     }
 
@@ -1342,6 +1493,168 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
             fill_ellipse_alpha(ox, oy, pulse + 2, pulse + 2, pal_col(1, 10), 100);
             fill_ellipse_alpha(ox, oy, pulse, pulse, pal_col(1, 11), 165);
             fill_rect_px(ox - 2, oy - 2, 4, 4, 0xFFFFFFFFu);
+            break;
+        }
+        case SPR_CHEST_OPEN: {
+            draw_pixel_art(CHEST_OPEN, 10, ox, oy, 8, 10, 2, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_NPC_MOUSE: {
+            /* Anthropomorphic Mouse Folk (round pink-lined ears, whiskered snout, tailored vest) */
+            spr_box(ox, oy, -7, -15, 5, 5, 0xFF9EA2B0u, flip, flash, sx, sy);
+            spr_box(ox, oy, -6, -14, 3, 3, 0xFFE8A4B4u, flip, flash, sx, sy);
+            spr_box(ox, oy,  2, -15, 5, 5, 0xFF9EA2B0u, flip, flash, sx, sy);
+            spr_box(ox, oy,  3, -14, 3, 3, 0xFFE8A4B4u, flip, flash, sx, sy);
+            spr_box(ox, oy, -4, -12, 8, 6, 0xFFC2C6D2u, flip, flash, sx, sy);
+            spr_box(ox, oy, -2, -10, 1, 2, 0xFF18141Cu, flip, flash, sx, sy);
+            spr_box(ox, oy,  1, -10, 1, 2, 0xFF18141Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -1,  -8, 2, 1, 0xFFE87E94u, flip, flash, sx, sy);
+            spr_box(ox, oy, -5,  -6, 10, 5, 0xFFB84C3Eu, flip, flash, sx, sy);
+            spr_box(ox, oy, -2,  -6,  4, 4, 0xFFF5D88Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF523426u, flip, flash, sx, sy);
+            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF523426u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_NPC_PIG: {
+            /* Anthropomorphic Pig Knight / Merchant (pink snout, sturdy iron breastplate & tunic) */
+            spr_box(ox, oy, -6, -15, 3, 3, 0xFFE698A2u, flip, flash, sx, sy);
+            spr_box(ox, oy,  3, -15, 3, 3, 0xFFE698A2u, flip, flash, sx, sy);
+            spr_box(ox, oy, -5, -13, 10, 7, 0xFFF4B6B8u, flip, flash, sx, sy);
+            spr_box(ox, oy, -3, -11, 1, 2, 0xFF18141Cu, flip, flash, sx, sy);
+            spr_box(ox, oy,  2, -11, 1, 2, 0xFF18141Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -2,  -9, 4, 3, 0xFFE07C8Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -1,  -8, 1, 1, 0xFF58222Cu, flip, flash, sx, sy);
+            spr_box(ox, oy,  1,  -8, 1, 1, 0xFF58222Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -6,  -6, 12, 6, 0xFF6A7084u, flip, flash, sx, sy);
+            spr_box(ox, oy, -4,  -5,  8, 2, 0xFFE8B84Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -5,   0,  4, 2, 0xFF3E2620u, flip, flash, sx, sy);
+            spr_box(ox, oy,  1,   0,  4, 2, 0xFF3E2620u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_NPC_SHADOW_GRAN: {
+            /* Shadow Grandma — Dark Hooded Cloak, Silver Bun, Glowing Lavender Eyes */
+            int sw = ((frame >> 4) & 1u) ? -1 : 0;
+            fill_ellipse_alpha(ox, oy - 10 + sw, 11, 12, 0xFF4C2278u, 70);
+            spr_box(ox, oy + sw, -6, -18, 12, 18, 0xFF1D132Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + sw, -4, -17,  8,  6, 0xFF2D1E42u, flip, flash, sx, sy);
+            spr_box(ox, oy + sw, -3, -19,  6,  2, 0xFFC8C2DCu, flip, flash, sx, sy);
+            spr_box(ox, oy + sw, -3, -14,  2,  2, 0xFFE87CF8u, flip, flash, sx, sy);
+            spr_box(ox, oy + sw,  1, -14,  2,  2, 0xFFE87CF8u, flip, flash, sx, sy);
+            spr_box(ox, oy + sw, -7,  -6, 14,  6, 0xFF140D20u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_PET_MILO: {
+            /* Milo — Warm Ginger Fox-Pup with White Tail Tip & Gold Collar Bell */
+            int hb = ((frame >> 3) & 1u) ? -1 : 0;
+            spr_box(ox, oy + hb, -5, -7, 8, 5, 0xFFE07A30u, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  2, -10, 4, 4, 0xFFE07A30u, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  2, -12, 2, 2, 0xFFC2581Eu, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  4, -12, 2, 2, 0xFFC2581Eu, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  4,  -9, 1, 1, 0xFF18141Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  1,  -6, 2, 2, 0xFFFFE066u, flip, flash, sx, sy); /* Bell */
+            spr_box(ox, oy + hb, -7,  -8, 3, 2, 0xFFF6EFE0u, flip, flash, sx, sy); /* Tail tip */
+            spr_box(ox, oy,      -4,  -2, 2, 2, 0xFF7A3818u, flip, flash, sx, sy);
+            spr_box(ox, oy,       1,  -2, 2, 2, 0xFF7A3818u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_ENEMY_RAT: {
+            /* Gutter Rat — Slate Fur, Red Eyes, Pink Tail */
+            spr_box(ox, oy + bob, -6, -8, 11, 6, 0xFF5A5D6Eu, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -7, -10, 3, 3, 0xFF8C6874u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -4,  -7, 2, 2, 0xFFFF4A5Au, flip, flash, sx, sy);
+            spr_box(ox, oy + bob,  5,  -6, 4, 2, 0xFFD88496u, flip, flash, sx, sy);
+            spr_box(ox, oy,       -5,  -2, 2, 2, 0xFF34323Eu, flip, flash, sx, sy);
+            spr_box(ox, oy,        2,  -2, 2, 2, 0xFF34323Eu, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_ENEMY_SLIME: {
+            /* Mire Slime — Translucent Emerald-Teal Blob with Gleaming Eyes */
+            int sq = ((frame >> 3) & 1u) ? 1 : 0;
+            fill_ellipse_alpha(ox, oy - 5 + sq, 7 + sq, 6 - sq, 0xFF44C888u, 225);
+            fill_ellipse_alpha(ox - 2, oy - 7 + sq, 3, 2, 0xFFB8F8D8u, 190);
+            spr_box(ox, oy + sq, -3, -6, 2, 2, 0xFF141820u, flip, flash, sx, sy);
+            spr_box(ox, oy + sq,  1, -6, 2, 2, 0xFF141820u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_ENEMY_BOAR: {
+            /* Boar Halberdier — Tusks, Iron Helm, Crimson Plume & Halberd */
+            spr_box(ox, oy + bob, -6, -15, 12, 8, 0xFF586074u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -2, -18,  4, 3, 0xFFD83E4Au, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -4, -10,  8, 4, 0xFFE0929Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -6,  -8,  2, 2, 0xFFFFF6E4u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob,  4,  -8,  2, 2, 0xFFFFF6E4u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -6,  -6, 12, 6, 0xFF424858u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob,  6, -17,  2, 17, 0xFF7A5638u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob,  7, -17,  4,  5, 0xFFC8D4E4u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_BOSS_MUCKMAW: {
+            /* King Muckmaw — Huge Crowned Sewer Ooze Boss */
+            int b = ((frame >> 3) & 1u) ? -1 : 0;
+            fill_ellipse_alpha(ox, oy - 13 + b, 18, 13, 0xFF2E8C6Au, 240);
+            fill_ellipse_alpha(ox, oy - 15 + b, 14, 10, 0xFF52C890u, 220);
+            /* Crooked Gold Crown */
+            spr_box(ox, oy + b, -8, -28, 16, 4, 0xFFF5B841u, flip, flash, sx, sy);
+            spr_box(ox, oy + b, -8, -31,  3, 3, 0xFFFFF1A8u, flip, flash, sx, sy);
+            spr_box(ox, oy + b, -1, -32,  3, 4, 0xFFFFF1A8u, flip, flash, sx, sy);
+            spr_box(ox, oy + b,  5, -31,  3, 3, 0xFFFFF1A8u, flip, flash, sx, sy);
+            /* Glowing Amber Eyes & Wide Maw */
+            spr_box(ox, oy + b, -8, -19,  4, 4, 0xFFFFE066u, flip, flash, sx, sy);
+            spr_box(ox, oy + b,  4, -19,  4, 4, 0xFFFFE066u, flip, flash, sx, sy);
+            spr_box(ox, oy + b, -9, -11, 18, 5, 0xFF182420u, flip, flash, sx, sy);
+            spr_box(ox, oy + b, -7, -11,  3, 2, 0xFFFFF8E8u, flip, flash, sx, sy);
+            spr_box(ox, oy + b,  4, -11,  3, 2, 0xFFFFF8E8u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_BOSS_IRONFANG: {
+            /* Lord Ironfang — Towering Armored Boar Warlord Boss */
+            int b = ((frame >> 4) & 1u) ? -1 : 0;
+            spr_box(ox, oy + b, -13, -24, 26, 18, 0xFF3A3E4Eu, flip, flash, sx, sy);
+            spr_box(ox, oy + b, -15, -22, 30,  6, 0xFF687088u, flip, flash, sx, sy);
+            spr_box(ox, oy + b, -11, -18, 22,  3, 0xFFE8B84Cu, flip, flash, sx, sy);
+            /* Crimson Cape */
+            spr_box(ox, oy + b, -15, -16,  4, 15, 0xFFB82C3Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + b,  11, -16,  4, 15, 0xFFB82C3Cu, flip, flash, sx, sy);
+            /* Horned Boar Head + Tusks */
+            spr_box(ox, oy + b,  -8, -32, 16, 10, 0xFFE296A0u, flip, flash, sx, sy);
+            spr_box(ox, oy + b,  -9, -35, 18,  4, 0xFF52586Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + b,  -5, -29,  3,  2, 0xFFFF4A4Au, flip, flash, sx, sy);
+            spr_box(ox, oy + b,   2, -29,  3,  2, 0xFFFF4A4Au, flip, flash, sx, sy);
+            spr_box(ox, oy + b, -10, -25,  3,  4, 0xFFFFF8E8u, flip, flash, sx, sy);
+            spr_box(ox, oy + b,   7, -25,  3,  4, 0xFFFFF8E8u, flip, flash, sx, sy);
+            /* Boots */
+            spr_box(ox, oy,      -9,  -6,  7,  6, 0xFF262834u, flip, flash, sx, sy);
+            spr_box(ox, oy,       2,  -6,  7,  6, 0xFF262834u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_HOLLOW_OAK: {
+            /* The Hollow Oak Portal — Ancient Gnarled Trunk with Shimmering Starlight Arch */
+            int pulse = 5 + (((int)frame >> 3) & 2);
+            spr_box(ox, oy, -11, -24, 22, 24, 0xFF583824u, flip, flash, sx, sy);
+            spr_box(ox, oy,  -9, -22, 18, 20, 0xFF724B30u, flip, flash, sx, sy);
+            fill_ellipse_alpha(ox, oy - 9, pulse + 2, 8, 0xFF5AD2F4u, 110);
+            fill_ellipse_alpha(ox, oy - 9, 5, 7, 0xFFFFF1A8u, 220);
+            fill_ellipse_alpha(ox, oy - 24, 15, 8, 0xFF3E7C44u, 255);
+            fill_ellipse_alpha(ox, oy - 27, 11, 6, 0xFF68B058u, 255);
+            break;
+        }
+        case SPR_BOBBER: {
+            /* Fishing Bobber (red/white float + water ripples) */
+            int boby = ((frame >> 3) & 1u) ? 1 : 0;
+            draw_circle_outline(ox, oy + boby, 6 + (((int)frame >> 3) & 3), 0xFF9AD8F4u);
+            fill_rect_px(ox - 2, oy - 4 + boby, 4, 3, 0xFFE84848u);
+            fill_rect_px(ox - 2, oy - 1 + boby, 4, 2, 0xFFFFF8E8u);
+            break;
+        }
+        case SPR_NPC_TOWNSFOLK: {
+            /* Alderbrook Neighbor (friendly tunic & dark hair) */
+            spr_box(ox, oy, -4, -15, 8, 4, 0xFF4A3228u, flip, flash, sx, sy);
+            spr_box(ox, oy, -4, -12, 8, 5, 0xFFF4C8A4u, flip, flash, sx, sy);
+            spr_box(ox, oy, -2, -10, 1, 2, 0xFF18141Cu, flip, flash, sx, sy);
+            spr_box(ox, oy,  1, -10, 1, 2, 0xFF18141Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -5,  -7, 10, 6, 0xFF486C8Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF3E2A20u, flip, flash, sx, sy);
+            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF3E2A20u, flip, flash, sx, sy);
             break;
         }
         default:
@@ -1559,12 +1872,19 @@ static void render_battle_vfx(const HearthState *st, const HearthPpuPacket *ppu)
 static void render_battle_scene(const HearthState *st, const HearthPpuPacket *ppu) {
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
-    bool shrine = (st->battle.biome == BIOME_SHRINE);
+    uint8_t biome = st->battle.biome;
+    bool shrine = (biome == BIOME_SHRINE);
+    bool sewer  = (biome == BIOME_SEWER);
+    bool boar   = (biome == BIOME_BOARHOLD);
 
-    /* Sky gradient */
+    /* Sky / Cavern / Citadel gradient */
     for (int y = 0; y < 96; y++) {
         uint32_t col;
-        if (shrine) {
+        if (sewer) {
+            col = (y < 32) ? 0xFF0A1418u : (y < 64) ? 0xFF12262Cu : 0xFF1B3A3Cu;
+        } else if (boar) {
+            col = (y < 32) ? 0xFF28121Cu : (y < 64) ? 0xFF48202Cu : 0xFF723438u;
+        } else if (shrine) {
             col = (y < 32) ? 0xFF1B1932u : (y < 64) ? 0xFF28264Bu : 0xFF3A3562u;
         } else {
             col = (y < 32) ? 0xFF4D9CD0u : (y < 64) ? 0xFF77BBE6u : 0xFFBEE7F8u;
@@ -1572,16 +1892,23 @@ static void render_battle_scene(const HearthState *st, const HearthPpuPacket *pp
         fill_rect_px(0, y, w, 1, col);
     }
 
-    /* Distant rolling hills / ruins silhouette */
+    /* Distant rolling hills / arches silhouette */
     for (int x = 0; x < w; x++) {
         int hill = 82 + (HEARTH_SIN64[(x >> 2) & 63] >> 4);
-        fill_rect_px(x, hill, 1, 96 - hill, shrine ? 0xFF232538u : 0xFF4A884Eu);
+        uint32_t hcol = sewer ? 0xFF102022u : boar ? 0xFF321820u : shrine ? 0xFF232538u : 0xFF4A884Eu;
+        fill_rect_px(x, hill, 1, 96 - hill, hcol);
     }
 
     /* Battleground stage floor */
-    fill_rect_px(0, 96, w, h - 96, shrine ? 0xFF4C5868u : 0xFF74B461u);
-    fill_rect_px(0, 96, w, 3, shrine ? 0xFF8591A0u : 0xFFA8D678u);
-    if (shrine) {
+    uint32_t floor_col = sewer ? 0xFF2A3E42u : boar ? 0xFF5A4C52u : shrine ? 0xFF4C5868u : 0xFF74B461u;
+    uint32_t trim_col  = sewer ? 0xFF44B888u : boar ? 0xFFE07A48u : shrine ? 0xFF8591A0u : 0xFFA8D678u;
+    fill_rect_px(0, 96, w, h - 96, floor_col);
+    fill_rect_px(0, 96, w, 3, trim_col);
+    if (sewer) {
+        fill_ellipse_alpha(w / 2, 136, 95, 18, 0xFF38A878u, 70);
+    } else if (boar) {
+        draw_circle_outline(w / 2, 136, 46, 0xFFE8A048u);
+    } else if (shrine) {
         draw_circle_outline(w / 2, 134, 44, pal_col(3, 15));
         draw_circle_outline(w / 2, 134, 30, pal_col(0, 11));
     } else {
@@ -1860,11 +2187,146 @@ static void render_dialogue_overlay(const HearthState *st) {
     }
 }
 
+static void render_shop_overlay(const HearthState *st) {
+    if (st->mode != MODE_SHOP || !st->shop.active) return;
+    int w = (int)g_ppu_w;
+    int h = (int)g_ppu_h;
+    int bx = 14, by = 16, bw = w - 28, bh = h - 32;
+    char buf[64];
+
+    fill_rect_alpha(bx, by, bw, bh, 0xFF161322u, 242);
+    draw_rect_outline(bx, by, bw, bh, 0xFFE8B852u);
+    draw_rect_outline(bx + 1, by + 1, bw - 2, bh - 2, 0xFF5C4A28u);
+
+    draw_text(bx + 8, by + 7, st->shop.title ? st->shop.title : "EVERTALE SHOP", 0xFFFFF1A8u, true);
+    snprintf(buf, sizeof(buf), "%uG", (unsigned)st->guilders);
+    draw_text(bx + bw - (int)strlen(buf) * 6 - 8, by + 7, buf, 0xFFF5B841u, true);
+
+    /* Tabs: BUY / SELL FISH */
+    int tw = (bw - 20) / 2;
+    fill_rect_px(bx + 8, by + 19, tw, 12, st->shop.tab == 0 ? 0xFF3A2E58u : 0xFF211C31u);
+    draw_rect_outline(bx + 8, by + 19, tw, 12, st->shop.tab == 0 ? 0xFFFFF1A8u : 0xFF4A4262u);
+    draw_text_centered(bx + 8 + tw / 2, by + 22, "BUY SUPPLIES", st->shop.tab == 0 ? 0xFFFFF1A8u : 0xFFB0AAB8u, false);
+
+    fill_rect_px(bx + 12 + tw, by + 19, tw, 12, st->shop.tab == 1 ? 0xFF3A2E58u : 0xFF211C31u);
+    draw_rect_outline(bx + 12 + tw, by + 19, tw, 12, st->shop.tab == 1 ? 0xFFFFF1A8u : 0xFF4A4262u);
+    draw_text_centered(bx + 12 + tw + tw / 2, by + 22, "SELL FISH", st->shop.tab == 1 ? 0xFFFFF1A8u : 0xFFB0AAB8u, false);
+
+    int rows = (st->shop.tab == 0) ? 5 : HEARTH_FISH_SPECIES;
+    for (int i = 0; i < rows; i++) {
+        int ry = by + 37 + i * 18;
+        bool sel = (st->shop.cursor == (uint8_t)i);
+        if (sel) {
+            fill_rect_px(bx + 8, ry - 2, bw - 16, 15, 0xFF2D2548u);
+            draw_rect_outline(bx + 8, ry - 2, bw - 16, 15, 0xFFF5B841u);
+            draw_text(bx + 11, ry + 2, ">", 0xFFFFF1A8u, false);
+        }
+        if (st->shop.tab == 0) {
+            const HearthShopItem *it = &HEARTH_SHOP_ITEMS[i];
+            draw_text(bx + 20, ry + 2, it->name, sel ? 0xFFFFF1A8u : 0xFFE6E0D4u, false);
+            snprintf(buf, sizeof(buf), "%uG", (unsigned)it->price);
+            draw_text(bx + bw - (int)strlen(buf) * 6 - 12, ry + 2, buf, 0xFFF5B841u, false);
+        } else {
+            const HearthFishInfo *fi = &HEARTH_FISH_TABLE[i];
+            uint8_t qty = st->fish_bag[i];
+            snprintf(buf, sizeof(buf), "%.14s X%u", fi->name, (unsigned)qty);
+            draw_text(bx + 20, ry + 2, buf, qty > 0 ? (sel ? 0xFFFFF1A8u : 0xFFA8D678u) : 0xFF706B7Cu, false);
+            snprintf(buf, sizeof(buf), "+%uG", (unsigned)fi->sell_price);
+            draw_text(bx + bw - (int)strlen(buf) * 6 - 12, ry + 2, buf, qty > 0 ? 0xFFF5B841u : 0xFF605B6Cu, false);
+        }
+    }
+
+    /* Footer feedback / item description */
+    int fy = by + bh - 34;
+    fill_rect_px(bx + 8, fy, bw - 16, 14, 0xFF221D34u);
+    if (st->shop.msg_timer > 0 && st->shop.msg[0] != '\0') {
+        draw_text_centered(w / 2, fy + 4, st->shop.msg, 0xFFA8D678u, false);
+    } else if (st->shop.tab == 0 && st->shop.cursor < 5) {
+        draw_text_centered(w / 2, fy + 4, HEARTH_SHOP_ITEMS[st->shop.cursor].desc, 0xFF9AD8F4u, false);
+    } else {
+        draw_text_centered(w / 2, fy + 4, "SELL CAUGHT FISH FOR GUILDERS", 0xFF9AD8F4u, false);
+    }
+    draw_text_centered(w / 2, by + bh - 14, "[A/D] TAB  [W/S] PICK  [SPACE] DEAL  [X] EXIT", 0xFFD0C4A8u, false);
+}
+
+static void render_fishing_overlay(const HearthState *st, const HearthPpuPacket *ppu) {
+    if (st->mode != MODE_FISHING || !st->fishing.active) return;
+    int w = (int)g_ppu_w;
+    int h = (int)g_ppu_h;
+    const HearthFishingState *f = &st->fishing;
+    char buf[64];
+
+    /* Fishing line from Rowan to bobber */
+    int hx = FROM_FP(st->hero_fx) - ppu->cam_x + ppu->shake_x;
+    int hy = FROM_FP(st->hero_fy) - ppu->cam_y - 10 + ppu->shake_y;
+    int bx = f->bobber_x - ppu->cam_x + ppu->shake_x;
+    int by = f->bobber_y - ppu->cam_y + ppu->shake_y;
+    draw_line_px(hx, hy, bx, by, 0xFFE6F0F8u);
+
+    int gy = h - 54;
+    int gw = w - 28;
+    int gx = 14;
+    fill_rect_alpha(gx, gy, gw, 46, 0xFF141826u, 232);
+    draw_rect_outline(gx, gy, gw, 46, 0xFF5AD2F4u);
+
+    if (f->phase == FISH_PHASE_CAST || f->phase == FISH_PHASE_WAIT_BITE) {
+        draw_text_centered(w / 2, gy + 10, "WATCH THE BOBBER...", 0xFF9AD8F4u, true);
+        draw_text_centered(w / 2, gy + 26, "WAIT FOR THE SPLASH  [X] CANCEL", 0xFFD0C4A8u, false);
+    } else if (f->phase == FISH_PHASE_BITE_ALERT) {
+        draw_text_centered(w / 2, gy + 10, "!! BITE! PRESS [SPACE/A] NOW !!", 0xFFFFF1A8u, true);
+        draw_text_centered(w / 2, gy + 26, "HOOK IT BEFORE IT SLIPS!", 0xFFF5B841u, false);
+    } else if (f->phase == FISH_PHASE_REELING) {
+        /* Sea of Stars / Zelda Timed-Reel Sweet-Spot Gauge */
+        int track_x = gx + 10;
+        int track_y = gy + 8;
+        int track_w = gw - 20;
+        fill_rect_px(track_x, track_y, track_w, 10, 0xFF1F2B3Eu);
+        draw_rect_outline(track_x, track_y, track_w, 10, 0xFF5A7898u);
+
+        int b0 = f->bar_pos - f->bar_half_w;
+        int b1 = f->bar_pos + f->bar_half_w;
+        if (b0 < 0) b0 = 0;
+        if (b1 > 100) b1 = 100;
+        int sx0 = track_x + (b0 * track_w) / 100;
+        int sw  = ((b1 - b0) * track_w) / 100;
+        if (sw < 4) sw = 4;
+        fill_rect_px(sx0, track_y + 1, sw, 8, 0xFF48B878u);
+
+        int fx = track_x + (f->fish_pos * (track_w - 4)) / 100;
+        fill_rect_px(fx, track_y - 1, 5, 12, 0xFFFFF1A8u);
+        draw_rect_outline(fx, track_y - 1, 5, 12, 0xFF18141Cu);
+
+        /* Progress & Tension bars */
+        int half_w = (track_w - 10) / 2;
+        draw_text(track_x, gy + 22, "REEL", 0xFFA8D678u, false);
+        fill_rect_px(track_x + 28, gy + 23, half_w - 28, 5, 0xFF202C24u);
+        fill_rect_px(track_x + 28, gy + 23, ((half_w - 28) * f->progress) / 100, 5, 0xFF74D680u);
+
+        int tx = track_x + half_w + 10;
+        draw_text(tx, gy + 22, "LINE", f->tension > 70 ? 0xFFFF6464u : 0xFFF5B841u, false);
+        fill_rect_px(tx + 28, gy + 23, half_w - 28, 5, 0xFF341C24u);
+        fill_rect_px(tx + 28, gy + 23, ((half_w - 28) * f->tension) / 100, 5, f->tension > 70 ? 0xFFFF5555u : 0xFFF5B841u);
+
+        draw_text_centered(w / 2, gy + 34, "HOLD [SPACE] TO PULL RIGHT  RELEASE TO DRIFT LEFT", 0xFF9AD8F4u, false);
+    } else if (f->phase == FISH_PHASE_CAUGHT) {
+        const HearthFishInfo *fi = &HEARTH_FISH_TABLE[f->species % HEARTH_FISH_SPECIES];
+        snprintf(buf, sizeof(buf), "CAUGHT %s! (%u OZ)", fi->name, (unsigned)f->weight_oz);
+        draw_text_centered(w / 2, gy + 10, buf, 0xFFFFF1A8u, true);
+        snprintf(buf, sizeof(buf), "SELLS FOR %uG IN TOWN  [SPACE] OK", (unsigned)fi->sell_price);
+        draw_text_centered(w / 2, gy + 26, buf, 0xFFA8D678u, false);
+    } else {
+        draw_text_centered(w / 2, gy + 12, "THE LINE SNAPPED! IT GOT AWAY...", 0xFFFF8888u, true);
+        draw_text_centered(w / 2, gy + 28, "[SPACE] CONTINUE", 0xFFD0C4A8u, false);
+    }
+}
+
 static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
     g_ppu_w = ppu->width;
     g_ppu_h = ppu->height;
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
+
+    apply_zone_palette(ppu->terrain_pal_id);
 
     if (st->mode == MODE_INTRO) {
         render_intro_scene(st, ppu);
@@ -1927,6 +2389,43 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
             draw_rect_outline(hx - 5, hy - 7, 10, 8, 0xFF5AD2F4u);
         }
 
+        /* Dark Sewer Lantern Lighting Mask */
+        if (ppu->zone_is_dark && (st->mode == MODE_EXPLORE || st->mode == MODE_CUTSCENE || st->mode == MODE_FISHING)) {
+            int lhx = FROM_FP(st->hero_fx) - cam_x;
+            int lhy = FROM_FP(st->hero_fy) - cam_y - 6;
+            /* Collect visible lantern posts for warm light pools */
+            int lx[8], ly[8], lcnt = 0;
+            for (int ty = ty0; ty <= ty1 && lcnt < 8; ty++) {
+                for (int tx = tx0; tx <= tx1 && lcnt < 8; tx++) {
+                    if (st->map_bg1[ty * HEARTH_MAP_W + tx] == T_LANTERN_POST) {
+                        lx[lcnt] = tx * HEARTH_TILE_SIZE + 8 - cam_x;
+                        ly[lcnt] = ty * HEARTH_TILE_SIZE + 4 - cam_y;
+                        lcnt++;
+                    }
+                }
+            }
+            for (int py = 0; py < h; py++) {
+                uint32_t *row = &g_fb[py * FB_MAX_W];
+                for (int px = 0; px < w; px++) {
+                    int dx = px - lhx, dy = py - lhy;
+                    int d2 = dx * dx + dy * dy;
+                    for (int k = 0; k < lcnt; k++) {
+                        int kdx = px - lx[k], kdy = py - ly[k];
+                        int kd2 = kdx * kdx + kdy * kdy;
+                        if (kd2 < d2) d2 = kd2;
+                    }
+                    if (d2 > 2200) {
+                        int scale = (d2 > 7600) ? 56 : (255 - ((d2 - 2200) * 199) / 5400);
+                        uint32_t c = row[px];
+                        uint32_t r = (((c >> 16) & 0xFFu) * (uint32_t)scale) >> 8;
+                        uint32_t g = (((c >> 8)  & 0xFFu) * (uint32_t)scale) >> 8;
+                        uint32_t b = ((c         & 0xFFu) * (uint32_t)(scale + 18 > 255 ? 255 : scale + 18)) >> 8;
+                        row[px] = 0xFF000000u | (r << 16) | (g << 8) | b;
+                    }
+                }
+            }
+        }
+
         render_particles_and_text(st, ppu);
 
         /* Contextual [A] Interact Prompt (already screen-relative) */
@@ -1939,19 +2438,31 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
             draw_text_centered(ix, iy - 3, ppu->interact_label, 0xFFFFF6CCu, false);
         }
 
-        /* Minimal Overworld Top Status Ribbon */
+        /* Minimal Overworld Top Status Ribbon (HP, MP, Guilders & Active Zone) */
         if (st->mode == MODE_EXPLORE) {
-            fill_rect_alpha(4, 4, w - 8, 12, 0xFF14111Du, 185);
+            fill_rect_alpha(4, 4, w - 8, 12, 0xFF14111Du, 195);
             char hud[64];
-            snprintf(hud, sizeof(hud), "HP %d/%d  MP %d/%d  %s",
+            snprintf(hud, sizeof(hud), "HP %d/%d MP %d %uG",
                      st->party[0].hp, st->party[0].max_hp,
-                     st->party[0].mp, st->party[0].max_mp,
-                     st->flag_guard_mended ? "HEART:MENDED"
-                     : (st->flag_has_courage ? "LOCKET:COURAGE" : "LOCKET:EMPTY"));
+                     st->party[0].mp, (unsigned)st->guilders);
             draw_text(8, 7, hud, 0xFFF4EEDCu, false);
-            draw_text(w - 76, 7, st->tuning.ppu_mode == PPU_GENESIS_320x224 ? "GEN 320X224" : "SNS 256X224", 0xFF9AD8F4u, false);
+            const char *zn = ppu->zone_name ? ppu->zone_name : "EVERTALE";
+            int zw = (int)strlen(zn) * 6;
+            draw_text(w - zw - 8, 7, zn, 0xFFFFF1A8u, false);
+        }
+
+        /* Zone Arrival Title Ribbon */
+        if (ppu->zone_banner_frames > 0 && ppu->zone_name && st->mode == MODE_EXPLORE) {
+            int bw2 = (int)strlen(ppu->zone_name) * 6 + 24;
+            fill_rect_alpha(w / 2 - bw2 / 2, 22, bw2, 16, 0xFF14111Du, 224);
+            draw_rect_outline(w / 2 - bw2 / 2, 22, bw2, 16, 0xFFE8B852u);
+            draw_text_centered(w / 2, 27, ppu->zone_name, 0xFFFFF1A8u, true);
         }
     }
+
+    /* Shop & Fishing Minigame Overlays */
+    render_shop_overlay(st);
+    render_fishing_overlay(st, ppu);
 
     /* Dialogue Box */
     render_dialogue_overlay(st);
@@ -1960,11 +2471,11 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
     if (st->mode == MODE_TITLE) {
         fill_rect_alpha(0, 0, w, h, 0xFF100E1Bu, 145);
         draw_text_scaled_centered(w / 2, 32, "PROJECT HEARTH", 0xFFFFF1A8u, 2);
-        draw_text_centered(w / 2, 54, "CHRONICLE OF WINDMILL HAMLET", 0xFF9AD8F4u, true);
+        draw_text_centered(w / 2, 54, "ALDERBROOK & EVERTALE", 0xFF9AD8F4u, true);
 
         static const char *OPTS[3] = {
-            "PLAY WINDMILL HAMLET",
-            "SHRINE BOSS BATTLE",
+            "NEW STORY (AGE 5->10)",
+            "EXPLORE EVERTALE",
             "REPLAY OPENING INTRO"
         };
         int my = 92;
@@ -1992,7 +2503,8 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
         snprintf(stats, sizeof(stats), "COMBOS:%u  PARRIES:%u  LOCKS:%u",
                  (unsigned)st->battle.combos, (unsigned)st->battle.parries, (unsigned)st->battle.locks_broken);
         draw_text_centered(w / 2, 72, stats, 0xFF9AD8F4u, true);
-        snprintf(stats, sizeof(stats), "EXP EARNED: +%u", (unsigned)st->battle.exp_earned);
+        snprintf(stats, sizeof(stats), "EXP +%u   GUILDERS +%uG",
+                 (unsigned)st->battle.exp_earned, (unsigned)st->battle.guilders_earned);
         draw_text_centered(w / 2, 84, stats, 0xFFA8D678u, true);
         draw_text_centered(w / 2, 100, "PRESS [SPACE / A] TO CONTINUE", 0xFFFFF6CCu, true);
     }
@@ -2209,13 +2721,7 @@ int main(int argc, char **argv) {
             for (uint8_t i = 0; i < ppu->sfx_count; i++) {
                 synth_play_sfx(ppu->sfx_queue[i]);
             }
-            if (g_state.mode == MODE_BATTLE) {
-                bgm_set_track(g_state.battle.is_boss_battle ? BGM_BOSS : BGM_BATTLE);
-            } else if (g_state.mode == MODE_BATTLE_VICTORY) {
-                bgm_set_track(BGM_VICTORY);
-            } else {
-                bgm_set_track(BGM_HAMLET);
-            }
+            bgm_set_track(ppu->bgm_id);
             acc_ticks -= step_ticks;
             steps++;
         }

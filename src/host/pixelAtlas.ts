@@ -87,16 +87,31 @@ function drawPattern(
 }
 
 export class PixelAtlas {
-  private readonly palettes: readonly (readonly string[])[];
+  private activePalettes: (readonly string[])[];
+  private readonly zonePalettes: readonly (readonly string[])[];
+  private currentTerrainPalId = 0;
   private bg1Tiles = new Map<number, HTMLCanvasElement[]>(); // tileId -> animation frames
   private bg2Tiles = new Map<number, HTMLCanvasElement>();
   private sprites = new Map<string, HTMLCanvasElement>(); // key: `${spriteId}_${dir}_${frame}`
   private overrides = new Map<SwappableSlotId, HTMLImageElement>();
 
-  constructor(palettes: readonly (readonly string[])[]) {
-    this.palettes = palettes;
+  constructor(
+    palettes: readonly (readonly string[])[],
+    zonePalettes: readonly (readonly string[])[] = []
+  ) {
+    this.activePalettes = [...palettes];
+    this.zonePalettes = zonePalettes;
     this.buildAllTiles();
     this.buildAllSprites();
+  }
+
+  public setTerrainPalette(palId: number): void {
+    if (palId === this.currentTerrainPalId) return;
+    if (palId >= 0 && palId < this.zonePalettes.length) {
+      this.currentTerrainPalId = palId;
+      this.activePalettes[0] = this.zonePalettes[palId];
+      this.buildAllTiles();
+    }
   }
 
   public setOverride(slot: SwappableSlotId, img: HTMLImageElement): void {
@@ -163,7 +178,7 @@ export class PixelAtlas {
    * 16x16 TERRAIN & ARCHITECTURE TILES (PALETTE 0)
    * ======================================================================== */
   private buildAllTiles(): void {
-    const PALETTES = this.palettes;
+    const PALETTES = this.activePalettes;
     const p0 = PALETTES[0];
     const makeTile = (fn: (ctx: CanvasRenderingContext2D) => void): HTMLCanvasElement => {
       const c = makeCanvas(TILE_SIZE, TILE_SIZE);
@@ -629,7 +644,7 @@ export class PixelAtlas {
    * HANDCRAFTED 16-BIT CHARACTER, FAMILIAR, NPC & MONSTER SPRITES
    * ======================================================================== */
   private buildAllSprites(): void {
-    const PALETTES = this.palettes;
+    const PALETTES = this.activePalettes;
     const paintPattern = (
       ctx: CanvasRenderingContext2D,
       pattern: string[],
@@ -1028,6 +1043,10 @@ export class PixelAtlas {
             ];
       paintPattern(ctx, pat, 2, 0, 5);
       register('chest', 0, f, c);
+      if (f === 1) {
+        register('chest_open', 0, 0, c);
+        register('chest_open', 0, 1, c);
+      }
     }
 
     // Pixel Emote Bubbles (!, ?, heart, spark)
@@ -1063,6 +1082,271 @@ export class PixelAtlas {
         3
       );
       register('heart_orb', 0, f, c);
+    }
+
+    /* 8. EXPANDED WORLD CAST: ANTHROPOMORPHIC MOUSE, PIG, SHADOW GRANDMA, MILO, TOWNSFOLK */
+    // Mousefolk Villager / Shopkeeper (Whiskerburgh) — 18x22
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(18, 22);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '..1111......1111..',
+        '.1443311111133441.',
+        '.1433444444443341.',
+        '..11444444444411..',
+        '...144144441441...',
+        '...14444aa44441...',
+        '....1144444411....',
+        '...18888ff88881...',
+        '..18888ffff88881..',
+        '..148888ff888841..',
+        '...111111111111...',
+        '....1b1....1b1....',
+        '....111....111....',
+      ];
+      paintPattern(ctx, pat, 2, 0, 5 + f);
+      register('npc_mouse', 0, f, c);
+    }
+
+    // Boarfolk / Pig Knight / Merchant (Boarhold) — 18x22
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(18, 22);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '..111........111..',
+        '.1222111111112221.',
+        '..12222222222221..',
+        '..12212222221221..',
+        '..12222333322221..',
+        '..12223133132221..',
+        '...112233332211...',
+        '..155551ff155551..',
+        '.155555ffff555551.',
+        '..12555555555521..',
+        '...111111111111...',
+        '....111....111....',
+      ];
+      paintPattern(ctx, pat, 2, 0, 5 + f);
+      register('npc_pig', 0, f, c);
+    }
+
+    // Shadow Grandma (Trauma Vision in Evertale Flashback) — 20x24
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(20, 24);
+      const ctx = c.getContext('2d')!;
+      const bob = f === 0 ? 0 : -1;
+      const pat = [
+        '.....1111111111.....',
+        '...11222333322211...',
+        '..1223344444433221..',
+        '..1234455555544321..',
+        '..12341b4444b14321..',
+        '..1234444444444321..',
+        '...12233111133221...',
+        '..1222333ff3332221..',
+        '.1222333ffff3332221.',
+        '.12222333ff33322221.',
+        '.122222333333222221.',
+        '..1222222332222221..',
+        '..1221222222221221..',
+        '...11..111111..11...',
+      ];
+      paintPattern(ctx, pat, 3, 0, 4 + bob);
+      register('npc_shadow_gran', 0, f, c);
+    }
+
+    // Milo the Runaway Fox-Pup — 14x14
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(14, 14);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '.11....11.....',
+        '1991111991....',
+        '1999999991....',
+        '191999919111..',
+        '.199aa99999b1.',
+        '..19999999bb1.',
+        '..1999999911..',
+        '..111..111....',
+      ];
+      paintPattern(ctx, pat, 1, 0, 4 + f);
+      register('pet_milo', 0, f, c);
+    }
+
+    // Alderbrook Townsfolk (Grandma / Villager) — Palette 2
+    buildNpc('npc_townsfolk', 'f', '7', '4', false);
+
+    /* 9. NEW ENEMIES & BOSSES (RAT, SLIME, BOAR, KING MUCKMAW, LORD IRONFANG) */
+    // Gutter Rat (Sewers) — 20x18
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(20, 18);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '...111....111.......',
+        '..1dd11111dd1.......',
+        '.1dddeeeedddd1......',
+        '.1de1aeeee1add1.....',
+        '1aaeeeedddddddd11...',
+        '.11dddddddddddddd11.',
+        '...1dddddddddddd1..1',
+        '...1111....1111...1.',
+      ];
+      paintPattern(ctx, pat, 3, 0, 7 + f);
+      register('enemy_rat', 0, f, c);
+    }
+
+    // Mire Slime (Sewers) — 20x18
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(20, 18);
+      const ctx = c.getContext('2d')!;
+      const pat =
+        f === 0
+          ? [
+              '......11111111......',
+              '....117788887711....',
+              '...17788ffff88771...',
+              '..1778888888888771..',
+              '..16781b8888b18761..',
+              '.166778888888877661.',
+              '.166677777777776661.',
+              '..1111111111111111..',
+            ]
+          : [
+              '....................',
+              '.....1111111111.....',
+              '...117788ff887711...',
+              '..1778888888888771..',
+              '.16781b888888b18761.',
+              '.166778888888877661.',
+              '16666777777777766661',
+              '.111111111111111111.',
+            ];
+      paintPattern(ctx, pat, 3, 0, 7);
+      register('enemy_slime', 0, f, c);
+    }
+
+    // Boar Halberdier (Boarhold) — 22x24
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(22, 24);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '....11........11...11.',
+        '...19911111111991.1ee1',
+        '....199aaaaaa991..1ed1',
+        '...19a1b9999b1a91..11.',
+        '...19ac199991ca91..11.',
+        '....111cccccc111...11.',
+        '..11dddd1991dddd11.11.',
+        '.1dddeed9aa9deeddd111.',
+        '..1ddddd9999ddddd1.11.',
+        '...11dddddddddd11..11.',
+        '....19991..19991...11.',
+        '....1111....1111...11.',
+      ];
+      paintPattern(ctx, pat, 3, 0, 7 + f);
+      register('enemy_boar', 0, f, c);
+    }
+
+    // BOSS: KING MUCKMAW (32x34 Crowned Sewer Toad-King)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(32, 34);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '..........11..11..11............',
+        '.........1bb11bb11bb1...........',
+        '.........1bbbbbbbbbb1...........',
+        '.......1111111111111111.........',
+        '.....11667788888888776611.......',
+        '....1667788ff8888ff8877661......',
+        '...166781bb18888881bb187661.....',
+        '...166781111888888111187661.....',
+        '..16677888888888888888877661....',
+        '..16671111111111111111117661....',
+        '..16671cc11aa1111aa11cc17661....',
+        '..16671111111111111111117661....',
+        '.16677778888ffffff88887777661...',
+        '.1666777888ffffffff8887776661...',
+        '.16666778888ffffff88887766661...',
+        '..16666777788888888777766661....',
+        '...116666667777777766666611.....',
+        '....1666111111111111116661......',
+        '....1111..............1111......',
+      ];
+      paintPattern(ctx, pat, 3, 0, 9 + f);
+      register('boss_muckmaw', 0, f, c);
+    }
+
+    // BOSS: LORD IRONFANG (32x34 Armored Boar Warlord)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(32, 34);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '......111............111........',
+        '.....1bb11111111111111bb1.......',
+        '......11dddddeeeeddddd11........',
+        '.....1ddd999999999999ddd1.......',
+        '....1ddd991bb9999bb199ddd1......',
+        '....1ddd99999aaaa99999ddd1......',
+        '...1cc1d99911aaaa11999d1cc1.....',
+        '...1ccc1111cccccccc1111ccc1.....',
+        '..11dddddddd1bbbb1dddddddd11....',
+        '.1dddeeedddd9aaaa9ddddeeeddd1...',
+        '.1dddddd99999aaaa99999dddddd1...',
+        '.1dd1ddd9999bbbbbb9999ddd1dd1...',
+        '.1dd1ddd99999aaaa99999ddd1dd1...',
+        '..11.1dddddd999999dddddd1.11....',
+        '.....1dddddddddddddddddd1.......',
+        '.....1ddddd11111111ddddd1.......',
+        '.....1dddd1........1dddd1.......',
+        '.....199991........199991.......',
+        '.....11111..........11111.......',
+      ];
+      paintPattern(ctx, pat, 3, 0, 9 + f);
+      register('boss_ironfang', 0, f, c);
+    }
+
+    /* 10. HOLLOW OAK PORTAL & FISHING BOBBER */
+    // Ancient Hollow Oak Portal (28x32)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(28, 32);
+      const ctx = c.getContext('2d')!;
+      const glow = f === 0 ? 'f' : 'b';
+      const pat = [
+        '......1111111111111111......',
+        '....11667788888888776611....',
+        '...1667788888888888877661...',
+        '..166777777777777777777661..',
+        '..166667777777777777766661..',
+        '...1166666666666666666611...',
+        '.....111111111111111111.....',
+        '......1999999999999991......',
+        '.....199991111111199991.....',
+        '.....19991' + glow + glow + 'cccc' + glow + glow + '19991.....',
+        '.....19991' + glow + 'cccccc' + glow + '19991.....',
+        '.....19991' + glow + 'c' + glow + glow + glow + glow + 'c' + glow + '19991.....',
+        '.....19991' + glow + 'cccccc' + glow + '19991.....',
+        '....199991' + glow + glow + 'cccc' + glow + glow + '199991....',
+        '...199999111111111111999991.',
+        '...1111111..........1111111.',
+      ];
+      paintPattern(ctx, pat, 3, 0, 12);
+      register('hollow_oak', 0, f, c);
+    }
+
+    // Fishing Bobber (10x10)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(10, 10);
+      const ctx = c.getContext('2d')!;
+      const bob = f;
+      const pat = [
+        '...1111...',
+        '..188991..',
+        '..188991..',
+        '..1eeee1..',
+        '...1111...',
+      ];
+      paintPattern(ctx, pat, 1, 0, 2 + bob);
+      register('bobber', 0, f, c);
     }
   }
 }

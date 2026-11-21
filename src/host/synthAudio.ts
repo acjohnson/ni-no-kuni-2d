@@ -5,9 +5,9 @@
  * mirroring how a Sega Genesis YM2612/PSG or SNES SPC700 audio driver works.
  */
 
-import { GameMode, SfxId } from '../core/types';
+import { BgmTrackId, GameMode, SfxId } from '../core/types';
 
-export type BgmTrackId = 'HAMLET' | 'BATTLE' | 'BOSS' | 'VICTORY';
+export type { BgmTrackId };
 
 const REST = 0;
 const HOLD = 255;
@@ -66,6 +66,131 @@ const BGM_TRACKS: Record<BgmTrackId, BgmTrackData> = {
       3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,
       3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,
       3, 0, 1, 3, 0, 1,  3, 0, 1, 0, 0, 0,
+    ],
+  },
+  ALDERBROOK: {
+    stepMs: 260,
+    lead: [
+      N.E4, HOLD, N.G4, N.C5, N.B4, HOLD, N.A4, N.G4,
+      N.F4, HOLD, N.A4, N.G4, N.E4, HOLD, REST, N.D4,
+      N.E4, HOLD, N.G4, N.C5, N.D5, HOLD, N.C5, N.A4,
+      N.G4, N.F4, N.E4, N.D4, N.C4, HOLD, HOLD, REST,
+    ],
+    arp: [
+      N.C4, N.E4, N.G4, N.E4, N.G3, N.B3, N.D4, N.B3,
+      N.F3, N.A3, N.C4, N.A3, N.C4, N.E4, N.G4, N.E4,
+      N.C4, N.E4, N.G4, N.E4, N.F3, N.A3, N.C4, N.A3,
+      N.G3, N.B3, N.D4, N.B3, N.C4, N.E4, N.G4, N.C4,
+    ],
+    bass: [
+      N.C3, HOLD, N.G2, HOLD, N.G2, HOLD, N.D3, HOLD,
+      N.F2, HOLD, N.C3, HOLD, N.C3, HOLD, N.G2, HOLD,
+      N.A2, HOLD, N.E3, HOLD, N.F2, HOLD, N.C3, HOLD,
+      N.G2, HOLD, N.D3, HOLD, N.C3, HOLD, REST, REST,
+    ],
+    drum: [
+      3, 0, 1, 0, 0, 0, 1, 0,  3, 0, 1, 0, 0, 0, 1, 0,
+      3, 0, 1, 0, 0, 0, 1, 0,  3, 0, 1, 0, 3, 0, 0, 0,
+    ],
+  },
+  WHISKERBURGH: {
+    stepMs: 185,
+    lead: [
+      N.F4, N.A4, N.C5, N.A4, N.D5, N.C5, N.Bb4, N.A4,
+      N.G4, N.Bb4, N.D5, N.C5, N.A4, HOLD, N.F4, REST,
+      N.C5, N.D5, N.F5, N.E5, N.D5, N.C5, N.Bb4, N.G4,
+      N.A4, N.C5, N.Bb4, N.G4, N.F4, HOLD, REST, REST,
+    ],
+    arp: [
+      N.F3, N.A3, N.C4, N.A3, N.Bb3, N.D4, N.F4, N.D4,
+      N.C4, N.E4, N.G4, N.E4, N.F3, N.A3, N.C4, N.A3,
+      N.A3, N.C4, N.F4, N.C4, N.Bb3, N.D4, N.G4, N.D4,
+      N.C4, N.E4, N.G4, N.E4, N.F3, N.A3, N.C4, N.F4,
+    ],
+    bass: [
+      N.F2, N.C3, N.F2, N.C3, N.Bb2, N.F3, N.Bb2, N.F2,
+      N.C3, N.G2, N.C3, N.G2, N.F2, N.C3, N.F2, REST,
+      N.F2, N.C3, N.A2, N.C3, N.Bb2, N.F3, N.G2, N.D3,
+      N.C3, N.G2, N.C3, N.G2, N.F2, HOLD, REST, REST,
+    ],
+    drum: [
+      3, 1, 2, 1, 3, 1, 2, 1,  3, 1, 2, 1, 3, 1, 2, 0,
+      3, 1, 2, 1, 3, 1, 2, 1,  3, 1, 2, 1, 3, 2, 1, 0,
+    ],
+  },
+  SEWERS: {
+    stepMs: 235,
+    lead: [
+      N.E4, REST, N.G4, REST, N.Fs4, N.E4, N.B3, HOLD,
+      N.C4, REST, N.B3, REST, N.A3, HOLD, REST, REST,
+      N.E4, N.Fs4, N.G4, REST, N.A4, N.G4, N.Fs4, HOLD,
+      N.D4, REST, N.Fs4, N.E4, N.E4, HOLD, REST, REST,
+    ],
+    arp: [
+      N.E3, N.B3, N.G3, N.B3, N.E3, N.B3, N.Fs3, N.B3,
+      N.C3, N.G3, N.E3, N.G3, N.B2, N.Fs3, N.D3, N.Fs3,
+      N.E3, N.B3, N.G3, N.B3, N.A2, N.E3, N.C3, N.E3,
+      N.B2, N.Fs3, N.Eb3, N.Fs3, N.E3, N.B3, N.G3, REST,
+    ],
+    bass: [
+      N.E2, REST, REST, N.E2, N.G2, REST, N.Fs2, REST,
+      N.C2, REST, REST, N.C2, N.B2, REST, N.B2, REST,
+      N.E2, REST, N.G2, REST, N.A2, REST, N.Fs2, REST,
+      N.B2, REST, N.B2, REST, N.E2, HOLD, REST, REST,
+    ],
+    drum: [
+      3, 0, 0, 1, 0, 0, 2, 0,  3, 0, 0, 1, 0, 0, 1, 0,
+      3, 0, 1, 0, 0, 0, 2, 0,  3, 0, 1, 0, 3, 0, 0, 0,
+    ],
+  },
+  BOARHOLD: {
+    stepMs: 175,
+    lead: [
+      N.G4, HOLD, N.G4, N.A4, N.Bb4, HOLD, N.A4, N.G4,
+      N.F4, HOLD, N.G4, N.A4, N.D4, HOLD, REST, N.D4,
+      N.Bb4, HOLD, N.C5, N.D5, N.C5, N.Bb4, N.A4, N.G4,
+      N.A4, HOLD, N.Fs4, N.A4, N.G4, HOLD, REST, REST,
+    ],
+    arp: [
+      N.G3, N.Bb3, N.D4, N.Bb3, N.G3, N.Bb3, N.D4, N.Bb3,
+      N.F3, N.A3, N.C4, N.A3, N.D3, N.Fs3, N.A3, N.Fs3,
+      N.Eb3, N.G3, N.Bb3, N.G3, N.C3, N.Eb3, N.G3, N.Eb3,
+      N.D3, N.Fs3, N.A3, N.Fs3, N.G3, N.Bb3, N.D4, N.G3,
+    ],
+    bass: [
+      N.G2, N.G2, N.D2, N.G2, N.G2, N.G2, N.F2, N.G2,
+      N.F2, N.F2, N.C2, N.F2, N.D2, N.D2, N.A2, N.D2,
+      N.Eb2, N.Eb2, N.Bb2, N.Eb2, N.C2, N.C2, N.G2, N.C2,
+      N.D2, N.D2, N.D2, N.D2, N.G2, HOLD, N.D2, N.G2,
+    ],
+    drum: [
+      3, 1, 2, 3, 3, 1, 2, 1,  3, 1, 2, 3, 3, 2, 2, 1,
+      3, 1, 2, 3, 3, 1, 2, 1,  3, 2, 2, 2, 3, 1, 2, 2,
+    ],
+  },
+  SHADOW: {
+    stepMs: 300,
+    lead: [
+      N.C5, HOLD, N.Eb5, HOLD, N.D5, HOLD, N.B4, HOLD,
+      N.C5, HOLD, N.Gs4, HOLD, N.G4, HOLD, REST, REST,
+      N.Eb5, HOLD, N.Fs5, HOLD, N.F5, HOLD, N.D5, HOLD,
+      N.Eb5, HOLD, N.D5, N.B4, N.C5, HOLD, REST, REST,
+    ],
+    arp: [
+      N.C4, N.Eb4, N.G4, REST, N.B3, N.D4, N.G4, REST,
+      N.Gs3, N.C4, N.Eb4, REST, N.G3, N.B3, N.D4, REST,
+      N.C4, N.Eb4, N.Fs4, REST, N.B3, N.D4, N.F4, REST,
+      N.Gs3, N.C4, N.G3, N.B3, N.C4, HOLD, REST, REST,
+    ],
+    bass: [
+      N.C2, HOLD, HOLD, HOLD, N.B2, HOLD, HOLD, HOLD,
+      N.Gs2, HOLD, HOLD, HOLD, N.G2, HOLD, HOLD, HOLD,
+      N.C2, HOLD, HOLD, HOLD, N.F2, HOLD, HOLD, HOLD,
+      N.Gs2, HOLD, N.G2, HOLD, N.C2, HOLD, REST, REST,
+    ],
+    drum: [
+      3, 0, 0, 0, 0, 0, 1, 0,  3, 0, 0, 0, 0, 0, 1, 0,
+      3, 0, 0, 0, 0, 0, 1, 0,  3, 0, 0, 0, 3, 0, 0, 0,
     ],
   },
   BATTLE: {
@@ -220,13 +345,7 @@ export class RetroSynthAudio {
     }
   }
 
-  public setMusicMode(mode: GameMode, isBossBattle = false): void {
-    let want: BgmTrackId = 'HAMLET';
-    if (mode === 'BATTLE') {
-      want = isBossBattle ? 'BOSS' : 'BATTLE';
-    } else if (mode === 'BATTLE_VICTORY') {
-      want = 'VICTORY';
-    }
+  public setTrack(want: BgmTrackId): void {
     if (this.currentTrack !== want) {
       this.currentTrack = want;
       this.bgmStep = 0;
@@ -235,6 +354,16 @@ export class RetroSynthAudio {
         this.startBgmLoop();
       }
     }
+  }
+
+  public setMusicMode(mode: GameMode, isBossBattle = false): void {
+    let want: BgmTrackId = 'HAMLET';
+    if (mode === 'BATTLE') {
+      want = isBossBattle ? 'BOSS' : 'BATTLE';
+    } else if (mode === 'BATTLE_VICTORY') {
+      want = 'VICTORY';
+    }
+    this.setTrack(want);
   }
 
   public processQueue(queue: SfxId[]): void {
@@ -420,6 +549,26 @@ export class RetroSynthAudio {
       case SfxId.HURT:
         this.tone(170, 75, 0.14, 'sawtooth', 0.12);
         this.noiseBurst(0.08, 520, 0.11);
+        break;
+      case SfxId.COIN:
+        this.tone(988, 988, 0.06, 'triangle', 0.1, 0);
+        this.tone(1319, 1319, 0.12, 'sine', 0.1, 0.055);
+        break;
+      case SfxId.FISH_BITE:
+        this.tone(880, 1320, 0.08, 'square', 0.09);
+        this.noiseBurst(0.07, 1400, 0.08);
+        break;
+      case SfxId.FISH_REEL:
+        this.tone(480, 620, 0.03, 'triangle', 0.06);
+        break;
+      case SfxId.FISH_CATCH:
+        this.tone(587, 587, 0.1, 'triangle', 0.1, 0);
+        this.tone(740, 740, 0.1, 'triangle', 0.1, 0.075);
+        this.tone(880, 1175, 0.24, 'sine', 0.11, 0.15);
+        break;
+      case SfxId.PORTAL:
+        this.tone(392, 784, 0.22, 'sine', 0.09);
+        this.tone(587, 1175, 0.22, 'triangle', 0.07, 0.05);
         break;
     }
   }
