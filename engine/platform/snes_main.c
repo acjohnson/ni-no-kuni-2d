@@ -1224,32 +1224,60 @@ static void build_battle_bg1(u8 biome) {
     g_bg1_dirty_r = 0;
 }
 
+static u8 *snes_cg_tiles_ptr(u8 p) {
+    switch (p) {
+        case 1u: return (u8 *)&cg_plate1_tiles;
+        case 2u: return (u8 *)&cg_plate2_tiles;
+        case 3u: return (u8 *)&cg_plate3_tiles;
+        case 4u: return (u8 *)&cg_plate4_tiles;
+        case 5u: return (u8 *)&cg_plate5_tiles;
+        default: return (u8 *)&cg_plate0_tiles;
+    }
+}
+
+static const u16 *snes_cg_map_ptr(u8 p) {
+    switch (p) {
+        case 1u: return (const u16 *)&cg_plate1_map;
+        case 2u: return (const u16 *)&cg_plate2_map;
+        case 3u: return (const u16 *)&cg_plate3_map;
+        case 4u: return (const u16 *)&cg_plate4_map;
+        case 5u: return (const u16 *)&cg_plate5_map;
+        default: return (const u16 *)&cg_plate0_map;
+    }
+}
+
+static u8 *snes_cg_pal_ptr(u8 p) {
+    switch (p) {
+        case 1u: return (u8 *)&cg_plate1_pal;
+        case 2u: return (u8 *)&cg_plate2_pal;
+        case 3u: return (u8 *)&cg_plate3_pal;
+        case 4u: return (u8 *)&cg_plate4_pal;
+        case 5u: return (u8 *)&cg_plate5_pal;
+        default: return (u8 *)&cg_plate0_pal;
+    }
+}
+
 static void upload_cinema_cg_force_blank(u8 scene) {
     u8 p = (scene < CINEMA_ROM_PLATE_COUNT) ? scene : 0u;
     u16 byte_len = (u16)(CINEMA_ROM_TILE_COUNTS[p] << 5);
-    dmaCopyVram((u8 *)CINEMA_SNES_TILE_PTRS[p],
+    dmaCopyVram(snes_cg_tiles_ptr(p),
                 (u16)(VRAM_BG1_GFX + ((u16)VRAM_CG_TILE_BASE << 4)),
                 byte_len);
-    dmaCopyCGram((u8 *)CINEMA_ROM_PALS[p], 0u, 32u);
+    dmaCopyCGram(snes_cg_pal_ptr(p), 0u, 32u);
 }
 
 static void build_intro_bg1(u8 scene) {
     u8 p = (scene < CINEMA_ROM_PLATE_COUNT) ? scene : 0u;
-    const uint16_t *mp = CINEMA_ROM_MAP_PTRS[p];
+    const u16 *mp = snes_cg_map_ptr(p);
     u16 empty_e = SNES_TILE(ST_EMPTY, 0u, 0u);
-    u16 y, x, tid;
+    u16 i;
 
-    for (y = 0; y < 32u; y++) {
-        for (x = 0; x < 32u; x++) {
-            g_bg1_map[(u16)((y << 5) + x)] = empty_e;
-        }
+    for (i = 0u; i < 1024u; i++) {
+        g_bg1_map[i] = empty_e;
     }
-    /* Map 32x15 quantized anime CG plate into BG1 rows 2..16 */
-    for (y = 0; y < CINEMA_ROM_TH; y++) {
-        for (x = 0; x < CINEMA_ROM_TW; x++) {
-            tid = mp[(u16)((y << 5) + x)];
-            g_bg1_map[(u16)(((y + 2u) << 5) + x)] = SNES_TILE((u16)(VRAM_CG_TILE_BASE + tid), 0u, 0u);
-        }
+    /* Map 32x15 pre-encoded quantized anime CG plate into BG1 rows 2..16 */
+    for (i = 0u; i < CINEMA_ROM_MAP_LEN; i++) {
+        g_bg1_map[(u16)(64u + i)] = mp[i];
     }
     g_bg1_dirty_l = 1;
     g_bg1_dirty_r = 0;

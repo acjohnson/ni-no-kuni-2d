@@ -32,6 +32,7 @@ CORE_HDRS       := $(CORE_DIR)/hearth_types.h $(CORE_DIR)/hearth_prng.h \
 SDL2_SRC        := $(PLAT_DIR)/sdl2_main.c
 SDL2_CG_HDR     := $(PLAT_DIR)/cinema_cg_sdl2.h
 ROM_CG_HDR      := $(PLAT_DIR)/cinema_cg_rom.h
+SNES_CG_ASM     := $(PLAT_DIR)/cinema_cg_snes.asm
 TEST_SRC        := $(PLAT_DIR)/headless_test.c
 GENESIS_SRC     := $(PLAT_DIR)/genesis_main.c
 SNES_SRC        := $(PLAT_DIR)/snes_main.c
@@ -188,7 +189,7 @@ genesis: genesis-stage
 # ------------------------------------------------------------------------------
 # 6. SUPER NINTENDO (SNES) ROM (FastROM + SPC700 Audio + Auto-Fetched PVSnesLib)
 # ------------------------------------------------------------------------------
-snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(SNES_AUDIO_GEN)
+snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(SNES_CG_ASM) $(SNES_AUDIO_GEN)
 	@set -e; \
 	PV_ROOT=""; \
 	if [ -n "$(PVSNESLIB_HOME)" ] && [ -f "$(PVSNESLIB_HOME)/devkitsnes/snes_rules" ]; then \
@@ -225,6 +226,13 @@ snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(SNES_AUDIO_GEN)
 	"$(BUILD_DIR)/snes/gen_snes_audio" "$(BUILD_DIR)/snes/res"; \
 	cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) "$(BUILD_DIR)/snes/src/"; \
 	cp $(SNES_SRC) "$(BUILD_DIR)/snes/src/main.c"; \
+	DATA_OBJ="data.obj"; \
+	if grep -qE '^[^#]*(SRC|dir)[^#]*\*\.asm' "$$PV_ROOT/devkitsnes/snes_rules" 2>/dev/null; then \
+		cp $(SNES_CG_ASM) "$(BUILD_DIR)/snes/src/data.asm"; \
+		DATA_OBJ="src/data.obj"; \
+	else \
+		cp $(SNES_CG_ASM) "$(BUILD_DIR)/snes/data.asm"; \
+	fi; \
 	printf '%s\n' \
 		'export FASTROM := 1' \
 		'export ROMNAME := hearth' \
@@ -238,8 +246,9 @@ snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(SNES_AUDIO_GEN)
 		'SRC := src' \
 		'CFLAGS += -DHEARTH_TARGET_SNES -Isrc -I.' \
 		"include $${PV_ROOT}/devkitsnes/snes_rules" \
-		'SMCONVFLAGS := -s -o $$(SOUNDBANK) -V -b 5 -f' \
+		'SMCONVFLAGS := -s -o $$(SOUNDBANK) -V -b 10 -f' \
 		'musics: $$(SOUNDBANK).obj' \
+		"$${DATA_OBJ}: hdr.asm" \
 		'src/main.ps: $$(SOUNDBANK).asm' \
 		'all: musics $$(ROMNAME).sfc' > "$(BUILD_DIR)/snes/Makefile"; \
 	if ! grep -q "AUTOHDR" "$$PV_ROOT/devkitsnes/snes_rules" 2>/dev/null; then \
