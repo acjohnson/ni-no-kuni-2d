@@ -123,6 +123,10 @@ extern const int8_t HEARTH_SIN64[64];
 void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t *col);
 void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col);
 
+/* 7-Act Illustrated Opening Cinema Script (23 player-paced beats) */
+#define HEARTH_CINEMA_BEAT_COUNT 23u
+extern const HearthCinemaBeat HEARTH_CINEMA_SCRIPT[HEARTH_CINEMA_BEAT_COUNT];
+
 /* Cutscene ROM Bytecode Scripts */
 extern const HearthCutsceneOp CUTSCENE_INTRO_DEMO[];
 extern const HearthCutsceneOp CUTSCENE_ELDER_TALK[];

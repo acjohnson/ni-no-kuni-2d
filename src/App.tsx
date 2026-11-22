@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { BattleHudOverlay } from './components/BattleHudOverlay';
+import { CinemaTheater } from './components/CinemaTheater';
 import { ControlsModal } from './components/ControlsModal';
 import { EngineWorkbench } from './components/EngineWorkbench';
 import { PortraitFrame } from './components/PortraitFrame';
@@ -131,7 +132,7 @@ export default function App() {
           }
 
           frameSinceSync += steps;
-          if (frameSinceSync >= 3) {
+          if (frameSinceSync >= 3 || (latestPacket && latestPacket.mode === 'INTRO')) {
             frameSinceSync = 0;
             setUi(engine.getUiSnapshot());
           }
@@ -189,6 +190,14 @@ export default function App() {
     blurFocus();
     unlockAudio();
     engineRef.current.skipIntro();
+    syncAfterUiAction();
+  };
+
+  const handleToggleCinemaAuto = () => {
+    if (!engineRef.current) return;
+    blurFocus();
+    unlockAudio();
+    engineRef.current.toggleCinemaAuto();
     syncAfterUiAction();
   };
 
@@ -385,23 +394,21 @@ export default function App() {
                 </div>
               )}
 
-              {/* INTRO MODE QUICK SKIP BUTTON (Keyboard Space/Enter/Esc also works) */}
+              {/* 7-ACT ILLUSTRATED OPENING CINEMA THEATER */}
               {ui?.mode === 'INTRO' && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSkipIntro();
-                  }}
-                  className="rpg-slot font-pixel absolute top-3 right-3 z-20 px-2.5 py-1 text-[10px] tracking-wide text-[#F5D688] transition-colors hover:border-[#E7AA40] hover:text-[#FFF6DC]"
-                >
-                  SKIP &gt;&gt;
-                </button>
+                <CinemaTheater
+                  intro={ui.intro}
+                  fadeLevel={ui.fadeLevel}
+                  flashAlpha={ui.flashAlpha}
+                  onAdvance={handleCanvasClick}
+                  onToggleAuto={handleToggleCinemaAuto}
+                  onSkip={handleSkipIntro}
+                />
               )}
 
               {/* TITLE SCREEN OVERLAY */}
               {ui?.mode === 'TITLE' && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-t from-[#0E1018]/88 via-[#0E1018]/52 to-[#0E1018]/35 px-5 text-center">
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-t from-[#0E1018]/88 via-[#0E1018]/48 to-[#0E1018]/30 px-5 text-center">
                   <div className="rpg-window max-w-md px-6 py-5">
                     <p className="font-pixel text-[10px] tracking-widest text-[#E5B85B]">
                       ALDERBROOK &amp; EVERTALE
@@ -412,8 +419,8 @@ export default function App() {
                     >
                       PROJECT HEARTH
                     </h1>
-                    <p className="mt-2.5 font-pixel text-[11px] leading-relaxed text-[#CFC8B8]">
-                      FIVE-ZONE STORYBOOK RPG · SHOPS, FISHING &amp; TIMED COMBAT
+                    <p className="mt-2.5 font-pixel text-[10px] leading-relaxed text-[#CFC8B8]">
+                      A STORYBOOK RPG OF TWO WORLDS · ILLUSTRATED PROLOGUE &amp; FIVE ZONES
                     </p>
 
                     <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
@@ -439,14 +446,14 @@ export default function App() {
                         className="rpg-slot font-pixel flex items-center gap-1.5 px-3.5 py-2 text-xs text-[#F2E9D4] whitespace-nowrap transition-colors hover:border-[#6CC8E8]"
                       >
                         <Film className="h-3.5 w-3.5 text-[#6CC8E8]" />
-                        REPLAY INTRO
+                        REPLAY CINEMA
                       </button>
                     </div>
 
                     <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-pixel text-[10px] text-[#ABA494]">
                       <span>WASD/ARROWS: MOVE</span>
                       <span>SHIFT: DASH</span>
-                      <span>SPACE: ACT / REEL</span>
+                      <span>SPACE: ACT / NEXT</span>
                       <span>Q/E: SWAP FAMILIAR</span>
                     </div>
                   </div>

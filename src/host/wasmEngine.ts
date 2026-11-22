@@ -56,6 +56,7 @@ interface WasmExports {
   wasm_start_cutscene_demo(): void;
   wasm_start_intro(): void;
   wasm_skip_intro(): void;
+  wasm_toggle_cinema_auto(): void;
   wasm_start_quick_battle(preset: number): void;
   wasm_return_to_title(): void;
   wasm_heal_party(): void;
@@ -130,6 +131,8 @@ const BGM_MAP: readonly BgmTrackId[] = [
   'BATTLE',
   'BOSS',
   'VICTORY',
+  'CINEMA_WONDER',
+  'CINEMA_LULLABY',
 ];
 
 const BVFX_MAP: readonly BattleVfxKind[] = [
@@ -456,6 +459,11 @@ export class WasmHearthEngine {
 
   public skipIntro(): void {
     this.wasm.wasm_skip_intro();
+    this.syncMapIfChanged();
+  }
+
+  public toggleCinemaAuto(): void {
+    this.wasm.wasm_toggle_cinema_auto();
   }
 
   public startQuickBattle(preset: EncounterPreset = 'SHRINE_BOSS'): void {
@@ -798,10 +806,19 @@ export class WasmHearthEngine {
         label: this.readCString(i32[s + 15]),
       },
       intro: {
+        beat: i32[s + 136],
+        beatCount: Math.max(1, i32[s + 137]),
         scene: i32[s + 82],
+        actNum: Math.max(1, i32[s + 138]),
+        camMode: i32[s + 139],
+        fxMode: i32[s + 140],
+        autoPlay: i32[s + 141] !== 0,
+        plateTimer: i32[s + 142],
+        fadeDir: i32[s + 144],
         timer: i32[s + 83],
         chars: i32[s + 84],
         title: this.readCString(i32[s + 85]),
+        speaker: this.readCString(i32[s + 143]),
         line1: this.readCString(i32[s + 86]),
         line2: this.readCString(i32[s + 87]),
       },
@@ -934,6 +951,25 @@ export class WasmHearthEngine {
       zoneLabel,
       storyStage,
       objectiveLabel,
+      intro: {
+        beat: i32[s + 136],
+        beatCount: Math.max(1, i32[s + 137]),
+        scene: i32[s + 82],
+        actNum: Math.max(1, i32[s + 138]),
+        camMode: i32[s + 139],
+        fxMode: i32[s + 140],
+        autoPlay: i32[s + 141] !== 0,
+        plateTimer: i32[s + 142],
+        fadeDir: i32[s + 144],
+        timer: i32[s + 83],
+        chars: i32[s + 84],
+        title: this.readCString(i32[s + 85]),
+        speaker: this.readCString(i32[s + 143]),
+        line1: this.readCString(i32[s + 86]),
+        line2: this.readCString(i32[s + 87]),
+      },
+      fadeLevel: i32[s + 81],
+      flashAlpha: Math.min(0.65, i32[s + 8] / 12),
       dialogue: {
         active: i32[s + 33] !== 0,
         speaker,

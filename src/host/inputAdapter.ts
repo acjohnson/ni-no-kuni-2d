@@ -76,6 +76,7 @@ export class RetroInputAdapter {
       case 'KeyC':
         return PAD_X;
       case 'KeyV':
+      case 'KeyY':
         return PAD_Y;
       case 'KeyQ':
       case 'BracketLeft':

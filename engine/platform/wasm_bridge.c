@@ -10,7 +10,7 @@
 
 #define WASM_EXPORT(name) __attribute__((export_name(#name)))
 
-#define SCALAR_LEN       144
+#define SCALAR_LEN       152
 #define OAM_STRIDE       12
 #define PARTY_STRIDE     16
 #define ENEMY_STRIDE     28
@@ -323,6 +323,17 @@ static void sync_snapshot(void) {
     g_scalars[133] = b->encounter_preset;
     g_scalars[134] = g_state.flag_has_wand ? 1 : 0;
     g_scalars[135] = g_state.flag_sewer_key ? 1 : 0;
+
+    /* 7-Act Illustrated Cinema Registers */
+    g_scalars[136] = g_state.intro.beat;
+    g_scalars[137] = (int32_t)HEARTH_CINEMA_BEAT_COUNT;
+    g_scalars[138] = g_state.intro.act_num;
+    g_scalars[139] = g_state.intro.cam_mode;
+    g_scalars[140] = g_state.intro.fx_mode;
+    g_scalars[141] = g_state.intro.auto_play ? 1 : 0;
+    g_scalars[142] = g_state.intro.plate_timer;
+    g_scalars[143] = (int32_t)(uintptr_t)g_state.intro.speaker;
+    g_scalars[144] = g_state.intro.fade_dir;
 }
 
 static void inject_ui_pad(uint16_t mask) {
@@ -423,9 +434,18 @@ void wasm_skip_intro(void) {
     sync_snapshot();
 }
 
+WASM_EXPORT(wasm_toggle_cinema_auto)
+void wasm_toggle_cinema_auto(void) {
+    g_state.ppu.sfx_count = 0;
+    hearth_toggle_cinema_auto(&g_state);
+    append_ppu_sfx();
+    sync_snapshot();
+}
+
 WASM_EXPORT(wasm_return_to_title)
 void wasm_return_to_title(void) {
     g_state.ppu.sfx_count = 0;
+    g_state.intro.launch_story = false;
     hearth_skip_intro(&g_state);
     append_ppu_sfx();
     sync_snapshot();

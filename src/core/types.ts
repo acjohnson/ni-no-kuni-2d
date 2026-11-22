@@ -68,7 +68,9 @@ export type BgmTrackId =
   | 'SHADOW'
   | 'BATTLE'
   | 'BOSS'
-  | 'VICTORY';
+  | 'VICTORY'
+  | 'CINEMA_WONDER'
+  | 'CINEMA_LULLABY';
 
 export type BattleBiome = 'MEADOW' | 'SHRINE' | 'SEWER' | 'BOARHOLD';
 
@@ -434,10 +436,19 @@ export interface BattleVfxState {
 }
 
 export interface IntroState {
+  beat: number;
+  beatCount: number;
   scene: number;
+  actNum: number;
+  camMode: number;
+  fxMode: number;
+  autoPlay: boolean;
+  plateTimer: number;
+  fadeDir: number;
   timer: number;
   chars: number;
   title: string;
+  speaker: string;
   line1: string;
   line2: string;
 }
@@ -569,6 +580,9 @@ export interface UiSnapshot {
   zoneLabel: string;
   storyStage: number;
   objectiveLabel: string;
+  intro: IntroState;
+  fadeLevel: number;
+  flashAlpha: number;
   dialogue: DialogueState;
   party: PartyMemberState[];
   activeSlot: FamiliarSlot;

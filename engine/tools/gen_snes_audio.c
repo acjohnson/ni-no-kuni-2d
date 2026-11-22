@@ -1,12 +1,16 @@
 /* ============================================================================
  * gen_snes_audio.c — Zero-Dependency Impulse Tracker (.it) Generator for SNES
  *
- * Generates 4 compact, spec-compliant Impulse Tracker 2.14 (.it) modules
+ * Generates 8 compact, spec-compliant Impulse Tracker 2.14 (.it) modules
  * converted directly by PVSnesLib's `smconv` into an SPC700 BRR soundbank:
- *   0. hearth_sfx.it    (6 crisp 16kHz SFX samples — MUST be 1st for smconv!)
- *   1. hearth_hamlet.it (Windmill Hamlet — 3/4 Pastoral Waltz in G Major)
- *   2. hearth_battle.it (Whispering Meadow — 4/4 Heroic JRPG Battle in A Minor)
- *   3. hearth_boss.it   (Briar Warden Boss — 4/4 Urgent Shrine Boss in D Minor)
+ *   0. hearth_sfx.it        (6 crisp 16kHz SFX samples — MUST be 1st for smconv!)
+ *   1. hearth_alderbrook.it (Alderbrook Overture — "Steam & Pine" 6/8 Waltz)
+ *   2. hearth_wonder.it     (Cinema Wonder — "Beyond the Hollow Oak" in D Major)
+ *   3. hearth_shadow.it     (Shadow Grandma — "The Hollow Mirror" in C Minor)
+ *   4. hearth_lullaby.it    (Cinema Comfort — "Lantern Lullaby" in F Major)
+ *   5. hearth_hamlet.it     (Windmill Hamlet — 3/4 Pastoral Waltz in G Major)
+ *   6. hearth_battle.it     (Whispering Meadow — 4/4 Heroic JRPG Battle in A Minor)
+ *   7. hearth_boss.it       (Briar Warden Boss — 4/4 Urgent Shrine Boss in D Minor)
  *
  * Pure ANSI C99, zero external libraries (no -lm required).
  * Usage: gen_snes_audio <output_dir>
@@ -548,6 +552,158 @@ enum {
     N_C6=84
 };
 
+/* Alderbrook Overture — "Steam & Pine" (96 rows, 6/8 Waltz, C Major) */
+static const uint8_t ALDER_LEAD[96] = {
+    N_E4, HOLD, N_G4, N_C5, HOLD, N_B4,  N_A4, HOLD, N_G4, N_E4, HOLD, REST,
+    N_F4, HOLD, N_A4, N_G4, HOLD, N_F4,  N_E4, HOLD, N_D4, N_C4, HOLD, REST,
+    N_E4, HOLD, N_G4, N_C5, HOLD, N_D5,  N_E5, HOLD, N_D5, N_C5, HOLD, N_A4,
+    N_G4, HOLD, N_A4, N_B4, HOLD, N_D5,  N_C5, HOLD, HOLD, HOLD, REST, REST,
+    N_A4, HOLD, N_C5, N_E5, HOLD, N_D5,  N_C5, HOLD, N_B4, N_A4, HOLD, N_G4,
+    N_F4, HOLD, N_A4, N_C5, HOLD, N_B4,  N_A4, HOLD, N_G4, N_E4, HOLD, REST,
+    N_D5, HOLD, N_E5, N_F5, HOLD, N_E5,  N_D5, HOLD, N_C5, N_B4, HOLD, N_A4,
+    N_G4, HOLD, N_B4, N_D5, HOLD, N_B4,  N_C5, HOLD, HOLD, HOLD, REST, REST
+};
+static const uint8_t ALDER_ARP[96] = {
+    N_C4, N_E4, N_G4, N_E4, N_G4, N_C5,  N_A3, N_C4, N_E4, N_C4, N_E4, N_A4,
+    N_F3, N_A3, N_C4, N_A3, N_C4, N_F4,  N_G3, N_B3, N_D4, N_G3, N_C4, N_E4,
+    N_C4, N_E4, N_G4, N_E4, N_G4, N_C5,  N_A3, N_C4, N_E4, N_F3, N_A3, N_C4,
+    N_G3, N_B3, N_D4, N_G3, N_B3, N_F4,  N_C4, N_E4, N_G4, N_E4, N_C4, N_G3,
+    N_A3, N_C4, N_E4, N_A4, N_E4, N_C4,  N_E3, N_G3, N_B3, N_E4, N_B3, N_G3,
+    N_F3, N_A3, N_C4, N_F4, N_C4, N_A3,  N_C4, N_E4, N_G4, N_E4, N_C4, N_G3,
+    N_D3, N_F3, N_A3, N_D4, N_A3, N_F3,  N_F3, N_A3, N_C4, N_A3, N_F3, N_C4,
+    N_G3, N_B3, N_D4, N_G4, N_D4, N_B3,  N_C4, N_E4, N_G4, N_C5, N_G4, N_E4
+};
+static const uint8_t ALDER_BASS[96] = {
+    N_C3, HOLD, N_G2, REST, N_G2, REST,  N_A2, HOLD, N_E3, REST, N_E3, REST,
+    N_F2, HOLD, N_C3, REST, N_C3, REST,  N_G2, HOLD, N_D3, N_C3, HOLD, REST,
+    N_C3, HOLD, N_G2, REST, N_G2, REST,  N_A2, HOLD, N_E3, N_F2, HOLD, N_C3,
+    N_G2, HOLD, N_D3, REST, N_G2, REST,  N_C3, HOLD, N_G2, N_C3, HOLD, REST,
+    N_A2, HOLD, N_E3, REST, N_E3, REST,  N_E2, HOLD, N_B2, REST, N_B2, REST,
+    N_F2, HOLD, N_C3, REST, N_C3, REST,  N_C3, HOLD, N_G2, REST, N_G2, REST,
+    N_D2, HOLD, N_A2, REST, N_A2, REST,  N_F2, HOLD, N_C3, REST, N_C3, REST,
+    N_G2, HOLD, N_D3, REST, N_G2, REST,  N_C3, HOLD, N_G2, N_C3, HOLD, REST
+};
+static const uint8_t ALDER_DRUM[96] = {
+    3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 0, 0,
+    3, 0, 1, 0, 1, 0,  3, 0, 1, 3, 0, 1,  3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 0, 0,
+    3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,
+    3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,  3, 0, 0, 0, 0, 0
+};
+
+/* "Beyond the Hollow Oak" — Cinema Wonder (64 rows, D Major) */
+static const uint8_t WONDER_LEAD[64] = {
+    N_D5, HOLD, N_Fs5, N_A5, N_G5, HOLD, N_Fs5, N_E5,
+    N_D5, HOLD, N_B4, N_D5, N_A4, HOLD, REST, N_A4,
+    N_B4, HOLD, N_D5, N_Fs5, N_E5, HOLD, N_D5, N_B4,
+    N_A4, HOLD, N_B4, N_Cs5, N_D5, HOLD, REST, REST,
+    N_Fs5, HOLD, N_G5, N_A5, N_B5, HOLD, N_A5, N_Fs5,
+    N_E5, HOLD, N_Fs5, N_G5, N_Fs5, HOLD, N_D5, N_B4,
+    N_A4, HOLD, N_D5, N_Fs5, N_E5, HOLD, N_Cs5, N_E5,
+    N_D5, HOLD, HOLD, HOLD, REST, REST, REST, REST
+};
+static const uint8_t WONDER_ARP[64] = {
+    N_D4, N_Fs4, N_A4, N_D5, N_G3, N_B3, N_D4, N_G4,
+    N_B3, N_D4, N_Fs4, N_B4, N_A3, N_Cs4, N_E4, N_A4,
+    N_G3, N_B3, N_D4, N_G4, N_D4, N_Fs4, N_A4, N_D5,
+    N_A3, N_Cs4, N_E4, N_G4, N_D4, N_Fs4, N_A4, N_D5,
+    N_D4, N_Fs4, N_A4, N_D5, N_G4, N_B4, N_D5, N_B4,
+    N_A3, N_Cs4, N_E4, N_A4, N_B3, N_D4, N_Fs4, N_B4,
+    N_G3, N_B3, N_D4, N_G4, N_A3, N_Cs4, N_E4, N_A4,
+    N_D4, N_Fs4, N_A4, N_D5, N_A4, N_Fs4, N_D4, REST
+};
+static const uint8_t WONDER_BASS[64] = {
+    N_D3, HOLD, N_A2, HOLD, N_G2, HOLD, N_D3, HOLD,
+    N_B2, HOLD, N_Fs2, HOLD, N_A2, HOLD, N_E2, HOLD,
+    N_G2, HOLD, N_D3, HOLD, N_D3, HOLD, N_A2, HOLD,
+    N_A2, HOLD, N_E3, HOLD, N_D3, HOLD, N_A2, REST,
+    N_D3, HOLD, N_A2, HOLD, N_G2, HOLD, N_D3, HOLD,
+    N_A2, HOLD, N_E3, HOLD, N_B2, HOLD, N_Fs2, HOLD,
+    N_G2, HOLD, N_D3, HOLD, N_A2, HOLD, N_E3, HOLD,
+    N_D3, HOLD, N_A2, HOLD, N_D3, HOLD, REST, REST
+};
+static const uint8_t WONDER_DRUM[64] = {
+    3, 0, 1, 0, 0, 0, 1, 0,  3, 0, 1, 0, 0, 0, 1, 0,
+    3, 0, 1, 0, 3, 0, 1, 0,  3, 0, 1, 0, 3, 0, 0, 0,
+    3, 0, 1, 0, 3, 0, 1, 0,  3, 0, 1, 0, 3, 0, 1, 0,
+    3, 0, 1, 0, 3, 0, 1, 0,  3, 0, 0, 0, 0, 0, 0, 0
+};
+
+/* "The Hollow Mirror" — Shadow Grandmother (64 rows, C Minor) */
+static const uint8_t SHADOW_LEAD[64] = {
+    N_C5, HOLD, N_Eb5, HOLD, N_D5, HOLD, N_B4, HOLD,
+    N_C5, HOLD, N_Gs4, HOLD, N_G4, HOLD, REST, REST,
+    N_Eb5, HOLD, N_Fs5, HOLD, N_F5, HOLD, N_D5, HOLD,
+    N_Eb5, HOLD, N_D5, N_B4, N_C5, HOLD, REST, REST,
+    N_G5, HOLD, N_Fs5, HOLD, N_F5, HOLD, N_Eb5, HOLD,
+    N_D5, HOLD, N_C5, HOLD, N_B4, HOLD, N_G4, HOLD,
+    N_Gs4, HOLD, N_C5, HOLD, N_B4, HOLD, N_D5, HOLD,
+    N_C5, HOLD, HOLD, HOLD, REST, REST, REST, REST
+};
+static const uint8_t SHADOW_ARP[64] = {
+    N_C4, N_Eb4, N_G4, REST, N_B3, N_D4, N_G4, REST,
+    N_Gs3, N_C4, N_Eb4, REST, N_G3, N_B3, N_D4, REST,
+    N_C4, N_Eb4, N_Fs4, REST, N_B3, N_D4, N_F4, REST,
+    N_Gs3, N_C4, N_G3, N_B3, N_C4, HOLD, REST, REST,
+    N_C4, N_G4, N_Eb4, N_G4, N_B3, N_G4, N_D4, N_G4,
+    N_Gs3, N_Eb4, N_C4, N_Eb4, N_G3, N_D4, N_B3, N_D4,
+    N_F3, N_C4, N_Gs3, N_C4, N_G3, N_D4, N_B3, N_D4,
+    N_C4, N_Eb4, N_G4, HOLD, REST, REST, REST, REST
+};
+static const uint8_t SHADOW_BASS[64] = {
+    N_C2, HOLD, HOLD, HOLD, N_B2, HOLD, HOLD, HOLD,
+    N_Gs2, HOLD, HOLD, HOLD, N_G2, HOLD, HOLD, HOLD,
+    N_C2, HOLD, HOLD, HOLD, N_F2, HOLD, HOLD, HOLD,
+    N_Gs2, HOLD, N_G2, HOLD, N_C2, HOLD, REST, REST,
+    N_C2, HOLD, HOLD, N_C2, N_B2, HOLD, HOLD, N_B2,
+    N_Gs2, HOLD, HOLD, N_Gs2, N_G2, HOLD, HOLD, N_G2,
+    N_F2, HOLD, HOLD, N_F2, N_G2, HOLD, HOLD, N_G2,
+    N_C2, HOLD, HOLD, HOLD, REST, REST, REST, REST
+};
+static const uint8_t SHADOW_DRUM[64] = {
+    3, 0, 0, 0, 0, 0, 1, 0,  3, 0, 0, 0, 0, 0, 1, 0,
+    3, 0, 0, 0, 0, 0, 1, 0,  3, 0, 0, 0, 3, 0, 0, 0,
+    3, 0, 1, 0, 3, 0, 1, 0,  3, 0, 1, 0, 3, 0, 2, 0,
+    3, 0, 1, 0, 3, 0, 2, 0,  3, 0, 0, 0, 0, 0, 0, 0
+};
+
+/* "Lantern Lullaby" — Cinema Comfort & Pip's Window (64 rows, F Major) */
+static const uint8_t LULLABY_LEAD[64] = {
+    N_A4, HOLD, N_C5, HOLD, N_D5, HOLD, N_C5, N_A4,
+    N_G4, HOLD, N_A4, HOLD, N_F4, HOLD, REST, REST,
+    N_Bb4, HOLD, N_D5, HOLD, N_C5, HOLD, N_A4, N_G4,
+    N_A4, HOLD, HOLD, HOLD, REST, REST, N_G4, N_A4,
+    N_C5, HOLD, N_F5, HOLD, N_E5, HOLD, N_D5, N_C5,
+    N_D5, HOLD, N_C5, N_A4, N_G4, HOLD, REST, N_G4,
+    N_A4, HOLD, N_Bb4, N_A4, N_G4, HOLD, N_E4, N_G4,
+    N_F4, HOLD, HOLD, HOLD, REST, REST, REST, REST
+};
+static const uint8_t LULLABY_ARP[64] = {
+    N_F3, N_A3, N_C4, N_F4, N_Bb3, N_D4, N_F4, N_D4,
+    N_C4, N_E4, N_G4, N_E4, N_F3, N_A3, N_C4, N_A3,
+    N_Bb3, N_D4, N_F4, N_D4, N_A3, N_C4, N_F4, N_C4,
+    N_D3, N_F3, N_A3, N_D4, N_C4, N_E4, N_G4, N_C4,
+    N_F3, N_A3, N_C4, N_F4, N_C4, N_E4, N_G4, N_E4,
+    N_Bb3, N_D4, N_F4, N_D4, N_C4, N_E4, N_G4, N_E4,
+    N_D3, N_F3, N_A3, N_D4, N_C4, N_E4, N_G4, N_Bb4,
+    N_F3, N_A3, N_C4, N_F4, N_C4, N_A3, N_F3, REST
+};
+static const uint8_t LULLABY_BASS[64] = {
+    N_F2, HOLD, HOLD, HOLD, N_Bb2, HOLD, HOLD, HOLD,
+    N_C3, HOLD, HOLD, HOLD, N_F2, HOLD, HOLD, HOLD,
+    N_Bb2, HOLD, HOLD, HOLD, N_A2, HOLD, HOLD, HOLD,
+    N_D2, HOLD, HOLD, HOLD, N_C3, HOLD, HOLD, HOLD,
+    N_F2, HOLD, HOLD, HOLD, N_C3, HOLD, HOLD, HOLD,
+    N_Bb2, HOLD, HOLD, HOLD, N_C3, HOLD, HOLD, HOLD,
+    N_D2, HOLD, HOLD, HOLD, N_C3, HOLD, HOLD, HOLD,
+    N_F2, HOLD, HOLD, HOLD, REST, REST, REST, REST
+};
+static const uint8_t LULLABY_DRUM[64] = {
+    0, 0, 1, 0, 0, 0, 0, 0,  0, 0, 1, 0, 0, 0, 0, 0,
+    0, 0, 1, 0, 0, 0, 0, 0,  0, 0, 1, 0, 0, 0, 0, 0,
+    3, 0, 1, 0, 0, 0, 1, 0,  3, 0, 1, 0, 0, 0, 1, 0,
+    3, 0, 1, 0, 0, 0, 1, 0,  0, 0, 0, 0, 0, 0, 0, 0
+};
+
 static const uint8_t HAMLET_LEAD[48] = {
     N_G4, N_B4, N_D5, HOLD, N_E5, N_D5,
     N_B4, HOLD, N_G4, HOLD, N_A4, N_B4,
@@ -780,7 +936,7 @@ int main(int argc, char **argv) {
     int16_t *w_snare = make_drum_snare(&l_snare);
     int16_t *w_hat   = make_drum_hat(&l_hat);
 
-    /* 2a. Windmill Hamlet (3/4 Pastoral Waltz, 238ms/step -> IS=12, IT=126; T0=20000/126=158 <= 255!) */
+    /* 2a. Alderbrook Overture ("Steam & Pine", 6/8 Waltz, 245ms/step -> IS=12, IT=122) */
     ItSampleSpec hamlet_specs[6] = {
         { "flute_lead", w_flute, l_flute, 8372, 1, 56, 1, 64, 48, 8, 12, 56 },
         { "harp_arp",   w_harp,  l_harp,  8372, 1, 40, 1, 60, 20, 0,  6, 24 },
@@ -789,6 +945,38 @@ int main(int argc, char **argv) {
         { "soft_snare", w_snare, l_snare, 16000, 0, 32, 0, 64, 64, 0,  2,  4 },
         { "soft_brush", w_hat,   l_hat,   16000, 0, 28, 0, 64, 64, 0,  2,  4 }
     };
+    Buf pat_alder;
+    buf_init(&pat_alder);
+    pack_music_pattern(&pat_alder, 96, ALDER_LEAD, ALDER_ARP, ALDER_BASS, ALDER_DRUM, 52, 34, 48, 28);
+    snprintf(path, sizeof(path), "%s/hearth_alderbrook.it", outdir);
+    write_it_module(path, "Steam and Pine", 12, 122, 4, hamlet_specs, 6, pat_alder.data, (uint16_t)pat_alder.len, 96);
+    free(pat_alder.data);
+
+    /* 2b. Beyond the Hollow Oak (Cinema Wonder, 215ms/step -> IS=10, IT=116) */
+    Buf pat_wonder;
+    buf_init(&pat_wonder);
+    pack_music_pattern(&pat_wonder, 64, WONDER_LEAD, WONDER_ARP, WONDER_BASS, WONDER_DRUM, 54, 36, 48, 28);
+    snprintf(path, sizeof(path), "%s/hearth_wonder.it", outdir);
+    write_it_module(path, "Beyond Hollow Oak", 10, 116, 4, hamlet_specs, 6, pat_wonder.data, (uint16_t)pat_wonder.len, 64);
+    free(pat_wonder.data);
+
+    /* 2c. The Hollow Mirror (Shadow Grandmother, 265ms/step -> IS=12, IT=113) */
+    Buf pat_shadow;
+    buf_init(&pat_shadow);
+    pack_music_pattern(&pat_shadow, 64, SHADOW_LEAD, SHADOW_ARP, SHADOW_BASS, SHADOW_DRUM, 50, 32, 52, 30);
+    snprintf(path, sizeof(path), "%s/hearth_shadow.it", outdir);
+    write_it_module(path, "The Hollow Mirror", 12, 113, 4, hamlet_specs, 6, pat_shadow.data, (uint16_t)pat_shadow.len, 64);
+    free(pat_shadow.data);
+
+    /* 2d. Lantern Lullaby (Grandma Comfort & Pip's Window, 270ms/step -> IS=12, IT=111) */
+    Buf pat_lullaby;
+    buf_init(&pat_lullaby);
+    pack_music_pattern(&pat_lullaby, 64, LULLABY_LEAD, LULLABY_ARP, LULLABY_BASS, LULLABY_DRUM, 50, 34, 46, 22);
+    snprintf(path, sizeof(path), "%s/hearth_lullaby.it", outdir);
+    write_it_module(path, "Lantern Lullaby", 12, 111, 4, hamlet_specs, 6, pat_lullaby.data, (uint16_t)pat_lullaby.len, 64);
+    free(pat_lullaby.data);
+
+    /* 2e. Windmill Hamlet (3/4 Pastoral Waltz, 238ms/step -> IS=12, IT=126; T0=20000/126=158 <= 255!) */
     Buf pat_hamlet;
     buf_init(&pat_hamlet);
     pack_music_pattern(&pat_hamlet, 48, HAMLET_LEAD, HAMLET_ARP, HAMLET_BASS, HAMLET_DRUM, 52, 34, 48, 30);
@@ -796,7 +984,7 @@ int main(int argc, char **argv) {
     write_it_module(path, "Windmill Hamlet", 12, 126, 4, hamlet_specs, 6, pat_hamlet.data, (uint16_t)pat_hamlet.len, 48);
     free(pat_hamlet.data);
 
-    /* 2b. Whispering Meadow Battle (4/4 Heroic JRPG Battle, 155ms/step -> IS=6, IT=97) */
+    /* 2f. Whispering Meadow Battle (4/4 Heroic JRPG Battle, 155ms/step -> IS=6, IT=97) */
     ItSampleSpec battle_specs[6] = {
         { "battle_lead", w_brass, l_brass, 8372, 1, 58, 1, 64, 44, 6,  4, 18 },
         { "battle_arp",  w_harp,  l_harp,  8372, 1, 38, 1, 58, 16, 0,  2,  8 },
@@ -812,7 +1000,7 @@ int main(int argc, char **argv) {
     write_it_module(path, "Meadow Battle", 6, 97, 4, battle_specs, 6, pat_battle.data, (uint16_t)pat_battle.len, 64);
     free(pat_battle.data);
 
-    /* 2c. Briar Warden Boss (4/4 Urgent Shrine Boss, 140ms/step -> IS=6, IT=107) */
+    /* 2g. Briar Warden Boss (4/4 Urgent Shrine Boss, 140ms/step -> IS=6, IT=107) */
     Buf pat_boss;
     buf_init(&pat_boss);
     pack_music_pattern(&pat_boss, 64, BOSS_LEAD, BOSS_ARP, BOSS_BASS, BOSS_DRUM, 58, 38, 56, 52);
@@ -824,6 +1012,6 @@ int main(int argc, char **argv) {
     free(w_flute); free(w_harp); free(w_brass); free(w_bass);
     free(w_kick); free(w_snare); free(w_hat);
 
-    printf("Generated SNES SPC700 Impulse Tracker modules in %s/\n", outdir);
+    printf("Generated 8 SNES SPC700 Impulse Tracker modules in %s/\n", outdir);
     return 0;
 }

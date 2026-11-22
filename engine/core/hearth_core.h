@@ -152,6 +152,7 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits);
 /* Direct Mode Launchers & Utility Hooks */
 void hearth_start_intro(HearthState *st);
 void hearth_skip_intro(HearthState *st);
+void hearth_toggle_cinema_auto(HearthState *st);
 void hearth_start_story(HearthState *st);
 void hearth_start_sandbox(HearthState *st);
 void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint8_t tx, uint8_t ty);

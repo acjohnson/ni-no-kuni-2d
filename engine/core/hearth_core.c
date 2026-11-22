@@ -594,31 +594,37 @@ void hearth_respawn_enemies(HearthState *st) {
 }
 
 /* ============================================================================
- * RETRO EMERALD DRAGON INTRO & STORY LAUNCHERS
+ * 7-ACT ILLUSTRATED OPENING CINEMA DIRECTOR & STORY LAUNCHERS
  * ============================================================================ */
-static void apply_intro_scene_copy(HearthIntroState *in) {
-    static const char *titles[4] = {
-        "ALDERBROOK",
-        "THE HOLLOW OAK",
-        "EVERTALE",
-        "A FORGOTTEN DREAM"
-    };
-    static const char *lines1[4] = {
-        "By Grandmother's quiet rocking chair in Alderbrook,",
-        "A golden firefly drifts into the ancient Hollow Oak,",
-        "Beyond the roots shines Evertale: windmills, mice,",
-        "Yet a cold shadow wears a beloved face in the glade..."
-    };
-    static const char *lines2[4] = {
-        "five-year-old Rowan clings to Milo's brass collar bell.",
-        "and little Milo barks with joy, bounding after its light!",
-        "and a lantern sprite named Pip waiting in the sun.",
-        "Step through the Hollow Oak. Remember the truth!"
-    };
-    uint8_t s = (in->scene < 4u) ? in->scene : 3u;
-    in->title = titles[s];
-    in->line1 = lines1[s];
-    in->line2 = lines2[s];
+static void apply_cinema_beat(HearthState *st, uint8_t beat_idx, bool plate_changed) {
+    HearthIntroState *in = &st->intro;
+    const HearthCinemaBeat *b;
+    if (beat_idx >= HEARTH_CINEMA_BEAT_COUNT) beat_idx = (uint8_t)(HEARTH_CINEMA_BEAT_COUNT - 1u);
+    b = &HEARTH_CINEMA_SCRIPT[beat_idx];
+    in->beat = beat_idx;
+    in->scene = b->plate_id;
+    in->act_num = b->act_num;
+    in->bgm_id = b->bgm_id;
+    in->cam_mode = b->cam_mode;
+    in->fx_mode = b->fx_mode;
+    in->title = b->act_title;
+    in->speaker = b->speaker;
+    in->line1 = b->line1;
+    in->line2 = b->line2;
+    in->timer = 0;
+    in->auto_hold = 0;
+    in->chars = 0;
+    if (plate_changed) {
+        in->plate_timer = 0;
+        in->fade = 15;
+        in->fade_dir = 1u; /* Fade in smoothly from matte black */
+        if (b->plate_id == CG_SHADOW_GRANDMA) {
+            st->shake_frames = 22;
+            st->shake_intensity = 3;
+            st->flash_level = 10;
+            push_sfx(st, SFX_BATTLE_SWOOP);
+        }
+    }
 }
 
 static void frame_title_camera(HearthState *st) {
@@ -627,96 +633,165 @@ static void frame_title_camera(HearthState *st) {
     int16_t tx, ty;
     get_ppu_dims(st, &w, &h, &lim);
     tx = iclamp16((int16_t)(10 * 16 - (int16_t)(w >> 1)), 0, (int16_t)(HEARTH_MAP_W * 16 - (int)w));
-    ty = iclamp16((int16_t)(10 * 16 + 8 - (int16_t)(h >> 1)), 0, (int16_t)(HEARTH_MAP_H * 16 - (int)h));
+    ty = iclamp16((int16_t)(12 * 16 - (int16_t)(h >> 1)), 0, (int16_t)(HEARTH_MAP_H * 16 - (int)h));
     st->cam_fx = TO_FP(tx);
     st->cam_fy = TO_FP(ty);
 }
 
-void hearth_start_intro(HearthState *st) {
+static void launch_cinema_mode(HearthState *st, bool launch_story) {
     st->mode = MODE_INTRO;
     st->battle.active = false;
     st->dialogue.active = false;
     st->shop.active = false;
     st->fishing.active = false;
     st->cam_override = false;
-    st->intro.scene = 0;
-    st->intro.timer = 0;
+    st->intro.auto_play = false;
+    st->intro.launch_story = launch_story;
     st->intro.fade = 15;
-    st->intro.chars = 0;
-    apply_intro_scene_copy(&st->intro);
+    st->intro.fade_dir = 1u;
+    apply_cinema_beat(st, 0u, true);
     frame_title_camera(st);
     build_ppu_packet(st);
 }
 
+static void finish_cinema_mode(HearthState *st, bool play_sfx) {
+    if (st->intro.launch_story) {
+        /* Smoothly enter playable Alderbrook at Age 10 dawn */
+        st->story_stage = STORY_AGE10_ALDERBROOK;
+        st->flag_has_wand = false;
+        st->flag_has_courage = false;
+        st->flag_guard_mended = false;
+        st->flag_sewer_key = false;
+        st->flag_captain_mended = false;
+        st->flag_muckmaw_defeated = false;
+        st->flag_ironfang_defeated = false;
+        st->flag_boss_defeated = false;
+        st->flashback_triggered = true;
+        st->mode = MODE_EXPLORE;
+        st->intro.fade = 0;
+        st->intro.fade_dir = 0;
+        st->intro.launch_story = false;
+        hearth_enter_zone(st, ZONE_ALDERBROOK, 9, 13);
+        st->hero_dir = DIR_DOWN;
+        st->warp_fade = 14;
+        if (play_sfx) push_sfx(st, SFX_CONFIRM);
+        build_ppu_packet(st);
+    } else {
+        st->mode = MODE_TITLE;
+        st->intro.fade = 0;
+        st->intro.fade_dir = 0;
+        st->title_cursor = 0;
+        frame_title_camera(st);
+        if (play_sfx) push_sfx(st, SFX_CONFIRM);
+        build_ppu_packet(st);
+    }
+}
+
+void hearth_start_intro(HearthState *st) {
+    launch_cinema_mode(st, false);
+}
+
 void hearth_skip_intro(HearthState *st) {
-    st->mode = MODE_TITLE;
-    st->intro.fade = 0;
-    st->title_cursor = 0;
-    frame_title_camera(st);
-    push_sfx(st, SFX_CONFIRM);
-    build_ppu_packet(st);
+    finish_cinema_mode(st, true);
+}
+
+void hearth_toggle_cinema_auto(HearthState *st) {
+    st->intro.auto_play = !st->intro.auto_play;
+    st->intro.auto_hold = 0;
+    push_sfx(st, SFX_CURSOR);
+}
+
+static void request_cinema_advance(HearthState *st) {
+    HearthIntroState *in = &HS.intro;
+    if ((uint8_t)(in->beat + 1u) < HEARTH_CINEMA_BEAT_COUNT) {
+        const HearthCinemaBeat *cur = &HEARTH_CINEMA_SCRIPT[in->beat];
+        const HearthCinemaBeat *nxt = &HEARTH_CINEMA_SCRIPT[in->beat + 1u];
+        if (cur->plate_id != nxt->plate_id || cur->act_num != nxt->act_num) {
+            /* Crossfade to black before switching CG plate or Act */
+            in->fade_dir = 2u;
+        } else {
+            /* Same painted plate: keep Ken Burns motion continuous! */
+            apply_cinema_beat(st, (uint8_t)(in->beat + 1u), false);
+        }
+    } else {
+        /* End of Act VII: gentle fade out into Alderbrook dawn (or Title) */
+        in->fade_dir = 2u;
+    }
 }
 
 static void step_intro_cutscene(HearthState *st, uint16_t just_pressed) {
     HearthIntroState *in = &HS.intro;
-    const uint16_t scene_dur = 250u;
     uint16_t total_chars;
-
-    total_chars = (uint16_t)(str_len16(in->line1) + str_len16(in->line2));
+    const HearthCinemaBeat *cur_beat;
 
     if (just_pressed & PAD_START) {
         hearth_skip_intro(st);
         return;
     }
-
-    if (just_pressed & PAD_A) {
-        if (in->chars < total_chars) {
-            in->chars = total_chars;
-            if (in->timer < 18u) in->timer = 18u;
-            push_sfx(st, SFX_CURSOR);
-        } else if (in->scene < 3u) {
-            in->scene++;
-            in->timer = 0;
-            in->fade = 15;
-            in->chars = 0;
-            apply_intro_scene_copy(in);
-            push_sfx(st, SFX_CONFIRM);
-            return;
-        } else {
-            hearth_skip_intro(st);
-            return;
-        }
+    if (just_pressed & PAD_Y) {
+        hearth_toggle_cinema_auto(st);
     }
 
     in->timer++;
-    if (in->timer < 16u) {
-        in->fade = (uint8_t)(15u - in->timer);
-    } else if (in->timer > (uint16_t)(scene_dur - 16u)) {
-        uint16_t over = (uint16_t)(in->timer - (scene_dur - 16u));
-        in->fade = (over > 15u) ? 15u : (uint8_t)over;
+    in->plate_timer++;
+
+    /* Smooth fade-out transition between plates or at cinema end */
+    if (in->fade_dir == 2u) {
+        if ((in->timer & 1u) == 0u || (just_pressed & (PAD_A | PAD_B))) {
+            if (in->fade < 15u) {
+                in->fade++;
+            } else {
+                if ((uint8_t)(in->beat + 1u) < HEARTH_CINEMA_BEAT_COUNT) {
+                    apply_cinema_beat(st, (uint8_t)(in->beat + 1u), true);
+                } else {
+                    finish_cinema_mode(st, false);
+                }
+            }
+        }
+        return;
+    }
+
+    /* Smooth fade-in from matte black on new plate */
+    if (in->fade_dir == 1u) {
+        if ((in->timer & 1u) == 0u) {
+            if (in->fade > 0u) in->fade--;
+            else in->fade_dir = 0u;
+        }
     } else {
         in->fade = 0u;
     }
 
-    if (in->timer >= 14u && in->chars < total_chars && ((in->timer & 1u) == 0u)) {
+    total_chars = (uint16_t)(str_len16(in->line1) + str_len16(in->line2));
+    cur_beat = &HEARTH_CINEMA_SCRIPT[(in->beat < HEARTH_CINEMA_BEAT_COUNT) ? in->beat : 0u];
+
+    if (just_pressed & (PAD_A | PAD_B)) {
+        if (in->fade > 3u) {
+            in->fade = 0u;
+            in->fade_dir = 0u;
+        } else if (in->chars < total_chars) {
+            in->chars = total_chars;
+            in->auto_hold = 0;
+            push_sfx(st, SFX_CURSOR);
+        } else {
+            push_sfx(st, SFX_CONFIRM);
+            request_cinema_advance(st);
+        }
+        return;
+    }
+
+    /* Unhurried storybook typewriter once plate has mostly faded in */
+    if (in->fade <= 4u && in->chars < total_chars && ((in->timer & 1u) == 0u)) {
         in->chars++;
-        if ((in->chars & 3u) == 0u) {
-            push_sfx(st, (in->scene == 2u) ? SFX_TEXT_PIP : SFX_TEXT_ELDER);
+        if ((in->chars % 5u) == 0u) {
+            push_sfx(st, cur_beat->voice_sfx);
         }
     }
 
-    if (in->timer >= scene_dur) {
-        if (in->scene < 3u) {
-            in->scene++;
-            in->timer = 0;
-            in->fade = 15;
-            in->chars = 0;
-            apply_intro_scene_copy(in);
-        } else {
-            HS.mode = MODE_TITLE;
-            in->fade = 0;
-            HS.title_cursor = 0;
-            frame_title_camera(st);
+    /* Optional leisurely auto-advance mode (~4.0s reading hold after text completes) */
+    if (in->auto_play && in->fade == 0u && in->chars >= total_chars) {
+        in->auto_hold++;
+        if (in->auto_hold >= 240u) {
+            request_cinema_advance(st);
         }
     }
 }
@@ -727,12 +802,17 @@ void hearth_init(HearthState *st) {
     hearth_prng_seed(&st->prng, (uint16_t)0x5EEDu);
     init_party(st);
 
-    /* Boot title backdrop in Windmill Hamlet */
-    st->story_stage = STORY_EVERTALE_AWAKENED;
-    st->flag_has_wand = true;
-    hearth_enter_zone(st, ZONE_HAMLET, 10, 14);
+    /* Boot cleanly onto the Title Screen framed over Alderbrook mountain town */
+    st->story_stage = STORY_AGE10_ALDERBROOK;
+    st->flag_has_wand = false;
+    hearth_enter_zone(st, ZONE_ALDERBROOK, 9, 13);
     st->zone_banner_frames = 0;
-    hearth_start_intro(st);
+    st->mode = MODE_TITLE;
+    st->title_cursor = 0;
+    st->intro.fade = 0;
+    st->intro.fade_dir = 0;
+    frame_title_camera(st);
+    build_ppu_packet(st);
 }
 
 void hearth_heal_party(HearthState *st) {
@@ -755,8 +835,8 @@ void hearth_toggle_ppu_mode(HearthState *st) {
 }
 
 void hearth_start_story(HearthState *st) {
-    /* Begin Age-5 Playable Flashback inside sunlit Evertale -> Shadow Grandma -> Age-10 Alderbrook! */
-    st->story_stage = STORY_AGE5_FLASHBACK;
+    /* New Story launches the full 7-Act Illustrated Opening Cinema -> Age-10 Alderbrook! */
+    st->story_stage = STORY_AGE10_ALDERBROOK;
     st->flag_has_wand = false;
     st->flag_has_courage = false;
     st->flag_guard_mended = false;
@@ -766,15 +846,8 @@ void hearth_start_story(HearthState *st) {
     st->flag_ironfang_defeated = false;
     st->flag_boss_defeated = false;
     st->flashback_triggered = false;
-    st->mode = MODE_EXPLORE;
-    st->intro.fade = 0;
-    st->dialogue.active = false;
-    st->battle.active = false;
-    st->shop.active = false;
-    st->fishing.active = false;
-    hearth_enter_zone(st, ZONE_HAMLET, 9, 13);
-    st->hero_dir = DIR_RIGHT;
-    push_sfx(st, SFX_PORTAL);
+    push_sfx(st, SFX_CONFIRM);
+    launch_cinema_mode(st, true);
 }
 
 void hearth_start_sandbox(HearthState *st) {
@@ -3339,6 +3412,7 @@ static void build_battle_ppu_oam(HearthState *st, HearthPpuPacket *p) {
     const HearthBattleState *b = &HS.battle;
     uint16_t fc16 = (uint16_t)HS.frame_count;
     uint8_t ei;
+    (void)st;
 
     if (b->active_slot != 0) {
         emit_oam_std(p, b->wizard_back_x, b->wizard_back_y, SPR_HERO,
@@ -3370,40 +3444,16 @@ static void build_battle_ppu_oam(HearthState *st, HearthPpuPacket *p) {
 }
 
 static void build_intro_ppu_oam(HearthState *st, HearthPpuPacket *p) {
-    uint16_t fc16 = (uint16_t)HS.frame_count;
-    int16_t cx = (int16_t)(HP.width >> 1);
-    int16_t bob = (int16_t)((HEARTH_SIN64[(fc16 >> 1) & 63u] * 4) >> 7);
-    uint8_t sc = HS.intro.scene;
-    ST_UNUSED(st);
-
-    if (sc == 0u) {
-        /* Scene 0: Alderbrook — 5yo Rowan & Milo beside golden firefly */
-        emit_oam_std(p, (int16_t)(cx - 24), 124, SPR_HERO, (uint8_t)((fc16 >> 5) & 1u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 124);
-        emit_oam_std(p, (int16_t)(cx + 18), 126, SPR_PET_MILO, (uint8_t)((fc16 >> 4) & 1u), DIR_LEFT, OAM_FLAG_SHADOW, 1, 126);
-        emit_oam_std(p, (int16_t)(cx + 42), (int16_t)(98 + bob), SPR_HEART_ORB, (uint8_t)((fc16 >> 2) & 1u), DIR_DOWN, 0, 2, 130);
-    } else if (sc == 1u) {
-        /* Scene 1: The Hollow Oak — Milo bounding into the glowing tree doorway */
-        emit_oam_std(p, (int16_t)(cx + 38), 122, SPR_HOLLOW_OAK, 0, DIR_DOWN, OAM_FLAG_SHADOW, 1, 118);
-        emit_oam_std(p, (int16_t)(cx + 4), 126, SPR_PET_MILO, (uint8_t)((fc16 >> 3) & 1u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 126);
-        emit_oam_std(p, (int16_t)(cx - 42), 124, SPR_HERO, (uint8_t)((fc16 >> 3) & 3u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 124);
-        emit_oam_std(p, (int16_t)(cx + 38), (int16_t)(94 - bob), SPR_EMOTE_SPARK, 0, DIR_DOWN, 0, 2, 135);
-    } else if (sc == 2u) {
-        /* Scene 2: Evertale — Windmills, Pip, Familiars & Mouse Folk */
-        emit_oam(p, (int16_t)(cx - 56), 88, SPR_WINDMILL_BLADES, 0, DIR_DOWN, 0,
-            FP_ONE, FP_ONE, AURA_NONE, 2, 100, HS.windmill_rot);
-        emit_oam_std(p, (int16_t)(cx - 18), 124, SPR_FAMILIAR_BRAMBLE, (uint8_t)((fc16 >> 4) & 1u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 124);
-        emit_oam_std(p, (int16_t)(cx + 16), (int16_t)(112 + bob), SPR_PIP, (uint8_t)((fc16 >> 3) & 1u), DIR_LEFT, OAM_FLAG_FLIP_X, 1, 120);
-        emit_oam_std(p, (int16_t)(cx + 46), 126, SPR_NPC_MOUSE, (uint8_t)((fc16 >> 5) & 1u), DIR_LEFT, OAM_FLAG_SHADOW, 1, 126);
-    } else {
-        /* Scene 3: A Forgotten Dream — Shadow Matron looming opposite Rowan & Pip */
-        emit_oam_std(p, (int16_t)(cx + 32), 124, SPR_NPC_SHADOW_GRAN, (uint8_t)((fc16 >> 4) & 1u), DIR_LEFT, OAM_FLAG_SHADOW, 1, 124);
-        emit_oam_std(p, (int16_t)(cx - 46), 126, SPR_HERO, (uint8_t)((fc16 >> 4) & 3u), DIR_RIGHT, OAM_FLAG_SHADOW, 1, 126);
-        emit_oam_std(p, (int16_t)(cx - 26), (int16_t)(112 + bob), SPR_PIP, (uint8_t)((fc16 >> 3) & 1u), DIR_RIGHT, 0, 1, 120);
-        emit_oam_std(p, (int16_t)(cx + 32), (int16_t)(88 - bob), SPR_EMOTE_SPARK, 0, DIR_DOWN, 0, 2, 140);
-    }
+    /* Painted anime CG plates fill the viewport across Web, SDL2, Genesis, and SNES;
+       keep OAM clear during MODE_INTRO so sprites never obscure the artwork. */
+    (void)st;
+    (void)p;
 }
 
 static uint8_t resolve_active_bgm(const HearthState *st) {
+    (void)st;
+    if (HS.mode == MODE_INTRO) return HS.intro.bgm_id;
+    if (HS.mode == MODE_TITLE) return (uint8_t)BGM_ALDERBROOK;
     if (HS.mode == MODE_BATTLE) return HS.battle.is_boss_battle ? (uint8_t)BGM_BOSS : (uint8_t)BGM_BATTLE;
     if (HS.mode == MODE_BATTLE_VICTORY) return (uint8_t)BGM_VICTORY;
     return HS.bgm_id;

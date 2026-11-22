@@ -14,6 +14,7 @@
 
 #include <genesis.h>
 #include "hearth_core.h"
+#include "cinema_cg_rom.h"
 
 /* Placed statically in Sega Genesis 64KB 68000 Work RAM (zero malloc!) */
 static HearthState g_hearth;
@@ -25,6 +26,7 @@ static HearthState g_hearth;
 #define VRAM_UI_BASE    ((u16)(VRAM_BG_BASE + 40u))
 #define VRAM_SPR_BASE   ((u16)(VRAM_UI_BASE + 16u))
 #define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 160u))
+#define VRAM_CG_BASE    ((u16)(VRAM_FONT_BASE + 80u))
 
 /* BG Tile IDs (offsets from VRAM_BG_BASE) */
 enum {
@@ -965,27 +967,25 @@ static void draw_battle_backdrop(u8 biome) {
 }
 
 static void draw_intro_backdrop(u8 scene) {
-    u16 sky_t = (scene == 0u) ? (VRAM_BG_BASE + GT_BATTLE_SKY_MEADOW) : (VRAM_BG_BASE + GT_BATTLE_SKY_SHRINE);
-    u16 gnd_t = (scene == 3u) ? (VRAM_BG_BASE + GT_BATTLE_GROUND_SHRINE)
-              : (scene == 1u) ? (VRAM_BG_BASE + GT_SHRINE_FLOOR)
-              : (VRAM_BG_BASE + GT_BATTLE_GROUND_MEADOW);
+    u8 p = (scene < CINEMA_ROM_PLATE_COUNT) ? scene : 0u;
+    const uint16_t *mp = CINEMA_ROM_MAP_PTRS[p];
+
     VDP_clearPlane(BG_B, TRUE);
-    VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, sky_t), 0, 0, 40, 13);
-    VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, gnd_t), 0, 13, 40, 15);
-    if (scene == 0u) {
-        /* Stone Windmill tower silhouette on the left hillside */
-        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_WINDMILL_ROOF), 11, 8, 4, 2);
-        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_WINDMILL_WALL), 11, 10, 4, 5);
-        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_FLOWERS), 18, 14, 18, 2);
-    } else if (scene == 1u) {
-        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_SHRINE_RUNE), 18, 13, 4, 2);
-    } else if (scene == 2u) {
-        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_FLOWERS), 6, 14, 28, 2);
-    } else {
-        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_SHRINE_PILLAR), 8, 7, 2, 7);
-        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_SHRINE_PILLAR), 30, 7, 2, 7);
-        VDP_fillTileMapRect(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_SHRINE_RUNE), 18, 14, 4, 2);
+    VDP_clearPlane(BG_A, TRUE);
+
+    /* Upload quantized 16-color BGR333 plate palette to PAL0 & 4bpp tiles to VRAM_CG_BASE */
+    PAL_setColors(0, CINEMA_ROM_PALS[p], 16, CPU);
+    VDP_loadTileData(CINEMA_GEN_TILE_PTRS[p], VRAM_CG_BASE, CINEMA_ROM_TILE_COUNTS[p], DMA);
+
+    /* Center 32x15 illustrated anime CG plate horizontally on 40x28 Genesis screen (x=4..35, y=2..16) */
+    for (u16 ty = 0; ty < CINEMA_ROM_TH; ty++) {
+        for (u16 tx = 0; tx < CINEMA_ROM_TW; tx++) {
+            u16 tid = mp[(u16)(ty * CINEMA_ROM_TW + tx)];
+            VDP_setTileMapXY(BG_A, TILE_ATTR_FULL(PAL0, 0, 0, 0, (u16)(VRAM_CG_BASE + tid)),
+                             (u16)(4u + tx), (u16)(2u + ty));
+        }
     }
+
     VDP_setHorizontalScrollVSync(BG_A, 0);
     VDP_setVerticalScrollVSync(BG_A, 0);
     VDP_setHorizontalScrollVSync(BG_B, 0);
@@ -1050,7 +1050,7 @@ static void draw_genesis_title_cursor(void) {
     static const char *opts[3] = {
         "NEW STORY (AGE 5->10) ",
         "EXPLORE EVERTALE      ",
-        "REPLAY OPENING INTRO  "
+        "REPLAY OPENING CINEMA "
     };
     for (u8 i = 0; i < 3u; i++) {
         u16 pal = (i == g_hearth.title_cursor) ? PAL3 : PAL2;
@@ -1111,13 +1111,16 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
     g_hud_tick++;
 
     if (want_layout == 4) {
-        /* Emerald Dragon / PC Engine CD-Style Retro Opening Cutscene Caption Box */
+        /* Illustrated Opening Cinema Narrative Box */
         const HearthIntroState *in = &g_hearth.intro;
         char buf[128];
         u16 total = 0u, vis, start = 0u;
         const char *s;
+        const char *hdr = (in->speaker && in->speaker[0] != '\0')
+                        ? in->speaker
+                        : (in->title ? in->title : "PROLOGUE");
         VDP_fillTileMapRect(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FILL), 1, 21, 38, 6);
-        win_text_n(2, 21, PAL3, in->title ? in->title : "PROLOGUE", 36u);
+        win_text_n(2, 21, PAL3, hdr, 36u);
         if (in->line1) {
             s = in->line1;
             while (*s && total < 125u) buf[total++] = *s++;
@@ -1144,7 +1147,9 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
             win_text_n(2, row, PAL2, buf + start, (u16)(cut - start));
             start = cut;
         }
-        win_text(2, 26, PAL3, "A:NEXT SCENE      START:SKIP INTRO");
+        win_text(2, 26, PAL3,
+                 in->auto_play ? "A:NEXT   Y:AUTO:ON    START:SKIP  "
+                               : "A:NEXT   Y:AUTO:OFF   START:SKIP  ");
     } else if (want_layout == 0) {
         char line[40];
         u16 pos = 0;
@@ -1484,14 +1489,57 @@ static const u16 PSG_HAMLET_BASS[24] = {
     196, 294, 294, 165, 247, 247,  196, 294, 294, 147, 220, 220,
     262, 196, 196, 147, 220, 220,  220, 165, 147, 220, 196, 196
 };
-/* Alderbrook Hometown (Gentle Lullaby) */
-static const u16 PSG_ALDER_LEAD[16] = {
-    523, 659, 784, 659, 587, 523, 440, 0,
-    523, 659, 880, 784, 659, 587, 523, 0
+/* Alderbrook Overture — "Steam & Pine" (32-step 6/8 Waltz, C Major) */
+static const u16 PSG_ALDER_LEAD[32] = {
+    330, 392, 523, 494, 440, 392, 330, 0,
+    349, 440, 392, 349, 330, 294, 262, 0,
+    330, 392, 523, 587, 659, 587, 523, 440,
+    392, 440, 494, 587, 523, 523, 0,   0
 };
-static const u16 PSG_ALDER_BASS[16] = {
-    262, 196, 262, 196, 220, 165, 220, 196,
-    175, 220, 262, 220, 196, 147, 262, 196
+static const u16 PSG_ALDER_BASS[32] = {
+    262, 196, 196, 220, 165, 165, 220, 196,
+    175, 262, 262, 196, 147, 262, 196, 196,
+    262, 196, 196, 220, 165, 175, 262, 220,
+    196, 147, 196, 247, 262, 196, 262, 0
+};
+/* "Beyond the Hollow Oak" — Cinema Wonder (32 steps, D Major) */
+static const u16 PSG_WONDER_LEAD[32] = {
+    587, 740, 880, 784, 740, 659, 587, 494,
+    587, 440, 0,   440, 494, 587, 740, 659,
+    740, 784, 880, 988, 880, 740, 659, 740,
+    784, 740, 587, 494, 440, 554, 587, 0
+};
+static const u16 PSG_WONDER_BASS[32] = {
+    294, 220, 196, 294, 247, 185, 220, 165,
+    196, 294, 294, 220, 220, 165, 294, 220,
+    294, 220, 196, 294, 220, 165, 247, 185,
+    196, 294, 220, 165, 294, 220, 294, 0
+};
+/* "Lantern Lullaby" — Cinema Comfort & Pip's Window (32 steps, F Major) */
+static const u16 PSG_LULLABY_LEAD[32] = {
+    440, 523, 587, 523, 440, 392, 440, 349,
+    0,   466, 587, 523, 440, 392, 440, 0,
+    523, 698, 659, 587, 523, 587, 523, 440,
+    392, 440, 466, 440, 392, 330, 349, 0
+};
+static const u16 PSG_LULLABY_BASS[32] = {
+    175, 262, 233, 175, 262, 196, 175, 262,
+    233, 175, 220, 262, 147, 220, 262, 196,
+    175, 262, 262, 196, 233, 175, 262, 196,
+    147, 220, 262, 196, 175, 262, 175, 0
+};
+/* "The Hollow Mirror" — Shadow Grandmother (32 steps, C Minor) */
+static const u16 PSG_SHADOW_LEAD[32] = {
+    523, 622, 587, 494, 523, 415, 392, 0,
+    622, 740, 698, 587, 622, 587, 523, 0,
+    784, 740, 698, 622, 587, 523, 494, 392,
+    415, 523, 494, 587, 523, 523, 0,   0
+};
+static const u16 PSG_SHADOW_BASS[32] = {
+    131, 131, 247, 247, 208, 208, 196, 196,
+    131, 131, 175, 175, 208, 196, 131, 0,
+    131, 131, 247, 247, 208, 208, 196, 196,
+    175, 175, 196, 196, 131, 131, 0,   0
 };
 /* Whiskerburgh Mouse Market (Bouncy Ragtime) */
 static const u16 PSG_MOUSE_LEAD[16] = {
@@ -1653,16 +1701,31 @@ static void psg_tick_60hz(u8 bgm_id) {
         psg_trigger_tone(1, PSG_BATTLE_BASS[idx], 10, 3);
         g_bgm_timer = (bgm_id == BGM_BOSS) ? 9 : 11;
     } else if (bgm_id == BGM_ALDERBROOK) {
-        u8 idx = (u8)(g_bgm_step & 15u);
+        u8 idx = (u8)(g_bgm_step & 31u);
         if (PSG_ALDER_LEAD[idx] > 0) psg_trigger_tone(0, PSG_ALDER_LEAD[idx], 9, 5);
         if (PSG_ALDER_BASS[idx] > 0) psg_trigger_tone(1, PSG_ALDER_BASS[idx], 11, 5);
+        g_bgm_timer = 15;
+    } else if (bgm_id == BGM_CINEMA_WONDER) {
+        u8 idx = (u8)(g_bgm_step & 31u);
+        if (PSG_WONDER_LEAD[idx] > 0) psg_trigger_tone(0, PSG_WONDER_LEAD[idx], 8, 5);
+        if (PSG_WONDER_BASS[idx] > 0) psg_trigger_tone(1, PSG_WONDER_BASS[idx], 11, 5);
+        g_bgm_timer = 14;
+    } else if (bgm_id == BGM_CINEMA_LULLABY) {
+        u8 idx = (u8)(g_bgm_step & 31u);
+        if (PSG_LULLABY_LEAD[idx] > 0) psg_trigger_tone(0, PSG_LULLABY_LEAD[idx], 9, 6);
+        if (PSG_LULLABY_BASS[idx] > 0) psg_trigger_tone(1, PSG_LULLABY_BASS[idx], 11, 6);
+        g_bgm_timer = 17;
+    } else if (bgm_id == BGM_SHADOW) {
+        u8 idx = (u8)(g_bgm_step & 31u);
+        if (PSG_SHADOW_LEAD[idx] > 0) psg_trigger_tone(0, PSG_SHADOW_LEAD[idx], 8, 6);
+        if (PSG_SHADOW_BASS[idx] > 0) psg_trigger_tone(1, PSG_SHADOW_BASS[idx], 10, 6);
         g_bgm_timer = 17;
     } else if (bgm_id == BGM_WHISKERBURGH) {
         u8 idx = (u8)(g_bgm_step & 15u);
         psg_trigger_tone(0, PSG_MOUSE_LEAD[idx], 8, 3);
         psg_trigger_tone(1, PSG_MOUSE_BASS[idx], 10, 3);
         g_bgm_timer = 12;
-    } else if (bgm_id == BGM_SEWERS || bgm_id == BGM_SHADOW) {
+    } else if (bgm_id == BGM_SEWERS) {
         u8 idx = (u8)(g_bgm_step & 15u);
         if (PSG_SEWER_LEAD[idx] > 0) psg_trigger_tone(0, PSG_SEWER_LEAD[idx], 9, 5);
         if (PSG_SEWER_BASS[idx] > 0) psg_trigger_tone(1, PSG_SEWER_BASS[idx], 11, 5);
@@ -1775,7 +1838,7 @@ int main(bool hard_reset) {
                          g_hearth.mode == MODE_BATTLE_DEFEAT) ? 1u : 0u;
         u8 map_changed = (g_hearth.map_revision != g_last_map_rev) ? 1u : 0u;
 
-        if (ppu->terrain_pal_id != g_last_pal_id) {
+        if (scene_mode != 2u && ppu->terrain_pal_id != g_last_pal_id) {
             upload_zone_pal0_to_cram(ppu->terrain_pal_id, DMA_QUEUE);
         }
 
@@ -1786,10 +1849,13 @@ int main(bool hard_reset) {
             g_last_map_rev = g_hearth.map_revision;
             VDP_setEnable(FALSE);
             if (scene_mode == 2u) {
+                g_last_pal_id = 255u; /* Force zone PAL0 restore upon leaving cinema */
                 draw_intro_backdrop(g_hearth.intro.scene);
             } else if (scene_mode == 1u) {
+                upload_zone_pal0_to_cram(ppu->terrain_pal_id, CPU);
                 draw_battle_backdrop(g_hearth.battle.biome);
             } else {
+                upload_zone_pal0_to_cram(ppu->terrain_pal_id, CPU);
                 draw_full_world_viewport(ppu->cam_x, ppu->cam_y);
             }
             VDP_setEnable(TRUE);
@@ -1804,9 +1870,8 @@ int main(bool hard_reset) {
             VDP_setHorizontalScrollVSync(BG_B, (s16)(-(ppu->cam_x - ppu->shake_x)));
             VDP_setVerticalScrollVSync(BG_B,   (s16)( (ppu->cam_y - ppu->shake_y)));
         } else if (scene_mode == 2u) {
-            tick_env_animations(g_hearth.frame_count);
-            VDP_setHorizontalScrollVSync(BG_A, 0);
-            VDP_setVerticalScrollVSync(BG_A,   0);
+            VDP_setHorizontalScrollVSync(BG_A, (s16)ppu->shake_x);
+            VDP_setVerticalScrollVSync(BG_A,   (s16)ppu->shake_y);
         } else {
             VDP_setHorizontalScrollVSync(BG_A, (s16)ppu->shake_x);
             VDP_setVerticalScrollVSync(BG_A,   (s16)ppu->shake_y);

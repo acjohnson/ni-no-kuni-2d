@@ -581,6 +581,117 @@ void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t 
 }
 
 /* ============================================================================
+ * 7-ACT ILLUSTRATED OPENING CINEMA SCRIPT (23 Unhurried Story Beats)
+ * ============================================================================ */
+const HearthCinemaBeat HEARTH_CINEMA_SCRIPT[HEARTH_CINEMA_BEAT_COUNT] = {
+    /* ACT I: Alderbrook Station at Dusk (Age 5) */
+    { 1u, CG_ALDERBROOK_DUSK, BGM_ALDERBROOK, CIN_CAM_PAN_RIGHT, CIN_FX_STEAM_DUSK, SFX_TEXT_ELDER,
+      "ACT I - ALDERBROOK STATION", "",
+      "High in the timberline pines sits Alderbrook,",
+      "a quiet mountain town lulled by the evening train." },
+    { 1u, CG_ALDERBROOK_DUSK, BGM_ALDERBROOK, CIN_CAM_PAN_RIGHT, CIN_FX_STEAM_DUSK, SFX_TEXT_ELDER,
+      "ACT I - ALDERBROOK STATION", "",
+      "Ever since Rowan's parents vanished in the mist,",
+      "Grandma Mara's hearth has been his whole world." },
+    { 1u, CG_ALDERBROOK_DUSK, BGM_ALDERBROOK, CIN_CAM_PAN_RIGHT, CIN_FX_STEAM_DUSK, SFX_TEXT_ELDER,
+      "ACT I - ALDERBROOK STATION", "GRANDMA MARA",
+      "Hear that whistle, sparrow? The 6:15 express!",
+      "Come inside before the ridge fog rolls in." },
+    { 1u, CG_ALDERBROOK_DUSK, BGM_ALDERBROOK, CIN_CAM_PAN_RIGHT, CIN_FX_STEAM_DUSK, SFX_TEXT_HERO,
+      "ACT I - ALDERBROOK STATION", "ROWAN (AGE 5)",
+      "One more minute, Grandma! Milo spotted a",
+      "golden firefly by the cedar fence - wait, Milo!" },
+
+    /* ACT II: Into Whispering Woods */
+    { 2u, CG_HOLLOW_OAK_CHASE, BGM_ALDERBROOK, CIN_CAM_ZOOM_IN, CIN_FX_FOREST_POLLEN, SFX_TEXT_ELDER,
+      "ACT II - WHISPERING WOODS", "",
+      "With a joyful yip, the little fox-pup bolted",
+      "past the rail trestle into Whispering Woods." },
+    { 2u, CG_HOLLOW_OAK_CHASE, BGM_ALDERBROOK, CIN_CAM_ZOOM_IN, CIN_FX_FOREST_POLLEN, SFX_TEXT_HERO,
+      "ACT II - WHISPERING WOODS", "ROWAN (AGE 5)",
+      "Milo! Slow down, your red ribbon's slipping!",
+      "Whoa... what is that light inside the big oak?" },
+    { 2u, CG_HOLLOW_OAK_CHASE, BGM_ALDERBROOK, CIN_CAM_ZOOM_IN, CIN_FX_FOREST_POLLEN, SFX_TEXT_ELDER,
+      "ACT II - WHISPERING WOODS", "",
+      "Beneath the moss-draped roots opened an archway",
+      "humming with warm sunlight and impossible song." },
+
+    /* ACT III: A Glimpse of Evertale */
+    { 3u, CG_EVERTALE_VISTA, BGM_CINEMA_WONDER, CIN_CAM_PAN_RIGHT, CIN_FX_EVERTALE_LANTERNS, SFX_TEXT_ELDER,
+      "ACT III - EVERTALE", "",
+      "One timid step through the bark, and the cold",
+      "pines melted into a valley of golden clouds." },
+    { 3u, CG_EVERTALE_VISTA, BGM_CINEMA_WONDER, CIN_CAM_PAN_RIGHT, CIN_FX_EVERTALE_LANTERNS, SFX_TEXT_ELDER,
+      "ACT III - EVERTALE", "",
+      "Towering windmills turned under cerulean skies",
+      "while paper lanterns drifted over blue creeks." },
+    { 3u, CG_EVERTALE_VISTA, BGM_CINEMA_WONDER, CIN_CAM_PAN_RIGHT, CIN_FX_EVERTALE_LANTERNS, SFX_TEXT_HERO,
+      "ACT III - EVERTALE", "ROWAN (AGE 5)",
+      "It's real... just like Grandma's storybooks!",
+      "Look, Milo! Even the lanterns are floating!" },
+
+    /* ACT IV: The Violet Eclipse & Shadow Grandma */
+    { 4u, CG_SHADOW_GRANDMA, BGM_SHADOW, CIN_CAM_SHAKE_FLASH, CIN_FX_VIOLET_STORM, SFX_TEXT_ELDER,
+      "ACT IV - THE VIOLET ECLIPSE", "",
+      "Yet the sunlit breeze died in a heartbeat.",
+      "The sky bruised black beneath a violet eclipse." },
+    { 4u, CG_SHADOW_GRANDMA, BGM_SHADOW, CIN_CAM_SHAKE_FLASH, CIN_FX_VIOLET_STORM, SFX_TEXT_ELDER,
+      "ACT IV - THE VIOLET ECLIPSE", "",
+      "From the twisting briars stepped a dark echo",
+      "wearing the face Rowan loved most in the world." },
+    { 4u, CG_SHADOW_GRANDMA, BGM_SHADOW, CIN_CAM_SHAKE_FLASH, CIN_FX_VIOLET_STORM, SFX_TEXT_ELDER,
+      "ACT IV - THE VIOLET ECLIPSE", "SHADOW GRANDMA",
+      "So small... so fragile... Give me your spark,",
+      "child. Hearts only break when left unguarded." },
+    { 4u, CG_SHADOW_GRANDMA, BGM_SHADOW, CIN_CAM_SHAKE_FLASH, CIN_FX_VIOLET_STORM, SFX_TEXT_HERO,
+      "ACT IV - THE VIOLET ECLIPSE", "ROWAN (AGE 5)",
+      "G-Grandma?! Stop - you aren't her! Stay back!",
+      "Grandma would NEVER look at me like that!" },
+    { 4u, CG_SHADOW_GRANDMA, BGM_SHADOW, CIN_CAM_SHAKE_FLASH, CIN_FX_VIOLET_STORM, SFX_TEXT_ELDER,
+      "ACT IV - THE VIOLET ECLIPSE", "",
+      "Shaken to his core, Rowan scooped up Milo and",
+      "scrambled blindly back through the Hollow Oak." },
+
+    /* ACT V: Only a Bad Dream */
+    { 5u, CG_BEDROOM_COMFORT, BGM_CINEMA_LULLABY, CIN_CAM_ZOOM_IN, CIN_FX_STEAM_DUSK, SFX_TEXT_ELDER,
+      "ACT V - ONLY A BAD DREAM", "",
+      "He ran until the pine woods gave way to timber",
+      "walls, oil-lamp warmth, and a patchwork quilt." },
+    { 5u, CG_BEDROOM_COMFORT, BGM_CINEMA_LULLABY, CIN_CAM_ZOOM_IN, CIN_FX_STEAM_DUSK, SFX_TEXT_ELDER,
+      "ACT V - ONLY A BAD DREAM", "GRANDMA MARA",
+      "Shh, my sweet boy... I am right here beside you.",
+      "Look - Milo is safe, and my hands are warm." },
+    { 5u, CG_BEDROOM_COMFORT, BGM_CINEMA_LULLABY, CIN_CAM_ZOOM_IN, CIN_FX_STEAM_DUSK, SFX_TEXT_ELDER,
+      "ACT V - ONLY A BAD DREAM", "GRANDMA MARA",
+      "There are no dark shadows in Alderbrook, Rowan.",
+      "Close your eyes now. It was only a bad dream." },
+
+    /* ACT VI: A Whisper at the Window */
+    { 6u, CG_PIP_WINDOW, BGM_CINEMA_LULLABY, CIN_CAM_PAN_LEFT, CIN_FX_MOON_FIREFLIES, SFX_TEXT_ELDER,
+      "ACT VI - A WHISPER AT THE WINDOW", "",
+      "Long after midnight, frost crept on the glass,",
+      "and a tiny golden glow tapped upon the sill." },
+    { 6u, CG_PIP_WINDOW, BGM_CINEMA_LULLABY, CIN_CAM_PAN_LEFT, CIN_FX_MOON_FIREFLIES, SFX_TEXT_PIP,
+      "ACT VI - A WHISPER AT THE WINDOW", "PIP",
+      "Poor little dreamer... you saw the crooked",
+      "mirror before you knew how bright your heart is." },
+    { 6u, CG_PIP_WINDOW, BGM_CINEMA_LULLABY, CIN_CAM_PAN_LEFT, CIN_FX_MOON_FIREFLIES, SFX_TEXT_PIP,
+      "ACT VI - A WHISPER AT THE WINDOW", "PIP",
+      "Sleep safely now. When you're brave enough to",
+      "remember, knock on the oak again. I'll wait." },
+
+    /* ACT VII: Five Years Later - Dawn Over Alderbrook (Age 10) */
+    { 7u, CG_ALDERBROOK_DUSK, BGM_ALDERBROOK, CIN_CAM_STILL_DAWN, CIN_FX_FOREST_POLLEN, SFX_TEXT_ELDER,
+      "ACT VII - FIVE YEARS LATER", "",
+      "Five quiet winters passed beneath the mountain",
+      "pines. Rowan turned ten, and forgot the oak." },
+    { 7u, CG_ALDERBROOK_DUSK, BGM_ALDERBROOK, CIN_CAM_STILL_DAWN, CIN_FX_FOREST_POLLEN, SFX_TEXT_ELDER,
+      "ACT VII - FIVE YEARS LATER", "",
+      "Until one crisp autumn dawn, when the 7:00",
+      "train whistle woke a forgotten ember inside..." }
+};
+
+/* ============================================================================
  * BYTECODE CUTSCENE ROM TABLES (Alderbrook & Evertale Storyline!)
  * ============================================================================ */
 

@@ -36,32 +36,41 @@ int main(void) {
     CHECK(hearth_rgb_to_genesis_bgr333(0xFFFFFFu) == 0x0EEEu, "Genesis BGR333 white pack");
     CHECK(hearth_rgb_to_snes_bgr555(0xFFFFFFu) == 0x7FFFu, "SNES BGR555 white pack");
 
-    /* 3. Init -> Retro Opening Intro -> Title -> New Story (Age-5 Flashback -> Alderbrook) */
+    /* 3. Init -> Title Screen (Alderbrook) -> New Story -> 7-Act 23-Beat Cinema -> Age-10 Alderbrook */
     hearth_init(&g_st);
     CHECK(g_st.ppu.width == 320 && g_st.ppu.height == 224, "hearth_init populates valid PPU dimensions");
-    CHECK(g_st.mode == MODE_INTRO, "Initial mode should be MODE_INTRO");
-    hearth_step_60hz(&g_st, PAD_START);
-    CHECK(g_st.mode == MODE_TITLE, "Pressing PAD_START during intro skips to MODE_TITLE");
-    hearth_step_60hz(&g_st, 0);
-    hearth_step_60hz(&g_st, PAD_A); /* Option 0: New Story */
-    CHECK(g_st.mode == MODE_EXPLORE && g_st.story_stage == STORY_AGE5_FLASHBACK, "Option 0 starts Age-5 Evertale flashback");
-    CHECK(!g_st.pip_visible, "Pip is not yet following during Age-5 flashback");
+    CHECK(g_st.mode == MODE_TITLE && g_st.zone_id == ZONE_ALDERBROOK, "Game boots cleanly to MODE_TITLE in Alderbrook");
+    CHECK(g_st.ppu.bgm_id == BGM_ALDERBROOK, "Title screen plays Alderbrook Overture");
 
-    /* Walk east toward Milo until Shadow Grandma flashback triggers */
-    for (int f = 0; f < 160 && g_st.mode == MODE_EXPLORE; f++) {
-        hearth_step_60hz(&g_st, PAD_RIGHT | PAD_B);
-    }
-    CHECK(g_st.mode == MODE_CUTSCENE && g_st.flashback_triggered, "Approaching Milo triggers Shadow Grandma cutscene");
-    bool saw_shadow_pal = false;
-    for (int f = 0; f < 1400 && g_st.mode == MODE_CUTSCENE; f++) {
-        uint16_t pad = ((f & 3) == 0) ? PAD_A : 0;
+    /* Option 0: NEW STORY launches the 7-Act Illustrated Opening Cinema */
+    hearth_step_60hz(&g_st, PAD_A);
+    CHECK(g_st.mode == MODE_INTRO && g_st.intro.beat == 0u && g_st.intro.launch_story,
+          "NEW STORY launches 7-Act Opening Cinema at beat 0");
+    CHECK(g_st.ppu.oam_count == 0u, "Opening cinema emits clean OAM over painted CG plates");
+
+    bool saw_wonder_bgm = false;
+    bool saw_shadow_bgm = false;
+    bool saw_lullaby_bgm = false;
+    uint8_t max_plate_seen = 0u;
+    for (int f = 0; f < 3000 && g_st.mode == MODE_INTRO; f++) {
+        uint16_t pad = ((f % 6) == 0) ? PAD_A : 0;
         const HearthPpuPacket *p = hearth_step_60hz(&g_st, pad);
-        if (p->terrain_pal_id == ZPAL_SHADOW && p->bgm_id == BGM_SHADOW) saw_shadow_pal = true;
+        if (p->bgm_id == BGM_CINEMA_WONDER) saw_wonder_bgm = true;
+        if (p->bgm_id == BGM_SHADOW) saw_shadow_bgm = true;
+        if (p->bgm_id == BGM_CINEMA_LULLABY) saw_lullaby_bgm = true;
+        if (g_st.intro.scene > max_plate_seen) max_plate_seen = g_st.intro.scene;
     }
-    CHECK(saw_shadow_pal, "Shadow Grandma cutscene shifts terrain palette to ZPAL_SHADOW & BGM_SHADOW");
-    CHECK(g_st.mode == MODE_EXPLORE && g_st.zone_id == ZONE_ALDERBROOK, "Flashback warps to Age-10 Alderbrook");
-    CHECK(g_st.story_stage == STORY_AGE10_ALDERBROOK && !g_st.flag_has_wand, "Rowan is Age 10 in Alderbrook without wand yet");
-    printf("[PASS] Age-5 Flashback -> Shadow Grandma Vision -> Age-10 Alderbrook transition\n");
+    CHECK(saw_wonder_bgm && saw_shadow_bgm && saw_lullaby_bgm, "Opening cinema transitions through Wonder, Shadow, and Lullaby suites");
+    CHECK(max_plate_seen == CG_PIP_WINDOW, "Opening cinema displays all 6 illustrated CG plates");
+    CHECK(g_st.mode == MODE_EXPLORE && g_st.zone_id == ZONE_ALDERBROOK, "Opening cinema flows directly into Age-10 Alderbrook");
+    CHECK(g_st.story_stage == STORY_AGE10_ALDERBROOK && !g_st.flag_has_wand, "Rowan begins Age-10 Alderbrook without wand yet");
+
+    /* Replay Cinema -> PAD_START returns cleanly to Title Screen */
+    hearth_start_intro(&g_st);
+    CHECK(g_st.mode == MODE_INTRO && !g_st.intro.launch_story, "Replay Cinema launches in non-story mode");
+    hearth_step_60hz(&g_st, PAD_START);
+    CHECK(g_st.mode == MODE_TITLE, "Skipping Replay Cinema returns cleanly to MODE_TITLE");
+    printf("[PASS] Title Screen -> 7-Act Illustrated Opening Cinema -> Age-10 Alderbrook flow\n");
 
     /* 4. Explore Evertale Sandbox + 8-Way Fixed-Point Movement + Pip Breadcrumb Trail */
     hearth_start_sandbox(&g_st);

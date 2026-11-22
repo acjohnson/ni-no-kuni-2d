@@ -27,6 +27,7 @@
 
 #include "../core/hearth_core.h"
 #include "pixel_art_data.h"
+#include "cinema_cg_sdl2.h"
 
 /* ============================================================================
  * 1. VIRTUAL PPU FRAMEBUFFER & PIXEL HELPERS
@@ -512,28 +513,52 @@ static const uint8_t VICTORY_DRUM[32] = {
     3, 1, 2, 1, 3, 1, 2, 1,  3, 1, 2, 2, 3, 1, 2, 1
 };
 
-/* Track 1: Alderbrook Hometown — Warm Nostalgic Lullaby (32 steps, C Major) */
-static const uint8_t ALDER_LEAD[32] = {
-    N_E4, BGM_HOLD, N_G4, N_C5, N_B4, BGM_HOLD, N_A4, N_G4,
-    N_F4, BGM_HOLD, N_A4, N_G4, N_E4, BGM_HOLD, BGM_REST, N_D4,
-    N_E4, BGM_HOLD, N_G4, N_C5, N_D5, BGM_HOLD, N_C5, N_A4,
-    N_G4, N_F4, N_E4, N_D4, N_C4, BGM_HOLD, BGM_HOLD, BGM_REST
+/* Track 1: Alderbrook Overture — "Steam & Pine" (96 steps, 6/8 Waltz, C Major -> Am -> F -> G) */
+static const uint8_t ALDER_LEAD[96] = {
+    /* Section A: Mountain Dusk Waltz */
+    N_E4, BGM_HOLD, N_G4, N_C5, BGM_HOLD, N_B4,
+    N_A4, BGM_HOLD, N_G4, N_E4, BGM_HOLD, BGM_REST,
+    N_F4, BGM_HOLD, N_A4, N_G4, BGM_HOLD, N_F4,
+    N_E4, BGM_HOLD, N_D4, N_C4, BGM_HOLD, BGM_REST,
+    N_E4, BGM_HOLD, N_G4, N_C5, BGM_HOLD, N_D5,
+    N_E5, BGM_HOLD, N_D5, N_C5, BGM_HOLD, N_A4,
+    N_G4, BGM_HOLD, N_A4, N_B4, BGM_HOLD, N_D5,
+    N_C5, BGM_HOLD, BGM_HOLD, BGM_HOLD, BGM_REST, BGM_REST,
+    /* Section B: Distant Steam Whistle & Warm Hearth Swell */
+    N_A4, BGM_HOLD, N_C5, N_E5, BGM_HOLD, N_D5,
+    N_C5, BGM_HOLD, N_B4, N_A4, BGM_HOLD, N_G4,
+    N_F4, BGM_HOLD, N_A4, N_C5, BGM_HOLD, N_B4,
+    N_A4, BGM_HOLD, N_G4, N_E4, BGM_HOLD, BGM_REST,
+    N_D5, BGM_HOLD, N_E5, N_F5, BGM_HOLD, N_E5,
+    N_D5, BGM_HOLD, N_C5, N_B4, BGM_HOLD, N_A4,
+    N_G4, BGM_HOLD, N_B4, N_D5, BGM_HOLD, N_B4,
+    N_C5, BGM_HOLD, BGM_HOLD, BGM_HOLD, BGM_REST, BGM_REST
 };
-static const uint8_t ALDER_ARP[32] = {
-    N_C4, N_E4, N_G4, N_E4, N_G3, N_B3, N_D4, N_B3,
-    N_F3, N_A3, N_C4, N_A3, N_C4, N_E4, N_G4, N_E4,
-    N_C4, N_E4, N_G4, N_E4, N_F3, N_A3, N_C4, N_A3,
-    N_G3, N_B3, N_D4, N_B3, N_C4, N_E4, N_G4, N_C4
+static const uint8_t ALDER_ARP[96] = {
+    N_C4, N_E4, N_G4, N_E4, N_G4, N_C5,  N_A3, N_C4, N_E4, N_C4, N_E4, N_A4,
+    N_F3, N_A3, N_C4, N_A3, N_C4, N_F4,  N_G3, N_B3, N_D4, N_G3, N_C4, N_E4,
+    N_C4, N_E4, N_G4, N_E4, N_G4, N_C5,  N_A3, N_C4, N_E4, N_F3, N_A3, N_C4,
+    N_G3, N_B3, N_D4, N_G3, N_B3, N_F4,  N_C4, N_E4, N_G4, N_E4, N_C4, N_G3,
+    N_A3, N_C4, N_E4, N_A4, N_E4, N_C4,  N_E3, N_G3, N_B3, N_E4, N_B3, N_G3,
+    N_F3, N_A3, N_C4, N_F4, N_C4, N_A3,  N_C4, N_E4, N_G4, N_E4, N_C4, N_G3,
+    N_D3, N_F3, N_A3, N_D4, N_A3, N_F3,  N_F3, N_A3, N_C4, N_A3, N_F3, N_C4,
+    N_G3, N_B3, N_D4, N_G4, N_D4, N_B3,  N_C4, N_E4, N_G4, N_C5, N_G4, N_E4
 };
-static const uint8_t ALDER_BASS[32] = {
-    N_C3, BGM_HOLD, N_G2, BGM_HOLD, N_G2, BGM_HOLD, N_D3, BGM_HOLD,
-    N_F2, BGM_HOLD, N_C3, BGM_HOLD, N_C3, BGM_HOLD, N_G2, BGM_HOLD,
-    N_A2, BGM_HOLD, N_E3, BGM_HOLD, N_F2, BGM_HOLD, N_C3, BGM_HOLD,
-    N_G2, BGM_HOLD, N_D3, BGM_HOLD, N_C3, BGM_HOLD, BGM_REST, BGM_REST
+static const uint8_t ALDER_BASS[96] = {
+    N_C3, BGM_HOLD, N_G2, BGM_REST, N_G2, BGM_REST,  N_A2, BGM_HOLD, N_E3, BGM_REST, N_E3, BGM_REST,
+    N_F2, BGM_HOLD, N_C3, BGM_REST, N_C3, BGM_REST,  N_G2, BGM_HOLD, N_D3, N_C3, BGM_HOLD, BGM_REST,
+    N_C3, BGM_HOLD, N_G2, BGM_REST, N_G2, BGM_REST,  N_A2, BGM_HOLD, N_E3, N_F2, BGM_HOLD, N_C3,
+    N_G2, BGM_HOLD, N_D3, BGM_REST, N_G2, BGM_REST,  N_C3, BGM_HOLD, N_G2, N_C3, BGM_HOLD, BGM_REST,
+    N_A2, BGM_HOLD, N_E3, BGM_REST, N_E3, BGM_REST,  N_E2, BGM_HOLD, N_B2, BGM_REST, N_B2, BGM_REST,
+    N_F2, BGM_HOLD, N_C3, BGM_REST, N_C3, BGM_REST,  N_C3, BGM_HOLD, N_G2, BGM_REST, N_G2, BGM_REST,
+    N_D2, BGM_HOLD, N_A2, BGM_REST, N_A2, BGM_REST,  N_F2, BGM_HOLD, N_C3, BGM_REST, N_C3, BGM_REST,
+    N_G2, BGM_HOLD, N_D3, BGM_REST, N_G2, BGM_REST,  N_C3, BGM_HOLD, N_G2, N_C3, BGM_HOLD, BGM_REST
 };
-static const uint8_t ALDER_DRUM[32] = {
-    3, 0, 1, 0, 0, 0, 1, 0,  3, 0, 1, 0, 0, 0, 1, 0,
-    3, 0, 1, 0, 0, 0, 1, 0,  3, 0, 1, 0, 3, 0, 0, 0
+static const uint8_t ALDER_DRUM[96] = {
+    3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 0, 0,
+    3, 0, 1, 0, 1, 0,  3, 0, 1, 3, 0, 1,  3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 0, 0,
+    3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,
+    3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,  3, 0, 1, 0, 1, 0,  3, 0, 0, 0, 0, 0
 };
 
 /* Track 2: Whiskerburgh — Jaunty Mouse Market Jig (32 steps, F Major) */
@@ -608,40 +633,132 @@ static const uint8_t BOAR_DRUM[32] = {
     3, 1, 2, 3, 3, 1, 2, 1,  3, 2, 2, 2, 3, 1, 2, 2
 };
 
-/* Track 5: Shadow Grandma Motif — Ominous Nightmare Music Box (32 steps, C Minor) */
-static const uint8_t SHADOW_LEAD[32] = {
+/* Track 5: "The Hollow Mirror" — Shadow Grandmother Theme (64 steps, C Minor) */
+static const uint8_t SHADOW_LEAD[64] = {
     N_C5, BGM_HOLD, N_Eb5, BGM_HOLD, N_D5, BGM_HOLD, N_B4, BGM_HOLD,
     N_C5, BGM_HOLD, N_Gs4, BGM_HOLD, N_G4, BGM_HOLD, BGM_REST, BGM_REST,
     N_Eb5, BGM_HOLD, N_Fs5, BGM_HOLD, N_F5, BGM_HOLD, N_D5, BGM_HOLD,
-    N_Eb5, BGM_HOLD, N_D5, N_B4, N_C5, BGM_HOLD, BGM_REST, BGM_REST
+    N_Eb5, BGM_HOLD, N_D5, N_B4, N_C5, BGM_HOLD, BGM_REST, BGM_REST,
+    N_G5, BGM_HOLD, N_Fs5, BGM_HOLD, N_F5, BGM_HOLD, N_Eb5, BGM_HOLD,
+    N_D5, BGM_HOLD, N_C5, BGM_HOLD, N_B4, BGM_HOLD, N_G4, BGM_HOLD,
+    N_Gs4, BGM_HOLD, N_C5, BGM_HOLD, N_B4, BGM_HOLD, N_D5, BGM_HOLD,
+    N_C5, BGM_HOLD, BGM_HOLD, BGM_HOLD, BGM_REST, BGM_REST, BGM_REST, BGM_REST
 };
-static const uint8_t SHADOW_ARP[32] = {
+static const uint8_t SHADOW_ARP[64] = {
     N_C4, N_Eb4, N_G4, BGM_REST, N_B3, N_D4, N_G4, BGM_REST,
     N_Gs3, N_C4, N_Eb4, BGM_REST, N_G3, N_B3, N_D4, BGM_REST,
     N_C4, N_Eb4, N_Fs4, BGM_REST, N_B3, N_D4, N_F4, BGM_REST,
-    N_Gs3, N_C4, N_G3, N_B3, N_C4, BGM_HOLD, BGM_REST, BGM_REST
+    N_Gs3, N_C4, N_G3, N_B3, N_C4, BGM_HOLD, BGM_REST, BGM_REST,
+    N_C4, N_G4, N_Eb4, N_G4, N_B3, N_G4, N_D4, N_G4,
+    N_Gs3, N_Eb4, N_C4, N_Eb4, N_G3, N_D4, N_B3, N_D4,
+    N_F3, N_C4, N_Gs3, N_C4, N_G3, N_D4, N_B3, N_D4,
+    N_C4, N_Eb4, N_G4, BGM_HOLD, BGM_REST, BGM_REST, BGM_REST, BGM_REST
 };
-static const uint8_t SHADOW_BASS[32] = {
+static const uint8_t SHADOW_BASS[64] = {
     N_C2, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_B2, BGM_HOLD, BGM_HOLD, BGM_HOLD,
     N_Gs2, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_G2, BGM_HOLD, BGM_HOLD, BGM_HOLD,
     N_C2, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_F2, BGM_HOLD, BGM_HOLD, BGM_HOLD,
-    N_Gs2, BGM_HOLD, N_G2, BGM_HOLD, N_C2, BGM_HOLD, BGM_REST, BGM_REST
+    N_Gs2, BGM_HOLD, N_G2, BGM_HOLD, N_C2, BGM_HOLD, BGM_REST, BGM_REST,
+    N_C2, BGM_HOLD, BGM_HOLD, N_C2, N_B2, BGM_HOLD, BGM_HOLD, N_B2,
+    N_Gs2, BGM_HOLD, BGM_HOLD, N_Gs2, N_G2, BGM_HOLD, BGM_HOLD, N_G2,
+    N_F2, BGM_HOLD, BGM_HOLD, N_F2, N_G2, BGM_HOLD, BGM_HOLD, N_G2,
+    N_C2, BGM_HOLD, BGM_HOLD, BGM_HOLD, BGM_REST, BGM_REST, BGM_REST, BGM_REST
 };
-static const uint8_t SHADOW_DRUM[32] = {
+static const uint8_t SHADOW_DRUM[64] = {
     3, 0, 0, 0, 0, 0, 1, 0,  3, 0, 0, 0, 0, 0, 1, 0,
-    3, 0, 0, 0, 0, 0, 1, 0,  3, 0, 0, 0, 3, 0, 0, 0
+    3, 0, 0, 0, 0, 0, 1, 0,  3, 0, 0, 0, 3, 0, 0, 0,
+    3, 0, 1, 0, 3, 0, 1, 0,  3, 0, 1, 0, 3, 0, 2, 0,
+    3, 0, 1, 0, 3, 0, 2, 0,  3, 0, 0, 0, 0, 0, 0, 0
 };
 
-static const BgmTrack BGM_TRACKS[9] = {
-    /* 0: BGM_HAMLET       */ { 48, 240, HAMLET_LEAD,  HAMLET_ARP,  HAMLET_BASS,  HAMLET_DRUM  },
-    /* 1: BGM_ALDERBROOK   */ { 32, 260, ALDER_LEAD,   ALDER_ARP,   ALDER_BASS,   ALDER_DRUM   },
-    /* 2: BGM_WHISKERBURGH */ { 32, 185, WHISK_LEAD,   WHISK_ARP,   WHISK_BASS,   WHISK_DRUM   },
-    /* 3: BGM_SEWERS       */ { 32, 235, SEWER_LEAD,   SEWER_ARP,   SEWER_BASS,   SEWER_DRUM   },
-    /* 4: BGM_BOARHOLD     */ { 32, 175, BOAR_LEAD,    BOAR_ARP,    BOAR_BASS,    BOAR_DRUM    },
-    /* 5: BGM_SHADOW       */ { 32, 300, SHADOW_LEAD,  SHADOW_ARP,  SHADOW_BASS,  SHADOW_DRUM  },
-    /* 6: BGM_BATTLE       */ { 64, 155, BATTLE_LEAD,  BATTLE_ARP,  BATTLE_BASS,  BATTLE_DRUM  },
-    /* 7: BGM_BOSS         */ { 64, 140, BOSS_LEAD,    BOSS_ARP,    BOSS_BASS,    BOSS_DRUM    },
-    /* 8: BGM_VICTORY      */ { 32, 165, VICTORY_LEAD, VICTORY_ARP, VICTORY_BASS, VICTORY_DRUM }
+/* Track 9: "Beyond the Hollow Oak" — Evertale Wonder Suite (64 steps, D Major) */
+static const uint8_t WONDER_LEAD[64] = {
+    N_D5, BGM_HOLD, N_Fs5, N_A5, N_G5, BGM_HOLD, N_Fs5, N_E5,
+    N_D5, BGM_HOLD, N_B4, N_D5, N_A4, BGM_HOLD, BGM_REST, N_A4,
+    N_B4, BGM_HOLD, N_D5, N_Fs5, N_E5, BGM_HOLD, N_D5, N_B4,
+    N_A4, BGM_HOLD, N_B4, N_Cs5, N_D5, BGM_HOLD, BGM_REST, BGM_REST,
+    N_Fs5, BGM_HOLD, N_G5, N_A5, N_B5, BGM_HOLD, N_A5, N_Fs5,
+    N_E5, BGM_HOLD, N_Fs5, N_G5, N_Fs5, BGM_HOLD, N_D5, N_B4,
+    N_A4, BGM_HOLD, N_D5, N_Fs5, N_E5, BGM_HOLD, N_Cs5, N_E5,
+    N_D5, BGM_HOLD, BGM_HOLD, BGM_HOLD, BGM_REST, BGM_REST, BGM_REST, BGM_REST
+};
+static const uint8_t WONDER_ARP[64] = {
+    N_D4, N_Fs4, N_A4, N_D5, N_G3, N_B3, N_D4, N_G4,
+    N_B3, N_D4, N_Fs4, N_B4, N_A3, N_Cs4, N_E4, N_A4,
+    N_G3, N_B3, N_D4, N_G4, N_D4, N_Fs4, N_A4, N_D5,
+    N_A3, N_Cs4, N_E4, N_G4, N_D4, N_Fs4, N_A4, N_D5,
+    N_D4, N_Fs4, N_A4, N_D5, N_G4, N_B4, N_D5, N_B4,
+    N_A3, N_Cs4, N_E4, N_A4, N_B3, N_D4, N_Fs4, N_B4,
+    N_G3, N_B3, N_D4, N_G4, N_A3, N_Cs4, N_E4, N_A4,
+    N_D4, N_Fs4, N_A4, N_D5, N_A4, N_Fs4, N_D4, BGM_REST
+};
+static const uint8_t WONDER_BASS[64] = {
+    N_D3, BGM_HOLD, N_A2, BGM_HOLD, N_G2, BGM_HOLD, N_D3, BGM_HOLD,
+    N_B2, BGM_HOLD, N_Fs2, BGM_HOLD, N_A2, BGM_HOLD, N_E2, BGM_HOLD,
+    N_G2, BGM_HOLD, N_D3, BGM_HOLD, N_D3, BGM_HOLD, N_A2, BGM_HOLD,
+    N_A2, BGM_HOLD, N_E3, BGM_HOLD, N_D3, BGM_HOLD, N_A2, BGM_REST,
+    N_D3, BGM_HOLD, N_A2, BGM_HOLD, N_G2, BGM_HOLD, N_D3, BGM_HOLD,
+    N_A2, BGM_HOLD, N_E3, BGM_HOLD, N_B2, BGM_HOLD, N_Fs2, BGM_HOLD,
+    N_G2, BGM_HOLD, N_D3, BGM_HOLD, N_A2, BGM_HOLD, N_E3, BGM_HOLD,
+    N_D3, BGM_HOLD, N_A2, BGM_HOLD, N_D3, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t WONDER_DRUM[64] = {
+    3, 0, 1, 0, 0, 0, 1, 0,  3, 0, 1, 0, 0, 0, 1, 0,
+    3, 0, 1, 0, 3, 0, 1, 0,  3, 0, 1, 0, 3, 0, 0, 0,
+    3, 0, 1, 0, 3, 0, 1, 0,  3, 0, 1, 0, 3, 0, 1, 0,
+    3, 0, 1, 0, 3, 0, 1, 0,  3, 0, 0, 0, 0, 0, 0, 0
+};
+
+/* Track 10: "Lantern Lullaby" — Grandma's Comfort & Pip's Window (64 steps, F Major) */
+static const uint8_t LULLABY_LEAD[64] = {
+    N_A4, BGM_HOLD, N_C5, BGM_HOLD, N_D5, BGM_HOLD, N_C5, N_A4,
+    N_G4, BGM_HOLD, N_A4, BGM_HOLD, N_F4, BGM_HOLD, BGM_REST, BGM_REST,
+    N_Bb4, BGM_HOLD, N_D5, BGM_HOLD, N_C5, BGM_HOLD, N_A4, N_G4,
+    N_A4, BGM_HOLD, BGM_HOLD, BGM_HOLD, BGM_REST, BGM_REST, N_G4, N_A4,
+    N_C5, BGM_HOLD, N_F5, BGM_HOLD, N_E5, BGM_HOLD, N_D5, N_C5,
+    N_D5, BGM_HOLD, N_C5, N_A4, N_G4, BGM_HOLD, BGM_REST, N_G4,
+    N_A4, BGM_HOLD, N_Bb4, N_A4, N_G4, BGM_HOLD, N_E4, N_G4,
+    N_F4, BGM_HOLD, BGM_HOLD, BGM_HOLD, BGM_REST, BGM_REST, BGM_REST, BGM_REST
+};
+static const uint8_t LULLABY_ARP[64] = {
+    N_F3, N_A3, N_C4, N_F4, N_Bb3, N_D4, N_F4, N_D4,
+    N_C4, N_E4, N_G4, N_E4, N_F3, N_A3, N_C4, N_A3,
+    N_Bb3, N_D4, N_F4, N_D4, N_A3, N_C4, N_F4, N_C4,
+    N_D3, N_F3, N_A3, N_D4, N_C4, N_E4, N_G4, N_C4,
+    N_F3, N_A3, N_C4, N_F4, N_C4, N_E4, N_G4, N_E4,
+    N_Bb3, N_D4, N_F4, N_D4, N_C4, N_E4, N_G4, N_E4,
+    N_D3, N_F3, N_A3, N_D4, N_C4, N_E4, N_G4, N_Bb4,
+    N_F3, N_A3, N_C4, N_F4, N_C4, N_A3, N_F3, BGM_REST
+};
+static const uint8_t LULLABY_BASS[64] = {
+    N_F2, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_Bb2, BGM_HOLD, BGM_HOLD, BGM_HOLD,
+    N_C3, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_F2, BGM_HOLD, BGM_HOLD, BGM_HOLD,
+    N_Bb2, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_A2, BGM_HOLD, BGM_HOLD, BGM_HOLD,
+    N_D2, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_C3, BGM_HOLD, BGM_HOLD, BGM_HOLD,
+    N_F2, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_C3, BGM_HOLD, BGM_HOLD, BGM_HOLD,
+    N_Bb2, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_C3, BGM_HOLD, BGM_HOLD, BGM_HOLD,
+    N_D2, BGM_HOLD, BGM_HOLD, BGM_HOLD, N_C3, BGM_HOLD, BGM_HOLD, BGM_HOLD,
+    N_F2, BGM_HOLD, BGM_HOLD, BGM_HOLD, BGM_REST, BGM_REST, BGM_REST, BGM_REST
+};
+static const uint8_t LULLABY_DRUM[64] = {
+    0, 0, 1, 0, 0, 0, 0, 0,  0, 0, 1, 0, 0, 0, 0, 0,
+    0, 0, 1, 0, 0, 0, 0, 0,  0, 0, 1, 0, 0, 0, 0, 0,
+    3, 0, 1, 0, 0, 0, 1, 0,  3, 0, 1, 0, 0, 0, 1, 0,
+    3, 0, 1, 0, 0, 0, 1, 0,  0, 0, 0, 0, 0, 0, 0, 0
+};
+
+static const BgmTrack BGM_TRACKS[BGM_COUNT] = {
+    /* 0: BGM_HAMLET         */ { 48, 240, HAMLET_LEAD,  HAMLET_ARP,  HAMLET_BASS,  HAMLET_DRUM  },
+    /* 1: BGM_ALDERBROOK     */ { 96, 245, ALDER_LEAD,   ALDER_ARP,   ALDER_BASS,   ALDER_DRUM   },
+    /* 2: BGM_WHISKERBURGH   */ { 32, 185, WHISK_LEAD,   WHISK_ARP,   WHISK_BASS,   WHISK_DRUM   },
+    /* 3: BGM_SEWERS         */ { 32, 235, SEWER_LEAD,   SEWER_ARP,   SEWER_BASS,   SEWER_DRUM   },
+    /* 4: BGM_BOARHOLD       */ { 32, 175, BOAR_LEAD,    BOAR_ARP,    BOAR_BASS,    BOAR_DRUM    },
+    /* 5: BGM_SHADOW         */ { 64, 265, SHADOW_LEAD,  SHADOW_ARP,  SHADOW_BASS,  SHADOW_DRUM  },
+    /* 6: BGM_BATTLE         */ { 64, 155, BATTLE_LEAD,  BATTLE_ARP,  BATTLE_BASS,  BATTLE_DRUM  },
+    /* 7: BGM_BOSS           */ { 64, 140, BOSS_LEAD,    BOSS_ARP,    BOSS_BASS,    BOSS_DRUM    },
+    /* 8: BGM_VICTORY        */ { 32, 165, VICTORY_LEAD, VICTORY_ARP, VICTORY_BASS, VICTORY_DRUM },
+    /* 9: BGM_CINEMA_WONDER  */ { 64, 215, WONDER_LEAD,  WONDER_ARP,  WONDER_BASS,  WONDER_DRUM  },
+    /* 10: BGM_CINEMA_LULLABY*/ { 64, 270, LULLABY_LEAD, LULLABY_ARP, LULLABY_BASS, LULLABY_DRUM }
 };
 
 typedef struct {
@@ -673,7 +790,7 @@ static uint32_t bgm_midi_to_inc(uint8_t midi) {
 
 static void bgm_init(void) {
     memset(&g_bgm, 0, sizeof(g_bgm));
-    g_bgm.track_id = BGM_HAMLET;
+    g_bgm.track_id = BGM_ALDERBROOK;
     g_bgm.step_idx = 0;
     g_bgm.samples_to_next = 0;
     g_bgm.ch[0].wave = WAVE_TRIANGLE;
@@ -684,7 +801,7 @@ static void bgm_init(void) {
 }
 
 static void bgm_set_track(uint8_t track_id) {
-    if (track_id > BGM_VICTORY || g_bgm.track_id == track_id) return;
+    if (track_id >= BGM_COUNT || g_bgm.track_id == track_id) return;
     if (g_audio_dev != 0) SDL_LockAudioDevice(g_audio_dev);
     g_bgm.track_id = track_id;
     g_bgm.step_idx = 0;
@@ -694,9 +811,10 @@ static void bgm_set_track(uint8_t track_id) {
         g_bgm.ch[i].env_fp = 0;
     }
     /* Tailor timbres to track mood */
-    if (track_id == BGM_HAMLET || track_id == BGM_ALDERBROOK) {
+    if (track_id == BGM_HAMLET || track_id == BGM_ALDERBROOK ||
+        track_id == BGM_CINEMA_WONDER || track_id == BGM_CINEMA_LULLABY) {
         g_bgm.ch[0].wave = WAVE_TRIANGLE;  /* Warm pastoral flute / lullaby */
-        g_bgm.ch[1].wave = WAVE_SQUARE25;  /* Plucked harp arpeggio */
+        g_bgm.ch[1].wave = WAVE_SQUARE25;  /* Plucked harp / celesta arpeggio */
     } else if (track_id == BGM_SEWERS || track_id == BGM_SHADOW) {
         g_bgm.ch[0].wave = WAVE_TRIANGLE;  /* Haunting hollow chime */
         g_bgm.ch[1].wave = WAVE_SQUARE25;
@@ -715,7 +833,9 @@ static void bgm_set_track(uint8_t track_id) {
 static void bgm_trigger_step(void) {
     const BgmTrack *tr = &BGM_TRACKS[g_bgm.track_id];
     uint8_t s = g_bgm.step_idx;
-    bool pastoral = (g_bgm.track_id == BGM_HAMLET || g_bgm.track_id == BGM_ALDERBROOK || g_bgm.track_id == BGM_SHADOW);
+    bool pastoral = (g_bgm.track_id == BGM_HAMLET || g_bgm.track_id == BGM_ALDERBROOK ||
+                     g_bgm.track_id == BGM_SHADOW || g_bgm.track_id == BGM_CINEMA_WONDER ||
+                     g_bgm.track_id == BGM_CINEMA_LULLABY);
 
     /* Lead */
     uint8_t n0 = tr->lead[s];
@@ -1665,103 +1785,142 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
 /* ============================================================================
  * 6. EMERALD DRAGON RETRO INTRO, BATTLE ARENA, DIALOGUE, TITLE & HUD OVERLAYS
  * ============================================================================ */
+static inline uint32_t rgb565_to_argb(uint16_t px) {
+    uint32_t r = ((uint32_t)(px >> 11) & 31u);
+    uint32_t g = ((uint32_t)(px >> 5)  & 63u);
+    uint32_t b = ((uint32_t)px         & 31u);
+    r = (r << 3) | (r >> 2);
+    g = (g << 2) | (g >> 4);
+    b = (b << 3) | (b >> 2);
+    return 0xFF000000u | (r << 16) | (g << 8) | b;
+}
+
 static void render_intro_scene(const HearthState *st, const HearthPpuPacket *ppu) {
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
-    uint8_t sc = st->intro.scene;
+    uint8_t plate = (st->intro.scene < CINEMA_SDL_PLATE_COUNT) ? st->intro.scene : 0u;
     uint32_t f = ppu->frame_count;
+    int pt = (int)st->intro.plate_timer;
+    if (pt > 720) pt = 720;
 
-    /* Classic PC Engine / 16-bit Emerald Dragon panoramic storybook sky */
-    for (int y = 0; y < 146; y++) {
-        uint32_t col;
-        if (sc == 0) {
-            col = (y < 44) ? 0xFF141836u : (y < 88) ? 0xFF232C5Au : (y < 120) ? 0xFF43487Au : 0xFF7D5A76u;
-        } else if (sc == 1) {
-            col = (y < 44) ? 0xFF1B1638u : (y < 88) ? 0xFF34224Eu : (y < 120) ? 0xFF5D3458u : 0xFF8C535Eu;
-        } else if (sc == 2) {
-            col = (y < 44) ? 0xFF121C3Cu : (y < 88) ? 0xFF1D3562u : (y < 120) ? 0xFF2F5888u : 0xFF53849Eu;
-        } else {
-            col = (y < 44) ? 0xFF141126u : (y < 88) ? 0xFF241B3Cu : (y < 120) ? 0xFF38244Bu : 0xFF563254u;
+    /* 1. Full-Color Painted Anime CG Plate with smooth Ken Burns camera pan */
+    int view_y0 = 18;
+    int view_h  = 134;
+    int max_pan_x = CINEMA_SDL_W - w;
+    if (max_pan_x < 0) max_pan_x = 0;
+    int max_pan_y = CINEMA_SDL_H - view_h;
+    if (max_pan_y < 0) max_pan_y = 0;
+
+    int pan_x = max_pan_x / 2;
+    int pan_y = max_pan_y / 2;
+    int prog = (pt * 256) / 720; /* 0..256 */
+
+    switch (st->intro.cam_mode) {
+        case CIN_CAM_PAN_RIGHT:
+            pan_x = (max_pan_x * prog) >> 8;
+            pan_y = max_pan_y / 2;
+            break;
+        case CIN_CAM_PAN_LEFT:
+            pan_x = max_pan_x - ((max_pan_x * prog) >> 8);
+            pan_y = max_pan_y / 2;
+            break;
+        case CIN_CAM_ZOOM_IN:
+            pan_x = max_pan_x / 2;
+            pan_y = (max_pan_y * (256 - prog)) >> 8;
+            break;
+        case CIN_CAM_SHAKE_FLASH:
+            pan_x = max_pan_x / 2 + ppu->shake_x;
+            pan_y = max_pan_y / 2 + ppu->shake_y;
+            break;
+        case CIN_CAM_STILL_DAWN:
+        default:
+            pan_x = max_pan_x / 2;
+            pan_y = max_pan_y / 2;
+            break;
+    }
+    if (pan_x < 0) pan_x = 0;
+    if (pan_x > max_pan_x) pan_x = max_pan_x;
+    if (pan_y < 0) pan_y = 0;
+    if (pan_y > max_pan_y) pan_y = max_pan_y;
+
+    const uint16_t *src = CINEMA_SDL_PLATES[plate];
+    bool dawn_wash = (st->intro.cam_mode == CIN_CAM_STILL_DAWN);
+    for (int y = 0; y < view_h; y++) {
+        int sy = pan_y + y;
+        if (sy >= CINEMA_SDL_H) sy = CINEMA_SDL_H - 1;
+        const uint16_t *srow = &src[sy * CINEMA_SDL_W + pan_x];
+        uint32_t *drow = &g_fb[(view_y0 + y) * FB_MAX_W];
+        for (int x = 0; x < w; x++) {
+            uint32_t col = rgb565_to_argb(srow[x]);
+            if (dawn_wash) {
+                uint32_t r = ((col >> 16) & 0xFFu) + 26u;
+                uint32_t g = ((col >> 8)  & 0xFFu) + 14u;
+                uint32_t b = (col         & 0xFFu);
+                if (r > 255u) r = 255u;
+                if (g > 255u) g = 255u;
+                b = (b * 7u) >> 3;
+                col = 0xFF000000u | (r << 16) | (g << 8) | b;
+            }
+            drow[x] = col;
         }
-        fill_rect_px(0, y, w, 1, col);
     }
 
-    /* Twinkling pixel starfield */
-    for (int i = 0; i < 28; i++) {
-        int sx = ((i * 53 + (int)(f >> 3)) % (w - 8)) + 4;
-        int sy = 22 + ((i * 29) % 72);
-        uint32_t scol = (((f >> 3) + (uint32_t)i) & 3u) == 0u ? 0xFFFFF6CCu : 0xFF9AB4E8u;
-        put_px(sx, sy, scol);
+    /* 2. Atmospheric Cinema Particles (steam dusk, forest pollen, lanterns, violet storm, fireflies) */
+    uint8_t fx = st->intro.fx_mode;
+    {
+        uint32_t pcol = (fx == CIN_FX_VIOLET_STORM)      ? 0xFFB888E8u
+                      : (fx == CIN_FX_MOON_FIREFLIES)    ? 0xFFAEEBFFu
+                      : (fx == CIN_FX_FOREST_POLLEN)     ? 0xFFFFE59Au
+                      : (fx == CIN_FX_EVERTALE_LANTERNS) ? 0xFFFFD878u
+                      : 0xFFE8DCC8u;
+        int pcount = (fx == CIN_FX_VIOLET_STORM) ? 26 : 18;
+        for (int i = 0; i < pcount; i++) {
+            int px, py;
+            if (fx == CIN_FX_VIOLET_STORM) {
+                px = ((i * 37 + (int)(f >> 1)) % w);
+                py = view_y0 + ((view_h - (((i * 23 + (int)f) % view_h))) % view_h);
+            } else if (fx == CIN_FX_STEAM_DUSK || fx == CIN_FX_EVERTALE_LANTERNS) {
+                px = ((i * 43 + (int)(f >> 2)) % w);
+                py = view_y0 + ((view_h - (((i * 19 + (int)(f >> 1)) % view_h))) % view_h);
+            } else {
+                px = ((i * 53 + (int)(f >> 2)) % w);
+                py = view_y0 + ((i * 29 + (HEARTH_SIN64[((int)(f >> 2) + i * 5) & 63] >> 4) + view_h) % view_h);
+            }
+            put_px_blend(px, py, pcol, 190);
+            if ((i & 3) == 0) {
+                put_px_blend(px + 1, py, pcol, 110);
+                put_px_blend(px, py + 1, pcol, 110);
+            }
+        }
     }
 
-    /* Crescent moon / radiant emblem per scene */
-    if (sc == 0) {
-        fill_ellipse_alpha(w - 58, 48, 16, 16, 0xFFFFEBA8u, 75);
-        fill_ellipse_alpha(w - 58, 48, 11, 11, 0xFFFFF6D6u, 255);
-        fill_ellipse_alpha(w - 53, 45, 9, 9, 0xFF1D244Cu, 255);
-        /* Silhouette windmill tower behind blades */
-        int wx = w / 2 - 36;
-        fill_rect_px(wx - 10, 74, 20, 48, 0xFF2C2F46u);
-        fill_rect_px(wx - 12, 68, 24, 7, 0xFF423A58u);
-        fill_rect_px(wx - 4, 108, 8, 14, 0xFFFFD878u);
-    } else if (sc == 1) {
-        /* Radiant Heart-Locket crest rays */
-        int cx = w / 2;
-        int cy = 84;
-        int pulse = 24 + (((int)f >> 2) & 7);
-        fill_ellipse_alpha(cx, cy, pulse + 14, pulse + 14, 0xFFF5B841u, 45);
-        draw_circle_outline(cx, cy, pulse, 0xFFFFEBA8u);
-        draw_circle_outline(cx, cy, pulse - 8, 0xFFE86A4Au);
-    } else if (sc == 2) {
-        /* Familiar Summoning Runic Circle (Sun & Starlight) */
-        int cx = w / 2;
-        fill_ellipse_alpha(cx, 128, 72, 16, 0xFF5AD2F4u, 55);
-        draw_circle_outline(cx, 104, 34 + (((int)f >> 3) & 3), 0xFFF5B841u);
-        draw_circle_outline(cx, 104, 22, 0xFF9AD8F4u);
-    } else {
-        /* Ancient Shrine ruins & ominous glow */
-        int cx = w / 2 + 44;
-        fill_rect_px(cx - 38, 62, 10, 62, 0xFF2D2B42u);
-        fill_rect_px(cx + 28, 62, 10, 62, 0xFF2D2B42u);
-        fill_rect_px(cx - 42, 56, 84, 8, 0xFF3E3856u);
-        fill_ellipse_alpha(cx, 106, 30, 26, 0xFFB044C8u, 55);
-    }
+    /* Subtle top & bottom vignette seam into letterbox bars */
+    fill_rect_alpha(0, view_y0, w, 6, 0xFF08070Fu, 130);
+    fill_rect_alpha(0, view_y0 + view_h - 8, w, 8, 0xFF08070Fu, 150);
 
-    /* Distant rolling valley hills */
-    for (int x = 0; x < w; x++) {
-        int h1 = 104 + (HEARTH_SIN64[((x + (int)(f >> 2)) >> 3) & 63] >> 4);
-        int h2 = 120 + (HEARTH_SIN64[((x + (int)(f >> 1)) >> 2) & 63] >> 5);
-        fill_rect_px(x, h1, 1, 146 - h1, (sc == 3) ? 0xFF251E3Au : 0xFF2A3E4Eu);
-        fill_rect_px(x, h2, 1, 146 - h2, (sc == 3) ? 0xFF312848u : 0xFF3B6648u);
-    }
-    /* Foreground grassy terrace */
-    fill_rect_px(0, 128, w, 24, (sc == 3) ? 0xFF3A354Cu : 0xFF548E54u);
-    fill_rect_px(0, 128, w, 2,  (sc == 3) ? 0xFF625B7Au : 0xFF8CC870u);
-
-    /* OAM Cast Actors staged by hearth_core.c */
-    for (uint8_t i = 0; i < ppu->oam_count; i++) {
-        const HearthOamSprite *o = &ppu->oam[i];
-        draw_oam_sprite(o, o->x + ppu->shake_x, o->y + ppu->shake_y, ppu->frame_count);
-    }
-
-    /* Top cinema letterbox bar with chapter title & scene pips */
-    fill_rect_px(0, 0, w, 20, 0xFF0C0A14u);
-    fill_rect_px(0, 19, w, 1, 0xFFC79A52u);
+    /* 3. Top Cinema Letterbox Bar: Act Title + 7 Act Notches + AUTO Indicator */
+    fill_rect_px(0, 0, w, view_y0, 0xFF090810u);
+    fill_rect_px(0, view_y0 - 1, w, 1, 0xFF9E7B42u);
     if (st->intro.title && st->intro.title[0] != '\0') {
-        draw_text(10, 6, st->intro.title, 0xFFFFF1A8u, true);
+        draw_text(8, 5, st->intro.title, 0xFFFFF1A8u, true);
     }
-    for (int i = 0; i < 4; i++) {
-        uint32_t pcol = (i == (int)sc) ? 0xFFFFF1A8u : 0xFF554A66u;
-        fill_rect_px(w - 44 + i * 9, 7, 5, 5, pcol);
+    int pip_x0 = w - 62;
+    for (int i = 0; i < 7; i++) {
+        int act_idx = i + 1;
+        uint32_t col = (act_idx == (int)st->intro.act_num) ? 0xFFFFE59Au
+                     : (act_idx < (int)st->intro.act_num)  ? 0xFF8C7244u : 0xFF332D42u;
+        fill_rect_px(pip_x0 + i * 8, 6, (act_idx == (int)st->intro.act_num) ? 6 : 4, 4, col);
     }
 
-    /* Bottom Emerald Dragon narrative box */
-    int ny = 152;
-    fill_rect_px(0, ny, w, h - ny, 0xFF0E0C17u);
-    fill_rect_px(0, ny, w, 1, 0xFFC79A52u);
-    draw_rect_outline(6, ny + 5, w - 12, h - ny - 10, 0xFF8B6A36u);
+    /* 4. Bottom Illustrated Narrative Bar: Speaker Nameplate + 2-line Typewriter + Controls */
+    int ny = view_y0 + view_h;
+    fill_rect_px(0, ny, w, h - ny, 0xFF0A0912u);
+    fill_rect_px(0, ny, w, 1, 0xFF9E7B42u);
 
-    /* Typewriter split across line1 and line2 */
+    if (st->intro.speaker && st->intro.speaker[0] != '\0') {
+        draw_text(10, ny + 6, st->intro.speaker, 0xFFFFD878u, true);
+    }
+
     int total_vis = (int)st->intro.chars;
     const char *l1 = st->intro.line1 ? st->intro.line1 : "";
     const char *l2 = st->intro.line2 ? st->intro.line2 : "";
@@ -1775,10 +1934,14 @@ static void render_intro_scene(const HearthState *st, const HearthPpuPacket *ppu
     memcpy(b1, l1, (size_t)v1); b1[v1] = '\0';
     memcpy(b2, l2, (size_t)v2); b2[v2] = '\0';
 
-    draw_text_centered(w / 2, ny + 14, b1, 0xFFF7F0DCu, true);
-    draw_text_centered(w / 2, ny + 28, b2, 0xFFEADAB8u, true);
+    int text_y = (st->intro.speaker && st->intro.speaker[0] != '\0') ? (ny + 18) : (ny + 12);
+    draw_text_centered(w / 2, text_y,      b1, 0xFFF7F0DCu, true);
+    draw_text_centered(w / 2, text_y + 13, b2, 0xFFEADAB8u, true);
 
-    draw_text_centered(w / 2, h - 14, "[SPACE/A] NEXT   [ESC/START] SKIP INTRO", 0xFF9AD8F4u, false);
+    draw_text(8, h - 12,
+        st->intro.auto_play ? "[SPACE/A] NEXT  [Y] AUTO:ON" : "[SPACE/A] NEXT  [Y] AUTO:OFF",
+        0xFF9AD8F4u, false);
+    draw_text(w - 74, h - 12, "[ESC] SKIP", 0xFFC8BA9Au, false);
 }
 
 static void render_battle_vfx(const HearthState *st, const HearthPpuPacket *ppu) {
@@ -2550,7 +2713,7 @@ static uint16_t poll_pad_bits(SDL_GameController *pad) {
     if (k[SDL_SCANCODE_Z] || k[SDL_SCANCODE_SPACE] || k[SDL_SCANCODE_RETURN] || k[SDL_SCANCODE_J]) b |= PAD_A;
     if (k[SDL_SCANCODE_X] || k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT] || k[SDL_SCANCODE_K]) b |= PAD_B;
     if (k[SDL_SCANCODE_C]) b |= PAD_X;
-    if (k[SDL_SCANCODE_V]) b |= PAD_Y;
+    if (k[SDL_SCANCODE_V] || k[SDL_SCANCODE_Y]) b |= PAD_Y;
     if (k[SDL_SCANCODE_Q] || k[SDL_SCANCODE_LEFTBRACKET])  b |= PAD_L;
     if (k[SDL_SCANCODE_E] || k[SDL_SCANCODE_RIGHTBRACKET]) b |= PAD_R;
     if (k[SDL_SCANCODE_ESCAPE]) b |= PAD_START;

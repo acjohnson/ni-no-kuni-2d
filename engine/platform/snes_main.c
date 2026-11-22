@@ -22,6 +22,7 @@
 #include <snes.h>
 #include "hearth_core.h"
 #include "res/soundbank.h"
+#include "cinema_cg_rom.h"
 
 extern char SOUNDBANK__;
 
@@ -31,11 +32,12 @@ extern char SOUNDBANK__;
 HearthState g_hearth;
 
 /* VRAM Word Addresses (Non-overlapping 64 KB layout: 0x0000..0x7FFF words) */
-#define VRAM_OBJ_GFX    0x0000u  /* 26 16x16 sprites -> 0x0000..0x073F */
-#define VRAM_BG0_GFX    0x2000u  /* UI box + 64 ASCII glyphs -> 0x2000..0x25FF */
-#define VRAM_BG1_GFX    0x4000u  /* 34 terrain/battle tiles -> 0x4000..0x421F */
-#define VRAM_BG0_MAP    0x6800u  /* 32x32 UI tilemap (1024 words = 2048 B) */
-#define VRAM_BG1_MAP    0x7000u  /* 64x32 world tilemap (2048 words = 4096 B) */
+#define VRAM_OBJ_GFX      0x0000u  /* 26 16x16 sprites -> 0x0000..0x073F */
+#define VRAM_BG0_GFX      0x2000u  /* UI box + 64 ASCII glyphs -> 0x2000..0x25FF */
+#define VRAM_BG1_GFX      0x4000u  /* 34 terrain tiles (0..33) + 340 CG tiles (64..403 -> 0x4400..0x593F) */
+#define VRAM_CG_TILE_BASE 64u      /* Non-overlapping BG1 tile slot for Cinema CG plates */
+#define VRAM_BG0_MAP      0x6800u  /* 32x32 UI tilemap (1024 words = 2048 B) */
+#define VRAM_BG1_MAP      0x7000u  /* 64x32 world tilemap (2048 words = 4096 B) */
 
 /* Tilemap entry helper: vhopppcc cccccccc */
 #define SNES_TILE(t, pal, prio) \
@@ -1222,48 +1224,32 @@ static void build_battle_bg1(u8 biome) {
     g_bg1_dirty_r = 0;
 }
 
-static void build_intro_bg1(u8 scene) {
-    u16 sky_e, gnd_e, y, x;
+static void upload_cinema_cg_force_blank(u8 scene) {
+    u8 p = (scene < CINEMA_ROM_PLATE_COUNT) ? scene : 0u;
+    u16 byte_len = (u16)(CINEMA_ROM_TILE_COUNTS[p] << 5);
+    dmaCopyVram((u8 *)CINEMA_SNES_TILE_PTRS[p],
+                (u16)(VRAM_BG1_GFX + ((u16)VRAM_CG_TILE_BASE << 4)),
+                byte_len);
+    dmaCopyCGram((u8 *)CINEMA_ROM_PALS[p], 0u, 32u);
+}
 
-    sky_e = SNES_TILE((scene == 0u) ? ST_BATTLE_SKY_MEADOW : ST_BATTLE_SKY_SHRINE, 0u, 0u);
-    gnd_e = SNES_TILE((scene == 3u) ? ST_BATTLE_GROUND_SHRINE
-                    : (scene == 1u) ? ST_SHRINE_FLOOR
-                    : ST_BATTLE_GROUND_MEADOW, 0u, 0u);
+static void build_intro_bg1(u8 scene) {
+    u8 p = (scene < CINEMA_ROM_PLATE_COUNT) ? scene : 0u;
+    const uint16_t *mp = CINEMA_ROM_MAP_PTRS[p];
+    u16 empty_e = SNES_TILE(ST_EMPTY, 0u, 0u);
+    u16 y, x, tid;
 
     for (y = 0; y < 32u; y++) {
         for (x = 0; x < 32u; x++) {
-            g_bg1_map[(u16)((y << 5) + x)] = (y < 13u) ? sky_e : gnd_e;
+            g_bg1_map[(u16)((y << 5) + x)] = empty_e;
         }
     }
-    if (scene == 0u) {
-        /* Stone Windmill tower behind the valley sails */
-        for (y = 8u; y < 10u; y++) {
-            for (x = 7u; x < 11u; x++) g_bg1_map[(u16)((y << 5) + x)] = SNES_TILE(ST_WINDMILL_ROOF, 0u, 0u);
+    /* Map 32x15 quantized anime CG plate into BG1 rows 2..16 */
+    for (y = 0; y < CINEMA_ROM_TH; y++) {
+        for (x = 0; x < CINEMA_ROM_TW; x++) {
+            tid = mp[(u16)((y << 5) + x)];
+            g_bg1_map[(u16)(((y + 2u) << 5) + x)] = SNES_TILE((u16)(VRAM_CG_TILE_BASE + tid), 0u, 0u);
         }
-        for (y = 10u; y < 15u; y++) {
-            for (x = 7u; x < 11u; x++) g_bg1_map[(u16)((y << 5) + x)] = SNES_TILE(ST_WINDMILL_WALL, 0u, 0u);
-        }
-        for (x = 14u; x < 29u; x++) {
-            g_bg1_map[(u16)((14u << 5) + x)] = SNES_TILE(ST_FLOWERS, 0u, 0u);
-            g_bg1_map[(u16)((15u << 5) + x)] = SNES_TILE(ST_FLOWERS, 0u, 0u);
-        }
-    } else if (scene == 1u) {
-        for (y = 13u; y < 15u; y++) {
-            for (x = 14u; x < 18u; x++) g_bg1_map[(u16)((y << 5) + x)] = SNES_TILE(ST_SHRINE_RUNE, 0u, 0u);
-        }
-    } else if (scene == 2u) {
-        for (x = 4u; x < 28u; x++) {
-            g_bg1_map[(u16)((14u << 5) + x)] = SNES_TILE(ST_FLOWERS, 0u, 0u);
-            g_bg1_map[(u16)((15u << 5) + x)] = SNES_TILE(ST_FLOWERS, 0u, 0u);
-        }
-    } else {
-        for (y = 7u; y < 14u; y++) {
-            g_bg1_map[(u16)((y << 5) + 5u)]  = SNES_TILE(ST_SHRINE_PILLAR, 0u, 0u);
-            g_bg1_map[(u16)((y << 5) + 6u)]  = SNES_TILE(ST_SHRINE_PILLAR, 0u, 0u);
-            g_bg1_map[(u16)((y << 5) + 25u)] = SNES_TILE(ST_SHRINE_PILLAR, 0u, 0u);
-            g_bg1_map[(u16)((y << 5) + 26u)] = SNES_TILE(ST_SHRINE_PILLAR, 0u, 0u);
-        }
-        for (x = 14u; x < 18u; x++) g_bg1_map[(u16)((14u << 5) + x)] = SNES_TILE(ST_SHRINE_RUNE, 0u, 0u);
     }
     g_bg1_dirty_l = 1;
     g_bg1_dirty_r = 0;
@@ -1393,7 +1379,7 @@ static void draw_title_cursor(void) {
     static const char *opts[3] = {
         "NEW STORY (AGE 5->10)",
         "EXPLORE EVERTALE     ",
-        "REPLAY OPENING INTRO "
+        "REPLAY OPENING CINEMA"
     };
     u8 i;
     u16 pal, y;
@@ -1513,10 +1499,15 @@ static void draw_dialogue_ui(void) {
 static void draw_intro_ui(void) {
     const HearthIntroState *in = &g_hearth.intro;
     const char *s;
+    const char *hdr;
     u16 total, vis, start, end, cut, row;
 
+    bg0_fill_rect(0u, 0u, 32u, 1u, SNES_TILE(SUI_FILL, PAL_UI_TEXT, 1u));
+    bg0_text_n(1u, 0u, PAL_UI_GOLD, in->title ? in->title : "PROLOGUE", 30u);
+
     bg0_fill_rect(1u, 20u, 30u, 7u, SNES_TILE(SUI_FILL, PAL_UI_TEXT, 1u));
-    bg0_text_n(2u, 20u, PAL_UI_GOLD, in->title ? in->title : "PROLOGUE", 28u);
+    hdr = (in->speaker && in->speaker[0] != '\0') ? in->speaker : (in->title ? in->title : "PROLOGUE");
+    bg0_text_n(2u, 20u, PAL_UI_GOLD, hdr, 28u);
 
     /* Join line1 + space + line2 in Bank $7E scratch buffer and word-wrap across rows 21..24 */
     total = 0u;
@@ -1549,7 +1540,10 @@ static void draw_intro_ui(void) {
         start = cut;
     }
 
-    bg0_text(2u, 26u, PAL_UI_CYAN, "A:NEXT       START:SKIP");
+    bg0_text(2u, 26u, PAL_UI_CYAN,
+             in->auto_play ? "A:NEXT  Y:AUTO ON  ST:SKIP"
+                           : "A:NEXT  Y:AUTO OFF ST:SKIP");
+    g_bg0_dirty = 3u;
 }
 
 static void draw_battle_ui(void) {
@@ -1753,7 +1747,7 @@ static u16 compute_hud_sig(u8 want, const HearthPpuPacket *ppu) {
         return (u16)(sig ^ ((u16)g_hearth.title_cursor << 8));
     }
     if (want == 4u) {
-        return (u16)(sig ^ ((u16)g_hearth.intro.scene << 8) ^ (g_hearth.intro.chars << 1));
+        return (u16)(sig ^ ((u16)g_hearth.intro.beat << 9) ^ (g_hearth.intro.chars << 1) ^ (u16)(g_hearth.intro.auto_play ? 0x8000u : 0u));
     }
     if (want == 5u) {
         const HearthShopState *sh = &g_hearth.shop;
@@ -2018,6 +2012,16 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
 /* ============================================================================
  * 8b. SONY SPC700 MUSIC & SOUND EFFECTS DRIVER (SNESMod Soundbank)
  * ============================================================================ */
+static u16 resolve_snes_bgm_mod(u8 bgm_id) {
+    if (bgm_id == BGM_ALDERBROOK)     return (u16)MOD_HEARTH_ALDERBROOK;
+    if (bgm_id == BGM_CINEMA_WONDER)  return (u16)MOD_HEARTH_WONDER;
+    if (bgm_id == BGM_CINEMA_LULLABY) return (u16)MOD_HEARTH_LULLABY;
+    if (bgm_id == BGM_SHADOW || bgm_id == BGM_SEWERS) return (u16)MOD_HEARTH_SHADOW;
+    if (bgm_id == BGM_BATTLE)         return (u16)MOD_HEARTH_BATTLE;
+    if (bgm_id == BGM_BOSS || bgm_id == BGM_BOARHOLD) return (u16)MOD_HEARTH_BOSS;
+    return (u16)MOD_HEARTH_HAMLET;
+}
+
 static void load_snes_music(u16 mod_id) {
     u8 j;
     if (mod_id == g_cur_bgm_mod) return;
@@ -2228,6 +2232,7 @@ int main(void) {
     if (g_hearth.mode == MODE_INTRO) {
         g_last_scene_kind = 2u;
         g_last_intro_scene = g_hearth.intro.scene;
+        upload_cinema_cg_force_blank(g_hearth.intro.scene);
         build_intro_bg1(g_hearth.intro.scene);
         bgSetScroll(1, 0u, 0u);
     } else {
@@ -2241,8 +2246,8 @@ int main(void) {
 
     bgSetScroll(0, 0, 0);
 
-    /* Load Windmill Hamlet waltz + 6 gameplay SFX before revealing display */
-    load_snes_music(MOD_HEARTH_HAMLET);
+    /* Load Alderbrook Overture ("Steam & Pine") + 6 gameplay SFX before revealing display */
+    load_snes_music(resolve_snes_bgm_mod(ppu->bgm_id));
     flush_all_maps_force_blank();
 
     /* 5. Real 60Hz SNES FastROM Main Loop */
@@ -2261,7 +2266,7 @@ int main(void) {
         }
         scene_switched = 0;
 
-        if (ppu->terrain_pal_id != g_last_pal_id) {
+        if (scene_kind != 2u && ppu->terrain_pal_id != g_last_pal_id) {
             g_last_pal_id = ppu->terrain_pal_id;
             g_pal_dirty = 1u;
         }
@@ -2277,6 +2282,10 @@ int main(void) {
 
         if (scene_kind != g_last_scene_kind ||
             (scene_kind == 2u && g_hearth.intro.scene != g_last_intro_scene)) {
+            if (g_last_scene_kind == 2u && scene_kind != 2u) {
+                g_last_pal_id = ppu->terrain_pal_id;
+                g_pal_dirty = 1u;
+            }
             g_last_scene_kind = scene_kind;
             g_last_intro_scene = g_hearth.intro.scene;
             scene_switched = 1;
@@ -2295,13 +2304,6 @@ int main(void) {
                 g_env_frame = af;
                 g_env_dirty = 1;
             }
-        } else if (scene_kind == 2u) {
-            /* Keep windmill sails & flowers gently animated during the opening intro */
-            af = (u8)((((u16)g_hearth.frame_count) >> 3) & 3u);
-            if (af != g_env_frame) {
-                g_env_frame = af;
-                g_env_dirty = 1;
-            }
         }
 
         update_ui_layer(ppu);
@@ -2312,15 +2314,16 @@ int main(void) {
             play_snes_sfx(ppu->sfx_queue[i]);
         }
 
+        want_mod = resolve_snes_bgm_mod(ppu->bgm_id);
         if (scene_switched) {
             setScreenOff();
-            if (g_pal_dirty) {
+            if (scene_kind == 2u) {
+                upload_cinema_cg_force_blank(g_hearth.intro.scene);
+                g_pal_dirty = 0u;
+            } else if (g_pal_dirty) {
                 upload_zone_pal0(g_last_pal_id);
                 g_pal_dirty = 0u;
             }
-            want_mod = (scene_kind == 1u)
-                ? (u16)(g_hearth.battle.is_boss_battle ? MOD_HEARTH_BOSS : MOD_HEARTH_BATTLE)
-                : (u16)MOD_HEARTH_HAMLET;
             load_snes_music(want_mod);
             dmaCopyVram((u8 *)g_bg1_map, VRAM_BG1_MAP, 4096u);
             dmaCopyVram((u8 *)g_bg0_map, VRAM_BG0_MAP, 2048u);
@@ -2330,6 +2333,9 @@ int main(void) {
             g_env_dirty   = 0;
             setScreenOn();
         } else {
+            if (want_mod != g_cur_bgm_mod) {
+                load_snes_music(want_mod);
+            }
             spcProcess();
             WaitForVBlank();
             flush_one_vblank_dma();
@@ -2337,7 +2343,7 @@ int main(void) {
 
         /* Hardware-scroll BG1 world (BG0 locked to 0,0 at init) */
         if (scene_kind == 2u) {
-            bgSetScroll(1, 0u, 0u);
+            bgSetScroll(1, (u16)(-ppu->shake_x), (u16)(-ppu->shake_y));
         } else if (scene_kind == 1u) {
             bgSetScroll(1, (u16)(-ppu->shake_x), (u16)(-ppu->shake_y));
         } else {

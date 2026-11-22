@@ -137,16 +137,46 @@ typedef enum {
 
 /* Music Track IDs (Consumed by Web Audio, SDL2 Synth, Genesis PSG, SNES SPC700) */
 typedef enum {
-    BGM_HAMLET       = 0,
-    BGM_ALDERBROOK   = 1,
-    BGM_WHISKERBURGH = 2,
-    BGM_SEWERS       = 3,
-    BGM_BOARHOLD     = 4,
-    BGM_SHADOW       = 5,
-    BGM_BATTLE       = 6,
-    BGM_BOSS         = 7,
-    BGM_VICTORY      = 8
+    BGM_HAMLET         = 0,
+    BGM_ALDERBROOK     = 1,
+    BGM_WHISKERBURGH   = 2,
+    BGM_SEWERS         = 3,
+    BGM_BOARHOLD       = 4,
+    BGM_SHADOW         = 5,
+    BGM_BATTLE         = 6,
+    BGM_BOSS           = 7,
+    BGM_VICTORY        = 8,
+    BGM_CINEMA_WONDER  = 9,
+    BGM_CINEMA_LULLABY = 10,
+    BGM_COUNT          = 11
 } HearthBgmId;
+
+/* Opening Cinema CG Plates, Camera Motions & Atmospheric Moods */
+typedef enum {
+    CG_ALDERBROOK_DUSK  = 0,
+    CG_HOLLOW_OAK_CHASE = 1,
+    CG_EVERTALE_VISTA   = 2,
+    CG_SHADOW_GRANDMA   = 3,
+    CG_BEDROOM_COMFORT  = 4,
+    CG_PIP_WINDOW       = 5,
+    CG_PLATE_COUNT      = 6
+} HearthCinemaPlate;
+
+typedef enum {
+    CIN_CAM_PAN_RIGHT   = 0,
+    CIN_CAM_PAN_LEFT    = 1,
+    CIN_CAM_ZOOM_IN     = 2,
+    CIN_CAM_SHAKE_FLASH = 3,
+    CIN_CAM_STILL_DAWN  = 4
+} HearthCinemaCam;
+
+typedef enum {
+    CIN_FX_STEAM_DUSK        = 0,
+    CIN_FX_FOREST_POLLEN     = 1,
+    CIN_FX_EVERTALE_LANTERNS = 2,
+    CIN_FX_VIOLET_STORM      = 3,
+    CIN_FX_MOON_FIREFLIES    = 4
+} HearthCinemaFx;
 
 /* Story Progression Stages */
 typedef enum {
@@ -461,13 +491,37 @@ typedef struct {
     uint16_t guilders_earned;
 } HearthBattleState;
 
-/* Retro Opening Cutscene State (Emerald Dragon / PC Engine CD Storybook Intro) */
+/* 7-Act Illustrated Opening Cinema State (Emerald Dragon / Ni no Kuni Style) */
 typedef struct {
-    uint8_t     scene;
+    uint8_t     act_num;
+    uint8_t     plate_id;
+    uint8_t     bgm_id;
+    uint8_t     cam_mode;
+    uint8_t     fx_mode;
+    uint8_t     voice_sfx;
+    const char *act_title;
+    const char *speaker;
+    const char *line1;
+    const char *line2;
+} HearthCinemaBeat;
+
+typedef struct {
+    uint8_t     beat;
+    uint8_t     scene;         /* active CG plate_id (0..5) */
+    uint8_t     act_num;       /* 1..7 */
+    uint8_t     bgm_id;
+    uint8_t     cam_mode;
+    uint8_t     fx_mode;
+    uint8_t     fade;          /* 0..15 hardware crossfade */
+    uint8_t     fade_dir;      /* 0=steady, 1=fading_in, 2=out_to_next, 3=out_to_end */
+    bool        auto_play;     /* false = player-paced reading; true = gentle auto-advance */
+    bool        launch_story;  /* true = New Story -> Alderbrook Dawn; false = Replay -> Title */
     uint16_t    timer;
-    uint8_t     fade;
+    uint16_t    plate_timer;   /* continuous frames on current CG plate for smooth pan */
+    uint16_t    auto_hold;
     uint16_t    chars;
     const char *title;
+    const char *speaker;
     const char *line1;
     const char *line2;
 } HearthIntroState;
