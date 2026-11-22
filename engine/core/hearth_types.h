@@ -76,15 +76,20 @@ typedef int32_t fp16_t;
 #define HEARTH_MAP_W              44
 #define HEARTH_MAP_H              28
 #define HEARTH_MAP_CELLS          (HEARTH_MAP_W * HEARTH_MAP_H)
+#define HEARTH_WORLD_W            88
+#define HEARTH_WORLD_H            56
+#define HEARTH_MAX_MAP_W          HEARTH_WORLD_W
+#define HEARTH_MAX_MAP_H          HEARTH_WORLD_H
+#define HEARTH_MAX_MAP_CELLS      (HEARTH_MAX_MAP_W * HEARTH_MAX_MAP_H)
 #define HEARTH_MAX_OAM            64
 #define HEARTH_MAX_PARTICLES      64
 #define HEARTH_MAX_FTEXT          16
 #define HEARTH_TRAIL_LEN          48
-#define HEARTH_MAX_NPCS           4
+#define HEARTH_MAX_NPCS           5
 #define HEARTH_MAX_FIELD_ENEMIES  4
 #define HEARTH_MAX_BATTLE_ENEMIES 2
 #define HEARTH_MAX_LOCKS          3
-#define HEARTH_MAX_PORTALS        4
+#define HEARTH_MAX_PORTALS        8
 #define HEARTH_FISH_SPECIES       6
 
 /* Directions */
@@ -114,17 +119,22 @@ typedef enum {
     MODE_FISHING        = 8
 } HearthMode;
 
-/* 8 Connected World Regions (4 Real-World Mountain Autumn Maps + 4 Evertale Regions) */
+/* 13 Connected World Regions (4 Real-World Mountain Maps + Evertale Continent & Landmarks) */
 typedef enum {
     ZONE_ALDERBROOK       = 0,  /* Redesigned Autumn Mountain Rail Town (Big Town) */
-    ZONE_HAMLET           = 1,  /* Evertale: Windmill Hamlet, Creek Pier & Age-5 Glade */
+    ZONE_HAMLET           = 1,  /* Evertale: Lakeside Windmill Hamlet */
     ZONE_WHISKERBURGH     = 2,  /* Evertale: Anthropomorphic Mouse Market Town */
     ZONE_SEWERS           = 3,  /* Evertale: Dark Lantern-Lit Sunken Sewers */
     ZONE_BOARHOLD         = 4,  /* Evertale: Anthropomorphic Pig Citadel & Twilight Shrine */
     ZONE_ROWAN_HOME       = 5,  /* Chapter 1: Rowan & Grandma Mara's Cedar Cottage Interior + Attic */
     ZONE_WHISPERING_WOODS = 6,  /* Chapter 1: Rocky Autumn Mountain Forest, Rapids & Lantern Trail */
     ZONE_HOLLOW_GLADE     = 7,  /* Chapter 1: High-Ridge Mountain Sanctuary & Hollow Oak Gate */
-    ZONE_COUNT            = 8
+    ZONE_EVERTALE_WORLD   = 8,  /* Chapter 2: Seamless 88x56 Evertale Continent Open World Map */
+    ZONE_SUNHILL_MARKET   = 9,  /* Chapter 2: Sunlit Hilltop Market Town beneath Castle Aurelia */
+    ZONE_CASTLE_GATE      = 10, /* Chapter 2: Enterable Castle Aurelia Drawbridge & Gatehouse */
+    ZONE_BRAMBLE_EDGE     = 11, /* Chapter 2: Enterable Bramblewood Crossing Forest Border */
+    ZONE_SUNKEN_RUINS     = 12, /* Chapter 2: Enterable Sunken Watchtower Coastal Ruins */
+    ZONE_COUNT            = 13
 } HearthZoneId;
 
 /* Story-Driven Time of Day (Chapter 1: Morning -> Afternoon -> Dusk -> Moonlit Night) */
@@ -147,7 +157,9 @@ typedef enum {
     ZPAL_AUTUMN_DUSK      = 7, /* Autumn Mountain Copper-Amber Sunset */
     ZPAL_AUTUMN_NIGHT     = 8, /* Autumn Mountain Moonlit Indigo & Silver */
     ZPAL_COTTAGE_INTERIOR = 9, /* Cozy Honey Cedar & Hearthstone Interior */
-    ZPAL_COUNT            = 10
+    ZPAL_EVERTALE_WORLD   = 10,/* Storybook Sunlit Emerald, Cerulean Sea, Limestone & Terracotta */
+    ZPAL_SUNHILL_MARKET   = 11,/* Warm Hilltop Limestone, Terracotta Roofs & Golden Sunlight */
+    ZPAL_COUNT            = 12
 } HearthZonePalId;
 
 /* Music Track IDs (Consumed by Web Audio, SDL2 Synth, Genesis PSG, SNES SPC700) */
@@ -168,28 +180,33 @@ typedef enum {
 
 /* Opening Cinema & Mid-Chapter Story CG Plates, Camera Motions & Atmospheric Moods */
 typedef enum {
-    CG_ALDERBROOK_DUSK    = 0,
-    CG_HOLLOW_OAK_CHASE   = 1,
-    CG_EVERTALE_VISTA     = 2,
-    CG_SHADOW_GRANDMA     = 3,
-    CG_BEDROOM_COMFORT    = 4,
-    CG_PIP_WINDOW         = 5,
-    CG_ATTIC_KEEPSAKE     = 6,
-    CG_PIP_DREAM_RETURN   = 7,
-    CG_HOLLOW_OAK_AWAKENS = 8,
-    CG_PLATE_COUNT        = 9
+    CG_ALDERBROOK_DUSK      = 0,
+    CG_HOLLOW_OAK_CHASE     = 1,
+    CG_EVERTALE_VISTA       = 2,
+    CG_SHADOW_GRANDMA       = 3,
+    CG_BEDROOM_COMFORT      = 4,
+    CG_PIP_WINDOW           = 5,
+    CG_ATTIC_KEEPSAKE       = 6,
+    CG_PIP_DREAM_RETURN     = 7,
+    CG_HOLLOW_OAK_AWAKENS   = 8,
+    CG_EVERTALE_WORLD_VISTA = 9,
+    CG_PLATE_COUNT          = 10
 } HearthCinemaPlate;
 
 /* Expressive Character Dialogue Portraits (1:1 Painted Busts on Web/PC) */
 typedef enum {
-    PORTRAIT_NONE    = 0,
-    PORTRAIT_ROWAN   = 1,
-    PORTRAIT_MARA    = 2,
-    PORTRAIT_PIP     = 3,
-    PORTRAIT_BARNABY = 4,
-    PORTRAIT_MAPLE   = 5,
-    PORTRAIT_JASPER  = 6,
-    PORTRAIT_COUNT   = 7
+    PORTRAIT_NONE     = 0,
+    PORTRAIT_ROWAN    = 1,
+    PORTRAIT_MARA     = 2,
+    PORTRAIT_PIP      = 3,
+    PORTRAIT_BARNABY  = 4,
+    PORTRAIT_MAPLE    = 5,
+    PORTRAIT_JASPER   = 6,
+    PORTRAIT_MIDO     = 7,
+    PORTRAIT_TESSA    = 8,
+    PORTRAIT_CORIN    = 9,
+    PORTRAIT_SENTINEL = 10,
+    PORTRAIT_COUNT    = 11
 } HearthPortraitId;
 
 typedef enum {
@@ -290,7 +307,10 @@ typedef enum {
     SPR_NPC_MAPLE        = 34,
     SPR_NPC_JASPER       = 35,
     SPR_LOCOMOTIVE       = 36,
-    SPR_COUNT            = 37
+    SPR_NPC_TESSA        = 37,
+    SPR_NPC_CORIN        = 38,
+    SPR_NPC_SENTINEL     = 39,
+    SPR_COUNT            = 40
 } HearthSpriteId;
 
 /* Abstract Sound Driver Command IDs (SDL2 Synth / Genesis PSG / SNES SPC700 / Web Audio) */
@@ -719,11 +739,14 @@ typedef struct {
     uint32_t frame_count;
     uint8_t  mode;
     uint8_t  zone_id;
+    uint8_t  map_w;
+    uint8_t  map_h;
     uint8_t  terrain_pal_id;
     uint8_t  bgm_id;
     uint8_t  time_of_day;
     bool     zone_is_dark;
     bool     has_mountain_vista;
+    bool     is_world_map;
     uint8_t  zone_banner_frames;
     const char *zone_name;
     const char *objective_text;

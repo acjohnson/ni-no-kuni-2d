@@ -9,6 +9,7 @@ import cgPipWindow from '../assets/images/cinema_pip_window_1795309260734.jpg';
 import cgAtticKeepsake from '../assets/images/cg_attic_keepsake_1795315522510.jpg';
 import cgPipDreamReturn from '../assets/images/cg_pip_dream_return_1795315522510.jpg';
 import cgHollowOakAwakens from '../assets/images/cg_hollow_oak_awakens_1795315522718.jpg';
+import cgEvertaleWorldVista from '../assets/images/cg_evertale_world_vista_1795319776319.jpg';
 
 const CG_PLATES: readonly { src: string; alt: string; fallbackBg: string }[] = [
   {
@@ -53,8 +54,13 @@ const CG_PLATES: readonly { src: string; alt: string; fallbackBg: string }[] = [
   },
   {
     src: cgHollowOakAwakens,
-    alt: 'Rowan and Milo standing before the colossal Hollow Oak as a golden doorway into Evertale opens',
+    alt: 'Rowan and Mido standing before the colossal Hollow Oak as a golden doorway into Evertale opens',
     fallbackBg: 'linear-gradient(180deg, #13212c 0%, #403628 52%, #1d2a20 100%)',
+  },
+  {
+    src: cgEvertaleWorldVista,
+    alt: 'Sweeping sunlit panorama of the Evertale Continent with hilltop Sunhill Market, white spires of Castle Aurelia, and winding rivers',
+    fallbackBg: 'linear-gradient(180deg, #1d5794 0%, #6eb5d8 48%, #4b8644 100%)',
   },
 ];
 

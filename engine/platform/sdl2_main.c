@@ -1523,6 +1523,65 @@ static void draw_bg1_tile(int sx, int sy, uint8_t tile, uint32_t frame) {
             fill_rect_px(sx, sy + 12, 16, 4, c_w0);
             fill_rect_px(sx + 7, sy + 2, 2, 10, c_w1);
             break;
+        case T_WORLD_OCEAN: {
+            int wave = (int)((frame >> 4) & 3u);
+            fill_rect_px(sx, sy, 16, 16, 0xFF28588Au);
+            fill_rect_px(sx + ((wave * 3) & 11), sy + 3, 5, 1, 0xFF4284B8u);
+            fill_rect_px(sx + ((wave * 3 + 6) & 11), sy + 10, 6, 1, 0xFF6AB2DCu);
+            fill_rect_px(sx + ((wave * 2 + 2) & 11), sy + 14, 3, 1, 0xFF9CD4F0u);
+            break;
+        }
+        case T_WORLD_BEACH: {
+            int wave = (int)((frame >> 4) & 3u);
+            fill_rect_px(sx, sy, 16, 16, 0xFFE6CE94u);
+            fill_rect_px(sx + 2, sy + 2, 12, 10, 0xFFF2DEAAu);
+            fill_rect_px(sx + ((wave * 2) & 7), sy + 13, 8, 2, 0xFF6AB8E0u);
+            put_px(sx + 4, sy + 5, 0xFFC8A86Eu);
+            put_px(sx + 11, sy + 9, 0xFFC8A86Eu);
+            break;
+        }
+        case T_WORLD_PEAK:
+            fill_rect_px(sx, sy, 16, 16, 0xFF548840u);
+            fill_rect_px(sx + 1, sy + 8, 14, 8, 0xFF5E5A68u);
+            fill_rect_px(sx + 3, sy + 4, 10, 9, 0xFF767080u);
+            fill_rect_px(sx + 5, sy + 1, 6, 5, 0xFF948EA0u);
+            fill_rect_px(sx + 6, sy + 1, 4, 3, 0xFFF4F6FAu);
+            break;
+        case T_WORLD_FOREST:
+            fill_rect_px(sx, sy, 16, 16, 0xFF2E5C32u);
+            fill_rect_px(sx + 1, sy + 2, 7, 7, 0xFF3E7840u);
+            fill_rect_px(sx + 2, sy + 3, 4, 3, 0xFF5A9852u);
+            fill_rect_px(sx + 8, sy + 6, 7, 7, 0xFF3A6E3Cu);
+            fill_rect_px(sx + 10, sy + 7, 4, 3, 0xFF5A9852u);
+            fill_rect_px(sx + 4, sy + 10, 5, 5, 0xFF28502Cu);
+            break;
+        case T_WORLD_HILL:
+            fill_rect_px(sx, sy, 16, 16, 0xFF68A64Eu);
+            fill_rect_px(sx + 2, sy + 6, 12, 9, 0xFF548840u);
+            fill_rect_px(sx + 4, sy + 4, 8, 6, 0xFF7BB256u);
+            fill_rect_px(sx + 5, sy + 4, 5, 2, 0xFF98CA6Cu);
+            break;
+        case T_WORLD_CASTLE:
+            fill_rect_px(sx, sy, 16, 16, 0xFFD8D0C0u);
+            fill_rect_px(sx + 1, sy + 2, 14, 13, 0xFFEEE8D8u);
+            fill_rect_px(sx + 2, sy + 0, 4, 4, 0xFF3462A4u);
+            fill_rect_px(sx + 10, sy + 0, 4, 4, 0xFF3462A4u);
+            fill_rect_px(sx + 6, sy + 8, 4, 7, 0xFF423026u);
+            break;
+        case T_WORLD_TOWN:
+            fill_rect_px(sx, sy, 16, 16, 0xFF68A64Eu);
+            fill_rect_px(sx + 2, sy + 6, 12, 9, 0xFFF4EAD2u);
+            fill_rect_px(sx + 1, sy + 2, 14, 5, 0xFFCC523Cu);
+            fill_rect_px(sx + 3, sy + 3, 10, 2, 0xFFE47254u);
+            fill_rect_px(sx + 6, sy + 10, 4, 5, 0xFF5C3A24u);
+            break;
+        case T_WORLD_RUINS:
+            fill_rect_px(sx, sy, 16, 16, 0xFF5A8248u);
+            fill_rect_px(sx + 2, sy + 3, 4, 11, 0xFF888C9Cu);
+            fill_rect_px(sx + 10, sy + 5, 4, 9, 0xFF767A8Au);
+            fill_rect_px(sx + 2, sy + 3, 12, 2, 0xFFB0B4C2u);
+            fill_rect_px(sx + 6, sy + 9, 3, 3, 0xFF426A3Eu);
+            break;
         default:
             fill_rect_px(sx, sy, 16, 16, c_g2);
             break;
@@ -1853,17 +1912,29 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
             break;
         }
         case SPR_PET_MILO: {
-            /* Milo — Warm Ginger Fox-Pup with White Tail Tip & Gold Collar Bell */
+            /* Mido — Amber Mountain Fox-Kit with Pointed Dark-Tipped Ears, Crimson Scarf & Brass Bell */
             int hb = ((frame >> 3) & 1u) ? -1 : 0;
-            spr_box(ox, oy + hb, -5, -7, 8, 5, 0xFFE07A30u, flip, flash, sx, sy);
-            spr_box(ox, oy + hb,  2, -10, 4, 4, 0xFFE07A30u, flip, flash, sx, sy);
-            spr_box(ox, oy + hb,  2, -12, 2, 2, 0xFFC2581Eu, flip, flash, sx, sy);
-            spr_box(ox, oy + hb,  4, -12, 2, 2, 0xFFC2581Eu, flip, flash, sx, sy);
-            spr_box(ox, oy + hb,  4,  -9, 1, 1, 0xFF18141Cu, flip, flash, sx, sy);
-            spr_box(ox, oy + hb,  1,  -6, 2, 2, 0xFFFFE066u, flip, flash, sx, sy); /* Bell */
-            spr_box(ox, oy + hb, -7,  -8, 3, 2, 0xFFF6EFE0u, flip, flash, sx, sy); /* Tail tip */
-            spr_box(ox, oy,      -4,  -2, 2, 2, 0xFF7A3818u, flip, flash, sx, sy);
-            spr_box(ox, oy,       1,  -2, 2, 2, 0xFF7A3818u, flip, flash, sx, sy);
+            /* Bushy cream-tipped fox tail */
+            spr_box(ox, oy + hb, -8, -8, 4, 3, 0xFFD86C28u, flip, flash, sx, sy);
+            spr_box(ox, oy + hb, -9, -9, 3, 2, 0xFFFBF3E4u, flip, flash, sx, sy);
+            /* Body & cream chest tuft */
+            spr_box(ox, oy + hb, -4, -7, 8, 5, 0xFFE47B32u, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  1, -6, 3, 3, 0xFFFBF3E4u, flip, flash, sx, sy);
+            /* Fox head + pointed dark-tipped ears */
+            spr_box(ox, oy + hb,  1, -11, 6, 5, 0xFFE88238u, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  1, -14, 2, 3, 0xFFC2521Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  5, -14, 2, 3, 0xFFC2521Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  1, -14, 2, 1, 0xFF3A2018u, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  5, -14, 2, 1, 0xFF3A2018u, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  3,  -9, 3, 2, 0xFFFBF3E4u, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  4, -10, 1, 1, 0xFF18141Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  6,  -9, 1, 1, 0xFF18141Cu, flip, flash, sx, sy);
+            /* Crimson scarf & bright brass collar bell */
+            spr_box(ox, oy + hb,  0,  -7, 5, 2, 0xFFC8343Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + hb,  2,  -6, 2, 2, 0xFFFFE066u, flip, flash, sx, sy);
+            /* Dark fox paws */
+            spr_box(ox, oy,      -3,  -2, 2, 2, 0xFF4A2416u, flip, flash, sx, sy);
+            spr_box(ox, oy,       2,  -2, 2, 2, 0xFF4A2416u, flip, flash, sx, sy);
             break;
         }
         case SPR_ENEMY_RAT: {
@@ -2048,6 +2119,47 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
                 spr_box(ox, oy, wx - 1, -4, 2, 2, 0xFFE8B84Cu, flip, flash, sx, sy);
             }
             spr_box(ox, oy, -16, -4 + (chug ? 1 : 0), 32, 2, 0xFFD4DCE6u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_NPC_TESSA: {
+            /* Baker Tessa — Sunhill Market Kerchief, Braids & Honey-Gold Apron */
+            spr_box(ox, oy, -5, -17, 10, 3, 0xFFE46048u, flip, flash, sx, sy);
+            spr_box(ox, oy, -4, -15,  8, 3, 0xFF723C24u, flip, flash, sx, sy);
+            spr_box(ox, oy, -4, -12,  8, 5, 0xFFF4C8A4u, flip, flash, sx, sy);
+            spr_box(ox, oy, -2, -10,  1, 2, 0xFF221A24u, flip, flash, sx, sy);
+            spr_box(ox, oy,  1, -10,  1, 2, 0xFF221A24u, flip, flash, sx, sy);
+            spr_box(ox, oy, -5,  -7, 10, 6, 0xFF3E6C62u, flip, flash, sx, sy);
+            spr_box(ox, oy, -3,  -6,  6, 5, 0xFFFAF0D8u, flip, flash, sx, sy);
+            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF563626u, flip, flash, sx, sy);
+            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF563626u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_NPC_CORIN: {
+            /* Archivist Corin — Silver Spectacles, Indigo Scholar Robe & Brass Clasp */
+            spr_box(ox, oy, -4, -17,  8, 4, 0xFFD4D0DCu, flip, flash, sx, sy);
+            spr_box(ox, oy, -4, -13,  8, 6, 0xFFEEC29Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -3, -11,  2, 2, 0xFF9AD8F4u, flip, flash, sx, sy);
+            spr_box(ox, oy,  1, -11,  2, 2, 0xFF9AD8F4u, flip, flash, sx, sy);
+            spr_box(ox, oy, -5,  -7, 10, 6, 0xFF2F3E6Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -1,  -6,  2, 3, 0xFFF5C84Cu, flip, flash, sx, sy);
+            spr_box(ox, oy,  5, -13,  2, 13, 0xFF7A5230u, flip, flash, sx, sy);
+            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF3A2820u, flip, flash, sx, sy);
+            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF3A2820u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_NPC_SENTINEL: {
+            /* Castle Aurelia Sentinel — Sun-Crested Steel Helm, Blue Surcoat & Halberd */
+            spr_box(ox, oy, -4, -18,  8, 5, 0xFFB8C2D4u, flip, flash, sx, sy);
+            spr_box(ox, oy, -1, -20,  2, 3, 0xFFF5B841u, flip, flash, sx, sy);
+            spr_box(ox, oy, -3, -13,  6, 5, 0xFFEEC29Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -2, -11,  1, 2, 0xFF1C1822u, flip, flash, sx, sy);
+            spr_box(ox, oy,  1, -11,  1, 2, 0xFF1C1822u, flip, flash, sx, sy);
+            spr_box(ox, oy, -6,  -8, 12, 7, 0xFF34568Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -2,  -7,  4, 4, 0xFFF5C84Cu, flip, flash, sx, sy);
+            spr_box(ox, oy,  6, -18,  2, 18, 0xFF6E4A2Eu, flip, flash, sx, sy);
+            spr_box(ox, oy,  7, -18,  3,  5, 0xFFD8E2F0u, flip, flash, sx, sy);
+            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF3A3E4Au, flip, flash, sx, sy);
+            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF3A3E4Au, flip, flash, sx, sy);
             break;
         }
         default:
@@ -2778,7 +2890,7 @@ static void render_fishing_overlay(const HearthState *st, const HearthPpuPacket 
     }
 }
 
-static void render_mountain_vista(const HearthPpuPacket *ppu, int cam_x) {
+static void render_mountain_vista(const HearthState *st, const HearthPpuPacket *ppu, int cam_x) {
     int w = (int)g_ppu_w;
     int vista_h = 96;
     uint8_t tod = ppu->time_of_day;
@@ -2839,6 +2951,22 @@ static void render_mountain_vista(const HearthPpuPacket *ppu, int cam_x) {
         }
     }
 
+    /* Castle Aurelia Distant Ivory Spires above Sunhill Market & Castle Gate */
+    if (st->zone_id == ZONE_SUNHILL_MARKET || st->zone_id == ZONE_CASTLE_GATE) {
+        int cx = w / 2 - (cam_x >> 3) + 18;
+        int cy = 44;
+        fill_rect_px(cx - 26, cy, 52, 28, 0xFFD8D0C2u);
+        fill_rect_px(cx - 24, cy + 2, 48, 26, 0xFFEDE6D8u);
+        fill_rect_px(cx - 28, cy - 12, 10, 40, 0xFFE2DACCu);
+        fill_rect_px(cx + 18, cy - 12, 10, 40, 0xFFE2DACCu);
+        fill_rect_px(cx - 9, cy - 22, 18, 50, 0xFFF4EFE2u);
+        fill_rect_px(cx - 29, cy - 18, 12, 6, 0xFF3E68A6u);
+        fill_rect_px(cx + 17, cy - 18, 12, 6, 0xFF3E68A6u);
+        fill_rect_px(cx - 10, cy - 30, 20, 8, 0xFF2D5594u);
+        fill_rect_px(cx - 1, cy - 36, 2, 6, 0xFFF5B841u);
+        fill_rect_px(cx + 1, cy - 35, 5, 3, 0xFFE04C4Cu);
+    }
+
     /* Mid Parallax Autumn Maple & Pine Foothill Ridge (0.45x scroll) */
     int p2 = (cam_x * 9) >> 4;
     for (int x = 0; x < w; x++) {
@@ -2850,6 +2978,129 @@ static void render_mountain_vista(const HearthPpuPacket *ppu, int cam_x) {
             if (((wx >> 2) & 3) == 0 && ridge + 2 < vista_h) {
                 put_px(x, ridge + 1, (tod == TOD_NIGHT) ? 0xFF283A52u : 0xFFC85838u);
             }
+        }
+    }
+}
+
+/* Grand Multi-Tile Storybook Landmarks for the 88x56 Evertale Open World Map */
+static void render_sdl_world_landmarks(int cam_x, int cam_y, uint32_t frame) {
+    int sx, sy;
+    int flutter = ((frame >> 4) & 1u) ? 1 : 0;
+
+    /* 1. Hollow Oak Gate (tx=16, ty=43) */
+    sx = 16 * 16 + 8 - cam_x; sy = 43 * 16 + 8 - cam_y;
+    fill_ellipse_alpha(sx, sy + 6, 22, 7, 0xFF142214u, 90);
+    fill_rect_px(sx - 9, sy - 14, 18, 22, 0xFF6B4228u);
+    fill_rect_px(sx - 6, sy - 12, 12, 18, 0xFF825434u);
+    fill_ellipse_alpha(sx, sy - 2, 6, 8, 0xFF5AD2F4u, 150);
+    fill_ellipse_alpha(sx, sy - 2, 4, 6, 0xFFFFF1A8u, 235);
+    fill_ellipse_alpha(sx, sy - 20, 22, 11, 0xFF2E6B38u, 255);
+    fill_ellipse_alpha(sx - 8, sy - 24, 14, 8, 0xFF4E924Au, 255);
+    fill_ellipse_alpha(sx + 8, sy - 23, 13, 8, 0xFF6AB258u, 255);
+
+    /* 2. Windmill Hamlet (tx=18, ty=27) */
+    sx = 18 * 16 + 8 - cam_x; sy = 27 * 16 + 8 - cam_y;
+    fill_ellipse_alpha(sx, sy + 8, 26, 8, 0xFF142214u, 85);
+    fill_rect_px(sx - 20, sy - 4, 14, 12, 0xFFF2E6CCu);
+    fill_rect_px(sx - 22, sy - 10, 18, 6, 0xFFC24C3Cu);
+    fill_rect_px(sx + 6, sy - 2, 14, 10, 0xFFF2E6CCu);
+    fill_rect_px(sx + 4, sy - 8, 18, 6, 0xFFC24C3Cu);
+    fill_rect_px(sx - 5, sy - 20, 12, 26, 0xFFECE2CEu);
+    fill_rect_px(sx - 7, sy - 26, 16, 7, 0xFF9E3A32u);
+    fill_rect_px(sx - 1, sy - 3, 4, 9, 0xFF5A3824u);
+    /* Spinning miniature sails */
+    int ang = (int)((frame >> 1) & 63u);
+    for (int arm = 0; arm < 4; arm++) {
+        int a = (ang + arm * 16) & 63;
+        int ex = sx + 1 + (HEARTH_SIN64[(a + 16) & 63] * 14) / 127;
+        int ey = sy - 18 + (HEARTH_SIN64[a] * 14) / 127;
+        draw_line_px(sx + 1, sy - 18, ex, ey, 0xFFFFF6E0u);
+    }
+
+    /* 3. Sunhill Market (tx=44, ty=22) — Hilltop Market Town */
+    sx = 44 * 16 + 8 - cam_x; sy = 22 * 16 + 8 - cam_y;
+    fill_ellipse_alpha(sx, sy + 10, 34, 10, 0xFF182218u, 95);
+    fill_rect_px(sx - 30, sy - 2, 60, 12, 0xFFC8BCA4u);
+    fill_rect_px(sx - 26, sy - 14, 14, 14, 0xFFF6ECD8u);
+    fill_rect_px(sx - 28, sy - 20, 18, 6, 0xFFD25A3Cu);
+    fill_rect_px(sx + 12, sy - 14, 14, 14, 0xFFF6ECD8u);
+    fill_rect_px(sx + 10, sy - 20, 18, 6, 0xFFD25A3Cu);
+    fill_rect_px(sx - 10, sy - 20, 20, 20, 0xFFFAF2E0u);
+    fill_rect_px(sx - 12, sy - 28, 24, 8, 0xFFE29C38u);
+    fill_rect_px(sx - 3, sy - 8, 6, 8, 0xFF5A3824u);
+    fill_rect_px(sx - 20, sy + 1, 10, 5, 0xFFE05248u);
+    fill_rect_px(sx + 10, sy + 1, 10, 5, 0xFF3E84B8u);
+
+    /* 4. Castle Aurelia (tx=44, ty=11) — Grand White-Marble Kingdom */
+    sx = 44 * 16 + 8 - cam_x; sy = 11 * 16 + 8 - cam_y;
+    fill_ellipse_alpha(sx, sy + 12, 42, 11, 0xFF141824u, 105);
+    fill_rect_px(sx - 36, sy - 10, 72, 22, 0xFFE2DAC8u);
+    fill_rect_px(sx - 38, sy - 28, 14, 40, 0xFFEEE8D8u);
+    fill_rect_px(sx + 24, sy - 28, 14, 40, 0xFFEEE8D8u);
+    fill_rect_px(sx - 14, sy - 38, 28, 50, 0xFFF8F4E8u);
+    fill_rect_px(sx - 40, sy - 36, 18, 8, 0xFF3462A4u);
+    fill_rect_px(sx + 22, sy - 36, 18, 8, 0xFF3462A4u);
+    fill_rect_px(sx - 16, sy - 48, 32, 10, 0xFF285292u);
+    fill_rect_px(sx - 6, sy - 2, 12, 14, 0xFF3A2820u);
+    fill_rect_px(sx - 1, sy - 56, 2, 8, 0xFFF5B841u);
+    fill_rect_px(sx + 1, sy - 55 + flutter, 8, 4, 0xFFE04448u);
+
+    /* 5. Bramblewood Crossing (tx=68, ty=24) — Towering Whispering Timberland */
+    sx = 68 * 16 + 8 - cam_x; sy = 24 * 16 + 8 - cam_y;
+    fill_ellipse_alpha(sx, sy + 8, 28, 8, 0xFF102014u, 95);
+    for (int i = -1; i <= 1; i++) {
+        int tx = sx + i * 14;
+        int ty = sy + ((i == 0) ? -4 : 2);
+        fill_rect_px(tx - 3, ty - 4, 6, 12, 0xFF5C3A24u);
+        fill_ellipse_alpha(tx, ty - 14, 13, 11, 0xFF245830u, 255);
+        fill_ellipse_alpha(tx - 2, ty - 17, 9, 7, 0xFF428444u, 255);
+    }
+
+    /* 6. Sunken Watchtower (tx=66, ty=42) — Weathered Ancient Ruins */
+    sx = 66 * 16 + 8 - cam_x; sy = 42 * 16 + 8 - cam_y;
+    fill_ellipse_alpha(sx, sy + 8, 24, 7, 0xFF141820u, 90);
+    fill_rect_px(sx - 18, sy - 10, 8, 18, 0xFF8C90A0u);
+    fill_rect_px(sx + 10, sy - 14, 8, 22, 0xFF7C8090u);
+    fill_rect_px(sx - 8, sy - 26, 16, 34, 0xFF9EA2B2u);
+    fill_rect_px(sx - 6, sy - 24, 12, 4, 0xFF4C7C46u);
+    fill_rect_px(sx - 3, sy - 8, 6, 10, 0xFF282438u);
+    fill_ellipse_alpha(sx, sy - 16, 4, 4, 0xFF5AD2F4u, 150);
+
+    /* 7. Whiskerburgh (tx=72, ty=12) — Mouse-Folk Riverbank Borough */
+    sx = 72 * 16 + 8 - cam_x; sy = 12 * 16 + 8 - cam_y;
+    fill_ellipse_alpha(sx, sy + 8, 28, 8, 0xFF14222Au, 95);
+    fill_rect_px(sx - 24, sy - 6, 16, 14, 0xFFF2E6D0u);
+    fill_rect_px(sx - 26, sy - 12, 20, 6, 0xFF3E689Au);
+    fill_rect_px(sx - 6, sy - 14, 18, 22, 0xFFF8EED8u);
+    fill_rect_px(sx - 8, sy - 20, 22, 6, 0xFFB8443Eu);
+    fill_rect_px(sx + 14, sy - 18, 8, 26, 0xFFEAE4D8u);
+    fill_rect_px(sx + 15, sy - 22, 6, 4, 0xFFFFE478u);
+}
+
+static void render_sdl_world_banners(const HearthState *st, int cam_x, int cam_y) {
+    static const struct { int tx; int ty; const char *name; } LM[7] = {
+        { 16, 43, "HOLLOW OAK GATE" },
+        { 18, 27, "WINDMILL HAMLET" },
+        { 44, 22, "SUNHILL MARKET" },
+        { 44, 11, "CASTLE AURELIA" },
+        { 68, 24, "BRAMBLEWOOD" },
+        { 66, 42, "SUNKEN WATCHTOWER" },
+        { 72, 12, "WHISKERBURGH" }
+    };
+    int hx = FROM_FP(st->hero_fx);
+    int hy = FROM_FP(st->hero_fy);
+    for (int i = 0; i < 7; i++) {
+        int lx = LM[i].tx * 16 + 8;
+        int ly = LM[i].ty * 16 + 8;
+        int dx = hx - lx;
+        int dy = hy - ly;
+        if (dx * dx + dy * dy < 88 * 88) {
+            int sx = lx - cam_x;
+            int sy = ly - 32 - cam_y;
+            int bw = (int)strlen(LM[i].name) * 6 + 10;
+            fill_rect_alpha(sx - bw / 2, sy - 5, bw, 11, 0xFF141120u, 215);
+            draw_rect_outline(sx - bw / 2, sy - 5, bw, 11, 0xFFE8B852u);
+            draw_text_centered(sx, sy - 3, LM[i].name, 0xFFFFF1A8u, false);
         }
     }
 }
@@ -2872,9 +3123,11 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
         /* Overworld / Title / Cutscene Tilemap Renderer */
         int cam_x = ppu->cam_x - ppu->shake_x;
         int cam_y = ppu->cam_y - ppu->shake_y;
+        int mw = st->map_w ? (int)st->map_w : HEARTH_MAP_W;
+        int mh = st->map_h ? (int)st->map_h : HEARTH_MAP_H;
 
         if (ppu->has_mountain_vista) {
-            render_mountain_vista(ppu, cam_x);
+            render_mountain_vista(st, ppu, cam_x);
         }
 
         int tx0 = cam_x / HEARTH_TILE_SIZE - 1;
@@ -2883,16 +3136,21 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
         int ty1 = (cam_y + h) / HEARTH_TILE_SIZE + 1;
         if (tx0 < 0) tx0 = 0;
         if (ty0 < 0) ty0 = 0;
-        if (tx1 >= HEARTH_MAP_W) tx1 = HEARTH_MAP_W - 1;
-        if (ty1 >= HEARTH_MAP_H) ty1 = HEARTH_MAP_H - 1;
+        if (tx1 >= mw) tx1 = mw - 1;
+        if (ty1 >= mh) ty1 = mh - 1;
 
         /* Layer 1: BG1 Ground & Architecture (skip T_MTN_SKY so alpine vista shines through) */
         for (int ty = ty0; ty <= ty1; ty++) {
             for (int tx = tx0; tx <= tx1; tx++) {
-                uint8_t tile = st->map_bg1[ty * HEARTH_MAP_W + tx];
+                uint8_t tile = st->map_bg1[ty * mw + tx];
                 if (tile == T_MTN_SKY && ppu->has_mountain_vista) continue;
                 draw_bg1_tile(tx * HEARTH_TILE_SIZE - cam_x, ty * HEARTH_TILE_SIZE - cam_y, tile, ppu->frame_count);
             }
+        }
+
+        /* World Map Large Multi-Tile Storybook Landmarks */
+        if (st->is_world_map) {
+            render_sdl_world_landmarks(cam_x, cam_y, ppu->frame_count);
         }
 
         /* Layer 2: Y-Sorted OAM Sprites (o->x, o->y are already screen-relative from hearth_core.c) */
@@ -2906,7 +3164,7 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
         /* Layer 3: BG2 Overhead Tree Canopies & Roof Eaves */
         for (int ty = ty0; ty <= ty1; ty++) {
             for (int tx = tx0; tx <= tx1; tx++) {
-                uint8_t ov = st->map_bg2[ty * HEARTH_MAP_W + tx];
+                uint8_t ov = st->map_bg2[ty * mw + tx];
                 if (ov != O_NONE) {
                     draw_bg2_tile(tx * HEARTH_TILE_SIZE - cam_x, ty * HEARTH_TILE_SIZE - cam_y, ov);
                 }
@@ -2919,6 +3177,10 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
             if (o->layer >= 2) {
                 draw_oam_sprite(o, o->x + ppu->shake_x, o->y + ppu->shake_y, ppu->frame_count);
             }
+        }
+
+        if (st->is_world_map && st->mode == MODE_EXPLORE) {
+            render_sdl_world_banners(st, cam_x, cam_y);
         }
 
         /* Optional Debug Hitbox Overlay (F6) */
@@ -2939,7 +3201,7 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
             int lx[8], ly[8], lcnt = 0;
             for (int ty = ty0; ty <= ty1 && lcnt < 8; ty++) {
                 for (int tx = tx0; tx <= tx1 && lcnt < 8; tx++) {
-                    if (st->map_bg1[ty * HEARTH_MAP_W + tx] == T_LANTERN_POST) {
+                    if (st->map_bg1[ty * mw + tx] == T_LANTERN_POST) {
                         lx[lcnt] = tx * HEARTH_TILE_SIZE + 8 - cam_x;
                         ly[lcnt] = ty * HEARTH_TILE_SIZE + 4 - cam_y;
                         lcnt++;

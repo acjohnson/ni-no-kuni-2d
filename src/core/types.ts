@@ -57,7 +57,7 @@ export type GameMode =
   | 'SHOP'
   | 'FISHING';
 
-export type ZoneId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type ZoneId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 export type TimeOfDay = 0 | 1 | 2 | 3; // 0=Morning, 1=Afternoon, 2=Dusk, 3=Night
 
 export type BgmTrackId =
@@ -91,6 +91,9 @@ export type FamiliarSlot = 0 | 1 | 2; // 0=Rowan (Wizard), 1=Bramblekit, 2=Lumin
 export const TILE_SIZE = 16;
 export const MAP_W = 44;
 export const MAP_H = 28;
+export const WORLD_W = 88;
+export const WORLD_H = 56;
+export const MAX_MAP_CELLS = WORLD_W * WORLD_H;
 
 export const T_GRASS = 0;
 export const T_GRASS_ALT = 1;
@@ -138,6 +141,14 @@ export const T_ATTIC_CHEST = 42;
 export const T_HOLLOW_OAK = 43;
 export const T_STONE_STAIRS = 44;
 export const T_INTERIOR_WALL = 45;
+export const T_WORLD_OCEAN = 46;
+export const T_WORLD_BEACH = 47;
+export const T_WORLD_PEAK = 48;
+export const T_WORLD_FOREST = 49;
+export const T_WORLD_HILL = 50;
+export const T_WORLD_CASTLE = 51;
+export const T_WORLD_TOWN = 52;
+export const T_WORLD_RUINS = 53;
 
 export const O_NONE = 0;
 export const O_CANOPY_TL = 1;
@@ -248,7 +259,10 @@ export type SpriteId =
   | 'npc_barnaby'
   | 'npc_maple'
   | 'npc_jasper'
-  | 'locomotive';
+  | 'locomotive'
+  | 'npc_tessa'
+  | 'npc_corin'
+  | 'npc_sentinel';
 
 export type PortraitId =
   | 'hero'
@@ -577,6 +591,9 @@ export interface PpuFramePacket {
   frameCount: number;
   mode: GameMode;
   zoneId: ZoneId;
+  mapW: number;
+  mapH: number;
+  isWorldMap: boolean;
   terrainPalId: number;
   bgmId: BgmTrackId;
   zoneIsDark: boolean;
@@ -614,7 +631,11 @@ export interface UiSnapshot {
   timeOfDay: TimeOfDay;
   timeOfDayLabel: string;
   ch1Step: number;
+  ch2Step: number;
+  isWorldMap: boolean;
   hasMiloBell: boolean;
+  hasFamiliar: boolean;
+  hasHeartVessel: boolean;
   storyStage: number;
   objectiveLabel: string;
   intro: IntroState;

@@ -65,6 +65,14 @@ import {
   T_WINDMILL_ROOF,
   T_WINDMILL_WALL,
   T_WOOD_FLOOR,
+  T_WORLD_BEACH,
+  T_WORLD_CASTLE,
+  T_WORLD_FOREST,
+  T_WORLD_HILL,
+  T_WORLD_OCEAN,
+  T_WORLD_PEAK,
+  T_WORLD_RUINS,
+  T_WORLD_TOWN,
   TILE_SIZE,
 } from '../core/types';
 
@@ -958,6 +966,178 @@ export class PixelAtlas {
     });
     this.bg1Tiles.set(T_INTERIOR_WALL, [interiorWall]);
 
+    /* ======================================================================
+     * EVERTALE OPEN WORLD CONTINENT TILES (46..53)
+     * ====================================================================== */
+    // 46. T_WORLD_OCEAN: 4-frame shimmering cerulean storybook sea
+    const worldOceanFrames = [0, 1, 2, 3].map((f) =>
+      makeTile((ctx) => {
+        ctx.fillStyle = p0[12];
+        ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = p0[13];
+        ctx.fillRect(0, (f * 4 + 2) % 16, 16, 3);
+        ctx.fillRect(0, (f * 4 + 10) % 16, 16, 2);
+        ctx.fillStyle = p0[14];
+        ctx.fillRect((2 + f * 3) % 12, (3 + f * 2) % 14, 4, 1);
+        ctx.fillRect((10 - f * 2 + 16) % 12, (11 + f * 2) % 14, 3, 1);
+      })
+    );
+    this.bg1Tiles.set(T_WORLD_OCEAN, worldOceanFrames);
+
+    // 47. T_WORLD_BEACH: Warm golden sandbar & gentle foam surf
+    const worldBeachFrames = [0, 1].map((f) =>
+      makeTile((ctx) => {
+        ctx.fillStyle = p0[13];
+        ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = p0[14];
+        ctx.fillRect(1 + f, 1, 14 - f * 2, 2);
+        ctx.fillRect(2 - f, 13, 12 + f, 2);
+        ctx.fillStyle = p0[8];
+        ctx.fillRect(2, 3, 12, 10);
+        ctx.fillStyle = p0[7];
+        ctx.fillRect(3, 5, 10, 7);
+        ctx.fillStyle = p0[8];
+        ctx.fillRect(5, 6, 3, 2);
+        ctx.fillRect(9, 9, 3, 2);
+      })
+    );
+    this.bg1Tiles.set(T_WORLD_BEACH, worldBeachFrames);
+
+    // 48. T_WORLD_PEAK: Snow-capped storybook alpine peaks
+    const worldPeak = makeTile((ctx) => {
+      ctx.fillStyle = p0[3];
+      ctx.fillRect(0, 0, 16, 16);
+      // Back right peak
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(8, 3, 6, 12);
+      ctx.fillStyle = p0[9];
+      ctx.fillRect(9, 4, 5, 10);
+      ctx.fillStyle = p0[10];
+      ctx.fillRect(10, 4, 2, 9);
+      ctx.fillStyle = p0[11];
+      ctx.fillRect(10, 3, 3, 3);
+      // Front main peak
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(1, 9, 12, 6);
+      ctx.fillRect(3, 5, 8, 5);
+      ctx.fillRect(5, 2, 4, 4);
+      ctx.fillStyle = p0[9];
+      ctx.fillRect(2, 10, 10, 4);
+      ctx.fillRect(4, 6, 6, 5);
+      ctx.fillStyle = p0[10];
+      ctx.fillRect(3, 10, 4, 4);
+      ctx.fillRect(4, 6, 3, 4);
+      // Snow cap
+      ctx.fillStyle = p0[11];
+      ctx.fillRect(5, 2, 4, 3);
+      ctx.fillRect(4, 4, 5, 2);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(6, 2, 2, 2);
+    });
+    this.bg1Tiles.set(T_WORLD_PEAK, [worldPeak]);
+
+    // 49. T_WORLD_FOREST: Dense multi-crown overworld woodland cluster
+    const worldForest = makeTile((ctx) => {
+      ctx.fillStyle = p0[2];
+      ctx.fillRect(0, 0, 16, 16);
+      const drawMiniTree = (tx: number, ty: number) => {
+        ctx.fillStyle = p0[1];
+        ctx.fillRect(tx, ty + 1, 7, 6);
+        ctx.fillRect(tx + 1, ty, 5, 7);
+        ctx.fillStyle = p0[2];
+        ctx.fillRect(tx + 1, ty + 2, 5, 4);
+        ctx.fillStyle = p0[3];
+        ctx.fillRect(tx + 1, ty + 1, 5, 4);
+        ctx.fillStyle = p0[4];
+        ctx.fillRect(tx + 2, ty + 1, 3, 2);
+        ctx.fillStyle = p0[5];
+        ctx.fillRect(tx + 2, ty + 1, 1, 1);
+      };
+      drawMiniTree(1, 0);
+      drawMiniTree(8, 1);
+      drawMiniTree(4, 6);
+      drawMiniTree(0, 9);
+      drawMiniTree(9, 8);
+    });
+    this.bg1Tiles.set(T_WORLD_FOREST, [worldForest]);
+
+    // 50. T_WORLD_HILL: Sunlit rolling emerald highland clover hills
+    const worldHill = makeTile((ctx) => {
+      ctx.fillStyle = p0[3];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[4];
+      ctx.fillRect(1, 5, 14, 8);
+      ctx.fillRect(3, 3, 10, 4);
+      ctx.fillStyle = p0[5];
+      ctx.fillRect(4, 3, 6, 2);
+      ctx.fillRect(2, 6, 4, 1);
+      ctx.fillStyle = p0[2];
+      ctx.fillRect(2, 12, 12, 2);
+    });
+    this.bg1Tiles.set(T_WORLD_HILL, [worldHill]);
+
+    // 51. T_WORLD_CASTLE: White-stone citadel rampart & azure tower
+    const worldCastle = makeTile((ctx) => {
+      ctx.drawImage(grass0, 0, 0);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(1, 4, 14, 11);
+      ctx.fillStyle = p0[10];
+      ctx.fillRect(2, 6, 12, 8);
+      ctx.fillStyle = p0[11];
+      ctx.fillRect(2, 5, 3, 8);
+      ctx.fillRect(7, 5, 3, 8);
+      ctx.fillRect(11, 5, 3, 8);
+      ctx.fillStyle = p0[13];
+      ctx.fillRect(5, 1, 6, 4);
+      ctx.fillStyle = PALETTES[1][10];
+      ctx.fillRect(7, 0, 3, 2);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(6, 10, 4, 4);
+    });
+    this.bg1Tiles.set(T_WORLD_CASTLE, [worldCastle]);
+
+    // 52. T_WORLD_TOWN: Miniature sunlit village cottages for overworld cluster
+    const worldTown = makeTile((ctx) => {
+      ctx.drawImage(grass0, 0, 0);
+      // Left cottage
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(1, 5, 7, 8);
+      ctx.fillStyle = p0[8];
+      ctx.fillRect(2, 8, 5, 4);
+      ctx.fillStyle = p0[15];
+      ctx.fillRect(1, 5, 7, 3);
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(4, 10, 2, 2);
+      // Right cottage
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(8, 3, 7, 9);
+      ctx.fillStyle = p0[11];
+      ctx.fillRect(9, 6, 5, 5);
+      ctx.fillStyle = p0[15];
+      ctx.fillRect(8, 3, 7, 3);
+      ctx.fillStyle = PALETTES[1][10];
+      ctx.fillRect(10, 8, 2, 2);
+    });
+    this.bg1Tiles.set(T_WORLD_TOWN, [worldTown]);
+
+    // 53. T_WORLD_RUINS: Mossy weathered sea-cliff watchtower stone
+    const worldRuins = makeTile((ctx) => {
+      ctx.drawImage(grass0, 0, 0);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(2, 4, 5, 10);
+      ctx.fillRect(9, 7, 5, 7);
+      ctx.fillStyle = p0[9];
+      ctx.fillRect(3, 5, 3, 8);
+      ctx.fillRect(10, 8, 3, 5);
+      ctx.fillStyle = p0[10];
+      ctx.fillRect(3, 5, 2, 5);
+      ctx.fillRect(10, 8, 2, 3);
+      ctx.fillStyle = p0[4];
+      ctx.fillRect(3, 4, 3, 2);
+      ctx.fillRect(11, 7, 2, 2);
+    });
+    this.bg1Tiles.set(T_WORLD_RUINS, [worldRuins]);
+
     /* BG2 OVERHEAD FOREGROUND CANOPIES & ARCHES */
     const makeCanopy = (quad: 'TL' | 'TR' | 'BL' | 'BR') =>
       makeTile((ctx) => {
@@ -1565,21 +1745,24 @@ export class PixelAtlas {
       register('npc_shadow_gran', 0, f, c);
     }
 
-    // Milo the Runaway Fox-Pup — 14x14
+    // Mido the Amber Mountain Fox-Kit (pointed dark-tipped ears, cream chest tuft, crimson scarf, brass bell, bushy fox tail) — 16x16
     for (let f = 0; f < 2; f++) {
-      const c = makeCanvas(14, 14);
+      const c = makeCanvas(16, 16);
       const ctx = c.getContext('2d')!;
+      const bob = f === 0 ? 0 : -1;
       const pat = [
-        '.11....11.....',
-        '1991111991....',
-        '1999999991....',
-        '191999919111..',
-        '.199aa99999b1.',
-        '..19999999bb1.',
-        '..1999999911..',
-        '..111..111....',
+        '.11....11.......',
+        '141111141.......',
+        '199999991.......',
+        '199999991...111.',
+        '191999191..199b1',
+        '.192229111199bb1',
+        '..188a889999bb1.',
+        '..19bb99999911..',
+        '..1999999991....',
+        '..111...111.....',
       ];
-      paintPattern(ctx, pat, 1, 0, 4 + f);
+      paintPattern(ctx, pat, 1, 0, 5 + bob);
       register('pet_milo', 0, f, c);
     }
 
@@ -1918,6 +2101,85 @@ export class PixelAtlas {
       ctx.fillRect(12, 22 + f, 20, 1);
 
       register('locomotive', 0, f, c);
+    }
+
+    /* 12. MILESTONE 3 SUNHILL MARKET & CASTLE AURELIA CAST */
+    // Baker Tessa (Sunhill Market) — warm chestnut bun, cream kerchief, sunlit apron & terracotta skirt
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(18, 22);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '.....111111.....',
+        '....1bbbbbb1....',
+        '...1ffffffff1...',
+        '..1bb222222bb1..',
+        '..1b21222212b1..',
+        '...1222222221...',
+        '..1777ffff7771..',
+        '.17777ffff77771.',
+        '.1a2aaffffaa2a1.',
+        '..1aaaffffaaa1..',
+        '...1111111111...',
+        '....1b1..1b1....',
+      ];
+      paintPattern(ctx, pat, 2, 1, 5 + f);
+      register('npc_tessa', 0, f, c);
+    }
+
+    // Archivist Corin (Sunhill Archive) — silver-streaked hair, spectacles glint, azure scholar robe & scroll
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(18, 22);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '....11111111....',
+        '...1444444441...',
+        '..144222222441..',
+        '..142f1221f241..',
+        '...1222222221...',
+        '..188877778881..',
+        '.18888777788881.',
+        '.18888877888881.',
+        '..128888888821..',
+        '...1888888881...',
+        '...1111111111...',
+        '....1b1..1b1....',
+      ];
+      paintPattern(ctx, pat, 2, 1, 5 + f);
+      // Rolled parchment scroll in right hand
+      ctx.fillStyle = PALETTES[2][1];
+      ctx.fillRect(14, 11 + f, 3, 6);
+      ctx.fillStyle = PALETTES[2][15];
+      ctx.fillRect(15, 12 + f, 1, 4);
+      register('npc_corin', 0, f, c);
+    }
+
+    // Aurelia Gate Sentinel (Castle Aurelia) — gleaming silver crested helm, gold plume, azure surcoat & halberd
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(18, 22);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '.....117711.....',
+        '....17777771....',
+        '...1444444441...',
+        '..144111111441..',
+        '..144212212441..',
+        '...1444444441...',
+        '..188877778881..',
+        '.14888777788841.',
+        '.14488877888441.',
+        '..144488884441..',
+        '...1111111111...',
+        '....141..141....',
+      ];
+      paintPattern(ctx, pat, 2, 1, 5 + f);
+      // Royal silver halberd
+      ctx.fillStyle = PALETTES[2][1];
+      ctx.fillRect(15, 1, 2, 19);
+      ctx.fillStyle = PALETTES[2][4];
+      ctx.fillRect(15, 2, 2, 5);
+      ctx.fillStyle = PALETTES[2][7];
+      ctx.fillRect(15, 7, 1, 12);
+      register('npc_sentinel', 0, f, c);
     }
   }
 }

@@ -28,7 +28,8 @@ PLATES = [
     ("PIP_WINDOW",         "cinema_pip_window_1795309260734.jpg"),
     ("ATTIC_KEEPSAKE",     "cg_attic_keepsake_1795315522510.jpg"),
     ("PIP_DREAM_RETURN",   "cg_pip_dream_return_1795315522510.jpg"),
-    ("HOLLOW_OAK_AWAKENS", "cg_hollow_oak_awakens_1795315522718.jpg"),
+    ("HOLLOW_OAK_AWAKENS",   "cg_hollow_oak_awakens_1795315522718.jpg"),
+    ("EVERTALE_WORLD_VISTA", "cg_evertale_world_vista_1795319776319.jpg"),
 ]
 
 PORTRAITS = [
@@ -38,6 +39,10 @@ PORTRAITS = [
     ("BARNABY",      "portrait_barnaby_1795315522478.jpg"),
     ("MAPLE",        "portrait_maple_1795315522927.jpg"),
     ("JASPER",       "portrait_jasper_1795315522636.jpg"),
+    ("MIDO",         "portrait_mido_1795319777822.jpg"),
+    ("TESSA",        "portrait_tessa_1795319779391.jpg"),
+    ("CORIN",        "portrait_corin_1795319780579.jpg"),
+    ("SENTINEL",     "portrait_sentinel_1795319781052.jpg"),
 ]
 
 SDL_W, SDL_H = 340, 156

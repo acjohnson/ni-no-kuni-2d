@@ -420,7 +420,7 @@ export default function App() {
                       PROJECT HEARTH
                     </h1>
                     <p className="mt-2.5 font-pixel text-[10px] leading-relaxed text-[#CFC8B8]">
-                      A STORYBOOK RPG OF TWO WORLDS · CHAPTER I: ALDERBROOK &amp; WHISPERING WOODS
+                      A STORYBOOK RPG OF TWO WORLDS · ALDERBROOK &amp; THE CONTINENT OF EVERTALE
                     </p>
 
                     <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
@@ -846,25 +846,29 @@ export default function App() {
                     <Coins className="h-3.5 w-3.5" />
                     {ui.guilders}G
                   </span>
-                  <span aria-hidden="true" className="text-[#4B546B]">
-                    /
-                  </span>
-                  <span className="flex items-center gap-1.5 whitespace-nowrap">
-                    <Heart
-                      className={`h-3.5 w-3.5 ${
-                        ui.locket.hasCourage
-                          ? 'text-[#F5B841] fill-[#F5B841]'
+                  {ui.hasHeartVessel && (
+                    <>
+                      <span aria-hidden="true" className="text-[#4B546B]">
+                        /
+                      </span>
+                      <span className="flex items-center gap-1.5 whitespace-nowrap">
+                        <Heart
+                          className={`h-3.5 w-3.5 ${
+                            ui.locket.hasCourage
+                              ? 'text-[#F5B841] fill-[#F5B841]'
+                              : ui.locket.guardMended
+                                ? 'text-[#74B461] fill-[#74B461]'
+                                : 'text-[#6A738A]'
+                          }`}
+                        />
+                        {ui.locket.hasCourage
+                          ? 'Hearthglass: Courage'
                           : ui.locket.guardMended
-                            ? 'text-[#74B461] fill-[#74B461]'
-                            : 'text-[#6A738A]'
-                      }`}
-                    />
-                    {ui.locket.hasCourage
-                      ? 'Locket: Courage'
-                      : ui.locket.guardMended
-                        ? 'Bram Mended'
-                        : 'Locket: Empty'}
-                  </span>
+                            ? 'Bram Mended'
+                            : 'Hearthglass: Empty'}
+                      </span>
+                    </>
+                  )}
                   <span aria-hidden="true" className="text-[#4B546B]">
                     /
                   </span>

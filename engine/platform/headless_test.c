@@ -123,22 +123,71 @@ int main(void) {
     CHECK(glade_pkt->has_mountain_vista && g_st.zone_id == ZONE_HOLLOW_GLADE, "Hollow Glade loads high-ridge sanctuary with alpine vista");
     hearth_start_story_cg(&g_st, 3u);
     CHECK(g_st.mode == MODE_INTRO && g_st.intro.scene == CG_HOLLOW_OAK_AWAKENS, "Hollow Oak launches Plate 8 (Hollow Oak Awakens CG)");
-    for (int f = 0; f < 1200 && g_st.mode == MODE_INTRO; f++) hearth_step_60hz(&g_st, ((f % 6) == 0) ? PAD_A : 0);
-    CHECK(g_st.zone_id == ZONE_HAMLET && g_st.story_stage == STORY_EVERTALE_AWAKENED && g_st.flag_has_wand && g_st.pip_visible,
-          "Hollow Oak CG opens Evertale in Windmill Hamlet with Wand and Pip");
-    /* Finish Pip Reunion cutscene */
+    bool saw_world_vista = false;
+    for (int f = 0; f < 2200 && g_st.mode == MODE_INTRO; f++) {
+        hearth_step_60hz(&g_st, ((f % 6) == 0) ? PAD_A : 0);
+        if (g_st.intro.scene == CG_EVERTALE_WORLD_VISTA) saw_world_vista = true;
+    }
+    CHECK(saw_world_vista, "Hollow Oak CG chains seamlessly into Plate 9 (Continent of Evertale Vista CG)");
+    CHECK(g_st.zone_id == ZONE_EVERTALE_WORLD && g_st.is_world_map && g_st.map_w == HEARTH_WORLD_W && g_st.map_h == HEARTH_WORLD_H,
+          "Evertale arrival places Rowan on expansive 88x56 Open World Map");
+    CHECK(!g_st.flag_has_familiar && !g_st.flag_has_heart_vessel && !g_st.pip_visible,
+          "Initial Evertale arrival has no Familiar, no Heart Vessel, and Pip not yet reunited");
+    {
+        int active_world_enemies = 0;
+        for (int i = 0; i < HEARTH_MAX_FIELD_ENEMIES; i++) {
+            if (g_st.field_enemies[i].alive) active_world_enemies++;
+        }
+        CHECK(active_world_enemies == 0, "Evertale World Map is 100%% peaceful before bonding first Familiar");
+    }
+
+    /* Visit non-main landmarks early (Castle Aurelia Gate & peaceful Windmill Hamlet) */
+    hearth_enter_zone(&g_st, ZONE_CASTLE_GATE, 21, 13);
+    CHECK(g_st.zone_id == ZONE_CASTLE_GATE && g_st.npcs[0].sprite_id == SPR_NPC_SENTINEL, "Castle Aurelia Gatehouse enterable with Royal Sentinels");
+    hearth_enter_zone(&g_st, ZONE_HAMLET, 13, 17);
+    CHECK(g_st.npcs[1].aura == AURA_NONE && g_st.npcs[2].aura == AURA_NONE, "Early Windmill Hamlet hides all Heart-Mending auras without Heart Vessel");
+
+    /* Sunhill Market Story Progression: Tessa -> Corin -> Mido & Pip Reunion -> Bramblewood Familiar Bonding */
+    hearth_enter_zone(&g_st, ZONE_SUNHILL_MARKET, 21, 24);
+    CHECK(g_st.zone_id == ZONE_SUNHILL_MARKET && g_st.ppu.terrain_pal_id == ZPAL_SUNHILL_MARKET, "Sunhill Market loads beneath Castle Aurelia skyline");
+    hearth_start_cutscene(&g_st, CUTSCENE_CH2_SUNHILL_TESSA);
+    for (int f = 0; f < 500 && g_st.mode == MODE_CUTSCENE; f++) hearth_step_60hz(&g_st, ((f & 3) == 0) ? PAD_A : 0);
+    CHECK(g_st.ch2_step == 1u, "Tessa the Baker shares Mido clue and points to Archivist Corin");
+
+    hearth_start_cutscene(&g_st, CUTSCENE_CH2_SUNHILL_CORIN);
     for (int f = 0; f < 600 && g_st.mode == MODE_CUTSCENE; f++) hearth_step_60hz(&g_st, ((f & 3) == 0) ? PAD_A : 0);
+    CHECK(g_st.ch2_step == 2u, "Archivist Corin shares subtle parent hints and points to fountain");
+
+    hearth_start_cutscene(&g_st, CUTSCENE_CH2_SUNHILL_REUNION);
+    for (int f = 0; f < 700 && g_st.mode == MODE_CUTSCENE; f++) hearth_step_60hz(&g_st, ((f & 3) == 0) ? PAD_A : 0);
+    CHECK(g_st.ch2_step == 3u && g_st.pip_visible, "Mido & Pip reunion at Sunhill fountain unlocks Pip companion");
+
+    hearth_enter_zone(&g_st, ZONE_BRAMBLE_EDGE, 30, 14);
+    hearth_start_cutscene(&g_st, CUTSCENE_CH2_BOND_FAMILIAR);
+    for (int f = 0; f < 600 && g_st.mode == MODE_CUTSCENE; f++) hearth_step_60hz(&g_st, ((f & 3) == 0) ? PAD_A : 0);
+    CHECK(g_st.flag_has_familiar && g_st.flag_has_wand, "Bramblewood Boundary Stone bonds Rowan's first Familiars");
+
+    hearth_enter_zone(&g_st, ZONE_EVERTALE_WORLD, 44, 27);
+    {
+        int active_world_enemies = 0;
+        for (int i = 0; i < HEARTH_MAX_FIELD_ENEMIES; i++) {
+            if (g_st.field_enemies[i].alive) active_world_enemies++;
+        }
+        CHECK(active_world_enemies == 4, "Bonding first Familiar awakens visible roaming enemies on Evertale World Map");
+    }
 
     /* Replay Cinema -> PAD_START returns cleanly to Title Screen */
     hearth_start_intro(&g_st);
     CHECK(g_st.mode == MODE_INTRO && !g_st.intro.launch_story, "Replay Cinema launches in non-story mode");
     hearth_step_60hz(&g_st, PAD_START);
     CHECK(g_st.mode == MODE_TITLE, "Skipping Replay Cinema returns cleanly to MODE_TITLE");
-    printf("[PASS] Full Chapter 1 Arc: 4 Autumn Mountain Maps, 4 Time-of-Day Shifts, Portraits & 3 Story CGs\n");
+    printf("[PASS] Full Chapter 1 -> Evertale 88x56 World Map -> Sunhill Market -> Familiar Bonding\n");
 
     /* 4. Explore Evertale Sandbox + 8-Way Fixed-Point Movement + Pip Breadcrumb Trail */
     hearth_start_sandbox(&g_st);
-    CHECK(g_st.mode == MODE_EXPLORE && g_st.zone_id == ZONE_HAMLET && g_st.pip_visible, "Sandbox starts in Windmill Hamlet with Pip");
+    CHECK(g_st.mode == MODE_EXPLORE && g_st.zone_id == ZONE_EVERTALE_WORLD && g_st.is_world_map && g_st.pip_visible,
+          "Sandbox starts on Evertale Open World Map outside Sunhill Market with Pip");
+    hearth_enter_zone(&g_st, ZONE_HAMLET, 10, 14);
     fp16_t start_x = g_st.hero_fx;
     fp16_t start_y = g_st.hero_fy;
     fp16_t pip_start_x = g_st.pip_fx;

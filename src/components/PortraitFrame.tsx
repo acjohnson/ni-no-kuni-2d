@@ -6,6 +6,10 @@ import portraitPip from '../assets/images/portrait_pip_1795315522510.jpg';
 import portraitBarnaby from '../assets/images/portrait_barnaby_1795315522478.jpg';
 import portraitMaple from '../assets/images/portrait_maple_1795315522927.jpg';
 import portraitJasper from '../assets/images/portrait_jasper_1795315522636.jpg';
+import portraitMido from '../assets/images/portrait_mido_1795319777822.jpg';
+import portraitTessa from '../assets/images/portrait_tessa_1795319779391.jpg';
+import portraitCorin from '../assets/images/portrait_corin_1795319780579.jpg';
+import portraitSentinel from '../assets/images/portrait_sentinel_1795319781052.jpg';
 import portraitElder from '../assets/images/portrait_villager_elder_1794938563121.jpg';
 
 const PAINTED_PORTRAITS_BY_ID: Record<number, string> = {
@@ -15,6 +19,10 @@ const PAINTED_PORTRAITS_BY_ID: Record<number, string> = {
   4: portraitBarnaby,
   5: portraitMaple,
   6: portraitJasper,
+  7: portraitMido,
+  8: portraitTessa,
+  9: portraitCorin,
+  10: portraitSentinel,
 };
 
 const GENERATED_PORTRAITS: Partial<Record<PortraitId, string>> = {

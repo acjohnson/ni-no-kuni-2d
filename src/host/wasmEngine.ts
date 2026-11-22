@@ -29,6 +29,7 @@ import {
   LockKind,
   MAP_H,
   MAP_W,
+  MAX_MAP_CELLS,
   OamSprite,
   ParticleKind,
   PartyMemberState,
@@ -187,6 +188,9 @@ const SPRITE_MAP: readonly SpriteId[] = [
   'npc_maple',
   'npc_jasper',
   'locomotive',
+  'npc_tessa',
+  'npc_corin',
+  'npc_sentinel',
 ];
 
 const TOD_NAMES: readonly string[] = ['Morning', 'Afternoon', 'Dusk', 'Moonlit Night'];
@@ -331,10 +335,10 @@ export class WasmHearthEngine {
     }
     this.palettes = loadedPalettes;
 
-    // Load 10 x 16-color per-zone terrain palettes from HEARTH_ZONE_PALETTES_RGB
+    // Load 12 x 16-color per-zone terrain palettes from HEARTH_ZONE_PALETTES_RGB
     const zpalBase = (wasm.wasm_get_zone_palettes_ptr() >>> 0) >> 2;
     const loadedZonePals: string[][] = [];
-    for (let z = 0; z < 10; z++) {
+    for (let z = 0; z < 12; z++) {
       const row: string[] = [];
       for (let c = 0; c < 16; c++) {
         const rgb = u32[zpalBase + z * 16 + c] & 0xffffff;
@@ -364,14 +368,13 @@ export class WasmHearthEngine {
     }
     this.fishCatalog = fishItems;
 
-    // Allocate 44x28 tilemaps and sync initial zone data
-    const cells = MAP_W * MAP_H;
+    // Allocate tilemap buffers up to 88x56 (Evertale Open World Map) and sync initial zone data
     this.map = {
       width: MAP_W,
       height: MAP_H,
-      bg1: new Uint8Array(cells),
-      bg2: new Uint8Array(cells),
-      col: new Uint8Array(cells),
+      bg1: new Uint8Array(MAX_MAP_CELLS),
+      bg2: new Uint8Array(MAX_MAP_CELLS),
+      col: new Uint8Array(MAX_MAP_CELLS),
     };
     this.syncMapIfChanged();
   }
@@ -381,8 +384,12 @@ export class WasmHearthEngine {
     const rev = i32[this.scalarsIdx + 102];
     if (rev === this.lastMapRevision) return;
     this.lastMapRevision = rev;
+    const mw = i32[this.scalarsIdx + 154] || MAP_W;
+    const mh = i32[this.scalarsIdx + 155] || MAP_H;
+    this.map.width = mw;
+    this.map.height = mh;
     const u8 = new Uint8Array(this.wasm.memory.buffer);
-    const cells = MAP_W * MAP_H;
+    const cells = Math.min(MAX_MAP_CELLS, mw * mh);
     this.map.bg1.set(u8.subarray(this.bg1Ptr, this.bg1Ptr + cells));
     this.map.bg2.set(u8.subarray(this.bg2Ptr, this.bg2Ptr + cells));
     this.map.col.set(u8.subarray(this.colPtr, this.colPtr + cells));
@@ -793,6 +800,9 @@ export class WasmHearthEngine {
       frameCount,
       mode,
       zoneId: (i32[s + 95] as ZoneId) ?? 1,
+      mapW: i32[s + 154] || MAP_W,
+      mapH: i32[s + 155] || MAP_H,
+      isWorldMap: i32[s + 156] !== 0,
       terrainPalId: i32[s + 96],
       bgmId: BGM_MAP[i32[s + 97]] ?? 'HAMLET',
       zoneIsDark: i32[s + 98] !== 0,
@@ -914,6 +924,10 @@ export class WasmHearthEngine {
     const timeOfDayLabel = TOD_NAMES[timeOfDay] ?? 'Morning';
     const ch1Step = i32[s + 150];
     const hasMiloBell = i32[s + 153] !== 0;
+    const isWorldMap = i32[s + 156] !== 0;
+    const ch2Step = i32[s + 157];
+    const hasFamiliar = i32[s + 158] !== 0;
+    const hasHeartVessel = i32[s + 159] !== 0;
     const coreObjective = this.readCString(i32[s + 149]);
 
     const objectiveLabel =
@@ -969,7 +983,11 @@ export class WasmHearthEngine {
       timeOfDay,
       timeOfDayLabel,
       ch1Step,
+      ch2Step,
+      isWorldMap,
       hasMiloBell,
+      hasFamiliar,
+      hasHeartVessel,
       storyStage,
       objectiveLabel,
       intro: {

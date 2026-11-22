@@ -56,7 +56,16 @@ enum {
     T_HOLLOW_OAK    = 43, /* Monumental Gnarled Hollow Oak Archway */
     T_STONE_STAIRS  = 44, /* Carved Granite Mountain Steps */
     T_INTERIOR_WALL = 45, /* Cedar-Beam Cottage Interior Wall */
-    T_TILE_COUNT    = 46
+    /* Evertale Continent Overworld Tileset (Milestone 3 — fits <= 63 BG1 tiles on SNES!) */
+    T_WORLD_OCEAN   = 46, /* Sparkling Cerulean Storybook Ocean */
+    T_WORLD_BEACH   = 47, /* Golden Coastal Sand & Cove Rim */
+    T_WORLD_PEAK    = 48, /* Snow-Capped Storybook Mountain Range */
+    T_WORLD_FOREST  = 49, /* Dense Emerald Overworld Woodland Canopy */
+    T_WORLD_HILL    = 50, /* Rolling Sunlit Highland Clover Hill */
+    T_WORLD_CASTLE  = 51, /* Gleaming White-Stone Castle Keep & Towers */
+    T_WORLD_TOWN    = 52, /* Terracotta-Roofed Village / Market Cluster */
+    T_WORLD_RUINS   = 53, /* Moss-Draped Ancient Stone Watchtower Ruins */
+    T_TILE_COUNT    = 54
 };
 
 /* BG2 Overhead Canopy / Roof Eave / Archway Tile IDs */
@@ -111,7 +120,11 @@ enum {
     FLAG_CH1_MAPLE_LOAF     = 11,
     FLAG_CH1_BARNABY_THERMOS= 12,
     FLAG_CH1_JASPER_MET     = 13,
-    FLAG_CH1_DUSK_TEA       = 14
+    FLAG_CH1_DUSK_TEA       = 14,
+    FLAG_CH2_TESSA_CLUE     = 15,
+    FLAG_CH2_CORIN_HINTS    = 16,
+    FLAG_CH2_MIDO_REUNION   = 17,
+    FLAG_CH2_FIRST_FAMILIAR = 18
 };
 
 /* Fish Species Metadata */
@@ -149,19 +162,21 @@ extern const HearthShopItem HEARTH_SHOP_ITEMS[5];
 /* Integer Sine Lookup Table (64 steps, range -127..+127) — zero <math.h> needed! */
 extern const int8_t HEARTH_SIN64[64];
 
-/* Procedural 44x28 Zone Map Builders (write in-place into RAM buffer — zero extra RAM!) */
-void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t *col);
+/* Procedural Zone Map Builders (write in-place into RAM buffer; returns map_w/map_h) */
+void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t *col, uint8_t *out_w, uint8_t *out_h);
 void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col);
 
-/* 7-Act Illustrated Opening Cinema & 3 Mid-Chapter Story CG Scripts */
-#define HEARTH_CINEMA_BEAT_COUNT 23u
-#define HEARTH_CG_ATTIC_COUNT     4u
-#define HEARTH_CG_DREAM_COUNT     4u
-#define HEARTH_CG_OAK_COUNT       5u
+/* 7-Act Illustrated Opening Cinema & Mid-Chapter Story CG Scripts */
+#define HEARTH_CINEMA_BEAT_COUNT   23u
+#define HEARTH_CG_ATTIC_COUNT       4u
+#define HEARTH_CG_DREAM_COUNT       4u
+#define HEARTH_CG_OAK_COUNT         5u
+#define HEARTH_CG_WORLD_ARRIVAL_CNT 4u
 extern const HearthCinemaBeat HEARTH_CINEMA_SCRIPT[HEARTH_CINEMA_BEAT_COUNT];
 extern const HearthCinemaBeat HEARTH_CG_ATTIC_SCRIPT[HEARTH_CG_ATTIC_COUNT];
 extern const HearthCinemaBeat HEARTH_CG_DREAM_SCRIPT[HEARTH_CG_DREAM_COUNT];
 extern const HearthCinemaBeat HEARTH_CG_OAK_SCRIPT[HEARTH_CG_OAK_COUNT];
+extern const HearthCinemaBeat HEARTH_CG_WORLD_ARRIVAL_SCRIPT[HEARTH_CG_WORLD_ARRIVAL_CNT];
 
 /* Cutscene ROM Bytecode Scripts */
 extern const HearthCutsceneOp CUTSCENE_INTRO_DEMO[];
@@ -177,6 +192,10 @@ extern const HearthCutsceneOp CUTSCENE_CH1_MORNING_MARA[];
 extern const HearthCutsceneOp CUTSCENE_CH1_MAPLE_LOAF[];
 extern const HearthCutsceneOp CUTSCENE_CH1_BARNABY_THERMOS[];
 extern const HearthCutsceneOp CUTSCENE_CH1_DUSK_TEA[];
+extern const HearthCutsceneOp CUTSCENE_CH2_SUNHILL_TESSA[];
+extern const HearthCutsceneOp CUTSCENE_CH2_SUNHILL_CORIN[];
+extern const HearthCutsceneOp CUTSCENE_CH2_SUNHILL_REUNION[];
+extern const HearthCutsceneOp CUTSCENE_CH2_BOND_FAMILIAR[];
 
 /* Hardware Palette Packers for Sega Genesis (BGR333) & SNES (BGR555) */
 HEARTH_INLINE uint16_t hearth_rgb_to_genesis_bgr333(uint32_t rgb) {

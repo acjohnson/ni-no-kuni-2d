@@ -25,10 +25,10 @@ static HearthState g_hearth;
 #define VRAM_BG_BASE    ((u16)(TILE_USER_INDEX))
 #define VRAM_UI_BASE    ((u16)(VRAM_BG_BASE + 64u))
 #define VRAM_SPR_BASE   ((u16)(VRAM_UI_BASE + 16u))
-#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 184u))
+#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 196u))
 #define VRAM_CG_BASE    ((u16)(VRAM_FONT_BASE + 80u))
 
-/* BG Tile IDs (offsets from VRAM_BG_BASE — 55 tiles total, < 64) */
+/* BG Tile IDs (offsets from VRAM_BG_BASE — 63 tiles total, < 64) */
 enum {
     GT_EMPTY = 0,
     GT_GRASS,
@@ -86,6 +86,15 @@ enum {
     GT_MAPLE_CANOPY,
     GT_PINE_TOP,
     GT_OAK_CROWN,
+    /* Milestone 3: Evertale Open World Map Tiles (55..62 < 64) */
+    GT_WORLD_OCEAN,
+    GT_WORLD_BEACH,
+    GT_WORLD_PEAK,
+    GT_WORLD_FOREST,
+    GT_WORLD_HILL,
+    GT_WORLD_CASTLE,
+    GT_WORLD_TOWN,
+    GT_WORLD_RUINS,
     GT_COUNT
 };
 
@@ -102,14 +111,14 @@ enum {
     GUI_BR
 };
 
-/* Sprite VRAM Slots (37 core sprites + 7 host internal slots = 44 x 4 = 176 tiles) */
-#define SPR_TIMED_RING_SLOT  37u
-#define SPR_HERO_DOWN_1      38u
-#define SPR_HERO_UP_0        39u
-#define SPR_HERO_UP_1        40u
-#define SPR_HERO_SIDE_0      41u
-#define SPR_HERO_SIDE_1      42u
-#define SPR_BATTLE_VFX_SLOT  43u
+/* Sprite VRAM Slots (40 core sprites + 7 host internal slots = 47 x 4 = 188 tiles) */
+#define SPR_TIMED_RING_SLOT  40u
+#define SPR_HERO_DOWN_1      41u
+#define SPR_HERO_UP_0        42u
+#define SPR_HERO_UP_1        43u
+#define SPR_HERO_SIDE_0      44u
+#define SPR_HERO_SIDE_1      45u
+#define SPR_BATTLE_VFX_SLOT  46u
 
 /* ============================================================================
  * 1. COMPACT 5x7 UPPERCASE ASCII FONT (ASCII 32..95) -> OPAQUE 4bpp VRAM
@@ -458,6 +467,24 @@ static void bake_bg_and_ui_tiles(void) {
     p8_fill(0); p8_rect(0, 1, 8, 6, 6); p8_rect(1, 1, 6, 5, 15); p8_rect(2, 2, 4, 3, 8); p8_rect(3, 2, 2, 2, 14);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_OAK_CROWN);
 
+    /* Milestone 3: Evertale Open World Map Tiles */
+    p8_fill(12); p8_rect(1, 2, 3, 1, 13); p8_rect(4, 5, 3, 1, 14);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_WORLD_OCEAN);
+    p8_fill(8); p8_rect(1, 1, 6, 4, 14); p8_rect(0, 6, 8, 2, 13);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_WORLD_BEACH);
+    p8_fill(3); p8_rect(0, 4, 8, 4, 9); p8_rect(1, 2, 6, 4, 10); p8_rect(2, 0, 4, 3, 11); p8_rect(3, 0, 2, 2, 14);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_WORLD_PEAK);
+    p8_fill(2); p8_rect(0, 1, 4, 4, 3); p8_rect(1, 1, 2, 2, 4); p8_rect(4, 3, 4, 4, 3); p8_rect(5, 3, 2, 2, 5);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_WORLD_FOREST);
+    p8_fill(4); p8_rect(1, 3, 6, 4, 3); p8_rect(2, 2, 4, 3, 5);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_WORLD_HILL);
+    p8_fill(11); p8_rect(1, 2, 6, 6, 14); p8_rect(1, 0, 2, 2, 12); p8_rect(5, 0, 2, 2, 12); p8_rect(3, 5, 2, 3, 6);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_WORLD_CASTLE);
+    p8_fill(4); p8_rect(1, 3, 6, 5, 14); p8_rect(0, 1, 8, 3, 15); p8_rect(3, 5, 2, 3, 6);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_WORLD_TOWN);
+    p8_fill(3); p8_rect(1, 1, 2, 6, 10); p8_rect(5, 2, 2, 5, 9); p8_rect(1, 1, 6, 1, 11);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_WORLD_RUINS);
+
     /* UI Box Tiles (PAL2: 1=dark slate, 7=gold, 15=warm cream) */
     p8_fill(1); upload_pix8_to_vram(VRAM_UI_BASE + GUI_FILL);
     p8_fill(1); p8_rect(0, 0, 8, 1, 7); p8_rect(0, 1, 8, 1, 15); upload_pix8_to_vram(VRAM_UI_BASE + GUI_TOP);
@@ -653,14 +680,15 @@ static void bake_all_sprites(void) {
     p16_rect(2, 12, 2, 3, 4); p16_rect(12, 12, 2, 3, 4);   /* Shadow wisps */
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_SHADOW_GRAN * 4);
 
-    /* 23: SPR_PET_MILO (Rowan's Puppy Milo with red ribbon - PAL1) */
+    /* 23: SPR_PET_MILO (Mido — Amber Mountain Fox-Kit with Crimson Scarf & Bell - PAL1) */
     p16_clear();
-    p16_rect(3, 4, 3, 4, 4); p16_rect(10, 4, 3, 4, 4);     /* Floppy ears */
-    p16_rect(5, 3, 6, 5, 10); p16_rect(6, 4, 4, 3, 11);    /* Golden pup head */
-    g_pix16[5*16+6]=1; g_pix16[5*16+9]=1; g_pix16[7*16+7]=1; /* Eyes & nose */
-    p16_rect(5, 8, 6, 2, 9);                               /* Red ribbon collar */
-    p16_rect(4, 10, 8, 4, 10); p16_rect(12, 8, 2, 3, 11);  /* Body & wagging tail */
-    p16_rect(5, 14, 2, 2, 4); p16_rect(9, 14, 2, 2, 4);    /* Paws */
+    p16_rect(4, 1, 2, 3, 4); p16_rect(10, 1, 2, 3, 4);     /* Pointed dark-tipped fox ears */
+    p16_rect(5, 3, 6, 5, 10); p16_rect(6, 5, 4, 3, 14);    /* Amber fox head + cream snout */
+    g_pix16[5*16+6]=1; g_pix16[5*16+9]=1; g_pix16[7*16+7]=1;
+    p16_rect(4, 8, 8, 2, 9); g_pix16[9*16+7]=11; g_pix16[9*16+8]=11; /* Crimson scarf & brass bell */
+    p16_rect(4, 10, 8, 4, 10); p16_rect(6, 10, 4, 3, 14);  /* Body & cream chest */
+    p16_rect(12, 7, 3, 4, 10); p16_rect(13, 6, 2, 2, 14);  /* Bushy cream-tipped fox tail */
+    p16_rect(5, 14, 2, 2, 4); p16_rect(9, 14, 2, 2, 4);    /* Dark fox paws */
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_PET_MILO * 4);
 
     /* 24: SPR_ENEMY_RAT (Gutter Rat - PAL3) */
@@ -773,7 +801,33 @@ static void bake_all_sprites(void) {
     p16_rect(2, 13, 12, 1, 7);                              /* Coupling rod */
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_LOCOMOTIVE * 4);
 
-    /* 32: Timed-Hit / Parry Ring Marker (PAL3) */
+    /* 37: SPR_NPC_TESSA (Sunhill Market Baker Tessa - PAL2) */
+    p16_clear();
+    p16_rect(3, 1, 10, 2, 10); p16_rect(4, 3, 8, 2, 11);
+    p16_rect(5, 5, 6, 3, 2); g_pix16[6*16+6]=1; g_pix16[6*16+9]=1;
+    p16_rect(4, 8, 8, 6, 5); p16_rect(6, 9, 4, 5, 15);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_TESSA * 4);
+
+    /* 38: SPR_NPC_CORIN (Sunhill Archivist Corin - PAL2) */
+    p16_clear();
+    p16_rect(4, 1, 8, 3, 15); p16_rect(4, 4, 8, 4, 2);
+    g_pix16[5*16+5]=9; g_pix16[5*16+6]=9; g_pix16[5*16+9]=9; g_pix16[5*16+10]=9;
+    p16_rect(3, 8, 10, 6, 8); p16_rect(7, 9, 2, 4, 7);
+    p16_rect(12, 3, 2, 12, 11);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_CORIN * 4);
+
+    /* 39: SPR_NPC_SENTINEL (Castle Aurelia Gate Sentinel - PAL2) */
+    p16_clear();
+    p16_rect(7, 0, 2, 2, 7); p16_rect(4, 2, 8, 3, 15);
+    p16_rect(5, 5, 6, 3, 2); g_pix16[6*16+6]=1; g_pix16[6*16+9]=1;
+    p16_rect(3, 8, 10, 6, 8); p16_rect(6, 9, 4, 4, 7);
+    p16_rect(13, 1, 2, 14, 15);
+    p16_rect(5, 14, 2, 2, 4); p16_rect(9, 14, 2, 2, 4);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_SENTINEL * 4);
+
+    /* 40: Timed-Hit / Parry Ring Marker (PAL3) */
     p16_clear();
     p16_rect(3, 1, 10, 2, 11); p16_rect(3, 13, 10, 2, 11);
     p16_rect(1, 3, 2, 10, 11); p16_rect(13, 3, 2, 10, 11);
@@ -1034,6 +1088,14 @@ static u16 map_bg1_to_vram_tile(u8 t) {
         case T_HOLLOW_OAK:     return VRAM_BG_BASE + GT_HOLLOW_OAK;
         case T_STONE_STAIRS:   return VRAM_BG_BASE + GT_STONE_STAIRS;
         case T_INTERIOR_WALL:  return VRAM_BG_BASE + GT_INTERIOR_WALL;
+        case T_WORLD_OCEAN:    return VRAM_BG_BASE + GT_WORLD_OCEAN;
+        case T_WORLD_BEACH:    return VRAM_BG_BASE + GT_WORLD_BEACH;
+        case T_WORLD_PEAK:     return VRAM_BG_BASE + GT_WORLD_PEAK;
+        case T_WORLD_FOREST:   return VRAM_BG_BASE + GT_WORLD_FOREST;
+        case T_WORLD_HILL:     return VRAM_BG_BASE + GT_WORLD_HILL;
+        case T_WORLD_CASTLE:   return VRAM_BG_BASE + GT_WORLD_CASTLE;
+        case T_WORLD_TOWN:     return VRAM_BG_BASE + GT_WORLD_TOWN;
+        case T_WORLD_RUINS:    return VRAM_BG_BASE + GT_WORLD_RUINS;
         default:               return VRAM_BG_BASE + GT_GRASS;
     }
 }
@@ -1050,11 +1112,15 @@ static u16 map_bg2_to_vram_tile(u8 t) {
 
 static void write_metatile(s16 mx, s16 my) {
     u16 a_attr, b_attr;
-    if (mx < 0 || my < 0 || mx >= HEARTH_MAP_W || my >= HEARTH_MAP_H) {
-        a_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_BUSH);
+    s16 mw = (s16)(g_hearth.map_w ? g_hearth.map_w : HEARTH_MAP_W);
+    s16 mh = (s16)(g_hearth.map_h ? g_hearth.map_h : HEARTH_MAP_H);
+    if (mx < 0 || my < 0 || mx >= mw || my >= mh) {
+        u16 oob = g_hearth.is_world_map ? (u16)(VRAM_BG_BASE + GT_WORLD_OCEAN)
+                                        : (u16)(VRAM_BG_BASE + GT_BUSH);
+        a_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, oob);
         b_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_EMPTY);
     } else {
-        u16 idx = (u16)(my * HEARTH_MAP_W + mx);
+        u16 idx = (u16)(my * mw + mx);
         u16 a_tile = map_bg1_to_vram_tile(g_hearth.map_bg1[idx]);
         u16 b_tile = map_bg2_to_vram_tile(g_hearth.map_bg2[idx]);
         a_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, a_tile);
@@ -1546,7 +1612,7 @@ static u16 sprite_palette(u8 spr_id) {
     if (spr_id <= SPR_NPC_GUARD || spr_id == SPR_WINDMILL_BLADES || spr_id == SPR_WAYSTONE ||
         spr_id == SPR_CHEST || spr_id == SPR_CHEST_OPEN || spr_id == SPR_NPC_MOUSE ||
         spr_id == SPR_NPC_PIG || spr_id == SPR_HOLLOW_OAK || spr_id == SPR_NPC_TOWNSFOLK ||
-        (spr_id >= SPR_NPC_MARA && spr_id <= SPR_LOCOMOTIVE)) return PAL2;
+        (spr_id >= SPR_NPC_MARA && spr_id <= SPR_NPC_SENTINEL)) return PAL2;
     return PAL3;
 }
 

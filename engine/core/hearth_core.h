@@ -14,10 +14,10 @@
 #include "hearth_types.h"
 
 typedef struct {
-    /* World ROM/RAM Map Buffers (rebuilt in-place per active zone!) */
-    uint8_t map_bg1[HEARTH_MAP_CELLS];
-    uint8_t map_bg2[HEARTH_MAP_CELLS];
-    uint8_t map_col[HEARTH_MAP_CELLS];
+    /* World ROM/RAM Map Buffers (rebuilt in-place per active zone; up to 88x56!) */
+    uint8_t map_bg1[HEARTH_MAX_MAP_CELLS];
+    uint8_t map_bg2[HEARTH_MAX_MAP_CELLS];
+    uint8_t map_col[HEARTH_MAX_MAP_CELLS];
 
     /* Tuning & Deterministic State */
     HearthTuning tuning;
@@ -28,17 +28,21 @@ typedef struct {
 
     /* Multi-Zone World & Story Progression */
     uint8_t      zone_id;
+    uint8_t      map_w;
+    uint8_t      map_h;
     uint8_t      terrain_pal_id;
     uint8_t      bgm_id;
     uint8_t      time_of_day;     /* TOD_MORNING..TOD_NIGHT */
     bool         zone_is_dark;
     bool         has_mountain_vista;
+    bool         is_world_map;
     uint8_t      zone_banner_frames;
     uint8_t      story_stage;
     uint8_t      ch1_step;        /* 0..8 Chapter 1 Alderbrook & Woods progression */
+    uint8_t      ch2_step;        /* 0..4 Chapter 2 Evertale World & Sunhill Market progression */
     uint8_t      ch1_errands_mask;/* bit0=Maple Loaf, bit1=Barnaby Thermos, bit2=Jasper Met */
     uint8_t      woods_shrines_mask; /* bits 0..2: 3 lantern markers in Whispering Woods */
-    bool         has_milo_bell;
+    bool         has_milo_bell;   /* Mido's heirloom brass bell & pressed oak leaf */
     uint8_t      map_revision;
     uint8_t      warp_fade;       /* 0..15 fade out/in on zone warp */
     bool         warp_pending;
@@ -107,6 +111,8 @@ typedef struct {
     bool     flag_elder_seen;
     bool     flag_boss_defeated;
     bool     flag_has_wand;
+    bool     flag_has_familiar;      /* False until Rowan bonds first Familiar -> awakens overworld enemies */
+    bool     flag_has_heart_vessel;  /* False until future Hearthglass Pendant arc -> hides Give/Take Heart */
     bool     flag_sewer_key;
     bool     flag_captain_mended;
     bool     flag_muckmaw_defeated;

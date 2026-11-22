@@ -110,14 +110,16 @@ export class SoftwarePpuRenderer {
     atlas: PixelAtlas
   ): void {
     const { width, height, camX, camY, frameCount } = packet;
+    const mapW = map.width || packet.mapW || MAP_W;
+    const mapH = map.height || packet.mapH || MAP_H;
     const animTick = frameCount >> 4;
 
     const startCol = Math.max(0, Math.floor(camX / TILE_SIZE));
-    const endCol = Math.min(MAP_W - 1, Math.ceil((camX + width) / TILE_SIZE));
+    const endCol = Math.min(mapW - 1, Math.ceil((camX + width) / TILE_SIZE));
     const startRow = Math.max(0, Math.floor(camY / TILE_SIZE));
-    const endRow = Math.min(MAP_H - 1, Math.ceil((camY + height) / TILE_SIZE));
+    const endRow = Math.min(mapH - 1, Math.ceil((camY + height) / TILE_SIZE));
 
-    // 0. Parallax Snow-Dusted Alpine Mountain Vista (Alderbrook, Whispering Woods, Hollow Glade!)
+    // 0. Parallax Mountain / Castle Aurelia Vista
     if (packet.hasMountainVista) {
       this.renderMountainVista(ctx, packet);
     }
@@ -125,13 +127,19 @@ export class SoftwarePpuRenderer {
     // 1. BG1 Terrain & Architecture Plane
     for (let r = startRow; r <= endRow; r++) {
       const sy = r * TILE_SIZE - camY;
+      const rowOff = r * mapW;
       for (let c = startCol; c <= endCol; c++) {
         const sx = c * TILE_SIZE - camX;
-        const tileId = map.bg1[r * MAP_W + c];
+        const tileId = map.bg1[rowOff + c];
         if (tileId === T_MTN_SKY && packet.hasMountainVista) continue;
         const img = atlas.getBg1Tile(tileId, animTick);
         ctx.drawImage(img, sx, sy, TILE_SIZE, TILE_SIZE);
       }
+    }
+
+    // 1.5. Impressive Multi-Tile Storybook Landmarks on the Evertale Open World Map!
+    if (packet.isWorldMap) {
+      this.renderWorldMapLandmarks(ctx, packet, atlas);
     }
 
     // 2. OAM Layer 0 & Layer 1 (Y-Sorted Actors, Props & Auras)
@@ -144,8 +152,9 @@ export class SoftwarePpuRenderer {
     // 3. BG2 Foreground Overhead Plane (Tree Canopies, Roof Eaves, Shrine Arch!)
     for (let r = startRow; r <= endRow; r++) {
       const sy = r * TILE_SIZE - camY;
+      const rowOff = r * mapW;
       for (let c = startCol; c <= endCol; c++) {
-        const bg2Id = map.bg2[r * MAP_W + c];
+        const bg2Id = map.bg2[rowOff + c];
         if (bg2Id === 0) continue;
         const tileImg = atlas.getBg2Tile(bg2Id);
         if (tileImg) {
@@ -159,6 +168,11 @@ export class SoftwarePpuRenderer {
       if (spr.layer === 2) {
         this.drawOamSprite(ctx, spr, atlas, frameCount);
       }
+    }
+
+    // 4.2. Crisp World-Map Landmark Signposts when Rowan approaches a settlement or ruin
+    if (packet.isWorldMap && packet.mode === 'EXPLORE') {
+      this.renderWorldLandmarkBanners(ctx, packet);
     }
 
     // 4.5. Fishing Rod Line from Rowan to Bobber during MODE_FISHING
@@ -214,8 +228,9 @@ export class SoftwarePpuRenderer {
       const flicker = Math.sin(frameCount * 0.12) * 3;
       punchLight(packet.heroWorldX - camX, packet.heroWorldY - camY - 6, 62 + flicker);
       for (let r = startRow; r <= endRow; r++) {
+        const rowOff = r * mapW;
         for (let c = startCol; c <= endCol; c++) {
-          if (map.bg1[r * MAP_W + c] === T_LANTERN_POST) {
+          if (map.bg1[rowOff + c] === T_LANTERN_POST) {
             punchLight(c * TILE_SIZE + 8 - camX, r * TILE_SIZE + 6 - camY, 48 + flicker * 0.6);
           }
         }
@@ -338,22 +353,382 @@ export class SoftwarePpuRenderer {
       }
     }
 
-    // 4. Midground Autumn Pine & Crimson Maple Foothill Ridge (Parallax 0.28x)
-    const midCol =
-      timeOfDay === 3 ? '#15243A' : timeOfDay === 2 ? '#4A2B36' : timeOfDay === 0 ? '#3E5448' : '#355444';
-    const midMaple =
-      timeOfDay === 3 ? '#3B2846' : timeOfDay === 2 ? '#A64A32' : timeOfDay === 0 ? '#B8663A' : '#B84A32';
+    // 4. Midground Ridge — Evertale Sunlit Castle Aurelia Skyline vs. Alderbrook Autumn Foothills
+    const isEvertaleVista = packet.zoneId === 9 || packet.zoneId === 10;
+    const midCol = isEvertaleVista
+      ? '#4A8E54'
+      : timeOfDay === 3
+        ? '#15243A'
+        : timeOfDay === 2
+          ? '#4A2B36'
+          : timeOfDay === 0
+            ? '#3E5448'
+            : '#355444';
+    const midMaple = isEvertaleVista
+      ? '#6AB868'
+      : timeOfDay === 3
+        ? '#3B2846'
+        : timeOfDay === 2
+          ? '#A64A32'
+          : timeOfDay === 0
+            ? '#B8663A'
+            : '#B84A32';
     const midScroll = Math.floor(camX * 0.28);
     for (let x = 0; x < width; x += 4) {
       const wx = x + midScroll;
-      const hill = Math.round(Math.sin(wx * 0.025) * 9 + Math.cos(wx * 0.052) * 5);
-      const hy = Math.max(38, 56 + hill);
+      const hill = Math.round(Math.sin(wx * 0.025) * 8 + Math.cos(wx * 0.052) * 4);
+      const hy = Math.max(38, (isEvertaleVista ? 58 : 56) + hill);
       ctx.fillStyle = midCol;
       ctx.fillRect(x, hy, 4, horizonH - hy + 8);
       if (((wx >> 3) & 3) === 1) {
         ctx.fillStyle = midMaple;
         ctx.fillRect(x, hy + 2, 4, 6);
       }
+    }
+
+    // 5. Distant Gleaming Castle Aurelia Spire Silhouette above Sunhill Market & Castle Gate
+    if (isEvertaleVista) {
+      const cx = Math.round(width * 0.5 - (camX - 180) * 0.12);
+      const cy = 22;
+      ctx.fillStyle = '#DCE6F2';
+      ctx.fillRect(cx - 32, cy + 20, 64, 24);
+      ctx.fillRect(cx - 10, cy + 8, 20, 34);
+      ctx.fillRect(cx - 28, cy + 14, 12, 26);
+      ctx.fillRect(cx + 16, cy + 14, 12, 26);
+      ctx.fillStyle = '#F7FAFF';
+      ctx.fillRect(cx - 8, cy + 10, 6, 30);
+      ctx.fillRect(cx - 26, cy + 16, 4, 22);
+      ctx.fillRect(cx + 18, cy + 16, 4, 22);
+      // Azure conical turrets & gold pennants
+      ctx.fillStyle = '#3874B8';
+      ctx.fillRect(cx - 12, cy + 4, 24, 5);
+      ctx.fillRect(cx - 8, cy, 16, 5);
+      ctx.fillRect(cx - 4, cy - 4, 8, 5);
+      ctx.fillRect(cx - 30, cy + 10, 16, 5);
+      ctx.fillRect(cx - 26, cy + 6, 8, 5);
+      ctx.fillRect(cx + 14, cy + 10, 16, 5);
+      ctx.fillRect(cx + 18, cy + 6, 8, 5);
+      const wave = (frameCount >> 4) & 1;
+      ctx.fillStyle = '#F5C45A';
+      ctx.fillRect(cx - 1, cy - 8, 6 + wave, 3);
+      ctx.fillRect(cx - 23, cy + 2, 5, 2);
+      ctx.fillRect(cx + 21, cy + 2, 5, 2);
+    }
+  }
+
+  /* ========================================================================
+   * EVERTALE OPEN WORLD MULTI-TILE STORYBOOK LANDMARKS (Chrono Trigger / FFIV Scale)
+   * ======================================================================== */
+  private renderWorldMapLandmarks(
+    ctx: CanvasRenderingContext2D,
+    packet: PpuFramePacket,
+    atlas: PixelAtlas
+  ): void {
+    const { width, height, camX, camY, frameCount } = packet;
+    const wave = (frameCount >> 4) & 1;
+    const inView = (x: number, y: number, w: number, h: number) =>
+      x + w >= -16 && x <= width + 16 && y + h >= -16 && y <= height + 16;
+
+    // Helper: storybook miniature timber cottage with terracotta or slate roof
+    const drawCottage = (x: number, y: number, w: number, h: number, roofCol: string, roofHi: string) => {
+      ctx.fillStyle = 'rgba(18, 26, 20, 0.35)';
+      ctx.fillRect(x + 2, y + h - 2, w, 4);
+      ctx.fillStyle = '#1C1B24';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = '#F2E5C8';
+      ctx.fillRect(x + 1, y + Math.floor(h * 0.45), w - 2, h - Math.floor(h * 0.45) - 1);
+      ctx.fillStyle = roofCol;
+      ctx.fillRect(x - 1, y + 1, w + 2, Math.floor(h * 0.48));
+      ctx.fillStyle = roofHi;
+      ctx.fillRect(x + 1, y, w - 2, 3);
+      ctx.fillStyle = '#6B462B';
+      ctx.fillRect(x + Math.floor(w * 0.4), y + h - 6, 4, 5);
+      ctx.fillStyle = '#F5C45A';
+      ctx.fillRect(x + 3, y + Math.floor(h * 0.58), 3, 3);
+    };
+
+    // 1. CASTLE AURELIA — Grand Multi-Spire White-Marble Citadel at tiles (41..47, 9..12)
+    {
+      const bx = 41 * TILE_SIZE - camX;
+      const by = 8 * TILE_SIZE + 2 - camY;
+      if (inView(bx, by, 112, 78)) {
+        // Citadel shadow & stone plinth
+        ctx.fillStyle = 'rgba(18, 28, 36, 0.42)';
+        ctx.fillRect(bx + 4, by + 62, 104, 14);
+        // Outer white-stone curtain wall & battlements
+        ctx.fillStyle = '#202636';
+        ctx.fillRect(bx + 6, by + 34, 100, 34);
+        ctx.fillStyle = '#C9D5E6';
+        ctx.fillRect(bx + 8, by + 36, 96, 30);
+        ctx.fillStyle = '#EEF4FC';
+        ctx.fillRect(bx + 10, by + 38, 92, 6);
+        for (let mx = 8; mx < 102; mx += 10) {
+          ctx.fillStyle = '#202636';
+          ctx.fillRect(bx + mx, by + 31, 6, 4);
+          ctx.fillStyle = '#EEF4FC';
+          ctx.fillRect(bx + mx + 1, by + 32, 4, 3);
+        }
+        // Flanking twin watchtowers (left & right)
+        for (const tx of [bx + 8, bx + 84]) {
+          ctx.fillStyle = '#202636';
+          ctx.fillRect(tx, by + 18, 20, 48);
+          ctx.fillStyle = '#D8E3F2';
+          ctx.fillRect(tx + 2, by + 20, 16, 44);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(tx + 3, by + 20, 5, 44);
+          // Azure conical roof
+          ctx.fillStyle = '#1E3C6E';
+          ctx.fillRect(tx - 2, by + 13, 24, 6);
+          ctx.fillStyle = '#3672B8';
+          ctx.fillRect(tx, by + 9, 20, 6);
+          ctx.fillStyle = '#5CA4E8';
+          ctx.fillRect(tx + 4, by + 4, 12, 6);
+          ctx.fillRect(tx + 8, by + 1, 4, 4);
+          // Waving golden pennant
+          ctx.fillStyle = '#F5C45A';
+          ctx.fillRect(tx + 10, by - 3, 7 + wave, 3);
+          ctx.fillStyle = '#264470';
+          ctx.fillRect(tx + 8, by + 28, 4, 7);
+        }
+        // Central soaring royal keep & golden dome
+        ctx.fillStyle = '#202636';
+        ctx.fillRect(bx + 36, by + 8, 40, 56);
+        ctx.fillStyle = '#E4ECF8';
+        ctx.fillRect(bx + 38, by + 10, 36, 52);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(bx + 40, by + 10, 10, 52);
+        ctx.fillStyle = '#1E3C6E';
+        ctx.fillRect(bx + 34, by + 3, 44, 7);
+        ctx.fillStyle = '#3672B8';
+        ctx.fillRect(bx + 40, by - 4, 32, 8);
+        ctx.fillStyle = '#5CA4E8';
+        ctx.fillRect(bx + 46, by - 10, 20, 7);
+        ctx.fillStyle = '#F5C45A';
+        ctx.fillRect(bx + 54, by - 15, 4, 6);
+        ctx.fillRect(bx + 56, by - 15, 9 + wave, 3);
+        // Grand royal archway gate & sunlit rose window
+        ctx.fillStyle = '#F5C45A';
+        ctx.fillRect(bx + 51, by + 18, 10, 10);
+        ctx.fillStyle = '#70C4F8';
+        ctx.fillRect(bx + 53, by + 20, 6, 6);
+        ctx.fillStyle = '#202636';
+        ctx.fillRect(bx + 46, by + 44, 20, 24);
+        ctx.fillStyle = '#5E3B24';
+        ctx.fillRect(bx + 48, by + 46, 16, 22);
+        ctx.fillStyle = '#D49A42';
+        ctx.fillRect(bx + 48, by + 46, 16, 2);
+        ctx.fillRect(bx + 55, by + 46, 2, 22);
+      }
+    }
+
+    // 2. SUNHILL MARKET — Cozy Hilltop Medina-Style Market Town at tiles (42..46, 21..23)
+    {
+      const bx = 42 * TILE_SIZE - camX;
+      const by = 20 * TILE_SIZE + 8 - camY;
+      if (inView(bx, by, 84, 58)) {
+        // Low stone terrace wall & archway
+        ctx.fillStyle = '#22202A';
+        ctx.fillRect(bx + 2, by + 40, 76, 12);
+        ctx.fillStyle = '#D4C8B4';
+        ctx.fillRect(bx + 4, by + 42, 72, 8);
+        ctx.fillStyle = '#8C7A64';
+        ctx.fillRect(bx + 32, by + 41, 16, 11);
+        ctx.fillStyle = '#E8D5A8';
+        ctx.fillRect(bx + 34, by + 43, 12, 9);
+        // Cluster of warm sunlit hilltop cottages
+        drawCottage(bx + 4, by + 16, 20, 22, '#C8523E', '#E67658');
+        drawCottage(bx + 56, by + 14, 20, 24, '#B84A38', '#DC6B52');
+        drawCottage(bx + 26, by + 4, 26, 22, '#3B6EA8', '#5C94CE');
+        // Golden archive belltower spire
+        ctx.fillStyle = '#20222E';
+        ctx.fillRect(bx + 34, by - 4, 10, 10);
+        ctx.fillStyle = '#F5C45A';
+        ctx.fillRect(bx + 36, by - 2, 6, 6);
+        // Red & cream striped market awning stalls flanking the plaza
+        for (const ax of [bx + 12, bx + 52]) {
+          ctx.fillStyle = '#201C24';
+          ctx.fillRect(ax, by + 31, 16, 9);
+          ctx.fillStyle = '#D6483C';
+          ctx.fillRect(ax + 1, by + 32, 14, 4);
+          ctx.fillStyle = '#FFF4DC';
+          ctx.fillRect(ax + 4, by + 32, 3, 4);
+          ctx.fillRect(ax + 10, by + 32, 3, 4);
+          ctx.fillStyle = '#B8844A';
+          ctx.fillRect(ax + 2, by + 36, 12, 3);
+        }
+        // Central sparkling blue fountain glint
+        ctx.fillStyle = '#68BBE8';
+        ctx.fillRect(bx + 35, by + 32, 10, 6);
+        ctx.fillStyle = wave ? '#FFFFFF' : '#B8ECFF';
+        ctx.fillRect(bx + 38, by + 30, 4, 4);
+      }
+    }
+
+    // 3. WINDMILL HAMLET — Western Lakeside Mill Village at tiles (17..19, 26..27)
+    {
+      const bx = 16 * TILE_SIZE + 8 - camX;
+      const by = 25 * TILE_SIZE + 4 - camY;
+      if (inView(bx, by, 58, 46)) {
+        drawCottage(bx + 2, by + 20, 18, 18, '#B8543E', '#D87258');
+        drawCottage(bx + 34, by + 22, 18, 16, '#A84836', '#CE684E');
+        // Stone windmill tower
+        ctx.fillStyle = '#1E222E';
+        ctx.fillRect(bx + 18, by + 6, 18, 32);
+        ctx.fillStyle = '#B8C0CC';
+        ctx.fillRect(bx + 20, by + 12, 14, 24);
+        ctx.fillStyle = '#DCE3EC';
+        ctx.fillRect(bx + 21, by + 12, 5, 24);
+        ctx.fillStyle = '#3B5998';
+        ctx.fillRect(bx + 17, by + 4, 20, 9);
+        ctx.fillStyle = '#5C82C4';
+        ctx.fillRect(bx + 20, by + 2, 14, 4);
+        ctx.fillStyle = '#5E3B24';
+        ctx.fillRect(bx + 24, by + 28, 6, 8);
+        // Spinning windmill sails
+        const sails = atlas.getSprite('windmill_blades', 0, 0);
+        ctx.save();
+        ctx.translate(bx + 27, by + 14);
+        ctx.rotate(((frameCount * 0.9) * Math.PI) / 180);
+        ctx.drawImage(sails, -13, -13, 26, 26);
+        ctx.restore();
+      }
+    }
+
+    // 4. HOLLOW OAK GATE — Monumental Golden-Amber Great Tree at tile (16, 43)
+    {
+      const bx = 15 * TILE_SIZE - camX;
+      const by = 41 * TILE_SIZE + 4 - camY;
+      if (inView(bx, by, 48, 46)) {
+        ctx.fillStyle = 'rgba(18, 28, 22, 0.4)';
+        ctx.fillRect(bx + 6, by + 34, 36, 8);
+        // Gnarled trunk & glowing portal arch
+        ctx.fillStyle = '#1E1818';
+        ctx.fillRect(bx + 12, by + 16, 24, 24);
+        ctx.fillStyle = '#6E462C';
+        ctx.fillRect(bx + 14, by + 18, 20, 20);
+        ctx.fillStyle = '#8C5B38';
+        ctx.fillRect(bx + 16, by + 18, 5, 18);
+        ctx.fillStyle = wave ? '#74E8F5' : '#FFE07D';
+        ctx.fillRect(bx + 20, by + 26, 8, 12);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(bx + 22, by + 28, 4, 7);
+        // Lush golden-emerald crown
+        ctx.fillStyle = '#1E241C';
+        ctx.fillRect(bx + 2, by + 2, 44, 20);
+        ctx.fillStyle = '#3E7A38';
+        ctx.fillRect(bx + 4, by + 4, 40, 16);
+        ctx.fillStyle = '#D48A34';
+        ctx.fillRect(bx + 8, by + 3, 32, 11);
+        ctx.fillStyle = '#F5C45A';
+        ctx.fillRect(bx + 14, by + 2, 20, 6);
+      }
+    }
+
+    // 5. BRAMBLEWOOD CROSSING — Towering Ancient Forest & Standing Stones at tiles (67..69, 23..24)
+    {
+      const bx = 66 * TILE_SIZE + 8 - camX;
+      const by = 22 * TILE_SIZE - camY;
+      if (inView(bx, by, 58, 44)) {
+        // Overlapping emerald ancient crowns
+        const trees: [number, number, number][] = [
+          [4, 8, 22],
+          [32, 8, 22],
+          [16, 0, 26],
+        ];
+        for (const [tx, ty, sz] of trees) {
+          ctx.fillStyle = '#16241B';
+          ctx.fillRect(bx + tx, by + ty, sz, sz);
+          ctx.fillStyle = '#285C36';
+          ctx.fillRect(bx + tx + 2, by + ty + 2, sz - 4, sz - 4);
+          ctx.fillStyle = '#448C48';
+          ctx.fillRect(bx + tx + 4, by + ty + 3, sz - 8, Math.floor(sz * 0.55));
+          ctx.fillStyle = '#74C064';
+          ctx.fillRect(bx + tx + 6, by + ty + 3, Math.floor(sz * 0.4), 4);
+        }
+        // Twin mossy standing stones & emerald trail arch
+        ctx.fillStyle = '#20262E';
+        ctx.fillRect(bx + 16, by + 24, 7, 16);
+        ctx.fillRect(bx + 35, by + 24, 7, 16);
+        ctx.fillStyle = '#9EAAB8';
+        ctx.fillRect(bx + 17, by + 25, 5, 14);
+        ctx.fillRect(bx + 36, by + 25, 5, 14);
+        ctx.fillStyle = wave ? '#8AE8A0' : '#5AD2F4';
+        ctx.fillRect(bx + 19, by + 29, 2, 5);
+        ctx.fillRect(bx + 38, by + 29, 2, 5);
+      }
+    }
+
+    // 6. SUNKEN WATCHTOWER — Coastal Cliffside Ruins at tiles (65..68, 41..42)
+    {
+      const bx = 65 * TILE_SIZE - camX;
+      const by = 39 * TILE_SIZE + 12 - camY;
+      if (inView(bx, by, 66, 46)) {
+        // Broken stone arch & crumbling sea tower
+        ctx.fillStyle = '#1E222C';
+        ctx.fillRect(bx + 6, by + 18, 14, 22);
+        ctx.fillRect(bx + 44, by + 22, 14, 18);
+        ctx.fillRect(bx + 22, by + 4, 20, 36);
+        ctx.fillStyle = '#7F8A9C';
+        ctx.fillRect(bx + 8, by + 20, 10, 18);
+        ctx.fillRect(bx + 46, by + 24, 10, 14);
+        ctx.fillRect(bx + 24, by + 6, 16, 32);
+        ctx.fillStyle = '#ABB6C8';
+        ctx.fillRect(bx + 25, by + 6, 5, 30);
+        // Jagged broken tower top & coastal moss
+        ctx.fillStyle = '#4B8E54';
+        ctx.fillRect(bx + 24, by + 6, 6, 4);
+        ctx.fillRect(bx + 8, by + 20, 6, 4);
+        ctx.fillStyle = '#1C222E';
+        ctx.fillRect(bx + 28, by + 24, 8, 14);
+      }
+    }
+
+    // 7. WHISKERBURGH — Northeast Mouse-Borough Canal Town at tiles (70..74, 11..13)
+    {
+      const bx = 70 * TILE_SIZE - camX;
+      const by = 10 * TILE_SIZE + 8 - camY;
+      if (inView(bx, by, 80, 52)) {
+        drawCottage(bx + 4, by + 16, 20, 20, '#8A4E74', '#B4729B');
+        drawCottage(bx + 52, by + 16, 20, 20, '#8A4E74', '#B4729B');
+        drawCottage(bx + 24, by + 6, 28, 26, '#D49A38', '#F2C05A');
+        // Little round guild dome
+        ctx.fillStyle = '#F5C45A';
+        ctx.fillRect(bx + 34, by + 2, 8, 5);
+        ctx.fillStyle = '#68BBE8';
+        ctx.fillRect(bx + 12, by + 38, 52, 5);
+      }
+    }
+  }
+
+  private renderWorldLandmarkBanners(ctx: CanvasRenderingContext2D, packet: PpuFramePacket): void {
+    const { width, camX, camY, heroWorldX, heroWorldY } = packet;
+    const landmarks: readonly { tx: number; ty: number; name: string }[] = [
+      { tx: 16, ty: 44, name: 'HOLLOW OAK GATE' },
+      { tx: 18, ty: 28, name: 'WINDMILL HAMLET' },
+      { tx: 44, ty: 24, name: 'SUNHILL MARKET' },
+      { tx: 44, ty: 13, name: 'CASTLE AURELIA' },
+      { tx: 68, ty: 25, name: 'BRAMBLEWOOD' },
+      { tx: 66, ty: 43, name: 'SUNKEN WATCHTOWER' },
+      { tx: 72, ty: 14, name: 'WHISKERBURGH' },
+    ];
+    ctx.font = 'bold 8px monospace';
+    ctx.textBaseline = 'top';
+    for (const lm of landmarks) {
+      const lx = lm.tx * TILE_SIZE + 8;
+      const ly = lm.ty * TILE_SIZE + 8;
+      const dx = Math.abs(heroWorldX - lx);
+      const dy = Math.abs(heroWorldY - ly);
+      if (dx + dy > 104) continue;
+      const tw = Math.ceil(ctx.measureText(lm.name).width) + 10;
+      const sx = Math.max(4, Math.min(width - tw - 4, Math.round(lx - camX - tw / 2)));
+      const sy = Math.max(4, Math.round(ly - camY - 34));
+      ctx.fillStyle = 'rgba(18, 22, 34, 0.88)';
+      ctx.fillRect(sx, sy, tw, 12);
+      ctx.strokeStyle = '#E8BE5E';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 0.5, sy + 0.5, tw - 1, 11);
+      ctx.fillStyle = '#FFF5D0';
+      ctx.fillText(lm.name, sx + 5, sy + 2);
     }
   }
 

@@ -345,6 +345,14 @@ static void sync_snapshot(void) {
     g_scalars[151] = g_state.ch1_errands_mask;
     g_scalars[152] = g_state.woods_shrines_mask;
     g_scalars[153] = g_state.has_milo_bell ? 1 : 0;
+
+    /* Milestone 3: Evertale Open World Map, Sunhill Market & Early Progression Gating */
+    g_scalars[154] = p->map_w;
+    g_scalars[155] = p->map_h;
+    g_scalars[156] = p->is_world_map ? 1 : 0;
+    g_scalars[157] = g_state.ch2_step;
+    g_scalars[158] = g_state.flag_has_familiar ? 1 : 0;
+    g_scalars[159] = g_state.flag_has_heart_vessel ? 1 : 0;
 }
 
 static void inject_ui_pad(uint16_t mask) {

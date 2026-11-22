@@ -119,21 +119,30 @@ enum {
     ST_INTERIOR_WALL,
     ST_MAPLE_CANOPY,
     ST_PINE_TOP,
-    ST_OAK_CROWN
+    ST_OAK_CROWN,
+    /* Milestone 3: Evertale Open World Map Tiles (55..62 < VRAM_CG_TILE_BASE=64) */
+    ST_WORLD_OCEAN,
+    ST_WORLD_BEACH,
+    ST_WORLD_PEAK,
+    ST_WORLD_FOREST,
+    ST_WORLD_HILL,
+    ST_WORLD_CASTLE,
+    ST_WORLD_TOWN,
+    ST_WORLD_RUINS
 };
 
-#define SPR_TIMED_RING_SLOT  37u  /* OBJ tile 0x8A */
-#define SPR_HERO_DOWN_1      38u  /* OBJ tile 0x8C */
-#define SPR_HERO_UP_0        39u  /* OBJ tile 0x8E */
-#define SPR_HERO_UP_1        40u  /* OBJ tile 0xA0 */
-#define SPR_HERO_SIDE_0      41u  /* OBJ tile 0xA2 */
-#define SPR_HERO_SIDE_1      42u  /* OBJ tile 0xA4 */
-#define SPR_BATTLE_VFX_SLOT  43u  /* OBJ tile 0xA6 */
+#define SPR_TIMED_RING_SLOT  40u  /* OBJ tile 0xA0 */
+#define SPR_HERO_DOWN_1      41u  /* OBJ tile 0xA2 */
+#define SPR_HERO_UP_0        42u  /* OBJ tile 0xA4 */
+#define SPR_HERO_UP_1        43u  /* OBJ tile 0xA6 */
+#define SPR_HERO_SIDE_0      44u  /* OBJ tile 0xA8 */
+#define SPR_HERO_SIDE_1      45u  /* OBJ tile 0xAA */
+#define SPR_BATTLE_VFX_SLOT  46u  /* OBJ tile 0xAC */
 
 /* Tilemap shadow buffers & pixel baker scratchpads in Bank $7E WRAM */
 static u16 g_bg0_map[1024];
 static u16 g_bg1_map[2048];
-static u16 g_world_tile[HEARTH_MAP_CELLS];
+static u16 g_world_tile[HEARTH_MAX_MAP_CELLS];
 static u8  g_pix8[64];
 static u8  g_pix16[256];
 static u8  g_tile32[32];
@@ -602,6 +611,33 @@ static void bake_bg1_terrain_part3(void) {
     upload_bg1_tile(ST_OAK_CROWN);
 }
 
+static void bake_bg1_terrain_part4(void) {
+    /* Milestone 3: Evertale Open World Map Tiles (55..62) */
+    p8_fill(12); p8_rect(1, 2, 3, 1, 13); p8_rect(4, 5, 3, 1, 14);
+    upload_bg1_tile(ST_WORLD_OCEAN);
+
+    p8_fill(8); p8_rect(1, 1, 6, 4, 14); p8_rect(0, 6, 8, 2, 13);
+    upload_bg1_tile(ST_WORLD_BEACH);
+
+    p8_fill(3); p8_rect(0, 4, 8, 4, 9); p8_rect(1, 2, 6, 4, 10); p8_rect(2, 0, 4, 3, 11); p8_rect(3, 0, 2, 2, 14);
+    upload_bg1_tile(ST_WORLD_PEAK);
+
+    p8_fill(2); p8_rect(0, 1, 4, 4, 3); p8_rect(1, 1, 2, 2, 4); p8_rect(4, 3, 4, 4, 3); p8_rect(5, 3, 2, 2, 5);
+    upload_bg1_tile(ST_WORLD_FOREST);
+
+    p8_fill(4); p8_rect(1, 3, 6, 4, 3); p8_rect(2, 2, 4, 3, 5);
+    upload_bg1_tile(ST_WORLD_HILL);
+
+    p8_fill(11); p8_rect(1, 2, 6, 6, 14); p8_rect(1, 0, 2, 2, 12); p8_rect(5, 0, 2, 2, 12); p8_rect(3, 5, 2, 3, 6);
+    upload_bg1_tile(ST_WORLD_CASTLE);
+
+    p8_fill(4); p8_rect(1, 3, 6, 5, 14); p8_rect(0, 1, 8, 3, 15); p8_rect(3, 5, 2, 3, 6);
+    upload_bg1_tile(ST_WORLD_TOWN);
+
+    p8_fill(3); p8_rect(1, 1, 2, 6, 10); p8_rect(5, 2, 2, 5, 9); p8_rect(1, 1, 6, 1, 11);
+    upload_bg1_tile(ST_WORLD_RUINS);
+}
+
 static void bake_bg0_ui_and_font(void) {
     u16 ch;
     u8 y, x, bits;
@@ -834,13 +870,14 @@ static void bake_obj_sprites_part3(void) {
     p16_rect(2, 12, 2, 3, 4);  p16_rect(12, 12, 2, 3, 4);
     upload_obj_sprite16(SPR_NPC_SHADOW_GRAN);
 
-    /* 23: SPR_PET_MILO */
+    /* 23: SPR_PET_MILO (Mido — Amber Mountain Fox-Kit) */
     p16_clear();
-    p16_rect(3, 4, 3, 4, 4);   p16_rect(10, 4, 3, 4, 4);
-    p16_rect(5, 3, 6, 5, 10);  p16_rect(6, 4, 4, 3, 11);
+    p16_rect(4, 1, 2, 3, 4);   p16_rect(10, 1, 2, 3, 4);
+    p16_rect(5, 3, 6, 5, 10);  p16_rect(6, 5, 4, 3, 14);
     g_pix16[86] = 1; g_pix16[89] = 1; g_pix16[119] = 1;
-    p16_rect(5, 8, 6, 2, 9);
-    p16_rect(4, 10, 8, 4, 10); p16_rect(12, 8, 2, 3, 11);
+    p16_rect(4, 8, 8, 2, 9);   g_pix16[151] = 11; g_pix16[152] = 11;
+    p16_rect(4, 10, 8, 4, 10); p16_rect(6, 10, 4, 3, 14);
+    p16_rect(12, 7, 3, 4, 10); p16_rect(13, 6, 2, 2, 14);
     p16_rect(5, 14, 2, 2, 4);  p16_rect(9, 14, 2, 2, 4);
     upload_obj_sprite16(SPR_PET_MILO);
 
@@ -957,6 +994,34 @@ static void bake_obj_sprites_part5(void) {
     p16_rect(2, 12, 3, 3, 10); p16_rect(6, 12, 3, 3, 10); p16_rect(11, 12, 3, 3, 10);
     p16_rect(2, 13, 12, 1, 7);
     upload_obj_sprite16(SPR_LOCOMOTIVE);
+}
+
+static void bake_obj_sprites_part6(void) {
+    /* 37: SPR_NPC_TESSA (Sunhill Baker Tessa) */
+    p16_clear();
+    p16_rect(3, 1, 10, 2, 10); p16_rect(4, 3, 8, 2, 11);
+    p16_rect(5, 5, 6, 3, 2);   g_pix16[102] = 1; g_pix16[105] = 1;
+    p16_rect(4, 8, 8, 6, 5);   p16_rect(6, 9, 4, 5, 15);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_obj_sprite16(SPR_NPC_TESSA);
+
+    /* 38: SPR_NPC_CORIN (Sunhill Archivist Corin) */
+    p16_clear();
+    p16_rect(4, 1, 8, 3, 15);  p16_rect(4, 4, 8, 4, 2);
+    g_pix16[85] = 9; g_pix16[86] = 9; g_pix16[89] = 9; g_pix16[90] = 9;
+    p16_rect(3, 8, 10, 6, 8);  p16_rect(7, 9, 2, 4, 7);
+    p16_rect(12, 3, 2, 12, 11);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_obj_sprite16(SPR_NPC_CORIN);
+
+    /* 39: SPR_NPC_SENTINEL (Castle Aurelia Gate Sentinel) */
+    p16_clear();
+    p16_rect(7, 0, 2, 2, 7);   p16_rect(4, 2, 8, 3, 15);
+    p16_rect(5, 5, 6, 3, 2);   g_pix16[102] = 1; g_pix16[105] = 1;
+    p16_rect(3, 8, 10, 6, 8);  p16_rect(6, 9, 4, 4, 7);
+    p16_rect(13, 1, 2, 14, 15);
+    p16_rect(5, 14, 2, 2, 4);  p16_rect(9, 14, 2, 2, 4);
+    upload_obj_sprite16(SPR_NPC_SENTINEL);
 }
 
 static void bake_obj_sprites_hero_ext(void) {
@@ -1171,7 +1236,7 @@ static void bake_env_windmill_frames(void) {
 /* ============================================================================
  * 6. BG1 SC_64x32 WORLD MAP & BATTLE ARENA STREAMING
  * ============================================================================ */
-static const u16 TERRAIN_TILE_LUT[46] = {
+static const u16 TERRAIN_TILE_LUT[54] = {
     ST_GRASS,          /* 0: T_GRASS */
     ST_GRASS_ALT,      /* 1: T_GRASS_ALT */
     ST_FLOWERS,        /* 2: T_FLOWERS */
@@ -1217,16 +1282,33 @@ static const u16 TERRAIN_TILE_LUT[46] = {
     ST_ATTIC_CHEST,    /* 42: T_ATTIC_CHEST */
     ST_HOLLOW_OAK,     /* 43: T_HOLLOW_OAK */
     ST_STONE_STAIRS,   /* 44: T_STONE_STAIRS */
-    ST_INTERIOR_WALL   /* 45: T_INTERIOR_WALL */
+    ST_INTERIOR_WALL,  /* 45: T_INTERIOR_WALL */
+    ST_WORLD_OCEAN,    /* 46: T_WORLD_OCEAN */
+    ST_WORLD_BEACH,    /* 47: T_WORLD_BEACH */
+    ST_WORLD_PEAK,     /* 48: T_WORLD_PEAK */
+    ST_WORLD_FOREST,   /* 49: T_WORLD_FOREST */
+    ST_WORLD_HILL,     /* 50: T_WORLD_HILL */
+    ST_WORLD_CASTLE,   /* 51: T_WORLD_CASTLE */
+    ST_WORLD_TOWN,     /* 52: T_WORLD_TOWN */
+    ST_WORLD_RUINS     /* 53: T_WORLD_RUINS */
 };
 
+static u16 snes_map_row_off(u16 my) {
+    u16 row = (u16)((my << 5) + (my << 3) + (my << 2)); /* my * 44 */
+    if (g_hearth.map_w == (u8)HEARTH_WORLD_W) {
+        row = (u16)(row << 1); /* my * 88 */
+    }
+    return row;
+}
+
 static void bake_world_tile_cache(void) {
-    u16 idx, ov, t;
-    for (idx = 0u; idx < (u16)HEARTH_MAP_CELLS; idx++) {
+    u16 idx, ov, t, cells;
+    cells = g_hearth.is_world_map ? (u16)HEARTH_MAX_MAP_CELLS : (u16)HEARTH_MAP_CELLS;
+    for (idx = 0u; idx < cells; idx++) {
         ov = (u16)g_hearth.map_bg2[idx];
         if (ov == 0u) {
             t = (u16)g_hearth.map_bg1[idx];
-            g_world_tile[idx] = (t < 46u) ? TERRAIN_TILE_LUT[t] : (u16)ST_GRASS;
+            g_world_tile[idx] = (t < 54u) ? TERRAIN_TILE_LUT[t] : (u16)ST_GRASS;
         } else if (ov == O_ROOF_EAVE) {
             g_world_tile[idx] = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
         } else if (ov == O_SHRINE_ARCH) {
@@ -1244,8 +1326,13 @@ static void bake_world_tile_cache(void) {
 }
 
 static void stream_world_col(s16 mx, s16 my_start) {
-    u16 half_col, row_off, off, k, entry, idx, idx_valid;
-    s16 my;
+    u16 half_col, row_off, off, k, entry, idx, idx_valid, oob_tile, step_w;
+    s16 my, mw, mh;
+
+    mw = (s16)(g_hearth.map_w ? g_hearth.map_w : HEARTH_MAP_W);
+    mh = (s16)(g_hearth.map_h ? g_hearth.map_h : HEARTH_MAP_H);
+    step_w = (u16)mw;
+    oob_tile = g_hearth.is_world_map ? (u16)ST_WORLD_OCEAN : (u16)ST_BUSH;
 
     half_col = (u16)(((u16)mx & 15u) << 1);
     if (((u16)mx & 16u) == 0u) {
@@ -1256,8 +1343,8 @@ static void stream_world_col(s16 mx, s16 my_start) {
     }
     row_off = (u16)(((u16)my_start & 15u) << 6);
 
-    if (mx < 0 || mx >= HEARTH_MAP_W) {
-        entry = (u16)ST_BUSH;
+    if (mx < 0 || mx >= mw) {
+        entry = oob_tile;
         for (k = 0u; k < 16u; k++) {
             off = (u16)(half_col + row_off);
             g_bg1_map[off]              = entry;
@@ -1273,15 +1360,15 @@ static void stream_world_col(s16 mx, s16 my_start) {
     idx = 0u;
     idx_valid = 0u;
     for (k = 0u; k < 16u; k++, my++) {
-        if (my < 0 || my >= HEARTH_MAP_H) {
-            entry = (u16)ST_BUSH;
+        if (my < 0 || my >= mh) {
+            entry = oob_tile;
         } else {
             if (!idx_valid) {
-                idx = (u16)(((u16)my << 5) + ((u16)my << 3) + ((u16)my << 2) + (u16)mx);
+                idx = (u16)(snes_map_row_off((u16)my) + (u16)mx);
                 idx_valid = 1u;
             }
             entry = g_world_tile[idx];
-            idx += (u16)HEARTH_MAP_W;
+            idx = (u16)(idx + step_w);
         }
         off = (u16)(half_col + row_off);
         g_bg1_map[off]              = entry;
@@ -1293,8 +1380,12 @@ static void stream_world_col(s16 mx, s16 my_start) {
 }
 
 static void stream_world_row(s16 mx_start, s16 my) {
-    u16 row_off, off, k, entry, idx;
-    s16 mx;
+    u16 row_off, off, k, entry, idx, oob_tile;
+    s16 mx, mw, mh;
+
+    mw = (s16)(g_hearth.map_w ? g_hearth.map_w : HEARTH_MAP_W);
+    mh = (s16)(g_hearth.map_h ? g_hearth.map_h : HEARTH_MAP_H);
+    oob_tile = g_hearth.is_world_map ? (u16)ST_WORLD_OCEAN : (u16)ST_BUSH;
 
     row_off = (u16)(((u16)my & 15u) << 6);
     g_bg1_dirty_l = 1;
@@ -1304,8 +1395,8 @@ static void stream_world_row(s16 mx_start, s16 my) {
     off = (u16)(row_off + (((u16)mx & 15u) << 1));
     if (((u16)mx & 16u) != 0u) off = (u16)(off + 1024u);
 
-    if (my < 0 || my >= HEARTH_MAP_H) {
-        entry = (u16)ST_BUSH;
+    if (my < 0 || my >= mh) {
+        entry = oob_tile;
         for (k = 0u; k < 18u; k++) {
             g_bg1_map[off]              = entry;
             g_bg1_map[(u16)(off + 1u)]  = entry;
@@ -1317,8 +1408,8 @@ static void stream_world_row(s16 mx_start, s16 my) {
         return;
     }
 
-    idx = (u16)(((u16)my << 5) + ((u16)my << 3) + ((u16)my << 2));
-    if (mx >= 0 && (s16)(mx + 18) <= HEARTH_MAP_W) {
+    idx = snes_map_row_off((u16)my);
+    if (mx >= 0 && (s16)(mx + 18) <= mw) {
         /* Fast interior path: zero per-tile bounds checks */
         idx = (u16)(idx + (u16)mx);
         for (k = 0u; k < 18u; k++) {
@@ -1334,7 +1425,7 @@ static void stream_world_row(s16 mx_start, s16 my) {
     }
 
     for (k = 0u; k < 18u; k++, mx++) {
-        entry = (mx < 0 || mx >= HEARTH_MAP_W) ? (u16)ST_BUSH : g_world_tile[(u16)(idx + (u16)mx)];
+        entry = (mx < 0 || mx >= mw) ? oob_tile : g_world_tile[(u16)(idx + (u16)mx)];
         g_bg1_map[off]              = entry;
         g_bg1_map[(u16)(off + 1u)]  = entry;
         g_bg1_map[(u16)(off + 32u)] = entry;
@@ -1414,6 +1505,7 @@ static u8 *snes_cg_tiles_ptr(u8 p) {
         case 6u: return (u8 *)&cg_plate6_tiles;
         case 7u: return (u8 *)&cg_plate7_tiles;
         case 8u: return (u8 *)&cg_plate8_tiles;
+        case 9u: return (u8 *)&cg_plate9_tiles;
         default: return (u8 *)&cg_plate0_tiles;
     }
 }
@@ -1428,6 +1520,7 @@ static const u16 *snes_cg_map_ptr(u8 p) {
         case 6u: return (const u16 *)&cg_plate6_map;
         case 7u: return (const u16 *)&cg_plate7_map;
         case 8u: return (const u16 *)&cg_plate8_map;
+        case 9u: return (const u16 *)&cg_plate9_map;
         default: return (const u16 *)&cg_plate0_map;
     }
 }
@@ -1442,6 +1535,7 @@ static u8 *snes_cg_pal_ptr(u8 p) {
         case 6u: return (u8 *)&cg_plate6_pal;
         case 7u: return (u8 *)&cg_plate7_pal;
         case 8u: return (u8 *)&cg_plate8_pal;
+        case 9u: return (u8 *)&cg_plate9_pal;
         default: return (u8 *)&cg_plate0_pal;
     }
 }
@@ -2070,8 +2164,8 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
 /* ============================================================================
  * 8. SNES HARDWARE OAM SPRITE RENDERER (Direct oamMemory[] Shadow Writes)
  * ============================================================================ */
-/* Pre-combined 16-bit word: ((0x20 | (pal << 1)) << 8) | tile (37 core sprites) */
-static const u16 SPR_TILE_ATTR_LUT[37] = {
+/* Pre-combined 16-bit word: ((0x20 | (pal << 1)) << 8) | tile (40 core sprites) */
+static const u16 SPR_TILE_ATTR_LUT[40] = {
     0x2200u, 0x2202u, 0x2204u, 0x2206u, /* 0..3: Hero, Pip, Bramble, Lumina (PAL1) */
     0x2408u, 0x240Au, 0x240Cu,          /* 4..6: Elder, Clara, Guard (PAL2) */
     0x260Eu, 0x2620u, 0x2622u, 0x2624u, /* 7..10: Gloomcap, Thornling, DuskMoth, Briar (PAL3) */
@@ -2079,23 +2173,24 @@ static const u16 SPR_TILE_ATTR_LUT[37] = {
     0x262Cu, 0x262Eu, 0x2640u, 0x2642u, 0x2644u, /* 14..18: Emotes + Heart Orb (PAL3) */
     0x2446u, 0x2448u, 0x244Au,          /* 19..21: Chest Open, Mouse, Pig (PAL2) */
     0x264Cu,                            /* 22: Shadow Grandma (PAL3) */
-    0x224Eu,                            /* 23: Milo Puppy (PAL1) */
+    0x224Eu,                            /* 23: Mido Fox-Kit (PAL1) */
     0x2660u, 0x2662u, 0x2664u, 0x2666u, 0x2668u, /* 24..28: Rat, Slime, Boar, Muckmaw, Ironfang (PAL3) */
     0x246Au,                            /* 29: Hollow Oak (PAL2) */
     0x226Cu,                            /* 30: Fishing Bobber (PAL1) */
     0x246Eu,                            /* 31: Alderbrook Townsfolk (PAL2) */
-    0x2480u, 0x2482u, 0x2484u, 0x2486u, 0x2488u  /* 32..36: Mara, Barnaby, Maple, Jasper, Locomotive (PAL2) */
+    0x2480u, 0x2482u, 0x2484u, 0x2486u, 0x2488u, /* 32..36: Mara, Barnaby, Maple, Jasper, Locomotive (PAL2) */
+    0x248Au, 0x248Cu, 0x248Eu           /* 37..39: Tessa, Corin, Sentinel (PAL2) */
 };
 
 static const u16 HERO_TA_LUT[8] = {
     0x2200u, /* 0: DOWN  step 0 (slot 0,  tile 0x00) */
-    0x228Eu, /* 1: UP    step 0 (slot 39, tile 0x8E) */
-    0x62A2u, /* 2: LEFT  step 0 (slot 41, tile 0xA2 + H-flip) */
-    0x22A2u, /* 3: RIGHT step 0 (slot 41, tile 0xA2) */
-    0x228Cu, /* 4: DOWN  step 1 (slot 38, tile 0x8C) */
-    0x22A0u, /* 5: UP    step 1 (slot 40, tile 0xA0) */
-    0x62A4u, /* 6: LEFT  step 1 (slot 42, tile 0xA4 + H-flip) */
-    0x22A4u  /* 7: RIGHT step 1 (slot 42, tile 0xA4) */
+    0x22A4u, /* 1: UP    step 0 (slot 42, tile 0xA4) */
+    0x62A8u, /* 2: LEFT  step 0 (slot 44, tile 0xA8 + H-flip) */
+    0x22A8u, /* 3: RIGHT step 0 (slot 44, tile 0xA8) */
+    0x22A2u, /* 4: DOWN  step 1 (slot 41, tile 0xA2) */
+    0x22A6u, /* 5: UP    step 1 (slot 43, tile 0xA6) */
+    0x62AAu, /* 6: LEFT  step 1 (slot 45, tile 0xAA + H-flip) */
+    0x22AAu  /* 7: RIGHT step 1 (slot 45, tile 0xAA) */
 };
 
 static const u8 HI_TAIL_MASK[4] = { 0x00u, 0x54u, 0x50u, 0x40u };
@@ -2131,7 +2226,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             if (sid == 0u) {
                 ta = HERO_TA_LUT[(flg >> 3) & 7u];
             } else {
-                if (sid >= 37u) sid = 0u;
+                if (sid >= 40u) sid = 0u;
                 ta = SPR_TILE_ATTR_LUT[sid];
                 if (flg & OAM_FLAG_FLIP_X) ta |= 0x4000u;
             }
@@ -2165,7 +2260,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
                 oamMemory[oidx]             = (u8)sx;
                 oamMemory[(u16)(oidx + 1u)] = (u8)sy;
-                oamMemory[(u16)(oidx + 2u)] = 0xA6u;
+                oamMemory[(u16)(oidx + 2u)] = 0xACu;
                 oamMemory[(u16)(oidx + 3u)] = (u8)rpal;
                 oidx = (u16)(oidx + 4u);
                 hi_mask <<= 2;
@@ -2190,7 +2285,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
                 oamMemory[oidx]             = (u8)sx;
                 oamMemory[(u16)(oidx + 1u)] = (u8)sy;
-                oamMemory[(u16)(oidx + 2u)] = 0x8Au;
+                oamMemory[(u16)(oidx + 2u)] = 0xA0u;
                 oamMemory[(u16)(oidx + 3u)] = (u8)rpal;
                 oidx = (u16)(oidx + 4u);
                 hi_mask <<= 2;
@@ -2418,12 +2513,14 @@ int main(void) {
     bake_bg1_terrain_part1();
     bake_bg1_terrain_part2();
     bake_bg1_terrain_part3();
+    bake_bg1_terrain_part4();
     bake_bg0_ui_and_font();
     bake_obj_sprites_part1();
     bake_obj_sprites_part2();
     bake_obj_sprites_part3();
     bake_obj_sprites_part4();
     bake_obj_sprites_part5();
+    bake_obj_sprites_part6();
     bake_obj_sprites_hero_ext();
     bake_env_bg_frames();
     bake_env_windmill_frames();
