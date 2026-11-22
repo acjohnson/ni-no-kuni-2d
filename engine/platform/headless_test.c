@@ -141,6 +141,53 @@ int main(void) {
         CHECK(active_world_enemies == 0, "Evertale World Map is 100%% peaceful before bonding first Familiar");
     }
 
+    /* Verify Hollow Oak arrival (16,46) can freely walk out and reach ALL 7 landmarks on foot! */
+    {
+        static uint8_t vis[HEARTH_MAX_MAP_CELLS];
+        static uint16_t q[HEARTH_MAX_MAP_CELLS];
+        int head = 0, tail = 0, reachable_count = 0;
+        int start_idx = 46 * HEARTH_WORLD_W + 16;
+        hearth_memset(vis, 0, (uint16_t)sizeof(vis));
+        CHECK(g_st.map_col[start_idx] == COL_WALKABLE, "Hollow Oak arrival tile (16,46) is walkable");
+        vis[start_idx] = 1;
+        q[tail++] = (uint16_t)start_idx;
+        while (head < tail) {
+            int cur = q[head++];
+            int cx = cur % HEARTH_WORLD_W;
+            int cy = cur / HEARTH_WORLD_W;
+            const int dx[4] = { 1, -1, 0, 0 };
+            const int dy[4] = { 0, 0, 1, -1 };
+            reachable_count++;
+            for (int d = 0; d < 4; d++) {
+                int nx = cx + dx[d];
+                int ny = cy + dy[d];
+                if (nx >= 0 && ny >= 0 && nx < HEARTH_WORLD_W && ny < HEARTH_WORLD_H) {
+                    int nidx = ny * HEARTH_WORLD_W + nx;
+                    if (!vis[nidx] && g_st.map_col[nidx] == COL_WALKABLE) {
+                        vis[nidx] = 1;
+                        q[tail++] = (uint16_t)nidx;
+                    }
+                }
+            }
+        }
+        CHECK(reachable_count > 1200, "Hollow Oak arrival connects to >1200 walkable Evertale overworld tiles");
+        CHECK(vis[44 * HEARTH_WORLD_W + 16], "Hollow Oak Gate portal (16,44) reachable");
+        CHECK(vis[28 * HEARTH_WORLD_W + 18] && vis[29 * HEARTH_WORLD_W + 18], "Windmill Hamlet (18,28) reachable from Hollow Oak");
+        CHECK(vis[24 * HEARTH_WORLD_W + 44] && vis[25 * HEARTH_WORLD_W + 44], "Sunhill Market (44,24) reachable from Hollow Oak");
+        CHECK(vis[13 * HEARTH_WORLD_W + 44] && vis[14 * HEARTH_WORLD_W + 44], "Castle Aurelia (44,13) reachable from Hollow Oak");
+        CHECK(vis[25 * HEARTH_WORLD_W + 68] && vis[26 * HEARTH_WORLD_W + 68], "Bramblewood Crossing (68,25) reachable from Hollow Oak");
+        CHECK(vis[43 * HEARTH_WORLD_W + 66] && vis[44 * HEARTH_WORLD_W + 66], "Sunken Watchtower (66,43) reachable from Hollow Oak");
+        CHECK(vis[14 * HEARTH_WORLD_W + 72] && vis[15 * HEARTH_WORLD_W + 72], "Whiskerburgh (72,14) reachable from Hollow Oak");
+
+        /* Also verify Rowan can physically walk east & north out of Hollow Oak clearing */
+        fp16_t hx0 = g_st.hero_fx;
+        fp16_t hy0 = g_st.hero_fy;
+        for (int f = 0; f < 65; f++) hearth_step_60hz(&g_st, PAD_RIGHT);
+        for (int f = 0; f < 65; f++) hearth_step_60hz(&g_st, PAD_UP);
+        CHECK(g_st.hero_fx > hx0 + TO_FP(70) && g_st.hero_fy < hy0 - TO_FP(70),
+              "Rowan physically walks east & north out of Hollow Oak Grove onto Evertale roads");
+    }
+
     /* Visit non-main landmarks early (Castle Aurelia Gate & peaceful Windmill Hamlet) */
     hearth_enter_zone(&g_st, ZONE_CASTLE_GATE, 21, 13);
     CHECK(g_st.zone_id == ZONE_CASTLE_GATE && g_st.npcs[0].sprite_id == SPR_NPC_SENTINEL, "Castle Aurelia Gatehouse enterable with Royal Sentinels");

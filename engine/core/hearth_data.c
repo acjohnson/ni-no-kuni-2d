@@ -986,8 +986,13 @@ static void build_zone_evertale_world(uint8_t *bg1, uint8_t *bg2, uint8_t *col) 
             int dy = y - 28;
             int edge = (dx * dx) / 36 + (dy * dy) / 15;
             int wobble = ((x * 13 + y * 29) & 7) - 3;
-            if (edge + wobble < 42) {
-                if (edge + wobble >= 37) {
+            int sw_dx = x - 18;
+            int sw_dy = y - 43;
+            int sw_edge = (sw_dx * sw_dx) / 4 + (sw_dy * sw_dy);
+            int in_continent = (edge + wobble < 42) || (sw_edge + (wobble / 2) < 42);
+            if (in_continent) {
+                int is_beach = ((edge + wobble >= 37) && (sw_edge + (wobble / 2) >= 34));
+                if (is_beach) {
                     wset_bg1(bg1, col, x, y, T_WORLD_BEACH, COL_WALKABLE);
                 } else {
                     hash = (x * 37 + y * 53) & 15;
@@ -1014,12 +1019,14 @@ static void build_zone_evertale_world(uint8_t *bg1, uint8_t *bg2, uint8_t *col) 
     wfill_rect(bg1, col, 28, 44, 6, 3, T_WORLD_PEAK, COL_SOLID);
     wfill_rect(bg1, col, 55, 16, 4, 3, T_WORLD_PEAK, COL_SOLID);
 
-    /* 4. Western Mirror Lake (beside Windmill Hamlet) & Winding Sapphire River */
+    /* 4. Western Mirror Lake (beside Windmill Hamlet) & Smooth Winding Sapphire River */
     wfill_rect(bg1, col, 10, 21, 7, 5, T_WATER, COL_WATER);
     wfill_rect(bg1, col, 11, 20, 5, 1, T_WORLD_BEACH, COL_WALKABLE);
     for (y = 9; y <= 50; y++) {
-        rx = 56 + ((y < 22) ? -2 : ((y > 36) ? 3 : 0));
-        if (y >= 26 && y <= 34) rx = 56 + (y - 26) / 3;
+        if (y < 22)      rx = 54;
+        else if (y < 28) rx = 56;
+        else if (y < 36) rx = 57;
+        else             rx = 58;
         wset_bg1(bg1, col, rx,     y, T_WATER, COL_WATER);
         wset_bg1(bg1, col, rx + 1, y, T_WATER, COL_WATER);
     }
@@ -1033,14 +1040,18 @@ static void build_zone_evertale_world(uint8_t *bg1, uint8_t *bg2, uint8_t *col) 
     }
 
     /* 5. Lush Storybook Forest Belts (Emerald Overworld Canopy Clusters!) */
-    /* Southwest Hollow Oak Grove */
-    wfill_rect(bg1, col, 11, 41, 11, 6, T_WORLD_FOREST, COL_SOLID);
-    wfill_rect(bg1, col, 14, 43, 5, 4, T_GRASS, COL_WALKABLE); /* Clearing around Hollow Oak */
+    /* Southwest Hollow Oak Grove: scenic trees frame the WEST & NORTHWEST only,
+     * opening wide eastward & northward onto sunlit roads so Rowan walks right out! */
+    wfill_rect(bg1, col, 10, 41, 4, 6, T_WORLD_FOREST, COL_SOLID);
+    wfill_rect(bg1, col, 13, 40, 5, 2, T_WORLD_FOREST, COL_SOLID);
+    wfill_rect(bg1, col, 14, 42, 9, 6, T_GRASS, COL_WALKABLE); /* Wide sunlit glade around Hollow Oak */
+    wset_bg1(bg1, col, 19, 43, T_FLOWERS, COL_WALKABLE);
+    wset_bg1(bg1, col, 21, 44, T_FLOWERS, COL_WALKABLE);
     /* Central Emerald Wood between Hamlet & Sunhill */
     wfill_rect(bg1, col, 26, 17, 7, 5, T_WORLD_FOREST, COL_SOLID);
     /* Deep Bramblewood Forest (Eastern Continent!) */
     wfill_rect(bg1, col, 63, 21, 13, 9, T_WORLD_FOREST, COL_SOLID);
-    wfill_rect(bg1, col, 66, 25, 4, 4, T_GRASS, COL_WALKABLE); /* Bramblewood Entrance Clearing */
+    wfill_rect(bg1, col, 66, 25, 4, 5, T_GRASS, COL_WALKABLE); /* Bramblewood Entrance Clearing (open south too) */
     /* Southern Pine & Oak Groves */
     wfill_rect(bg1, col, 37, 36, 8, 5, T_WORLD_FOREST, COL_SOLID);
     wfill_rect(bg1, col, 48, 41, 6, 4, T_WORLD_FOREST, COL_SOLID);
@@ -1050,43 +1061,53 @@ static void build_zone_evertale_world(uint8_t *bg1, uint8_t *bg2, uint8_t *col) 
     wfill_rect(bg1, col, 39, 9,  11, 6, T_WORLD_HILL, COL_WALKABLE);
 
     /* 7. Winding Golden Dirt & Cobble Roads + Stone Bridges (inviting open discovery!) */
-    /* Hollow Oak (16,46) -> North Crossroads (24,36) -> Windmill Hamlet (18,30) */
-    wfill_rect(bg1, col, 16, 45, 2, 3, T_DIRT, COL_WALKABLE);
-    wfill_rect(bg1, col, 16, 36, 10, 2, T_DIRT, COL_WALKABLE);
-    wfill_rect(bg1, col, 17, 30, 2, 8, T_DIRT, COL_WALKABLE);
-    /* Crossroads (24,36) -> East across Creek Bridge (32,34) -> Central Meadow (44,34) */
+    /* Hollow Oak (16,45..46) -> East out of the grove -> North Crossroads (22,35) & Windmill Hamlet (18,28) */
+    wfill_rect(bg1, col, 16, 45, 9, 2, T_DIRT, COL_WALKABLE); /* Wide golden path leading east from Rowan's arrival */
+    wfill_rect(bg1, col, 22, 34, 3, 12, T_DIRT, COL_WALKABLE); /* Main northbound avenue out of Hollow Oak Grove */
+    wfill_rect(bg1, col, 18, 36, 2, 10, T_DIRT, COL_WALKABLE); /* Scenic woodland trail north from Hollow Oak */
+    wfill_rect(bg1, col, 17, 36, 8, 2, T_DIRT, COL_WALKABLE);  /* Crossroads connector */
+    wfill_rect(bg1, col, 17, 28, 2, 10, T_DIRT, COL_WALKABLE); /* Road up to Windmill Hamlet */
+    /* Crossroads (24,34) -> East across Creek Bridge (32,34) -> Central Meadow (44,34) */
     wfill_rect(bg1, col, 24, 34, 22, 2, T_DIRT, COL_WALKABLE);
     wset_bg1(bg1, col, 32, 34, T_BRIDGE, COL_WALKABLE);
     wset_bg1(bg1, col, 32, 35, T_BRIDGE, COL_WALKABLE);
-    /* Windmill Hamlet (20,28) -> Northern Meadow Bridge (26,26) -> Sunhill Market (44,26) */
+    /* Windmill Hamlet (19,27) -> Northern Creek Bridge (29..32,27) -> Sunhill Market (44,27) */
     wfill_rect(bg1, col, 19, 27, 26, 2, T_DIRT, COL_WALKABLE);
-    wset_bg1(bg1, col, 25, 26, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 26, 26, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 26, 27, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 27, 27, T_BRIDGE, COL_WALKABLE);
-    /* Central Avenue: South Meadow -> Sunhill Market (44,25) -> Royal Ascent -> Castle Aurelia (44,14) */
+    wset_bg1(bg1, col, 29, 27, T_BRIDGE, COL_WALKABLE);
+    wset_bg1(bg1, col, 30, 27, T_BRIDGE, COL_WALKABLE);
+    wset_bg1(bg1, col, 31, 27, T_BRIDGE, COL_WALKABLE);
+    wset_bg1(bg1, col, 32, 27, T_BRIDGE, COL_WALKABLE);
+    wset_bg1(bg1, col, 32, 28, T_BRIDGE, COL_WALKABLE);
+    /* Central Avenue: South Meadow -> Sunhill Market (44,24) -> Cobble Terrace -> Castle Aurelia (44,13) */
     wfill_rect(bg1, col, 43, 14, 3, 21, T_COBBLE, COL_WALKABLE);
-    /* Eastern Road: Sunhill (46,25) -> Sapphire River Bridge (56,25) -> Bramblewood (68,26) */
+    wfill_rect(bg1, col, 41, 20, 1, 5,  T_COBBLE, COL_WALKABLE); /* West Sunhill bypass to Castle Aurelia */
+    wfill_rect(bg1, col, 47, 20, 1, 5,  T_COBBLE, COL_WALKABLE); /* East Sunhill bypass to Castle Aurelia */
+    wfill_rect(bg1, col, 41, 20, 7, 1,  T_COBBLE, COL_WALKABLE); /* North Sunhill terrace linking to royal avenue */
+    /* Eastern Road: Sunhill (46,25) -> Sapphire River Bridge (55..58,25..26) -> Bramblewood (68,26) */
     wfill_rect(bg1, col, 46, 25, 22, 2, T_DIRT, COL_WALKABLE);
     wset_bg1(bg1, col, 55, 25, T_BRIDGE, COL_WALKABLE);
     wset_bg1(bg1, col, 56, 25, T_BRIDGE, COL_WALKABLE);
     wset_bg1(bg1, col, 57, 25, T_BRIDGE, COL_WALKABLE);
+    wset_bg1(bg1, col, 58, 25, T_BRIDGE, COL_WALKABLE);
     wset_bg1(bg1, col, 55, 26, T_BRIDGE, COL_WALKABLE);
     wset_bg1(bg1, col, 56, 26, T_BRIDGE, COL_WALKABLE);
     wset_bg1(bg1, col, 57, 26, T_BRIDGE, COL_WALKABLE);
+    wset_bg1(bg1, col, 58, 26, T_BRIDGE, COL_WALKABLE);
     /* Northeast Road: East Bank (61,25) -> North -> Whiskerburgh (72,15) */
     wfill_rect(bg1, col, 61, 15, 2, 11, T_DIRT, COL_WALKABLE);
     wfill_rect(bg1, col, 61, 15, 12, 2, T_DIRT, COL_WALKABLE);
-    /* Southeast Coastal Road: South Bridge (58,39) -> Sunken Watchtower (66,44) */
-    wfill_rect(bg1, col, 45, 34, 15, 2, T_DIRT, COL_WALKABLE);
+    /* Southeast Coastal Road: South Bridge (56..59,34..35) -> Sunken Watchtower (66,44) */
+    wfill_rect(bg1, col, 45, 34, 16, 2, T_DIRT, COL_WALKABLE);
     wfill_rect(bg1, col, 59, 34, 2, 11, T_DIRT, COL_WALKABLE);
     wfill_rect(bg1, col, 59, 44, 8, 2, T_DIRT, COL_WALKABLE);
+    wset_bg1(bg1, col, 56, 34, T_BRIDGE, COL_WALKABLE);
+    wset_bg1(bg1, col, 57, 34, T_BRIDGE, COL_WALKABLE);
     wset_bg1(bg1, col, 58, 34, T_BRIDGE, COL_WALKABLE);
     wset_bg1(bg1, col, 59, 34, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 60, 34, T_BRIDGE, COL_WALKABLE);
+    wset_bg1(bg1, col, 56, 35, T_BRIDGE, COL_WALKABLE);
+    wset_bg1(bg1, col, 57, 35, T_BRIDGE, COL_WALKABLE);
     wset_bg1(bg1, col, 58, 35, T_BRIDGE, COL_WALKABLE);
     wset_bg1(bg1, col, 59, 35, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 60, 35, T_BRIDGE, COL_WALKABLE);
 
     /* 8. IMPRESSIVE MULTI-TILE STORYBOOK LANDMARKS (Tile Clusters + High-Detail Overlays!) */
     /* A. Hollow Oak Gate (Southwest Grove: 15..17, 43..44) */
