@@ -62,7 +62,7 @@ const uint32_t HEARTH_PALETTES_RGB[4][16] = {
     }
 };
 
-/* 6 x 16-Color Dynamic Zone Terrain Palettes (Swapped into PAL0 per zone!) */
+/* 10 x 16-Color Dynamic Zone & Time-of-Day Terrain Palettes (Loaded into PAL0) */
 const uint32_t HEARTH_ZONE_PALETTES_RGB[ZPAL_COUNT][16] = {
     /* ZPAL_HAMLET (0): Vivid Sunlit Meadow & Azure Creek */
     {
@@ -71,12 +71,12 @@ const uint32_t HEARTH_ZONE_PALETTES_RGB[ZPAL_COUNT][16] = {
         0xDFBA84u, 0x4C5868u, 0x8591A0u, 0xC4CBD4u,
         0x2D699Eu, 0x4D9CD0u, 0x9AD8F4u, 0xB5483Au
     },
-    /* ZPAL_ALDERBROOK (1): Warm Golden Late-Afternoon Hometown */
+    /* ZPAL_ALDERBROOK (1): Crisp Autumn Mountain Afternoon (Ochre, Slate, Spruce & Crimson Maple) */
     {
-        0x000000u, 0x231E22u, 0x3E593Cu, 0x5C7D4Cu,
-        0x84A262u, 0xB8C97Eu, 0x784834u, 0xB87A4Eu,
-        0xE4BE88u, 0x485064u, 0x7E8698u, 0xD2C8BAu,
-        0x36648Cu, 0x5A8FB8u, 0xA6D0E8u, 0xC2523Cu
+        0x000000u, 0x1D1920u, 0x284234u, 0x5E6B38u,
+        0x9E843Cu, 0xDC9E3Au, 0x633B28u, 0x9C633Bu,
+        0xE5C48Au, 0x3E4452u, 0x6E7584u, 0xC6CDD6u,
+        0x275478u, 0x4A86B2u, 0xB8E0F2u, 0xC4402Eu
     },
     /* ZPAL_WHISKERBURGH (2): Bright Ghibli Mouse Market (Cream, Terracotta & Cheese-Gold) */
     {
@@ -105,6 +105,34 @@ const uint32_t HEARTH_ZONE_PALETTES_RGB[ZPAL_COUNT][16] = {
         0x583E80u, 0x8462AAu, 0x3E2640u, 0x644068u,
         0xA078A8u, 0x2A223Cu, 0x52466Au, 0x8A7EA4u,
         0x221A48u, 0x3C2E74u, 0x8A6ED0u, 0xC84272u
+    },
+    /* ZPAL_AUTUMN_MORNING (6): Rose-Gold Mountain Dawn Mist */
+    {
+        0x000000u, 0x221C2Au, 0x2C463Cu, 0x627248u,
+        0xA89252u, 0xE6B05Cu, 0x6A4234u, 0xA8724Cu,
+        0xF4D4A4u, 0x4A4860u, 0x828098u, 0xE2D8E4u,
+        0x3C628Cu, 0x6A96C0u, 0xD8ECF8u, 0xD65842u
+    },
+    /* ZPAL_AUTUMN_DUSK (7): Copper-Amber Alpine Sunset & Glowing Lamps */
+    {
+        0x000000u, 0x1E1420u, 0x283630u, 0x5E4C32u,
+        0x9C6834u, 0xE8963Cu, 0x582E24u, 0x944C30u,
+        0xFFE088u, 0x3C3046u, 0x6C5A72u, 0xC89E9Au,
+        0x343866u, 0x685E8Cu, 0xE8B49Cu, 0xD8442Eu
+    },
+    /* ZPAL_AUTUMN_NIGHT (8): Moonlit Indigo Ridge, Silver Rapids & Warm Lanterns */
+    {
+        0x000000u, 0x0E121Eu, 0x1B2E32u, 0x2E4048u,
+        0x485862u, 0x7A8478u, 0x2C2434u, 0x4C3E4Eu,
+        0xF4C458u, 0x222C44u, 0x465674u, 0xB0C2DCu,
+        0x183258u, 0x325E92u, 0x9AC8ECu, 0xB85242u
+    },
+    /* ZPAL_COTTAGE_INTERIOR (9): Cozy Honey Cedar Planks, Hearthstone & Burgundy Rug */
+    {
+        0x000000u, 0x1E1412u, 0x2F4B38u, 0x52744Au,
+        0x8CA25Eu, 0xDCAA4Eu, 0x683C22u, 0xA4683Cu,
+        0xECD096u, 0x484246u, 0x7C7478u, 0xCCC4BAu,
+        0x2A486Eu, 0x527EA8u, 0xB4D8EEu, 0xBA3C32u
     }
 };
 
@@ -113,12 +141,22 @@ const char * const HEARTH_ZONE_NAMES[ZONE_COUNT] = {
     "Windmill Hamlet",
     "Whiskerburgh",
     "Sunken Sewers",
-    "Boarhold Citadel"
+    "Boarhold Citadel",
+    "Rowan's Cottage",
+    "Whispering Woods",
+    "Hollow Glade"
+};
+
+const char * const HEARTH_TOD_NAMES[4] = {
+    "Morning",
+    "Afternoon",
+    "Dusk",
+    "Moonlit Night"
 };
 
 const HearthFishInfo HEARTH_FISH_TABLE[HEARTH_FISH_SPECIES] = {
     { "Sun Carp",       18u, 22u, 0u, ZONE_HAMLET,       1u },
-    { "Meadow Trout",   26u, 32u, 0u, ZONE_HAMLET,       2u },
+    { "Meadow Trout",   26u, 32u, 0u, ZONE_ALDERBROOK,   2u },
     { "Whisker Perch",  36u, 38u, 0u, ZONE_WHISKERBURGH, 2u },
     { "Sewer Glow-Eel", 55u, 48u, 0u, ZONE_SEWERS,       3u },
     { "Golden Koi",     90u, 65u, 1u, 255u,              4u },
@@ -178,6 +216,22 @@ static void place_tree(uint8_t *bg1, uint8_t *bg2, uint8_t *col, int tx, int ty)
     set_bg2(bg2, tx + 1, ty - 1, O_CANOPY_BR);
 }
 
+static void place_autumn_maple(uint8_t *bg1, uint8_t *bg2, uint8_t *col, int tx, int ty) {
+    set_bg1(bg1, col, tx, ty, T_MAPLE_TRUNK, COL_SOLID);
+    set_bg2(bg2, tx - 1, ty - 2, O_MAPLE_TL);
+    set_bg2(bg2, tx,     ty - 2, O_MAPLE_TR);
+    set_bg2(bg2, tx + 1, ty - 2, O_MAPLE_TR);
+    set_bg2(bg2, tx - 1, ty - 1, O_MAPLE_TL);
+    set_bg2(bg2, tx,     ty - 1, O_MAPLE_TR);
+    set_bg2(bg2, tx + 1, ty - 1, O_MAPLE_TR);
+}
+
+static void place_alpine_pine(uint8_t *bg1, uint8_t *bg2, uint8_t *col, int tx, int ty) {
+    set_bg1(bg1, col, tx, ty, T_PINE_TRUNK, COL_SOLID);
+    set_bg2(bg2, tx, ty - 2, O_PINE_TOP);
+    set_bg2(bg2, tx, ty - 1, O_PINE_TOP);
+}
+
 static void place_cottage(uint8_t *bg1, uint8_t *bg2, uint8_t *col, int x0, int y0) {
     int x;
     fill_rect(bg1, col, x0, y0, 5, 1, T_ROOF_TOP, COL_SOLID);
@@ -207,66 +261,366 @@ static void fill_perimeter(uint8_t *bg1, uint8_t *col, uint8_t border_tile) {
 }
 
 /* ============================================================================
- * ZONE 0: ALDERBROOK (Rowan's Quiet Real-World Hometown + Ancient Hollow Oak)
+ * ZONE 5: ROWAN'S CEDAR COTTAGE INTERIOR (Hearth, Bedroom & Attic Loft)
+ * ============================================================================ */
+static void build_zone_rowan_home(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
+    hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);
+    /* Outer dark timber framing around snug centered interior */
+    fill_rect(bg1, col, 0, 0, HEARTH_MAP_W, HEARTH_MAP_H, T_INTERIOR_WALL, COL_SOLID);
+
+    /* Main Cottage Floor: Honey Cedar Planks (x=13..30, y=8..19) */
+    fill_rect(bg1, col, 13, 8, 18, 12, T_WOOD_FLOOR, COL_WALKABLE);
+
+    /* North Interior Wall with Windows & Crackling Stone Fireplace */
+    set_bg1(bg1, col, 16, 7, T_WALL_WINDOW, COL_SOLID);
+    set_bg1(bg1, col, 23, 7, T_WALL_WINDOW, COL_SOLID);
+    set_bg1(bg1, col, 19, 7, T_FIREPLACE,   COL_SOLID);
+    set_bg1(bg1, col, 20, 7, T_FIREPLACE,   COL_SOLID);
+
+    /* Woven Burgundy & Gold Hearthside Rug */
+    fill_rect(bg1, col, 18, 9, 4, 3, T_HEARTH_RUG, COL_WALKABLE);
+
+    /* Left Bedroom Partition & Rowan's Patchwork Quilt Bed */
+    set_bg1(bg1, col, 17, 13, T_INTERIOR_WALL, COL_SOLID);
+    set_bg1(bg1, col, 17, 14, T_INTERIOR_WALL, COL_SOLID);
+    set_bg1(bg1, col, 17, 15, T_INTERIOR_WALL, COL_SOLID);
+    set_bg1(bg1, col, 14, 15, T_BED_QUILT,     COL_SOLID);
+    set_bg1(bg1, col, 14, 16, T_BED_QUILT,     COL_SOLID);
+    set_bg1(bg1, col, 14, 14, T_LANTERN_POST,  COL_SOLID);
+
+    /* Right Attic Loft Landing & Grandma's Heirloom Cedar Chest */
+    set_bg1(bg1, col, 25, 8,  T_INTERIOR_WALL, COL_SOLID);
+    set_bg1(bg1, col, 25, 9,  T_INTERIOR_WALL, COL_SOLID);
+    set_bg1(bg1, col, 25, 10, T_INTERIOR_WALL, COL_SOLID);
+    set_bg1(bg1, col, 25, 11, T_STONE_STAIRS,  COL_WALKABLE);
+    set_bg1(bg1, col, 25, 12, T_STONE_STAIRS,  COL_WALKABLE);
+    fill_rect(bg1, col, 26, 8, 5, 5, T_WOOD_FLOOR, COL_WALKABLE);
+    set_bg1(bg1, col, 29, 9,  T_ATTIC_CHEST,   COL_SOLID);
+    set_bg1(bg1, col, 27, 8,  T_LANTERN_POST,  COL_SOLID);
+
+    /* Cozy Tea Table Corner & South Front Doorway Exit */
+    set_bg1(bg1, col, 28, 17, T_FLOWER_BED,    COL_SOLID);
+    set_bg1(bg1, col, 29, 17, T_FLOWER_BED,    COL_SOLID);
+    set_bg1(bg1, col, 20, 20, T_WOOD_FLOOR,    COL_WALKABLE);
+    set_bg1(bg1, col, 21, 20, T_WOOD_FLOOR,    COL_WALKABLE);
+    set_bg1(bg1, col, 19, 19, T_LANTERN_POST,  COL_SOLID);
+    set_bg1(bg1, col, 22, 19, T_LANTERN_POST,  COL_SOLID);
+}
+
+/* ============================================================================
+ * ZONE 0: ALDERBROOK (Ground-Up Autumn Mountain Rail Town, Peaks & Brook)
  * ============================================================================ */
 static void build_zone_alderbrook(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
-    int x, y, hash;
+    int x, y, hash, sy;
     uint16_t i;
-    static const int8_t trees[][2] = {
-        {4, 5}, {4, 21}, {13, 22}, {26, 6}, {32, 7}, {32, 20}, {38, 9}, {38, 18}
+    static const int8_t maples[][2] = {
+        {4, 11}, {16, 11}, {31, 11}, {35, 14}, {38, 17},
+        {6, 17}, {26, 18}, {37, 8}, {8, 24}, {34, 24}
+    };
+    static const int8_t pines[][2] = {
+        {3, 7}, {3, 15}, {3, 23}, {15, 7}, {29, 7},
+        {34, 7}, {40, 12}, {41, 16}, {18, 24}, {26, 25}, {40, 23}
+    };
+    static const int8_t boulders[][2] = {
+        {6, 15}, {14, 17}, {20, 17}, {27, 17}, {33, 15},
+        {5, 22}, {12, 22}, {25, 23}, {35, 20}, {38, 13}, {36, 10}
+    };
+
+    hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);
+
+    /* Base Autumn Mountain Meadow */
+    for (y = 0; y < HEARTH_MAP_H; y++) {
+        for (x = 0; x < HEARTH_MAP_W; x++) {
+            hash = (x * 31 + y * 57) & 15;
+            if (hash == 13 && y > 8 && y < 24 && x > 3 && x < 40) {
+                set_bg1(bg1, col, x, y, T_FLOWERS, COL_WALKABLE);
+            } else {
+                set_bg1(bg1, col, x, y, T_AUTUMN_GRASS, COL_WALKABLE);
+            }
+        }
+    }
+
+    /* Distant Alpine Mountain Horizon (Rows 0..2) & Granite Cliff Escarpment (Rows 3..4) */
+    fill_rect(bg1, col, 0, 0, HEARTH_MAP_W, 3, T_MTN_SKY, COL_SOLID);
+    fill_rect(bg1, col, 0, 3, HEARTH_MAP_W, 1, T_CLIFF_LEDGE, COL_SOLID);
+    fill_rect(bg1, col, 0, 4, HEARTH_MAP_W, 1, T_CLIFF_WALL,  COL_SOLID);
+
+    /* Rocky West & East Mountain Flanks + Southern Pine Rim */
+    for (y = 5; y < HEARTH_MAP_H; y++) {
+        set_bg1(bg1, col, 0, y, T_CLIFF_WALL, COL_SOLID);
+        set_bg1(bg1, col, 1, y, T_CLIFF_WALL, COL_SOLID);
+        set_bg1(bg1, col, HEARTH_MAP_W - 1, y, T_CLIFF_WALL, COL_SOLID);
+        set_bg1(bg1, col, HEARTH_MAP_W - 2, y, T_CLIFF_WALL, COL_SOLID);
+    }
+    for (x = 0; x < HEARTH_MAP_W; x++) {
+        set_bg1(bg1, col, x, HEARTH_MAP_H - 1, T_CLIFF_WALL,  COL_SOLID);
+        set_bg1(bg1, col, x, HEARTH_MAP_H - 2, T_CLIFF_LEDGE, COL_SOLID);
+    }
+
+    /* Upper Mountain Rail Shelf: Iron Railway Tracks (y=5) & Station Platform (y=6..7) */
+    fill_rect(bg1, col, 2, 5, 33, 1, T_RAIL_TRACK, COL_WALKABLE);
+    fill_rect(bg1, col, 4, 6, 30, 2, T_ROCKY_PATH, COL_WALKABLE);
+    /* Granite Retain Wall separating Rail Shelf from Pine Square, with 2 Stone Stairways */
+    fill_rect(bg1, col, 2, 8, 33, 1, T_CLIFF_LEDGE, COL_SOLID);
+    set_bg1(bg1, col, 14, 8, T_STONE_STAIRS, COL_WALKABLE);
+    set_bg1(bg1, col, 15, 8, T_STONE_STAIRS, COL_WALKABLE);
+    set_bg1(bg1, col, 25, 8, T_STONE_STAIRS, COL_WALKABLE);
+    set_bg1(bg1, col, 26, 8, T_STONE_STAIRS, COL_WALKABLE);
+
+    /* Alderbrook Station Master Booth (west end of platform) */
+    place_cottage(bg1, bg2, col, 4, 6);
+    set_bg1(bg1, col, 10, 7, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 24, 7, T_LANTERN_POST, COL_SOLID);
+
+    /* Central Pine Square & Rocky Mountain Lanes */
+    fill_rect(bg1, col, 7, 13, 28, 3, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 14, 9, 2, 5, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 25, 9, 2, 5, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 15, 16, 2, 8, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 29, 16, 2, 8, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 11, 23, 21, 2, T_ROCKY_PATH, COL_WALKABLE);
+
+    /* Rowan & Grandma Mara's Cedar Cottage (x=9..13, y=10..12; door at 11,12) */
+    place_cottage(bg1, bg2, col, 9, 10);
+    set_bg1(bg1, col, 9,  13, T_FLOWER_BED,   COL_SOLID);
+    set_bg1(bg1, col, 13, 13, T_FLOWER_BED,   COL_SOLID);
+    set_bg1(bg1, col, 8,  13, T_LANTERN_POST, COL_SOLID);
+
+    /* Maple's Mountain Bakery & General Store (x=22..26, y=10..12) */
+    place_cottage(bg1, bg2, col, 22, 10);
+    set_bg1(bg1, col, 21, 13, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 27, 13, T_FLOWER_BED,   COL_SOLID);
+    set_bg1(bg1, col, 18, 14, T_SIGNPOST,     COL_SOLID);
+
+    /* Winding Mountain Stream with Whitewater Rapids curving across the lower valley! */
+    for (x = 2; x < HEARTH_MAP_W - 2; x++) {
+        if (x < 12)      sy = 19;
+        else if (x < 18) sy = 20;
+        else if (x < 26) sy = 21;
+        else if (x < 33) sy = 20;
+        else             sy = 21;
+        set_bg1(bg1, col, x, sy,     ((x & 1) == 0) ? T_RAPIDS : T_WATER, COL_WATER);
+        set_bg1(bg1, col, x, sy + 1, ((x & 1) != 0) ? T_RAPIDS : T_WATER, COL_WATER);
+    }
+
+    /* Two Sturdy Timber Footbridges spanning the Winding Brook */
+    for (x = 15; x <= 16; x++) {
+        set_bg1(bg1, col, x, 19, T_BRIDGE_RAIL_N, COL_SOLID);
+        set_bg1(bg1, col, x, 20, T_BRIDGE, COL_WALKABLE);
+        set_bg1(bg1, col, x, 21, T_BRIDGE, COL_WALKABLE);
+        set_bg1(bg1, col, x, 22, T_BRIDGE_RAIL_S, COL_SOLID);
+    }
+    for (x = 29; x <= 30; x++) {
+        set_bg1(bg1, col, x, 19, T_BRIDGE_RAIL_N, COL_SOLID);
+        set_bg1(bg1, col, x, 20, T_BRIDGE, COL_WALKABLE);
+        set_bg1(bg1, col, x, 21, T_BRIDGE, COL_WALKABLE);
+        set_bg1(bg1, col, x, 22, T_BRIDGE_RAIL_S, COL_SOLID);
+    }
+
+    /* Alderbrook Creek Fishing Pier at (22, 20) jutting south into the mountain brook */
+    set_bg1(bg1, col, 22, 19, T_ROCKY_PATH, COL_WALKABLE);
+    set_bg1(bg1, col, 22, 20, T_BRIDGE,     COL_WALKABLE);
+    set_bg1(bg1, col, 21, 19, T_LANTERN_POST, COL_SOLID);
+
+    /* Northeast Rocky Switchback Trail climbing toward Whispering Woods (Portal at 41,9) */
+    fill_rect(bg1, col, 34, 13, 5, 2, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 37, 9,  5, 5, T_ROCKY_PATH, COL_WALKABLE);
+    set_bg1(bg1, col, 38, 11, T_STONE_STAIRS, COL_WALKABLE);
+    set_bg1(bg1, col, 39, 11, T_STONE_STAIRS, COL_WALKABLE);
+    set_bg1(bg1, col, 41, 9,  T_ROCKY_PATH,   COL_WALKABLE);
+    set_bg1(bg1, col, 42, 9,  T_ROCKY_PATH,   COL_WALKABLE);
+    set_bg1(bg1, col, 40, 8,  T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 40, 10, T_LANTERN_POST, COL_SOLID);
+
+    /* Mossy Boulders, Crimson Autumn Maples & Dark Alpine Spruces */
+    for (i = 0; i < sizeof(boulders) / sizeof(boulders[0]); i++) {
+        set_bg1(bg1, col, boulders[i][0], boulders[i][1], T_BOULDER, COL_SOLID);
+    }
+    for (i = 0; i < sizeof(maples) / sizeof(maples[0]); i++) {
+        place_autumn_maple(bg1, bg2, col, maples[i][0], maples[i][1]);
+    }
+    for (i = 0; i < sizeof(pines) / sizeof(pines[0]); i++) {
+        place_alpine_pine(bg1, bg2, col, pines[i][0], pines[i][1]);
+    }
+}
+
+/* ============================================================================
+ * ZONE 6: WHISPERING WOODS (Rocky Autumn Forest, Rapids & 3 Lantern Shrines)
+ * ============================================================================ */
+static void build_zone_whispering_woods(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
+    int x, y, rx, hash;
+    uint16_t i;
+    static const int8_t maples[][2] = {
+        {6, 9}, {16, 8}, {28, 8}, {33, 13}, {8, 16},
+        {14, 21}, {29, 21}, {38, 17}, {24, 23}, {6, 23}
+    };
+    static const int8_t pines[][2] = {
+        {4, 7}, {11, 7}, {21, 7}, {31, 7}, {40, 8},
+        {4, 14}, {17, 13}, {27, 12}, {39, 13}, {40, 23}, {10, 24}
+    };
+    static const int8_t boulders[][2] = {
+        {8, 13}, {15, 16}, {18, 19}, {24, 12}, {28, 18},
+        {32, 16}, {36, 12}, {34, 22}, {7, 19}, {13, 14}
     };
 
     hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);
     for (y = 0; y < HEARTH_MAP_H; y++) {
         for (x = 0; x < HEARTH_MAP_W; x++) {
-            hash = (x * 29 + y * 53) & 15;
-            if (hash == 2 || hash == 9) set_bg1(bg1, col, x, y, T_GRASS_ALT, COL_WALKABLE);
-            else if (hash == 14 && x > 4 && x < 34 && y > 4 && y < 23) set_bg1(bg1, col, x, y, T_FLOWERS, COL_WALKABLE);
-            else set_bg1(bg1, col, x, y, T_GRASS, COL_WALKABLE);
+            hash = (x * 23 + y * 47) & 15;
+            if (hash == 11 && y > 5 && y < 24 && x > 3 && x < 40) {
+                set_bg1(bg1, col, x, y, T_FLOWERS, COL_WALKABLE);
+            } else {
+                set_bg1(bg1, col, x, y, T_AUTUMN_GRASS, COL_WALKABLE);
+            }
         }
     }
-    fill_perimeter(bg1, col, T_BUSH);
 
-    /* Cozy hometown lane & neighborhood cottages */
-    fill_rect(bg1, col, 5, 13, 33, 3, T_COBBLE, COL_WALKABLE);
-    fill_rect(bg1, col, 7, 10, 6, 4, T_COBBLE, COL_WALKABLE);
-    fill_rect(bg1, col, 18, 10, 6, 4, T_COBBLE, COL_WALKABLE);
-
-    place_cottage(bg1, bg2, col, 7, 6);  /* Rowan's Family Cottage */
-    place_cottage(bg1, bg2, col, 18, 6); /* Neighbor Tom's House */
-    place_cottage(bg1, bg2, col, 10, 17);/* Aunt Martha's Bakery Cottage */
-
-    /* Picket fences, warm lamps, flowerbeds & signpost */
-    for (x = 6; x <= 14; x++) set_bg1(bg1, col, x, 11, (x == 9 || x == 10) ? T_COBBLE : T_FENCE, (x == 9 || x == 10) ? COL_WALKABLE : COL_SOLID);
-    set_bg1(bg1, col, 6, 12, T_LANTERN_POST, COL_SOLID);
-    set_bg1(bg1, col, 17, 12, T_LANTERN_POST, COL_SOLID);
-    set_bg1(bg1, col, 29, 12, T_LANTERN_POST, COL_SOLID);
-    set_bg1(bg1, col, 15, 16, T_SIGNPOST, COL_SOLID);
-    set_bg1(bg1, col, 7, 9, T_FLOWER_BED, COL_SOLID);
-    set_bg1(bg1, col, 11, 9, T_FLOWER_BED, COL_SOLID);
-
-    /* Gentle Brook & Wooden Footbridge separating town from the Hollow Oak Woods */
-    for (y = 2; y < HEARTH_MAP_H - 2; y++) {
-        set_bg1(bg1, col, 25, y, T_WATER, COL_WATER);
-        set_bg1(bg1, col, 26, y, T_WATER, COL_WATER);
+    /* Northern Alpine Mountain Horizon & Granite Ridge */
+    fill_rect(bg1, col, 0, 0, HEARTH_MAP_W, 3, T_MTN_SKY,     COL_SOLID);
+    fill_rect(bg1, col, 0, 3, HEARTH_MAP_W, 1, T_CLIFF_LEDGE, COL_SOLID);
+    fill_rect(bg1, col, 0, 4, HEARTH_MAP_W, 1, T_CLIFF_WALL,  COL_SOLID);
+    for (y = 5; y < HEARTH_MAP_H; y++) {
+        set_bg1(bg1, col, 0, y, T_CLIFF_WALL, COL_SOLID);
+        set_bg1(bg1, col, 1, y, T_CLIFF_WALL, COL_SOLID);
+        set_bg1(bg1, col, HEARTH_MAP_W - 1, y, T_CLIFF_WALL, COL_SOLID);
+        set_bg1(bg1, col, HEARTH_MAP_W - 2, y, T_CLIFF_WALL, COL_SOLID);
     }
-    for (x = 25; x <= 26; x++) {
-        set_bg1(bg1, col, x, 12, T_BRIDGE_RAIL_N, COL_SOLID);
-        set_bg1(bg1, col, x, 13, T_BRIDGE, COL_WALKABLE);
-        set_bg1(bg1, col, x, 14, T_BRIDGE, COL_WALKABLE);
-        set_bg1(bg1, col, x, 15, T_BRIDGE, COL_WALKABLE);
-        set_bg1(bg1, col, x, 16, T_BRIDGE_RAIL_S, COL_SOLID);
+    for (x = 0; x < HEARTH_MAP_W; x++) {
+        set_bg1(bg1, col, x, HEARTH_MAP_H - 1, T_CLIFF_WALL,  COL_SOLID);
+        set_bg1(bg1, col, x, HEARTH_MAP_H - 2, T_CLIFF_LEDGE, COL_SOLID);
     }
 
-    /* Ancient Hollow Oak Grove on East Edge (tile 38,14 is the Gateway!) */
-    fill_rect(bg1, col, 30, 11, 10, 7, T_DIRT, COL_WALKABLE);
-    fill_rect(bg1, col, 35, 12, 4, 5, T_SHRINE_FLOOR, COL_WALKABLE);
-    set_bg1(bg1, col, 38, 14, T_SHRINE_RUNE, COL_WALKABLE);
-    set_bg2(bg2, 37, 12, O_CANOPY_TL); set_bg2(bg2, 38, 12, O_CANOPY_TR); set_bg2(bg2, 39, 12, O_CANOPY_TR);
-    set_bg2(bg2, 37, 13, O_CANOPY_BL); set_bg2(bg2, 38, 13, O_CANOPY_BR); set_bg2(bg2, 39, 13, O_CANOPY_BR);
+    /* Foaming Mountain Rapids cascading diagonally from north ridge to south valley */
+    for (y = 5; y < HEARTH_MAP_H - 2; y++) {
+        rx = 23 - ((y - 5) >> 1);
+        set_bg1(bg1, col, rx,     y, ((y & 1) == 0) ? T_RAPIDS : T_WATER, COL_WATER);
+        set_bg1(bg1, col, rx + 1, y, ((y & 1) != 0) ? T_RAPIDS : T_WATER, COL_WATER);
+    }
 
-    for (i = 0; i < sizeof(trees) / sizeof(trees[0]); i++) {
-        place_tree(bg1, bg2, col, trees[i][0], trees[i][1]);
+    /* Winding Rocky Switchback Trail from SW Entry (2,21) -> Bridge -> 3 Shrines -> NE Pass (37,5) */
+    fill_rect(bg1, col, 2,  20, 12, 3, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 11, 15,  9, 6, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 10, 10,  5, 6, T_ROCKY_PATH, COL_WALKABLE); /* Jasper's Camp Clearing */
+    fill_rect(bg1, col, 17, 15, 17, 2, T_ROCKY_PATH, COL_WALKABLE); /* Rapids Log Bridge Crossing */
+    fill_rect(bg1, col, 32,  9,  6, 8, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 36,  4,  3, 6, T_ROCKY_PATH, COL_WALKABLE); /* High Pass to Hollow Glade */
+    set_bg1(bg1, col, 37, 4, T_STONE_STAIRS, COL_WALKABLE);
+    set_bg1(bg1, col, 37, 5, T_STONE_STAIRS, COL_WALKABLE);
+
+    /* Rustic Timber Bridge over Forest Rapids (x=17..20, y=15..16) */
+    for (x = 17; x <= 20; x++) {
+        set_bg1(bg1, col, x, 14, T_BRIDGE_RAIL_N, COL_SOLID);
+        set_bg1(bg1, col, x, 15, T_BRIDGE,        COL_WALKABLE);
+        set_bg1(bg1, col, x, 16, T_BRIDGE,        COL_WALKABLE);
+        set_bg1(bg1, col, x, 17, T_BRIDGE_RAIL_S, COL_SOLID);
+    }
+
+    /* 3 Stone Lantern Shrine Clearings along the Woods Trail */
+    fill_rect(bg1, col, 11, 16, 3, 3, T_SHRINE_FLOOR, COL_WALKABLE);
+    set_bg1(bg1, col, 12, 17, T_LANTERN_POST, COL_SOLID); /* Shrine 0 */
+
+    fill_rect(bg1, col, 25, 14, 3, 3, T_SHRINE_FLOOR, COL_WALKABLE);
+    set_bg1(bg1, col, 26, 15, T_LANTERN_POST, COL_SOLID); /* Shrine 1 */
+
+    fill_rect(bg1, col, 32,  8, 3, 3, T_SHRINE_FLOOR, COL_WALKABLE);
+    set_bg1(bg1, col, 33,  9, T_LANTERN_POST, COL_SOLID); /* Shrine 2 */
+
+    /* Trail Signpost & Campfire Lantern */
+    set_bg1(bg1, col, 7, 20, T_SIGNPOST, COL_SOLID);
+    set_bg1(bg1, col, 11, 10, T_FIREPLACE, COL_SOLID);
+
+    /* Mossy Boulders, Autumn Maples & Alpine Spruces */
+    for (i = 0; i < sizeof(boulders) / sizeof(boulders[0]); i++) {
+        set_bg1(bg1, col, boulders[i][0], boulders[i][1], T_BOULDER, COL_SOLID);
+    }
+    for (i = 0; i < sizeof(maples) / sizeof(maples[0]); i++) {
+        place_autumn_maple(bg1, bg2, col, maples[i][0], maples[i][1]);
+    }
+    for (i = 0; i < sizeof(pines) / sizeof(pines[0]); i++) {
+        place_alpine_pine(bg1, bg2, col, pines[i][0], pines[i][1]);
+    }
+}
+
+/* ============================================================================
+ * ZONE 7: HOLLOW GLADE (High-Ridge Sanctuary, Alpine Vista & Monumental Oak)
+ * ============================================================================ */
+static void build_zone_hollow_glade(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
+    int x, y, hash;
+    uint16_t i;
+    static const int8_t maples[][2] = {
+        {8, 11}, {13, 10}, {29, 10}, {34, 11},
+        {9, 21}, {33, 21}, {15, 22}, {27, 22}
+    };
+    static const int8_t pines[][2] = {
+        {5, 9}, {5, 16}, {5, 22}, {38, 9}, {38, 16}, {38, 22},
+        {11, 8}, {31, 8}
+    };
+    static const int8_t boulders[][2] = {
+        {14, 13}, {28, 13}, {15, 18}, {27, 18},
+        {7, 15}, {35, 15}, {17, 21}, {25, 21}
+    };
+
+    hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);
+    for (y = 0; y < HEARTH_MAP_H; y++) {
+        for (x = 0; x < HEARTH_MAP_W; x++) {
+            hash = (x * 17 + y * 37) & 15;
+            if (hash == 9 && y > 8 && y < 24 && x > 6 && x < 37) {
+                set_bg1(bg1, col, x, y, T_FLOWERS, COL_WALKABLE);
+            } else {
+                set_bg1(bg1, col, x, y, T_AUTUMN_GRASS, COL_WALKABLE);
+            }
+        }
+    }
+
+    /* Panoramic 5-Row Alpine Peak Skyline & Horseshoe Cliff Escarpment */
+    fill_rect(bg1, col, 0, 0, HEARTH_MAP_W, 5, T_MTN_SKY,     COL_SOLID);
+    fill_rect(bg1, col, 0, 5, HEARTH_MAP_W, 1, T_CLIFF_LEDGE, COL_SOLID);
+    fill_rect(bg1, col, 0, 6, HEARTH_MAP_W, 1, T_CLIFF_WALL,  COL_SOLID);
+    for (y = 7; y < HEARTH_MAP_H; y++) {
+        fill_rect(bg1, col, 0, y, 4, 1, T_CLIFF_WALL, COL_SOLID);
+        fill_rect(bg1, col, HEARTH_MAP_W - 4, y, 4, 1, T_CLIFF_WALL, COL_SOLID);
+    }
+    for (x = 0; x < HEARTH_MAP_W; x++) {
+        set_bg1(bg1, col, x, HEARTH_MAP_H - 1, T_CLIFF_WALL,  COL_SOLID);
+        set_bg1(bg1, col, x, HEARTH_MAP_H - 2, T_CLIFF_LEDGE, COL_SOLID);
+    }
+
+    /* South Entry Stairway from Whispering Woods (x=20..22, y=24..26) */
+    fill_rect(bg1, col, 20, 18, 3, 9, T_ROCKY_PATH, COL_WALKABLE);
+    set_bg1(bg1, col, 20, 24, T_STONE_STAIRS, COL_WALKABLE);
+    set_bg1(bg1, col, 21, 24, T_STONE_STAIRS, COL_WALKABLE);
+    set_bg1(bg1, col, 22, 24, T_STONE_STAIRS, COL_WALKABLE);
+
+    /* Tranquil Highland Spring on the Western Ledge */
+    fill_rect(bg1, col, 8, 14, 4, 4, T_WATER, COL_WATER);
+    set_bg1(bg1, col, 9,  15, T_RAPIDS, COL_WATER);
+    set_bg1(bg1, col, 10, 16, T_RAPIDS, COL_WATER);
+
+    /* Ancient Moss-Ringed Glade Sanctuary & The Monumental Hollow Oak! */
+    fill_rect(bg1, col, 16, 10, 11, 8, T_SHRINE_FLOOR, COL_WALKABLE);
+    fill_rect(bg1, col, 19, 12, 5,  3, T_ROCKY_PATH,   COL_WALKABLE);
+    set_bg1(bg1, col, 20, 11, T_HOLLOW_OAK, COL_SOLID);
+    set_bg1(bg1, col, 21, 11, T_HOLLOW_OAK, COL_SOLID);
+    set_bg1(bg1, col, 22, 11, T_HOLLOW_OAK, COL_SOLID);
+    set_bg1(bg1, col, 21, 12, T_SHRINE_RUNE, COL_WALKABLE); /* Glowing Threshold */
+    for (x = 19; x <= 23; x++) {
+        set_bg2(bg2, x, 8,  O_OAK_CROWN);
+        set_bg2(bg2, x, 9,  O_OAK_CROWN);
+        set_bg2(bg2, x, 10, O_OAK_CROWN);
+    }
+    set_bg1(bg1, col, 17, 16, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 25, 16, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 19, 19, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 23, 19, T_LANTERN_POST, COL_SOLID);
+
+    for (i = 0; i < sizeof(boulders) / sizeof(boulders[0]); i++) {
+        set_bg1(bg1, col, boulders[i][0], boulders[i][1], T_BOULDER, COL_SOLID);
+    }
+    for (i = 0; i < sizeof(maples) / sizeof(maples[0]); i++) {
+        place_autumn_maple(bg1, bg2, col, maples[i][0], maples[i][1]);
+    }
+    for (i = 0; i < sizeof(pines) / sizeof(pines[0]); i++) {
+        place_alpine_pine(bg1, bg2, col, pines[i][0], pines[i][1]);
     }
 }
 
@@ -569,6 +923,12 @@ static void build_zone_boarhold(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
 void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     if (zone_id == ZONE_ALDERBROOK) {
         build_zone_alderbrook(bg1, bg2, col);
+    } else if (zone_id == ZONE_ROWAN_HOME) {
+        build_zone_rowan_home(bg1, bg2, col);
+    } else if (zone_id == ZONE_WHISPERING_WOODS) {
+        build_zone_whispering_woods(bg1, bg2, col);
+    } else if (zone_id == ZONE_HOLLOW_GLADE) {
+        build_zone_hollow_glade(bg1, bg2, col);
     } else if (zone_id == ZONE_WHISKERBURGH) {
         build_zone_whiskerburgh(bg1, bg2, col);
     } else if (zone_id == ZONE_SEWERS) {
@@ -689,6 +1049,70 @@ const HearthCinemaBeat HEARTH_CINEMA_SCRIPT[HEARTH_CINEMA_BEAT_COUNT] = {
       "ACT VII - FIVE YEARS LATER", "",
       "Until one crisp autumn dawn, when the 7:00",
       "train whistle woke a forgotten ember inside..." }
+};
+
+/* ============================================================================
+ * CHAPTER 1 MID-STORY PAINTED CG SCRIPTS (Attic Keepsake, Pip Dream, Hollow Oak)
+ * ============================================================================ */
+const HearthCinemaBeat HEARTH_CG_ATTIC_SCRIPT[HEARTH_CG_ATTIC_COUNT] = {
+    { 1u, CG_ATTIC_KEEPSAKE, BGM_CINEMA_LULLABY, CIN_CAM_ZOOM_IN, CIN_FX_STEAM_DUSK, SFX_TEXT_ELDER,
+      "CHAPTER I - THE ATTIC KEEPSAKE", "",
+      "Beneath Grandma's folded autumn shawl, Rowan's",
+      "fingers brushed a small tarnished brass bell." },
+    { 1u, CG_ATTIC_KEEPSAKE, BGM_CINEMA_LULLABY, CIN_CAM_ZOOM_IN, CIN_FX_STEAM_DUSK, SFX_TEXT_ELDER,
+      "CHAPTER I - THE ATTIC KEEPSAKE", "",
+      "Tied to its red ribbon was a pressed golden",
+      "oak leaf that still hummed with faint warmth." },
+    { 1u, CG_ATTIC_KEEPSAKE, BGM_CINEMA_LULLABY, CIN_CAM_ZOOM_IN, CIN_FX_STEAM_DUSK, SFX_TEXT_HERO,
+      "CHAPTER I - THE ATTIC KEEPSAKE", "ROWAN",
+      "Wait... that's Milo's old bell! Why does this",
+      "leaf make my chest ache like a forgotten song?" },
+    { 1u, CG_ATTIC_KEEPSAKE, BGM_CINEMA_LULLABY, CIN_CAM_ZOOM_IN, CIN_FX_STEAM_DUSK, SFX_TEXT_ELDER,
+      "CHAPTER I - THE ATTIC KEEPSAKE", "",
+      "Outside the dormer glass, the mountain peaks",
+      "burned copper-gold as dusk settled on Alderbrook." }
+};
+
+const HearthCinemaBeat HEARTH_CG_DREAM_SCRIPT[HEARTH_CG_DREAM_COUNT] = {
+    { 1u, CG_PIP_DREAM_RETURN, BGM_CINEMA_LULLABY, CIN_CAM_PAN_LEFT, CIN_FX_MOON_FIREFLIES, SFX_TEXT_ELDER,
+      "CHAPTER I - THE DREAM RETURNS", "",
+      "With Milo's bell tucked beside his pillow, Rowan",
+      "drifted beneath a silver autumn moon..." },
+    { 1u, CG_PIP_DREAM_RETURN, BGM_CINEMA_LULLABY, CIN_CAM_PAN_LEFT, CIN_FX_MOON_FIREFLIES, SFX_TEXT_PIP,
+      "CHAPTER I - THE DREAM RETURNS", "PIP",
+      "Five whole autumns, Rowan! You finally found the",
+      "oak leaf I slipped inside your coat pocket!" },
+    { 1u, CG_PIP_DREAM_RETURN, BGM_CINEMA_LULLABY, CIN_CAM_PAN_LEFT, CIN_FX_MOON_FIREFLIES, SFX_TEXT_PIP,
+      "CHAPTER I - THE DREAM RETURNS", "PIP",
+      "Evertale wasn't a nightmare, lad - a shadow",
+      "wore a cruel mask to scare you from the gate." },
+    { 1u, CG_PIP_DREAM_RETURN, BGM_CINEMA_LULLABY, CIN_CAM_PAN_LEFT, CIN_FX_MOON_FIREFLIES, SFX_TEXT_HERO,
+      "CHAPTER I - THE DREAM RETURNS", "ROWAN",
+      "Pip... I remember now! The windmills, the blue",
+      "sky - and the Hollow Oak up in Whispering Woods!" }
+};
+
+const HearthCinemaBeat HEARTH_CG_OAK_SCRIPT[HEARTH_CG_OAK_COUNT] = {
+    { 1u, CG_HOLLOW_OAK_AWAKENS, BGM_CINEMA_WONDER, CIN_CAM_ZOOM_IN, CIN_FX_EVERTALE_LANTERNS, SFX_TEXT_ELDER,
+      "CHAPTER I FINALE - THE HOLLOW OAK", "",
+      "Milo's brass bell rang a single crystal note,",
+      "and the moss-clad roots shivered with amber fire." },
+    { 1u, CG_HOLLOW_OAK_AWAKENS, BGM_CINEMA_WONDER, CIN_CAM_ZOOM_IN, CIN_FX_EVERTALE_LANTERNS, SFX_TEXT_ELDER,
+      "CHAPTER I FINALE - THE HOLLOW OAK", "",
+      "Golden runes unfurled along the ancient bark,",
+      "parting the night into sunlit clouds beyond." },
+    { 1u, CG_HOLLOW_OAK_AWAKENS, BGM_CINEMA_WONDER, CIN_CAM_ZOOM_IN, CIN_FX_EVERTALE_LANTERNS, SFX_TEXT_HERO,
+      "CHAPTER I FINALE - THE HOLLOW OAK", "ROWAN",
+      "It's opening, Milo! Just like when I was five -",
+      "only this time, I'm not running away." },
+    { 1u, CG_HOLLOW_OAK_AWAKENS, BGM_CINEMA_WONDER, CIN_CAM_ZOOM_IN, CIN_FX_EVERTALE_LANTERNS, SFX_TEXT_PIP,
+      "CHAPTER I FINALE - THE HOLLOW OAK", "PIP",
+      "Come on through, brave sparrow! Windmill Hamlet",
+      "and all of Evertale have been waiting for you!" },
+    { 1u, CG_HOLLOW_OAK_AWAKENS, BGM_CINEMA_WONDER, CIN_CAM_ZOOM_IN, CIN_FX_EVERTALE_LANTERNS, SFX_TEXT_ELDER,
+      "CHAPTER I FINALE - THE HOLLOW OAK", "",
+      "Hand steady on his coat, Rowan stepped with Milo",
+      "through the glowing arch into Evertale..." }
 };
 
 /* ============================================================================
@@ -850,5 +1274,69 @@ const HearthCutsceneOp CUTSCENE_GIVE_COURAGE[] = {
     { OP_EMOTE, ACTOR_GUARD, SPR_EMOTE_HEART, 36, NULL, NULL },
     { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Guard Bram",
       "Whoa... the chill vanished! My knees feel sturdy as oak again. Take 25 Guilders and a Sun Tonic for Whiskerburgh!" },
+    { OP_END, 0, 0, 0, NULL, NULL }
+};
+
+/* ============================================================================
+ * CHAPTER 1 ALDERBROOK BYTECODE CUTSCENES (Morning -> Afternoon -> Dusk)
+ * ============================================================================ */
+const HearthCutsceneOp CUTSCENE_CH1_MORNING_MARA[] = {
+    { OP_FACE_ACTOR, ACTOR_NPC0, DIR_DOWN, 0, NULL, NULL },
+    { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
+    { OP_EMOTE, ACTOR_NPC0, SPR_EMOTE_HEART, 28, NULL, NULL },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Grandma Mara",
+      "Good morning, sparrow! The 7:00 steam express just rolled in, and the maples along the ridge are bright as copper." },
+    { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
+      "Morning, Grandma! I had the strangest feeling when I heard the train whistle... like I almost remembered an old dream." },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Grandma Mara",
+      "Fresh mountain air will clear the cobwebs, dear. Would you run two quick errands in Alderbrook for me?" },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Grandma Mara",
+      "Pick up a honey-rye loaf from Baker Maple in Pine Square, and bring this hot ginger thermos up the steps to Stationmaster Barnaby." },
+    { OP_SFX, SFX_CONFIRM, 0, 0, NULL, NULL },
+    { OP_SET_FLAG, FLAG_CH1_MARA_GREETED, 0, 0, NULL, NULL },
+    { OP_END, 0, 0, 0, NULL, NULL }
+};
+
+const HearthCutsceneOp CUTSCENE_CH1_MAPLE_LOAF[] = {
+    { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
+    { OP_EMOTE, ACTOR_NPC1, SPR_EMOTE_SPARK, 28, NULL, NULL },
+    { OP_SAY, SFX_TEXT_PIP, 0, 0, "Baker Maple",
+      "Well hello, Rowan! You caught the oven right on time - here's Grandma Mara's warm honey-rye loaf, plus a pocket biscuit for Milo!" },
+    { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
+      "Thanks, Maple! It smells amazing. Have you noticed the stream running extra bright down by the boulders today?" },
+    { OP_SAY, SFX_TEXT_PIP, 0, 0, "Baker Maple",
+      "Autumn snowmelt off the high peaks! Stop by anytime if you want to buy supplies or sell brook trout you catch at the creek pier." },
+    { OP_SFX, SFX_COIN, 0, 0, NULL, NULL },
+    { OP_SET_FLAG, FLAG_CH1_MAPLE_LOAF, 0, 0, NULL, NULL },
+    { OP_END, 0, 0, 0, NULL, NULL }
+};
+
+const HearthCutsceneOp CUTSCENE_CH1_BARNABY_THERMOS[] = {
+    { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
+    { OP_EMOTE, ACTOR_NPC0, SPR_EMOTE_HEART, 28, NULL, NULL },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Barnaby",
+      "Bless Mara's heart - hot ginger tea right as the morning frost lifts off the iron rails! Come admire the Old No. 7 locomotive, lad." },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Barnaby",
+      "Funny thing: Old Woodsman Jasper swore he saw golden fireflies drifting up in Whispering Woods last night - way too late in autumn for bugs." },
+    { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
+      "Golden fireflies...? Wait, why did that just give me goosebumps?" },
+    { OP_SFX, SFX_CONFIRM, 0, 0, NULL, NULL },
+    { OP_SET_FLAG, FLAG_CH1_BARNABY_THERMOS, 0, 0, NULL, NULL },
+    { OP_END, 0, 0, 0, NULL, NULL }
+};
+
+const HearthCutsceneOp CUTSCENE_CH1_DUSK_TEA[] = {
+    { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
+    { OP_EMOTE, ACTOR_NPC0, SPR_EMOTE_QUESTION, 28, NULL, NULL },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Grandma Mara",
+      "Oh, Rowan... you found Milo's little brass bell and that pressed oak leaf in the cedar chest. I couldn't bear to throw them away." },
+    { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
+      "Grandma, where did I get this golden leaf? The moment I touched it, I heard windmills turning in the wind." },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Grandma Mara",
+      "You wandered into Whispering Woods when you were five and came home terribly frightened. Whatever you saw, you're safe and strong now." },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Grandma Mara",
+      "The evening chill is settling over the valley, sparrow. Climb into your patchwork bed and rest - keep Milo's bell close if it comforts you." },
+    { OP_SFX, SFX_HEAL, 0, 0, NULL, NULL },
+    { OP_SET_FLAG, FLAG_CH1_DUSK_TEA, 0, 0, NULL, NULL },
     { OP_END, 0, 0, 0, NULL, NULL }
 };

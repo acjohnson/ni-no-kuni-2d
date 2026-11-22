@@ -36,11 +36,11 @@ int main(void) {
     CHECK(hearth_rgb_to_genesis_bgr333(0xFFFFFFu) == 0x0EEEu, "Genesis BGR333 white pack");
     CHECK(hearth_rgb_to_snes_bgr555(0xFFFFFFu) == 0x7FFFu, "SNES BGR555 white pack");
 
-    /* 3. Init -> Title Screen (Alderbrook) -> New Story -> 7-Act 23-Beat Cinema -> Age-10 Alderbrook */
+    /* 3. Init -> Title Screen (Autumn Mountain Alderbrook) -> Opening Cinema -> Full Chapter 1 Arc */
     hearth_init(&g_st);
     CHECK(g_st.ppu.width == 320 && g_st.ppu.height == 224, "hearth_init populates valid PPU dimensions");
     CHECK(g_st.mode == MODE_TITLE && g_st.zone_id == ZONE_ALDERBROOK, "Game boots cleanly to MODE_TITLE in Alderbrook");
-    CHECK(g_st.ppu.bgm_id == BGM_ALDERBROOK, "Title screen plays Alderbrook Overture");
+    CHECK(g_st.ppu.has_mountain_vista && g_st.ppu.bgm_id == BGM_ALDERBROOK, "Title screen shows Autumn Mountain vista & Alderbrook Overture");
 
     /* Option 0: NEW STORY launches the 7-Act Illustrated Opening Cinema */
     hearth_step_60hz(&g_st, PAD_A);
@@ -62,15 +62,79 @@ int main(void) {
     }
     CHECK(saw_wonder_bgm && saw_shadow_bgm && saw_lullaby_bgm, "Opening cinema transitions through Wonder, Shadow, and Lullaby suites");
     CHECK(max_plate_seen == CG_PIP_WINDOW, "Opening cinema displays all 6 illustrated CG plates");
-    CHECK(g_st.mode == MODE_EXPLORE && g_st.zone_id == ZONE_ALDERBROOK, "Opening cinema flows directly into Age-10 Alderbrook");
-    CHECK(g_st.story_stage == STORY_AGE10_ALDERBROOK && !g_st.flag_has_wand, "Rowan begins Age-10 Alderbrook without wand yet");
+    CHECK(g_st.mode == MODE_EXPLORE && g_st.zone_id == ZONE_ROWAN_HOME, "Opening cinema spawns Rowan inside Cedar Home");
+    CHECK(g_st.time_of_day == TOD_MORNING && g_st.ch1_step == 0u && !g_st.flag_has_wand,
+          "Chapter 1 begins on Autumn Morning inside Rowan's Home");
+
+    /* Chapter 1 Story Beat 1: Talk to Grandma Mara -> Morning cutscene + Portrait ID */
+    g_st.hero_fx = TO_FP(19 * 16 + 8);
+    g_st.hero_fy = TO_FP(13 * 16 + 8);
+    g_st.hero_dir = DIR_UP;
+    hearth_step_60hz(&g_st, 0);
+    hearth_step_60hz(&g_st, PAD_A);
+    CHECK(g_st.mode == MODE_CUTSCENE, "Speaking to Grandma Mara triggers Morning hearth cutscene");
+    bool saw_mara_portrait = false;
+    for (int f = 0; f < 600 && g_st.mode == MODE_CUTSCENE; f++) {
+        uint16_t pad = ((f & 3) == 0) ? PAD_A : 0;
+        hearth_step_60hz(&g_st, pad);
+        if (g_st.dialogue.active && g_st.dialogue.portrait_id == PORTRAIT_MARA) saw_mara_portrait = true;
+    }
+    CHECK(saw_mara_portrait && g_st.ch1_step == 1u, "Grandma Mara cutscene shows Mara portrait and advances to errands");
+
+    /* Chapter 1 Story Beat 2: Step out into Redesigned Autumn Mountain Alderbrook + Locomotive */
+    hearth_enter_zone(&g_st, ZONE_ALDERBROOK, 18, 9);
+    const HearthPpuPacket *ab_pkt = hearth_step_60hz(&g_st, 0);
+    bool saw_locomotive = false;
+    for (int i = 0; i < ab_pkt->oam_count; i++) {
+        if (ab_pkt->oam[i].sprite_id == SPR_LOCOMOTIVE) saw_locomotive = true;
+    }
+    CHECK(ab_pkt->has_mountain_vista && ab_pkt->terrain_pal_id == ZPAL_AUTUMN_MORNING && saw_locomotive,
+          "Redesigned Alderbrook shows mountain vista, Morning palette, and idling Steam Locomotive");
+
+    /* Complete Maple + Barnaby errands -> Shifts to Afternoon */
+    hearth_start_cutscene(&g_st, CUTSCENE_CH1_MAPLE_LOAF);
+    for (int f = 0; f < 400 && g_st.mode == MODE_CUTSCENE; f++) hearth_step_60hz(&g_st, ((f & 3) == 0) ? PAD_A : 0);
+    hearth_start_cutscene(&g_st, CUTSCENE_CH1_BARNABY_THERMOS);
+    for (int f = 0; f < 400 && g_st.mode == MODE_CUTSCENE; f++) hearth_step_60hz(&g_st, ((f & 3) == 0) ? PAD_A : 0);
+    CHECK(g_st.ch1_step == 2u && g_st.time_of_day == TOD_AFTERNOON, "Completing Maple & Barnaby errands shifts Alderbrook to Afternoon");
+
+    /* Attic Keepsake CG (Script 1) -> Shifts to Dusk + Grants Milo's Brass Bell */
+    hearth_enter_zone(&g_st, ZONE_ROWAN_HOME, 21, 9);
+    hearth_start_story_cg(&g_st, 1u);
+    CHECK(g_st.mode == MODE_INTRO && g_st.intro.scene == CG_ATTIC_KEEPSAKE, "Attic Cedar Chest launches Plate 6 (Attic Keepsake CG)");
+    for (int f = 0; f < 1000 && g_st.mode == MODE_INTRO; f++) hearth_step_60hz(&g_st, ((f % 6) == 0) ? PAD_A : 0);
+    CHECK(g_st.mode == MODE_EXPLORE && g_st.has_milo_bell && g_st.time_of_day == TOD_DUSK && g_st.ch1_step == 4u,
+          "Attic Keepsake CG grants Milo's Brass Bell and shifts to Dusk");
+
+    /* Pip Dream Return CG (Script 2) -> Shifts to Moonlit Night */
+    hearth_start_story_cg(&g_st, 2u);
+    CHECK(g_st.mode == MODE_INTRO && g_st.intro.scene == CG_PIP_DREAM_RETURN, "Sleeping launches Plate 7 (Pip Dream Return CG)");
+    for (int f = 0; f < 1000 && g_st.mode == MODE_INTRO; f++) hearth_step_60hz(&g_st, ((f % 6) == 0) ? PAD_A : 0);
+    CHECK(g_st.mode == MODE_EXPLORE && g_st.time_of_day == TOD_NIGHT && g_st.ch1_step == 6u,
+          "Pip Dream CG awakens Rowan at Moonlit Night");
+
+    /* Whispering Woods (Zone 6) + 3 Lantern Shrines + Hollow Glade (Zone 7) + Hollow Oak Awakens CG (Script 3) */
+    hearth_enter_zone(&g_st, ZONE_WHISPERING_WOODS, 14, 21);
+    CHECK(g_st.ppu.has_mountain_vista && g_st.ppu.terrain_pal_id == ZPAL_AUTUMN_NIGHT, "Whispering Woods renders under Moonlit Night palette");
+    g_st.woods_shrines_mask = 0x07u;
+    g_st.ch1_step = 7u;
+    hearth_enter_zone(&g_st, ZONE_HOLLOW_GLADE, 15, 20);
+    const HearthPpuPacket *glade_pkt = hearth_step_60hz(&g_st, 0);
+    CHECK(glade_pkt->has_mountain_vista && g_st.zone_id == ZONE_HOLLOW_GLADE, "Hollow Glade loads high-ridge sanctuary with alpine vista");
+    hearth_start_story_cg(&g_st, 3u);
+    CHECK(g_st.mode == MODE_INTRO && g_st.intro.scene == CG_HOLLOW_OAK_AWAKENS, "Hollow Oak launches Plate 8 (Hollow Oak Awakens CG)");
+    for (int f = 0; f < 1200 && g_st.mode == MODE_INTRO; f++) hearth_step_60hz(&g_st, ((f % 6) == 0) ? PAD_A : 0);
+    CHECK(g_st.zone_id == ZONE_HAMLET && g_st.story_stage == STORY_EVERTALE_AWAKENED && g_st.flag_has_wand && g_st.pip_visible,
+          "Hollow Oak CG opens Evertale in Windmill Hamlet with Wand and Pip");
+    /* Finish Pip Reunion cutscene */
+    for (int f = 0; f < 600 && g_st.mode == MODE_CUTSCENE; f++) hearth_step_60hz(&g_st, ((f & 3) == 0) ? PAD_A : 0);
 
     /* Replay Cinema -> PAD_START returns cleanly to Title Screen */
     hearth_start_intro(&g_st);
     CHECK(g_st.mode == MODE_INTRO && !g_st.intro.launch_story, "Replay Cinema launches in non-story mode");
     hearth_step_60hz(&g_st, PAD_START);
     CHECK(g_st.mode == MODE_TITLE, "Skipping Replay Cinema returns cleanly to MODE_TITLE");
-    printf("[PASS] Title Screen -> 7-Act Illustrated Opening Cinema -> Age-10 Alderbrook flow\n");
+    printf("[PASS] Full Chapter 1 Arc: 4 Autumn Mountain Maps, 4 Time-of-Day Shifts, Portraits & 3 Story CGs\n");
 
     /* 4. Explore Evertale Sandbox + 8-Way Fixed-Point Movement + Pip Breadcrumb Trail */
     hearth_start_sandbox(&g_st);

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { IntroState } from '../core/types';
 import cgAlderbrookDusk from '../assets/images/cinema_alderbrook_dusk_1795309262024.jpg';
 import cgHollowOakChase from '../assets/images/cinema_hollow_oak_chase_1795309261000.jpg';
@@ -6,6 +6,9 @@ import cgEvertaleVista from '../assets/images/cinema_evertale_panorama_179530926
 import cgShadowGrandma from '../assets/images/cinema_shadow_grandma_1795309261174.jpg';
 import cgBedroomComfort from '../assets/images/cinema_bedroom_comfort_v2_1795309287400.jpg';
 import cgPipWindow from '../assets/images/cinema_pip_window_1795309260734.jpg';
+import cgAtticKeepsake from '../assets/images/cg_attic_keepsake_1795315522510.jpg';
+import cgPipDreamReturn from '../assets/images/cg_pip_dream_return_1795315522510.jpg';
+import cgHollowOakAwakens from '../assets/images/cg_hollow_oak_awakens_1795315522718.jpg';
 
 const CG_PLATES: readonly { src: string; alt: string; fallbackBg: string }[] = [
   {
@@ -38,6 +41,21 @@ const CG_PLATES: readonly { src: string; alt: string; fallbackBg: string }[] = [
     alt: 'Pip the lantern sprite glowing outside Rowan’s frosted bedroom window at midnight',
     fallbackBg: 'linear-gradient(180deg, #0d1633 0%, #1d3566 55%, #121c33 100%)',
   },
+  {
+    src: cgAtticKeepsake,
+    alt: 'Rowan opening Grandma Mara’s cedar attic chest to discover Milo’s brass bell and a pressed golden oak leaf',
+    fallbackBg: 'linear-gradient(180deg, #2b1d14 0%, #6a4424 52%, #241812 100%)',
+  },
+  {
+    src: cgPipDreamReturn,
+    alt: 'Pip the glowing lantern sprite calling out to Rowan in a moonlit mountain dream above autumn ridges',
+    fallbackBg: 'linear-gradient(180deg, #0b1430 0%, #1f3d73 55%, #131c36 100%)',
+  },
+  {
+    src: cgHollowOakAwakens,
+    alt: 'Rowan and Milo standing before the colossal Hollow Oak as a golden doorway into Evertale opens',
+    fallbackBg: 'linear-gradient(180deg, #13212c 0%, #403628 52%, #1d2a20 100%)',
+  },
 ];
 
 interface CinemaTheaterProps {
@@ -60,6 +78,7 @@ export const CinemaTheater: React.FC<CinemaTheaterProps> = ({
   const fxCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const fxModeRef = useRef<number>(intro.fxMode);
   fxModeRef.current = intro.fxMode;
+  const [failedPlateIdx, setFailedPlateIdx] = useState<number | null>(null);
 
   /* Lightweight 60fps atmospheric particle canvas layered over the painted CG plate */
   useEffect(() => {
@@ -205,22 +224,39 @@ export const CinemaTheater: React.FC<CinemaTheaterProps> = ({
       <div className="flex shrink-0 items-center justify-between border-b border-[#6E552E]/70 bg-[#0C0A14] px-3.5 py-2 sm:px-5">
         <div className="flex items-center gap-3 min-w-0">
           <span className="font-pixel text-[10px] tracking-[0.14em] text-[#F5D688] truncate sm:text-[11px]">
-            {intro.title || 'PROLOGUE'}
+            {intro.title || (intro.scriptId === 0 ? 'PROLOGUE' : 'CHAPTER I')}
           </span>
-          <div className="hidden items-center gap-1 sm:flex" aria-label={`Act ${intro.actNum} of 7`}>
-            {[1, 2, 3, 4, 5, 6, 7].map((act) => (
-              <span
-                key={act}
-                className={
-                  act === intro.actNum
-                    ? 'h-1.5 w-4 bg-[#F5D688] transition-all duration-300'
-                    : act < intro.actNum
-                      ? 'h-1.5 w-1.5 bg-[#8E7342]'
-                      : 'h-1.5 w-1.5 bg-[#312B3D]'
-                }
-              />
-            ))}
-          </div>
+          {intro.scriptId === 0 ? (
+            <div className="hidden items-center gap-1 sm:flex" aria-label={`Act ${intro.actNum} of 7`}>
+              {[1, 2, 3, 4, 5, 6, 7].map((act) => (
+                <span
+                  key={act}
+                  className={
+                    act === intro.actNum
+                      ? 'h-1.5 w-4 bg-[#F5D688] transition-all duration-300'
+                      : act < intro.actNum
+                        ? 'h-1.5 w-1.5 bg-[#8E7342]'
+                        : 'h-1.5 w-1.5 bg-[#312B3D]'
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="hidden items-center gap-1 sm:flex" aria-label={`Beat ${intro.beat + 1} of ${intro.beatCount}`}>
+              {Array.from({ length: Math.min(8, intro.beatCount) }, (_, idx) => (
+                <span
+                  key={idx}
+                  className={
+                    idx === intro.beat
+                      ? 'h-1.5 w-4 bg-[#F5D688] transition-all duration-300'
+                      : idx < intro.beat
+                        ? 'h-1.5 w-1.5 bg-[#8E7342]'
+                        : 'h-1.5 w-1.5 bg-[#312B3D]'
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -256,22 +292,25 @@ export const CinemaTheater: React.FC<CinemaTheaterProps> = ({
         className="relative flex-1 overflow-hidden"
         style={{ background: plate.fallbackBg }}
       >
-        <img
-          key={plateIdx}
-          src={plate.src}
-          alt={plate.alt}
-          referrerPolicy="no-referrer"
-          draggable={false}
-          className="h-full w-full object-cover will-change-transform"
-          style={{
-            transform: `scale(${scale.toFixed(4)}) translate(${tx.toFixed(2)}%, ${ty.toFixed(2)}%)`,
-            filter: isDawnReprise
-              ? 'brightness(1.12) saturate(1.15) hue-rotate(-8deg)'
-              : isEclipse
-                ? 'contrast(1.08) saturate(1.12)'
-                : 'none',
-          }}
-        />
+        {failedPlateIdx !== plateIdx && (
+          <img
+            key={plateIdx}
+            src={plate.src}
+            alt={plate.alt}
+            referrerPolicy="no-referrer"
+            draggable={false}
+            onError={() => setFailedPlateIdx(plateIdx)}
+            className="h-full w-full object-cover will-change-transform"
+            style={{
+              transform: `scale(${scale.toFixed(4)}) translate(${tx.toFixed(2)}%, ${ty.toFixed(2)}%)`,
+              filter: isDawnReprise
+                ? 'brightness(1.12) saturate(1.15) hue-rotate(-8deg)'
+                : isEclipse
+                  ? 'contrast(1.08) saturate(1.12)'
+                  : 'none',
+            }}
+          />
+        )}
 
         {/* Atmospheric particles layer */}
         <canvas
@@ -320,7 +359,7 @@ export const CinemaTheater: React.FC<CinemaTheaterProps> = ({
               </span>
             ) : (
               <span className="font-pixel text-[9px] tracking-[0.16em] text-[#8E836D]">
-                PROLOGUE · {intro.beat + 1} / {intro.beatCount}
+                {intro.scriptId === 0 ? 'PROLOGUE' : 'STORY SCENE'} · {intro.beat + 1} / {intro.beatCount}
               </span>
             )}
             <span className="font-pixel text-[9px] tracking-wider text-[#8CC4E6]">

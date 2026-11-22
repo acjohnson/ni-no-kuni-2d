@@ -57,7 +57,8 @@ export type GameMode =
   | 'SHOP'
   | 'FISHING';
 
-export type ZoneId = 0 | 1 | 2 | 3 | 4;
+export type ZoneId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type TimeOfDay = 0 | 1 | 2 | 3; // 0=Morning, 1=Afternoon, 2=Dusk, 3=Night
 
 export type BgmTrackId =
   | 'HAMLET'
@@ -119,6 +120,24 @@ export const T_SHRINE_PILLAR = 24;
 export const T_SIGNPOST = 25;
 export const T_LANTERN_POST = 26;
 export const T_FLOWER_BED = 27;
+export const T_MTN_SKY = 28;
+export const T_CLIFF_WALL = 29;
+export const T_CLIFF_LEDGE = 30;
+export const T_BOULDER = 31;
+export const T_AUTUMN_GRASS = 32;
+export const T_ROCKY_PATH = 33;
+export const T_RAPIDS = 34;
+export const T_RAIL_TRACK = 35;
+export const T_MAPLE_TRUNK = 36;
+export const T_PINE_TRUNK = 37;
+export const T_WOOD_FLOOR = 38;
+export const T_HEARTH_RUG = 39;
+export const T_FIREPLACE = 40;
+export const T_BED_QUILT = 41;
+export const T_ATTIC_CHEST = 42;
+export const T_HOLLOW_OAK = 43;
+export const T_STONE_STAIRS = 44;
+export const T_INTERIOR_WALL = 45;
 
 export const O_NONE = 0;
 export const O_CANOPY_TL = 1;
@@ -127,6 +146,10 @@ export const O_CANOPY_BL = 3;
 export const O_CANOPY_BR = 4;
 export const O_ROOF_EAVE = 5;
 export const O_SHRINE_ARCH = 6;
+export const O_MAPLE_TL = 7;
+export const O_MAPLE_TR = 8;
+export const O_PINE_TOP = 9;
+export const O_OAK_CROWN = 10;
 
 export const COL_WALKABLE = 0;
 export const COL_SOLID = 1;
@@ -220,7 +243,12 @@ export type SpriteId =
   | 'boss_ironfang'
   | 'hollow_oak'
   | 'bobber'
-  | 'npc_townsfolk';
+  | 'npc_townsfolk'
+  | 'npc_mara'
+  | 'npc_barnaby'
+  | 'npc_maple'
+  | 'npc_jasper'
+  | 'locomotive';
 
 export type PortraitId =
   | 'hero'
@@ -327,6 +355,7 @@ export interface DialogueState {
   active: boolean;
   speaker: string;
   portrait: PortraitId;
+  portraitId: number; // 0=None, 1=Rowan, 2=Mara, 3=Pip, 4=Barnaby, 5=Maple, 6=Jasper
   fullText: string;
   visibleChars: number;
   finishedTyping: boolean;
@@ -436,6 +465,7 @@ export interface BattleVfxState {
 }
 
 export interface IntroState {
+  scriptId: number;
   beat: number;
   beatCount: number;
   scene: number;
@@ -552,6 +582,9 @@ export interface PpuFramePacket {
   zoneIsDark: boolean;
   zoneBannerFrames: number;
   zoneName: string;
+  timeOfDay: TimeOfDay;
+  hasMountainVista: boolean;
+  objectiveText: string;
   heroWorldX: number;
   heroWorldY: number;
   camX: number;
@@ -578,6 +611,10 @@ export interface UiSnapshot {
   mode: GameMode;
   zoneId: ZoneId;
   zoneLabel: string;
+  timeOfDay: TimeOfDay;
+  timeOfDayLabel: string;
+  ch1Step: number;
+  hasMiloBell: boolean;
   storyStage: number;
   objectiveLabel: string;
   intro: IntroState;

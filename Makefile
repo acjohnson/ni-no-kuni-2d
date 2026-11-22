@@ -246,7 +246,7 @@ snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(SNES_CG_ASM) $(SNES_
 		'SRC := src' \
 		'CFLAGS += -DHEARTH_TARGET_SNES -Isrc -I.' \
 		"include $${PV_ROOT}/devkitsnes/snes_rules" \
-		'SMCONVFLAGS := -s -o $$(SOUNDBANK) -V -b 10 -f' \
+		'SMCONVFLAGS := -s -o $$(SOUNDBANK) -V -b 14 -f' \
 		'musics: $$(SOUNDBANK).obj' \
 		"$${DATA_OBJ}: hdr.asm" \
 		'src/main.ps: $$(SOUNDBANK).asm' \

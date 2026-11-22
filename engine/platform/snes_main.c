@@ -97,16 +97,38 @@ enum {
     ST_BATTLE_SKY_MEADOW,
     ST_BATTLE_SKY_SHRINE,
     ST_BATTLE_GROUND_MEADOW,
-    ST_BATTLE_GROUND_SHRINE
+    ST_BATTLE_GROUND_SHRINE,
+    /* Milestone 2: Ground-Up Autumn Mountain & Cottage Interior Tiles (34..54 < VRAM_CG_TILE_BASE=64) */
+    ST_MTN_SKY,
+    ST_CLIFF_WALL,
+    ST_CLIFF_LEDGE,
+    ST_BOULDER,
+    ST_AUTUMN_GRASS,
+    ST_ROCKY_PATH,
+    ST_RAPIDS,
+    ST_RAIL_TRACK,
+    ST_MAPLE_TRUNK,
+    ST_PINE_TRUNK,
+    ST_WOOD_FLOOR,
+    ST_HEARTH_RUG,
+    ST_FIREPLACE,
+    ST_BED_QUILT,
+    ST_ATTIC_CHEST,
+    ST_HOLLOW_OAK,
+    ST_STONE_STAIRS,
+    ST_INTERIOR_WALL,
+    ST_MAPLE_CANOPY,
+    ST_PINE_TOP,
+    ST_OAK_CROWN
 };
 
-#define SPR_TIMED_RING_SLOT  32u  /* OBJ tile 0x80 */
-#define SPR_HERO_DOWN_1      33u  /* OBJ tile 0x82 */
-#define SPR_HERO_UP_0        34u  /* OBJ tile 0x84 */
-#define SPR_HERO_UP_1        35u  /* OBJ tile 0x86 */
-#define SPR_HERO_SIDE_0      36u  /* OBJ tile 0x88 */
-#define SPR_HERO_SIDE_1      37u  /* OBJ tile 0x8A */
-#define SPR_BATTLE_VFX_SLOT  38u  /* OBJ tile 0x8C */
+#define SPR_TIMED_RING_SLOT  37u  /* OBJ tile 0x8A */
+#define SPR_HERO_DOWN_1      38u  /* OBJ tile 0x8C */
+#define SPR_HERO_UP_0        39u  /* OBJ tile 0x8E */
+#define SPR_HERO_UP_1        40u  /* OBJ tile 0xA0 */
+#define SPR_HERO_SIDE_0      41u  /* OBJ tile 0xA2 */
+#define SPR_HERO_SIDE_1      42u  /* OBJ tile 0xA4 */
+#define SPR_BATTLE_VFX_SLOT  43u  /* OBJ tile 0xA6 */
 
 /* Tilemap shadow buffers & pixel baker scratchpads in Bank $7E WRAM */
 static u16 g_bg0_map[1024];
@@ -145,6 +167,7 @@ static u8 g_anim_water[4][32];
 static u8 g_anim_ford[4][32];
 static u8 g_anim_tgrass[4][32];
 static u8 g_anim_rune[4][32];
+static u8 g_anim_rapids[4][32];
 /* Windmill 16x16 OBJ: [frame][0..1 = top row T,T+1; 2..3 = bottom row T+16,T+17] */
 static u8 g_anim_windmill[4][4][32];
 
@@ -500,6 +523,85 @@ static void bake_bg1_terrain_part2(void) {
     upload_bg1_tile(ST_BATTLE_GROUND_SHRINE);
 }
 
+static void bake_bg1_terrain_part3(void) {
+    /* Distant Snow-Dusted Alpine Peaks & Horizon Sky */
+    p8_fill(13); p8_rect(0, 0, 8, 2, 12);
+    p8_rect(2, 2, 4, 2, 14); p8_rect(3, 1, 2, 1, 14);
+    p8_rect(1, 4, 6, 4, 9);  p8_rect(0, 6, 8, 2, 2);
+    upload_bg1_tile(ST_MTN_SKY);
+
+    /* Granite Cliff Wall & Mossy Ledge */
+    p8_fill(9); p8_rect(0, 0, 7, 3, 10); p8_rect(1, 0, 5, 1, 11);
+    p8_rect(0, 3, 8, 1, 1); p8_rect(1, 4, 6, 3, 10); p8_rect(0, 7, 8, 1, 1);
+    upload_bg1_tile(ST_CLIFF_WALL);
+
+    p8_fill(9); p8_rect(0, 0, 8, 3, 3); p8_rect(1, 0, 6, 2, 4); p8_rect(2, 0, 3, 1, 5);
+    p8_rect(0, 3, 8, 2, 11); p8_rect(0, 5, 8, 1, 1); p8_rect(1, 6, 6, 2, 10);
+    upload_bg1_tile(ST_CLIFF_LEDGE);
+
+    /* Boulder, Autumn Meadow Grass, Rocky Gravel Trail */
+    p8_fill(4); p8_rect(1, 2, 6, 5, 9); p8_rect(2, 2, 4, 4, 10); p8_rect(2, 2, 3, 2, 11); g_pix8[18] = 3;
+    upload_bg1_tile(ST_BOULDER);
+
+    p8_fill(4); g_pix8[10] = 5; g_pix8[46] = 3; g_pix8[21] = 15; g_pix8[50] = 8; g_pix8[35] = 15;
+    upload_bg1_tile(ST_AUTUMN_GRASS);
+
+    p8_fill(7); p8_rect(1, 1, 3, 2, 10); g_pix8[9] = 11; p8_rect(4, 5, 3, 2, 10); g_pix8[45] = 11;
+    upload_bg1_tile(ST_ROCKY_PATH);
+
+    /* Whitewater Rapids & Mountain Railway Track */
+    p8_fill(12); p8_rect(1, 1, 4, 1, 13); p8_rect(2, 2, 3, 1, 14); p8_rect(3, 5, 4, 1, 14);
+    upload_bg1_tile(ST_RAPIDS);
+
+    p8_fill(9); p8_rect(1, 0, 2, 8, 6); p8_rect(5, 0, 2, 8, 6);
+    p8_rect(0, 1, 8, 2, 1); p8_rect(0, 1, 8, 1, 11);
+    p8_rect(0, 5, 8, 2, 1); p8_rect(0, 5, 8, 1, 11);
+    upload_bg1_tile(ST_RAIL_TRACK);
+
+    /* Maple Trunk & Pine Trunk */
+    p8_fill(4); p8_rect(2, 0, 4, 8, 6); p8_rect(3, 0, 2, 7, 7); g_pix8[49] = 15; g_pix8[62] = 8;
+    upload_bg1_tile(ST_MAPLE_TRUNK);
+
+    p8_fill(3); p8_rect(3, 4, 2, 4, 6); p8_rect(1, 0, 6, 5, 2); p8_rect(2, 1, 4, 3, 3);
+    upload_bg1_tile(ST_PINE_TRUNK);
+
+    /* Cottage Interior & Hollow Oak Glade Tiles */
+    p8_fill(7); p8_rect(0, 3, 8, 1, 6); p8_rect(0, 7, 8, 1, 6); p8_rect(1, 1, 4, 1, 8); p8_rect(4, 5, 3, 1, 8);
+    upload_bg1_tile(ST_WOOD_FLOOR);
+
+    p8_fill(15); p8_rect(1, 1, 6, 6, 8); p8_rect(2, 2, 4, 4, 15); p8_rect(3, 3, 2, 2, 14);
+    upload_bg1_tile(ST_HEARTH_RUG);
+
+    p8_fill(9); p8_rect(0, 0, 8, 2, 11); p8_rect(2, 2, 4, 6, 1); p8_rect(2, 4, 4, 3, 15); p8_rect(3, 5, 2, 2, 8);
+    upload_bg1_tile(ST_FIREPLACE);
+
+    p8_fill(6); p8_rect(1, 1, 6, 2, 14); p8_rect(1, 3, 3, 2, 15); p8_rect(4, 3, 3, 2, 13); p8_rect(1, 5, 6, 2, 8);
+    upload_bg1_tile(ST_BED_QUILT);
+
+    p8_fill(7); p8_rect(1, 1, 6, 6, 6); p8_rect(2, 2, 4, 2, 15); p8_rect(2, 4, 4, 2, 8); g_pix8[35] = 14;
+    upload_bg1_tile(ST_ATTIC_CHEST);
+
+    p8_fill(6); p8_rect(1, 0, 6, 8, 7); p8_rect(2, 2, 4, 6, 1); p8_rect(3, 3, 2, 4, 14);
+    upload_bg1_tile(ST_HOLLOW_OAK);
+
+    p8_fill(9); p8_rect(0, 0, 8, 1, 11); p8_rect(0, 1, 8, 2, 10); p8_rect(0, 3, 8, 1, 1);
+    p8_rect(0, 4, 8, 1, 11); p8_rect(0, 5, 8, 2, 10); p8_rect(0, 7, 8, 1, 1);
+    upload_bg1_tile(ST_STONE_STAIRS);
+
+    p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 6, 8, 2, 6); p8_rect(3, 1, 2, 5, 7);
+    upload_bg1_tile(ST_INTERIOR_WALL);
+
+    /* Priority-1 Overhead Autumn Canopies */
+    p8_fill(4); p8_rect(0, 0, 8, 8, 6); p8_rect(1, 1, 6, 5, 15); p8_rect(2, 2, 4, 3, 8); g_pix8[19] = 14;
+    upload_bg1_tile(ST_MAPLE_CANOPY);
+
+    p8_fill(3); p8_rect(3, 0, 2, 2, 3); p8_rect(2, 2, 4, 3, 2); p8_rect(1, 5, 6, 3, 2); p8_rect(2, 5, 3, 2, 3);
+    upload_bg1_tile(ST_PINE_TOP);
+
+    p8_fill(4); p8_rect(0, 1, 8, 6, 6); p8_rect(1, 1, 6, 5, 15); p8_rect(2, 2, 4, 3, 8); p8_rect(3, 2, 2, 2, 14);
+    upload_bg1_tile(ST_OAK_CROWN);
+}
+
 static void bake_bg0_ui_and_font(void) {
     u16 ch;
     u8 y, x, bits;
@@ -811,6 +913,52 @@ static void bake_obj_sprites_part4(void) {
     upload_obj_sprite16(SPR_NPC_TOWNSFOLK);
 }
 
+static void bake_obj_sprites_part5(void) {
+    /* 32: SPR_NPC_MARA */
+    p16_clear();
+    p16_rect(5, 0, 6, 2, 15);  p16_rect(4, 2, 8, 3, 4);
+    p16_rect(4, 5, 8, 3, 2);   g_pix16[102] = 1; g_pix16[105] = 1;
+    p16_rect(3, 8, 10, 6, 10); p16_rect(5, 9, 6, 5, 15);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_obj_sprite16(SPR_NPC_MARA);
+
+    /* 33: SPR_NPC_BARNABY */
+    p16_clear();
+    p16_rect(3, 1, 10, 3, 8);  p16_rect(6, 2, 4, 1, 7);
+    p16_rect(4, 4, 8, 4, 2);   g_pix16[86] = 1; g_pix16[89] = 1;
+    p16_rect(5, 7, 6, 1, 15);
+    p16_rect(4, 8, 8, 6, 8);   p16_rect(7, 9, 2, 4, 7);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_obj_sprite16(SPR_NPC_BARNABY);
+
+    /* 34: SPR_NPC_MAPLE */
+    p16_clear();
+    p16_rect(4, 1, 8, 2, 15);  p16_rect(4, 3, 8, 2, 11);
+    p16_rect(5, 5, 6, 3, 2);   g_pix16[102] = 1; g_pix16[105] = 1;
+    p16_rect(4, 8, 8, 6, 12);  p16_rect(6, 9, 4, 5, 15);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_obj_sprite16(SPR_NPC_MAPLE);
+
+    /* 35: SPR_NPC_JASPER */
+    p16_clear();
+    p16_rect(4, 1, 8, 3, 10);  p16_rect(4, 4, 8, 3, 2);
+    g_pix16[86] = 1; g_pix16[89] = 1;
+    p16_rect(4, 7, 8, 2, 15);
+    p16_rect(3, 9, 10, 5, 5);  p16_rect(5, 10, 6, 2, 10);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_obj_sprite16(SPR_NPC_JASPER);
+
+    /* 36: SPR_LOCOMOTIVE */
+    p16_clear();
+    p16_rect(2, 1, 3, 4, 5);   p16_rect(1, 1, 5, 1, 7);
+    p16_rect(1, 5, 9, 7, 5);   p16_rect(5, 3, 3, 2, 7);
+    p16_rect(10, 2, 5, 10, 10); p16_rect(11, 4, 3, 3, 15);
+    p16_rect(0, 9, 2, 4, 4);
+    p16_rect(2, 12, 3, 3, 10); p16_rect(6, 12, 3, 3, 10); p16_rect(11, 12, 3, 3, 10);
+    p16_rect(2, 13, 12, 1, 7);
+    upload_obj_sprite16(SPR_LOCOMOTIVE);
+}
+
 static void bake_obj_sprites_hero_ext(void) {
     /* 20: SPR_HERO_DOWN_1 (Rowan facing DOWN walking stride) */
     p16_clear();
@@ -952,6 +1100,14 @@ static void bake_env_bg_frames(void) {
             p8_rect(2, 2, 4, 4, 14); p8_rect(3, 3, 2, 2, 15);
         }
         encode_pix8_to_buf(g_anim_rune[f]);
+
+        /* Mountain whitewater rapids */
+        p8_fill(12);
+        p8_rect(1, s1, 3, 1, 13);
+        g_pix8[(u16)((u16)s1 * 8u + 2u)] = 14;
+        p8_rect(4, s2, 3, 1, 14);
+        g_pix8[(u16)((u16)((s2 + 1u) & 7u) * 8u + 5u)] = 13;
+        encode_pix8_to_buf(g_anim_rapids[f]);
     }
 }
 
@@ -1015,7 +1171,7 @@ static void bake_env_windmill_frames(void) {
 /* ============================================================================
  * 6. BG1 SC_64x32 WORLD MAP & BATTLE ARENA STREAMING
  * ============================================================================ */
-static const u16 TERRAIN_TILE_LUT[28] = {
+static const u16 TERRAIN_TILE_LUT[46] = {
     ST_GRASS,          /* 0: T_GRASS */
     ST_GRASS_ALT,      /* 1: T_GRASS_ALT */
     ST_FLOWERS,        /* 2: T_FLOWERS */
@@ -1043,7 +1199,25 @@ static const u16 TERRAIN_TILE_LUT[28] = {
     ST_SHRINE_PILLAR,  /* 24: T_SHRINE_PILLAR */
     ST_SIGN,           /* 25: T_SIGNPOST */
     ST_LAMP,           /* 26: T_LANTERN_POST */
-    ST_FLOWER_BED      /* 27: T_FLOWER_BED */
+    ST_FLOWER_BED,     /* 27: T_FLOWER_BED */
+    ST_MTN_SKY,        /* 28: T_MTN_SKY */
+    ST_CLIFF_WALL,     /* 29: T_CLIFF_WALL */
+    ST_CLIFF_LEDGE,    /* 30: T_CLIFF_LEDGE */
+    ST_BOULDER,        /* 31: T_BOULDER */
+    ST_AUTUMN_GRASS,   /* 32: T_AUTUMN_GRASS */
+    ST_ROCKY_PATH,     /* 33: T_ROCKY_PATH */
+    ST_RAPIDS,         /* 34: T_RAPIDS */
+    ST_RAIL_TRACK,     /* 35: T_RAIL_TRACK */
+    ST_MAPLE_TRUNK,    /* 36: T_MAPLE_TRUNK */
+    ST_PINE_TRUNK,     /* 37: T_PINE_TRUNK */
+    ST_WOOD_FLOOR,     /* 38: T_WOOD_FLOOR */
+    ST_HEARTH_RUG,     /* 39: T_HEARTH_RUG */
+    ST_FIREPLACE,      /* 40: T_FIREPLACE */
+    ST_BED_QUILT,      /* 41: T_BED_QUILT */
+    ST_ATTIC_CHEST,    /* 42: T_ATTIC_CHEST */
+    ST_HOLLOW_OAK,     /* 43: T_HOLLOW_OAK */
+    ST_STONE_STAIRS,   /* 44: T_STONE_STAIRS */
+    ST_INTERIOR_WALL   /* 45: T_INTERIOR_WALL */
 };
 
 static void bake_world_tile_cache(void) {
@@ -1052,11 +1226,17 @@ static void bake_world_tile_cache(void) {
         ov = (u16)g_hearth.map_bg2[idx];
         if (ov == 0u) {
             t = (u16)g_hearth.map_bg1[idx];
-            g_world_tile[idx] = (t < 28u) ? TERRAIN_TILE_LUT[t] : (u16)ST_GRASS;
+            g_world_tile[idx] = (t < 46u) ? TERRAIN_TILE_LUT[t] : (u16)ST_GRASS;
         } else if (ov == O_ROOF_EAVE) {
             g_world_tile[idx] = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
         } else if (ov == O_SHRINE_ARCH) {
             g_world_tile[idx] = SNES_TILE(ST_SHRINE_ARCH, 0u, 1u);
+        } else if (ov == O_MAPLE_TL || ov == O_MAPLE_TR) {
+            g_world_tile[idx] = SNES_TILE(ST_MAPLE_CANOPY, 0u, 1u);
+        } else if (ov == O_PINE_TOP) {
+            g_world_tile[idx] = SNES_TILE(ST_PINE_TOP, 0u, 1u);
+        } else if (ov == O_OAK_CROWN) {
+            g_world_tile[idx] = SNES_TILE(ST_OAK_CROWN, 0u, 1u);
         } else {
             g_world_tile[idx] = SNES_TILE(ST_CANOPY, 0u, 1u);
         }
@@ -1231,6 +1411,9 @@ static u8 *snes_cg_tiles_ptr(u8 p) {
         case 3u: return (u8 *)&cg_plate3_tiles;
         case 4u: return (u8 *)&cg_plate4_tiles;
         case 5u: return (u8 *)&cg_plate5_tiles;
+        case 6u: return (u8 *)&cg_plate6_tiles;
+        case 7u: return (u8 *)&cg_plate7_tiles;
+        case 8u: return (u8 *)&cg_plate8_tiles;
         default: return (u8 *)&cg_plate0_tiles;
     }
 }
@@ -1242,6 +1425,9 @@ static const u16 *snes_cg_map_ptr(u8 p) {
         case 3u: return (const u16 *)&cg_plate3_map;
         case 4u: return (const u16 *)&cg_plate4_map;
         case 5u: return (const u16 *)&cg_plate5_map;
+        case 6u: return (const u16 *)&cg_plate6_map;
+        case 7u: return (const u16 *)&cg_plate7_map;
+        case 8u: return (const u16 *)&cg_plate8_map;
         default: return (const u16 *)&cg_plate0_map;
     }
 }
@@ -1253,6 +1439,9 @@ static u8 *snes_cg_pal_ptr(u8 p) {
         case 3u: return (u8 *)&cg_plate3_pal;
         case 4u: return (u8 *)&cg_plate4_pal;
         case 5u: return (u8 *)&cg_plate5_pal;
+        case 6u: return (u8 *)&cg_plate6_pal;
+        case 7u: return (u8 *)&cg_plate7_pal;
+        case 8u: return (u8 *)&cg_plate8_pal;
         default: return (u8 *)&cg_plate0_pal;
     }
 }
@@ -1881,8 +2070,8 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
 /* ============================================================================
  * 8. SNES HARDWARE OAM SPRITE RENDERER (Direct oamMemory[] Shadow Writes)
  * ============================================================================ */
-/* Pre-combined 16-bit word: ((0x20 | (pal << 1)) << 8) | tile (32 core sprites) */
-static const u16 SPR_TILE_ATTR_LUT[32] = {
+/* Pre-combined 16-bit word: ((0x20 | (pal << 1)) << 8) | tile (37 core sprites) */
+static const u16 SPR_TILE_ATTR_LUT[37] = {
     0x2200u, 0x2202u, 0x2204u, 0x2206u, /* 0..3: Hero, Pip, Bramble, Lumina (PAL1) */
     0x2408u, 0x240Au, 0x240Cu,          /* 4..6: Elder, Clara, Guard (PAL2) */
     0x260Eu, 0x2620u, 0x2622u, 0x2624u, /* 7..10: Gloomcap, Thornling, DuskMoth, Briar (PAL3) */
@@ -1894,18 +2083,19 @@ static const u16 SPR_TILE_ATTR_LUT[32] = {
     0x2660u, 0x2662u, 0x2664u, 0x2666u, 0x2668u, /* 24..28: Rat, Slime, Boar, Muckmaw, Ironfang (PAL3) */
     0x246Au,                            /* 29: Hollow Oak (PAL2) */
     0x226Cu,                            /* 30: Fishing Bobber (PAL1) */
-    0x246Eu                             /* 31: Alderbrook Townsfolk (PAL2) */
+    0x246Eu,                            /* 31: Alderbrook Townsfolk (PAL2) */
+    0x2480u, 0x2482u, 0x2484u, 0x2486u, 0x2488u  /* 32..36: Mara, Barnaby, Maple, Jasper, Locomotive (PAL2) */
 };
 
 static const u16 HERO_TA_LUT[8] = {
     0x2200u, /* 0: DOWN  step 0 (slot 0,  tile 0x00) */
-    0x2284u, /* 1: UP    step 0 (slot 34, tile 0x84) */
-    0x6288u, /* 2: LEFT  step 0 (slot 36, tile 0x88 + H-flip) */
-    0x2288u, /* 3: RIGHT step 0 (slot 36, tile 0x88) */
-    0x2282u, /* 4: DOWN  step 1 (slot 33, tile 0x82) */
-    0x2286u, /* 5: UP    step 1 (slot 35, tile 0x86) */
-    0x628Au, /* 6: LEFT  step 1 (slot 37, tile 0x8A + H-flip) */
-    0x228Au  /* 7: RIGHT step 1 (slot 37, tile 0x8A) */
+    0x228Eu, /* 1: UP    step 0 (slot 39, tile 0x8E) */
+    0x62A2u, /* 2: LEFT  step 0 (slot 41, tile 0xA2 + H-flip) */
+    0x22A2u, /* 3: RIGHT step 0 (slot 41, tile 0xA2) */
+    0x228Cu, /* 4: DOWN  step 1 (slot 38, tile 0x8C) */
+    0x22A0u, /* 5: UP    step 1 (slot 40, tile 0xA0) */
+    0x62A4u, /* 6: LEFT  step 1 (slot 42, tile 0xA4 + H-flip) */
+    0x22A4u  /* 7: RIGHT step 1 (slot 42, tile 0xA4) */
 };
 
 static const u8 HI_TAIL_MASK[4] = { 0x00u, 0x54u, 0x50u, 0x40u };
@@ -1941,7 +2131,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             if (sid == 0u) {
                 ta = HERO_TA_LUT[(flg >> 3) & 7u];
             } else {
-                if (sid >= 32u) sid = 0u;
+                if (sid >= 37u) sid = 0u;
                 ta = SPR_TILE_ATTR_LUT[sid];
                 if (flg & OAM_FLAG_FLIP_X) ta |= 0x4000u;
             }
@@ -1975,7 +2165,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
                 oamMemory[oidx]             = (u8)sx;
                 oamMemory[(u16)(oidx + 1u)] = (u8)sy;
-                oamMemory[(u16)(oidx + 2u)] = 0x8Cu;
+                oamMemory[(u16)(oidx + 2u)] = 0xA6u;
                 oamMemory[(u16)(oidx + 3u)] = (u8)rpal;
                 oidx = (u16)(oidx + 4u);
                 hi_mask <<= 2;
@@ -2000,7 +2190,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
                 oamMemory[oidx]             = (u8)sx;
                 oamMemory[(u16)(oidx + 1u)] = (u8)sy;
-                oamMemory[(u16)(oidx + 2u)] = 0x80u;
+                oamMemory[(u16)(oidx + 2u)] = 0x8Au;
                 oamMemory[(u16)(oidx + 3u)] = (u8)rpal;
                 oidx = (u16)(oidx + 4u);
                 hi_mask <<= 2;
@@ -2162,7 +2352,7 @@ static void flush_env_vblank_dma(void) {
     u8 af = g_env_frame;
     u16 t = sprite_slot_to_tile(SPR_WINDMILL_BLADES);
 
-    /* 7 BG1 tiles (224 B) + 4 Windmill OBJ tiles (128 B) = 352 bytes total! */
+    /* 8 BG1 tiles (256 B) + 4 Windmill OBJ tiles (128 B) = 384 bytes total! */
     dmaCopyVram(g_anim_grass[af],       (u16)(VRAM_BG1_GFX + ((u16)ST_GRASS << 4)),       32u);
     dmaCopyVram(g_anim_grass_alt[af],   (u16)(VRAM_BG1_GFX + ((u16)ST_GRASS_ALT << 4)),   32u);
     dmaCopyVram(g_anim_flowers[af],     (u16)(VRAM_BG1_GFX + ((u16)ST_FLOWERS << 4)),     32u);
@@ -2170,6 +2360,7 @@ static void flush_env_vblank_dma(void) {
     dmaCopyVram(g_anim_ford[af],        (u16)(VRAM_BG1_GFX + ((u16)ST_FORD << 4)),        32u);
     dmaCopyVram(g_anim_tgrass[af],      (u16)(VRAM_BG1_GFX + ((u16)ST_TALL_GRASS << 4)),  32u);
     dmaCopyVram(g_anim_rune[af],        (u16)(VRAM_BG1_GFX + ((u16)ST_SHRINE_RUNE << 4)), 32u);
+    dmaCopyVram(g_anim_rapids[af],      (u16)(VRAM_BG1_GFX + ((u16)ST_RAPIDS << 4)),      32u);
     dmaCopyVram(g_anim_windmill[af][0], (u16)(VRAM_OBJ_GFX + (t << 4)),                   64u);
     dmaCopyVram(g_anim_windmill[af][2], (u16)(VRAM_OBJ_GFX + ((t + 16u) << 4)),           64u);
     g_env_dirty = 0;
@@ -2226,11 +2417,13 @@ int main(void) {
     upload_all_palettes();
     bake_bg1_terrain_part1();
     bake_bg1_terrain_part2();
+    bake_bg1_terrain_part3();
     bake_bg0_ui_and_font();
     bake_obj_sprites_part1();
     bake_obj_sprites_part2();
     bake_obj_sprites_part3();
     bake_obj_sprites_part4();
+    bake_obj_sprites_part5();
     bake_obj_sprites_hero_ext();
     bake_env_bg_frames();
     bake_env_windmill_frames();

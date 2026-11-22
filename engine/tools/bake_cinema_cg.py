@@ -26,9 +26,22 @@ PLATES = [
     ("SHADOW_GRANDMA",     "cinema_shadow_grandma_1795309261174.jpg"),
     ("BEDROOM_COMFORT",    "cinema_bedroom_comfort_v2_1795309287400.jpg"),
     ("PIP_WINDOW",         "cinema_pip_window_1795309260734.jpg"),
+    ("ATTIC_KEEPSAKE",     "cg_attic_keepsake_1795315522510.jpg"),
+    ("PIP_DREAM_RETURN",   "cg_pip_dream_return_1795315522510.jpg"),
+    ("HOLLOW_OAK_AWAKENS", "cg_hollow_oak_awakens_1795315522718.jpg"),
+]
+
+PORTRAITS = [
+    ("ROWAN",        "portrait_rowan_1795315522922.jpg"),
+    ("GRANDMA_MARA", "portrait_grandma_mara_1795315523861.jpg"),
+    ("PIP",          "portrait_pip_1795315522510.jpg"),
+    ("BARNABY",      "portrait_barnaby_1795315522478.jpg"),
+    ("MAPLE",        "portrait_maple_1795315522927.jpg"),
+    ("JASPER",       "portrait_jasper_1795315522636.jpg"),
 ]
 
 SDL_W, SDL_H = 340, 156
+PORT_W, PORT_H = 40, 40
 ROM_W, ROM_H = 256, 120   # 32 x 15 tiles of 8x8 = 480 map entries
 MAX_ROM_TILES = 340       # Comfortably fits in SNES BG1 VRAM (64..403) & < 12KB per LoROM bank
 SNES_CG_TILE_BASE = 64    # Matches VRAM_CG_TILE_BASE in engine/platform/snes_main.c
@@ -68,6 +81,21 @@ def build_sdl2_header():
         f.write(f"static const uint16_t CINEMA_SDL_PLATES[{len(PLATES)}][{SDL_W * SDL_H}] = {{\n")
         for idx, (name, fname) in enumerate(PLATES):
             raw = read_ppm(os.path.join(IMG_DIR, fname), SDL_W, SDL_H, quantize_15=False)
+            f.write(f"    /* {idx}: {name} */\n    {{\n")
+            vals = []
+            for i in range(0, len(raw), 3):
+                vals.append(rgb888_to_rgb565(raw[i], raw[i + 1], raw[i + 2]))
+            for row in range(0, len(vals), 16):
+                chunk = vals[row:row + 16]
+                f.write("        " + ",".join(f"0x{v:04X}" for v in chunk) + ",\n")
+            f.write("    },\n")
+        f.write("};\n\n")
+        f.write(f"#define CINEMA_SDL_PORTRAIT_COUNT {len(PORTRAITS)}\n")
+        f.write(f"#define CINEMA_SDL_PORT_W {PORT_W}\n")
+        f.write(f"#define CINEMA_SDL_PORT_H {PORT_H}\n\n")
+        f.write(f"static const uint16_t CINEMA_SDL_PORTRAITS[{len(PORTRAITS)}][{PORT_W * PORT_H}] = {{\n")
+        for idx, (name, fname) in enumerate(PORTRAITS):
+            raw = read_ppm(os.path.join(IMG_DIR, fname), PORT_W, PORT_H, quantize_15=False)
             f.write(f"    /* {idx}: {name} */\n    {{\n")
             vals = []
             for i in range(0, len(raw), 3):

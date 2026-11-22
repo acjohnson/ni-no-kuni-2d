@@ -12,28 +12,49 @@ import {
   O_CANOPY_BR,
   O_CANOPY_TL,
   O_CANOPY_TR,
+  O_MAPLE_TL,
+  O_MAPLE_TR,
+  O_OAK_CROWN,
+  O_PINE_TOP,
   O_ROOF_EAVE,
   O_SHRINE_ARCH,
   SpriteId,
+  T_ATTIC_CHEST,
+  T_AUTUMN_GRASS,
+  T_BED_QUILT,
+  T_BOULDER,
   T_BRIDGE,
   T_BRIDGE_RAIL_N,
   T_BRIDGE_RAIL_S,
   T_BUSH,
+  T_CLIFF_LEDGE,
+  T_CLIFF_WALL,
   T_COBBLE,
   T_DIRT,
   T_FENCE,
+  T_FIREPLACE,
   T_FLOWER_BED,
   T_FLOWERS,
   T_FORD,
   T_GRASS,
   T_GRASS_ALT,
+  T_HEARTH_RUG,
+  T_HOLLOW_OAK,
+  T_INTERIOR_WALL,
   T_LANTERN_POST,
+  T_MAPLE_TRUNK,
+  T_MTN_SKY,
+  T_PINE_TRUNK,
+  T_RAIL_TRACK,
+  T_RAPIDS,
+  T_ROCKY_PATH,
   T_ROOF_BODY,
   T_ROOF_TOP,
   T_SHRINE_FLOOR,
   T_SHRINE_PILLAR,
   T_SHRINE_RUNE,
   T_SIGNPOST,
+  T_STONE_STAIRS,
   T_TALL_GRASS,
   T_TREE_TRUNK,
   T_WALL_DOOR,
@@ -43,6 +64,7 @@ import {
   T_WINDMILL_DOOR,
   T_WINDMILL_ROOF,
   T_WINDMILL_WALL,
+  T_WOOD_FLOOR,
   TILE_SIZE,
 } from '../core/types';
 
@@ -600,6 +622,342 @@ export class PixelAtlas {
     });
     this.bg1Tiles.set(T_FLOWER_BED, [flowerBed]);
 
+    /* ======================================================================
+     * CHAPTER 1 GROUND-UP AUTUMN MOUNTAIN & COTTAGE INTERIOR TILES (28..45)
+     * ====================================================================== */
+    // 28. T_MTN_SKY: Transparent aperture revealing live parallax alpine vista behind BG1
+    const mtnSky = makeTile(() => {
+      /* intentionally transparent */
+    });
+    this.bg1Tiles.set(T_MTN_SKY, [mtnSky]);
+
+    // 29. T_CLIFF_WALL: Steep stratified slate-granite mountain cliff face
+    const cliffWall = makeTile((ctx) => {
+      ctx.fillStyle = p0[9];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[10];
+      ctx.fillRect(1, 1, 6, 7);
+      ctx.fillRect(8, 2, 7, 6);
+      ctx.fillRect(0, 9, 5, 6);
+      ctx.fillRect(6, 10, 6, 5);
+      ctx.fillRect(13, 9, 3, 6);
+      ctx.fillStyle = p0[11];
+      ctx.fillRect(1, 1, 5, 1);
+      ctx.fillRect(8, 2, 6, 1);
+      ctx.fillRect(6, 10, 5, 1);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(0, 8, 16, 1);
+      ctx.fillRect(7, 0, 1, 9);
+      ctx.fillRect(5, 9, 1, 7);
+      ctx.fillRect(12, 9, 1, 7);
+    });
+    this.bg1Tiles.set(T_CLIFF_WALL, [cliffWall]);
+
+    // 30. T_CLIFF_LEDGE: Moss-crowned granite cliff escarpment edge
+    const cliffLedge = makeTile((ctx) => {
+      ctx.drawImage(cliffWall, 0, 0);
+      ctx.fillStyle = p0[3];
+      ctx.fillRect(0, 0, 16, 5);
+      ctx.fillStyle = p0[4];
+      ctx.fillRect(1, 1, 5, 2);
+      ctx.fillRect(9, 0, 6, 3);
+      ctx.fillStyle = p0[5];
+      ctx.fillRect(2, 1, 2, 1);
+      ctx.fillRect(11, 1, 3, 1);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(0, 5, 16, 1);
+      ctx.fillStyle = p0[11];
+      ctx.fillRect(1, 6, 14, 1);
+    });
+    this.bg1Tiles.set(T_CLIFF_LEDGE, [cliffLedge]);
+
+    // 31. T_BOULDER: Mossy alpine granite boulder
+    const boulder = makeTile((ctx) => {
+      ctx.fillStyle = p0[3];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[2];
+      ctx.fillRect(2, 12, 12, 3);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(2, 3, 12, 10);
+      ctx.fillRect(4, 2, 8, 12);
+      ctx.fillStyle = p0[9];
+      ctx.fillRect(3, 4, 10, 8);
+      ctx.fillStyle = p0[10];
+      ctx.fillRect(4, 3, 8, 7);
+      ctx.fillStyle = p0[11];
+      ctx.fillRect(5, 3, 5, 3);
+      ctx.fillRect(4, 5, 2, 2);
+      // Autumn moss tuft on stone
+      ctx.fillStyle = p0[4];
+      ctx.fillRect(9, 4, 3, 2);
+      ctx.fillStyle = p0[15];
+      ctx.fillRect(11, 10, 2, 1);
+    });
+    this.bg1Tiles.set(T_BOULDER, [boulder]);
+
+    // 32. T_AUTUMN_GRASS: Golden-ochre meadow scattered with fallen crimson & gold maple leaves
+    const autumnGrass = makeTile((ctx) => {
+      ctx.fillStyle = p0[3];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[4];
+      ctx.fillRect(1, 2, 4, 2);
+      ctx.fillRect(9, 7, 5, 2);
+      ctx.fillRect(3, 12, 4, 2);
+      ctx.fillStyle = p0[2];
+      ctx.fillRect(6, 4, 2, 1);
+      ctx.fillRect(12, 13, 2, 1);
+      // Fallen crimson & amber maple leaves
+      ctx.fillStyle = p0[15];
+      ctx.fillRect(3, 5, 2, 2);
+      ctx.fillRect(12, 3, 2, 1);
+      ctx.fillStyle = p0[5];
+      ctx.fillRect(10, 11, 2, 2);
+      ctx.fillRect(5, 13, 2, 1);
+    });
+    this.bg1Tiles.set(T_AUTUMN_GRASS, [autumnGrass]);
+
+    // 33. T_ROCKY_PATH: Mountain gravel trail with flat slate stepping stones
+    const rockyPath = makeTile((ctx) => {
+      ctx.fillStyle = p0[7];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(0, 0, 2, 1);
+      ctx.fillRect(13, 14, 3, 2);
+      ctx.fillStyle = p0[10];
+      ctx.fillRect(2, 2, 5, 4);
+      ctx.fillRect(9, 8, 5, 4);
+      ctx.fillRect(3, 10, 4, 3);
+      ctx.fillStyle = p0[11];
+      ctx.fillRect(2, 2, 4, 1);
+      ctx.fillRect(9, 8, 4, 1);
+      ctx.fillStyle = p0[8];
+      ctx.fillRect(10, 3, 2, 1);
+      ctx.fillRect(1, 7, 2, 1);
+    });
+    this.bg1Tiles.set(T_ROCKY_PATH, [rockyPath]);
+
+    // 34. T_RAPIDS: 4-frame animated whitewater alpine rapids
+    const rapidsFrames = [0, 1, 2, 3].map((f) =>
+      makeTile((ctx) => {
+        ctx.fillStyle = p0[12];
+        ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = p0[13];
+        ctx.fillRect(0, (f * 4) % 16, 16, 5);
+        ctx.fillRect(0, (f * 4 + 9) % 16, 16, 4);
+        // Foaming whitewater streaks
+        ctx.fillStyle = p0[14];
+        ctx.fillRect((1 + f * 3) % 12, (2 + f * 4) % 14, 5, 2);
+        ctx.fillRect((8 + f * 2) % 11, (9 + f * 4) % 14, 6, 2);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect((2 + f * 3) % 13, (2 + f * 4) % 14, 3, 1);
+        ctx.fillRect((9 + f * 2) % 12, (10 + f * 4) % 14, 4, 1);
+      })
+    );
+    this.bg1Tiles.set(T_RAPIDS, rapidsFrames);
+
+    // 35. T_RAIL_TRACK: Mountain railway ballast, cedar ties, and glinting twin steel rails
+    const railTrack = makeTile((ctx) => {
+      ctx.fillStyle = p0[9];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[10];
+      for (let x = 1; x < 16; x += 3) {
+        ctx.fillRect(x, 1, 2, 2);
+        ctx.fillRect((x + 1) % 15, 13, 2, 2);
+      }
+      // Cedar sleepers (crossties)
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(2, 2, 3, 12);
+      ctx.fillRect(10, 2, 3, 12);
+      ctx.fillStyle = p0[7];
+      ctx.fillRect(3, 3, 1, 10);
+      ctx.fillRect(11, 3, 1, 10);
+      // Twin iron rails
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(0, 3, 16, 3);
+      ctx.fillRect(0, 10, 16, 3);
+      ctx.fillStyle = p0[11];
+      ctx.fillRect(0, 4, 16, 1);
+      ctx.fillRect(0, 11, 16, 1);
+    });
+    this.bg1Tiles.set(T_RAIL_TRACK, [railTrack]);
+
+    // 36. T_MAPLE_TRUNK: Flared dark trunk with crimson & gold autumn leaf litter
+    const mapleTrunk = makeTile((ctx) => {
+      ctx.drawImage(autumnGrass, 0, 0);
+      ctx.fillStyle = p0[15];
+      ctx.fillRect(2, 11, 4, 3);
+      ctx.fillRect(10, 12, 4, 2);
+      ctx.fillStyle = p0[5];
+      ctx.fillRect(3, 12, 2, 1);
+      ctx.fillRect(11, 11, 2, 2);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(4, 0, 8, 13);
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(5, 0, 6, 12);
+      ctx.fillStyle = p0[7];
+      ctx.fillRect(6, 0, 2, 11);
+    });
+    this.bg1Tiles.set(T_MAPLE_TRUNK, [mapleTrunk]);
+
+    // 37. T_PINE_TRUNK: Rugged alpine spruce base with dark evergreen boughs
+    const pineTrunk = makeTile((ctx) => {
+      ctx.drawImage(grass0, 0, 0);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(5, 8, 6, 7);
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(6, 8, 4, 6);
+      // Lower evergreen boughs
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(1, 2, 14, 8);
+      ctx.fillStyle = p0[2];
+      ctx.fillRect(2, 2, 12, 7);
+      ctx.fillStyle = p0[3];
+      ctx.fillRect(3, 3, 10, 4);
+      ctx.fillStyle = p0[4];
+      ctx.fillRect(5, 3, 5, 2);
+    });
+    this.bg1Tiles.set(T_PINE_TRUNK, [pineTrunk]);
+
+    // 38. T_WOOD_FLOOR: Warm cedar cottage floorboards
+    const woodFloor = makeTile((ctx) => {
+      ctx.fillStyle = p0[7];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[8];
+      ctx.fillRect(0, 1, 16, 2);
+      ctx.fillRect(0, 9, 16, 2);
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(0, 7, 16, 1);
+      ctx.fillRect(0, 15, 16, 1);
+      ctx.fillRect(7, 0, 1, 8);
+      ctx.fillRect(14, 8, 1, 8);
+    });
+    this.bg1Tiles.set(T_WOOD_FLOOR, [woodFloor]);
+
+    // 39. T_HEARTH_RUG: Cozy woven burgundy & cream hearth rug
+    const hearthRug = makeTile((ctx) => {
+      ctx.fillStyle = p0[15];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[8];
+      ctx.fillRect(1, 1, 14, 1);
+      ctx.fillRect(1, 14, 14, 1);
+      ctx.fillRect(1, 1, 1, 14);
+      ctx.fillRect(14, 1, 1, 14);
+      ctx.fillStyle = p0[5];
+      ctx.fillRect(4, 4, 8, 8);
+      ctx.fillStyle = p0[15];
+      ctx.fillRect(6, 6, 4, 4);
+    });
+    this.bg1Tiles.set(T_HEARTH_RUG, [hearthRug]);
+
+    // 40. T_FIREPLACE: 2-frame crackling stone cottage hearth
+    const fireplaceFrames = [0, 1].map((f) =>
+      makeTile((ctx) => {
+        ctx.fillStyle = p0[9];
+        ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = p0[10];
+        ctx.fillRect(1, 1, 14, 4);
+        ctx.fillRect(1, 6, 3, 9);
+        ctx.fillRect(12, 6, 3, 9);
+        ctx.fillStyle = p0[11];
+        ctx.fillRect(1, 1, 14, 1);
+        // Firebox opening
+        ctx.fillStyle = p0[1];
+        ctx.fillRect(4, 6, 8, 9);
+        // Logs & dancing flame
+        ctx.fillStyle = p0[6];
+        ctx.fillRect(5, 12, 6, 2);
+        ctx.fillStyle = p0[15];
+        ctx.fillRect(5, 8 + f, 6, 4 - f);
+        ctx.fillStyle = p0[5];
+        ctx.fillRect(6, 7 + (1 - f), 4, 4);
+        ctx.fillStyle = p0[8];
+        ctx.fillRect(7, 9, 2, 3);
+      })
+    );
+    this.bg1Tiles.set(T_FIREPLACE, fireplaceFrames);
+
+    // 41. T_BED_QUILT: Rowan's patchwork mountain quilt & cream pillow
+    const bedQuilt = makeTile((ctx) => {
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[8];
+      ctx.fillRect(2, 2, 12, 4);
+      ctx.fillStyle = p0[11];
+      ctx.fillRect(3, 3, 10, 2);
+      ctx.fillStyle = p0[15];
+      ctx.fillRect(2, 6, 12, 8);
+      ctx.fillStyle = p0[5];
+      ctx.fillRect(2, 7, 4, 3);
+      ctx.fillRect(10, 10, 4, 3);
+      ctx.fillStyle = p0[3];
+      ctx.fillRect(6, 10, 4, 3);
+    });
+    this.bg1Tiles.set(T_BED_QUILT, [bedQuilt]);
+
+    // 42. T_ATTIC_CHEST: Heirloom brass-banded cedar keepsake chest
+    const atticChest = makeTile((ctx) => {
+      ctx.drawImage(woodFloor, 0, 0);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(1, 2, 14, 12);
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(2, 3, 12, 10);
+      ctx.fillStyle = p0[7];
+      ctx.fillRect(3, 4, 10, 4);
+      ctx.fillStyle = p0[5];
+      ctx.fillRect(2, 7, 12, 1);
+      ctx.fillRect(7, 6, 2, 3);
+      ctx.fillStyle = p0[8];
+      ctx.fillRect(3, 3, 10, 1);
+    });
+    this.bg1Tiles.set(T_ATTIC_CHEST, [atticChest]);
+
+    // 43. T_HOLLOW_OAK: Ancient mossy oak root ring with subtle golden runes
+    const hollowOakTile = makeTile((ctx) => {
+      ctx.drawImage(autumnGrass, 0, 0);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(1, 1, 14, 14);
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(2, 2, 12, 12);
+      ctx.fillStyle = p0[7];
+      ctx.fillRect(3, 3, 10, 10);
+      ctx.fillStyle = p0[5];
+      ctx.fillRect(6, 5, 4, 6);
+      ctx.fillStyle = p0[8];
+      ctx.fillRect(7, 6, 2, 4);
+    });
+    this.bg1Tiles.set(T_HOLLOW_OAK, [hollowOakTile]);
+
+    // 44. T_STONE_STAIRS: Carved highland stone steps
+    const stoneStairs = makeTile((ctx) => {
+      ctx.fillStyle = p0[9];
+      ctx.fillRect(0, 0, 16, 16);
+      for (let y = 0; y < 16; y += 4) {
+        ctx.fillStyle = p0[10];
+        ctx.fillRect(1, y, 14, 3);
+        ctx.fillStyle = p0[11];
+        ctx.fillRect(1, y, 14, 1);
+        ctx.fillStyle = p0[1];
+        ctx.fillRect(0, y + 3, 16, 1);
+      }
+    });
+    this.bg1Tiles.set(T_STONE_STAIRS, [stoneStairs]);
+
+    // 45. T_INTERIOR_WALL: Warm cedar-beamed cottage wall
+    const interiorWall = makeTile((ctx) => {
+      ctx.fillStyle = p0[8];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(0, 0, 16, 2);
+      ctx.fillRect(0, 10, 16, 6);
+      ctx.fillRect(0, 0, 2, 16);
+      ctx.fillRect(14, 0, 2, 16);
+      ctx.fillStyle = p0[7];
+      ctx.fillRect(2, 11, 12, 4);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(0, 15, 16, 1);
+    });
+    this.bg1Tiles.set(T_INTERIOR_WALL, [interiorWall]);
+
     /* BG2 OVERHEAD FOREGROUND CANOPIES & ARCHES */
     const makeCanopy = (quad: 'TL' | 'TR' | 'BL' | 'BR') =>
       makeTile((ctx) => {
@@ -638,6 +996,58 @@ export class PixelAtlas {
       ctx.fillRect(7, 3, 2, 10);
     });
     this.bg2Tiles.set(O_SHRINE_ARCH, shrineArch);
+
+    // 7 & 8. O_MAPLE_TL / O_MAPLE_TR: Radiant crimson, amber & gold autumn maple foliage!
+    const makeMapleCanopy = (left: boolean) =>
+      makeTile((ctx) => {
+        ctx.fillStyle = p0[1];
+        ctx.fillRect(left ? 1 : 0, 1, 15, 14);
+        ctx.fillStyle = p0[15];
+        ctx.fillRect(left ? 2 : 0, 2, 14, 12);
+        ctx.fillStyle = p0[7];
+        ctx.fillRect(left ? 3 : 1, 3, 12, 9);
+        ctx.fillStyle = p0[15];
+        ctx.fillRect(left ? 2 : 3, 5, 10, 7);
+        ctx.fillStyle = p0[5];
+        ctx.fillRect(left ? 4 : 2, 2, 7, 5);
+        ctx.fillStyle = p0[8];
+        ctx.fillRect(left ? 5 : 4, 3, 3, 2);
+      });
+    this.bg2Tiles.set(O_MAPLE_TL, makeMapleCanopy(true));
+    this.bg2Tiles.set(O_MAPLE_TR, makeMapleCanopy(false));
+
+    // 9. O_PINE_TOP: Pointed tiered alpine spruce spire
+    const pineTop = makeTile((ctx) => {
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(6, 1, 4, 4);
+      ctx.fillRect(4, 4, 8, 5);
+      ctx.fillRect(1, 8, 14, 8);
+      ctx.fillStyle = p0[2];
+      ctx.fillRect(7, 2, 2, 3);
+      ctx.fillRect(5, 5, 6, 4);
+      ctx.fillRect(2, 9, 12, 6);
+      ctx.fillStyle = p0[3];
+      ctx.fillRect(6, 5, 4, 3);
+      ctx.fillRect(3, 10, 9, 4);
+      ctx.fillStyle = p0[4];
+      ctx.fillRect(5, 10, 4, 2);
+    });
+    this.bg2Tiles.set(O_PINE_TOP, pineTop);
+
+    // 10. O_OAK_CROWN: Monumental golden-amber Hollow Oak canopy crown
+    const oakCrown = makeTile((ctx) => {
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(0, 1, 16, 14);
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(1, 2, 14, 12);
+      ctx.fillStyle = p0[4];
+      ctx.fillRect(1, 2, 14, 9);
+      ctx.fillStyle = p0[5];
+      ctx.fillRect(3, 3, 10, 5);
+      ctx.fillStyle = p0[8];
+      ctx.fillRect(5, 4, 5, 2);
+    });
+    this.bg2Tiles.set(O_OAK_CROWN, oakCrown);
   }
 
   /* ========================================================================
@@ -1347,6 +1757,167 @@ export class PixelAtlas {
       ];
       paintPattern(ctx, pat, 1, 0, 2 + bob);
       register('bobber', 0, f, c);
+    }
+
+    /* 11. CHAPTER 1 BESPOKE ALDERBROOK CAST & MOUNTAIN STEAM LOCOMOTIVE */
+    // Grandma Mara — silver bun, rose-burgundy knitted shawl, warm cream hearth apron
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(18, 22);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '.....111111.....',
+        '....14444441....',
+        '...1444444441...',
+        '..144222222441..',
+        '..142122221241..',
+        '...1222332221...',
+        '..1aaaaccaaaa1..',
+        '.1aaaaffffaaaa1.',
+        '.1a666ffff666a1.',
+        '..1666ffff6661..',
+        '...1111111111...',
+        '....1b1..1b1....',
+      ];
+      paintPattern(ctx, pat, 2, 1, 5 + f);
+      register('npc_mara', 0, f, c);
+    }
+
+    // Stationmaster Barnaby — navy peaked rail cap, brass badge, walrus mustache, slate uniform
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(18, 22);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '...1111111111...',
+        '..188887788881..',
+        '.11111111111111.',
+        '..122222222221..',
+        '..121222222121..',
+        '..124444444421..',
+        '..188887788881..',
+        '.18888877888881.',
+        '.18888888888881.',
+        '..128888888821..',
+        '...1111111111...',
+        '....111..111....',
+      ];
+      paintPattern(ctx, pat, 2, 1, 5 + f);
+      register('npc_barnaby', 0, f, c);
+    }
+
+    // Baker Maple — cream baker's kerchief, auburn hair, flour-dusted apron over rose dress
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(18, 22);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '....11111111....',
+        '...1ffffffff1...',
+        '..1bb222222bb1..',
+        '..1b21222212b1..',
+        '...1222222221...',
+        '..1aaaffffaaa1..',
+        '.1aaaaffffaaaa1.',
+        '.1a2aaffffaa2a1.',
+        '..1aaaffffaaa1..',
+        '...1111111111...',
+        '....1b1..1b1....',
+      ];
+      paintPattern(ctx, pat, 2, 1, 6 + f);
+      register('npc_maple', 0, f, c);
+    }
+
+    // Old Woodsman Jasper — pine-green hood, silver beard, weathered timber cloak & axe
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(18, 22);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '....11111111....',
+        '...1666666661...',
+        '..166222222661..',
+        '..162122221261..',
+        '..164444444461..',
+        '..166444444661..',
+        '.1666bbbbbb6661.',
+        '.16666666666661.',
+        '..126666666621..',
+        '...1111111111...',
+        '....1b1..1b1....',
+      ];
+      paintPattern(ctx, pat, 2, 1, 6 + f);
+      // Woodcutter's walking staff
+      ctx.fillStyle = PALETTES[2][1];
+      ctx.fillRect(15, 3, 2, 17);
+      ctx.fillStyle = PALETTES[2][11];
+      ctx.fillRect(15, 4, 1, 15);
+      register('npc_jasper', 0, f, c);
+    }
+
+    // Alderbrook Vintage Mountain Steam Locomotive (48x28, 2 animated steam puff frames!)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(48, 28);
+      const ctx = c.getContext('2d')!;
+      // Puffing white alpine steam cloud above funnel
+      ctx.fillStyle = '#F2EFE6';
+      ctx.fillRect(9 - f * 2, 1, 6, 4);
+      ctx.fillRect(13 - f * 2, 0, 7, 3);
+      ctx.fillStyle = '#D4D8E2';
+      ctx.fillRect(8 - f * 2, 4, 5, 2);
+
+      // Funnel & brass dome
+      ctx.fillStyle = '#181A22';
+      ctx.fillRect(9, 5, 5, 7);
+      ctx.fillRect(21, 7, 6, 5);
+      ctx.fillStyle = '#D4A042';
+      ctx.fillRect(10, 6, 3, 2);
+      ctx.fillRect(22, 8, 4, 3);
+
+      // Emerald iron boiler body
+      ctx.fillStyle = '#181A22';
+      ctx.fillRect(6, 11, 28, 10);
+      ctx.fillStyle = '#265645';
+      ctx.fillRect(7, 12, 26, 8);
+      ctx.fillStyle = '#3A7A62';
+      ctx.fillRect(8, 13, 24, 2);
+      // Brass boiler bands & headlamp
+      ctx.fillStyle = '#E8BE5E';
+      ctx.fillRect(14, 12, 2, 8);
+      ctx.fillRect(25, 12, 2, 8);
+      ctx.fillStyle = f === 0 ? '#FFF3B0' : '#F5C45A';
+      ctx.fillRect(5, 13, 2, 3);
+
+      // Engineer cab with glowing warm window
+      ctx.fillStyle = '#181A22';
+      ctx.fillRect(32, 6, 14, 15);
+      ctx.fillStyle = '#6E2A2A';
+      ctx.fillRect(31, 5, 16, 3);
+      ctx.fillStyle = '#2B4C42';
+      ctx.fillRect(33, 8, 12, 12);
+      ctx.fillStyle = '#F5C45A';
+      ctx.fillRect(35, 10, 8, 5);
+      ctx.fillStyle = '#FFF6CC';
+      ctx.fillRect(36, 11, 3, 2);
+
+      // Cowcatcher & undercarriage
+      ctx.fillStyle = '#181A22';
+      ctx.fillRect(2, 18, 5, 4);
+      ctx.fillRect(6, 20, 40, 3);
+      ctx.fillStyle = '#8C3B34';
+      ctx.fillRect(3, 19, 3, 2);
+
+      // Crimson spoked iron drive wheels
+      const wheelXs = [10, 19, 28, 38];
+      for (const wx of wheelXs) {
+        ctx.fillStyle = '#181A22';
+        ctx.fillRect(wx, 20, 6, 6);
+        ctx.fillStyle = '#A83A36';
+        ctx.fillRect(wx + 1, 21, 4, 4);
+        ctx.fillStyle = '#E8BE5E';
+        ctx.fillRect(wx + 2 + (f & 1), 22, 1, 2);
+      }
+      // Side connecting rod
+      ctx.fillStyle = '#CFD6E0';
+      ctx.fillRect(12, 22 + f, 20, 1);
+
+      register('locomotive', 0, f, c);
     }
   }
 }

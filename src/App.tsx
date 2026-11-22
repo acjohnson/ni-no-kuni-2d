@@ -420,7 +420,7 @@ export default function App() {
                       PROJECT HEARTH
                     </h1>
                     <p className="mt-2.5 font-pixel text-[10px] leading-relaxed text-[#CFC8B8]">
-                      A STORYBOOK RPG OF TWO WORLDS · ILLUSTRATED PROLOGUE &amp; FIVE ZONES
+                      A STORYBOOK RPG OF TWO WORLDS · CHAPTER I: ALDERBROOK &amp; WHISPERING WOODS
                     </p>
 
                     <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
@@ -460,6 +460,20 @@ export default function App() {
                 </div>
               )}
 
+              {/* QUIET UNBOXED STORY WHISPER (Chapter 1 Time-of-Day & Current Beat) */}
+              {ui && ui.mode === 'EXPLORE' && !ui.dialogue.active && ui.objectiveLabel && (
+                <div className="pointer-events-none absolute top-2.5 left-3 z-10 max-w-[78%] select-none">
+                  <p
+                    className="font-pixel text-[9px] tracking-[0.06em] text-[#FAF1DC] sm:text-[10px]"
+                    style={{ textShadow: '0 1px 3px rgba(8, 10, 18, 0.95), 0 0 8px rgba(8, 10, 18, 0.85)' }}
+                  >
+                    <span className="text-[#F5C96A]">{ui.timeOfDayLabel}</span>
+                    <span className="mx-1.5 text-[#C4B596]">·</span>
+                    <span>{ui.objectiveLabel}</span>
+                  </p>
+                </div>
+              )}
+
               {/* COHESIVE 16-BIT STORYBOOK DIALOGUE OVERLAY */}
               {ui && ui.dialogue.active && (ui.mode === 'EXPLORE' || ui.mode === 'CUTSCENE') && (
                 <div
@@ -468,8 +482,9 @@ export default function App() {
                 >
                   <div className="flex items-start gap-3">
                     <PortraitFrame
-                      key={ui.dialogue.portrait}
+                      key={`${ui.dialogue.portrait}_${ui.dialogue.portraitId}`}
                       portrait={ui.dialogue.portrait}
+                      portraitId={ui.dialogue.portraitId}
                       speaker={ui.dialogue.speaker}
                     />
                     <div className="min-w-0 flex-1">
@@ -807,8 +822,16 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-3 min-w-0">
                 <span className="flex items-center gap-1.5 font-medium text-[#F6F1E6] whitespace-nowrap">
                   <Compass className="h-3.5 w-3.5 text-[#F5B841]" />
-                  {ui?.zoneLabel ?? 'Windmill Hamlet'}
+                  {ui?.zoneLabel ?? 'Alderbrook'}
                 </span>
+                {ui && (
+                  <>
+                    <span aria-hidden="true" className="text-[#4B546B]">
+                      ·
+                    </span>
+                    <span className="text-[#E6C57A] whitespace-nowrap">{ui.timeOfDayLabel}</span>
+                  </>
+                )}
                 <span aria-hidden="true" className="text-[#4B546B]">
                   ·
                 </span>

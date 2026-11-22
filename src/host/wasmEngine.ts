@@ -41,6 +41,7 @@ import {
   ShopSnapshot,
   SpriteId,
   TILE_SIZE,
+  TimeOfDay,
   UiSnapshot,
   WorldMapData,
   ZoneId,
@@ -55,6 +56,7 @@ interface WasmExports {
   wasm_enter_zone(zoneId: number, tx: number, ty: number): void;
   wasm_start_cutscene_demo(): void;
   wasm_start_intro(): void;
+  wasm_start_story_cg(scriptId: number): void;
   wasm_skip_intro(): void;
   wasm_toggle_cinema_auto(): void;
   wasm_start_quick_battle(preset: number): void;
@@ -180,7 +182,14 @@ const SPRITE_MAP: readonly SpriteId[] = [
   'hollow_oak',
   'bobber',
   'npc_townsfolk',
+  'npc_mara',
+  'npc_barnaby',
+  'npc_maple',
+  'npc_jasper',
+  'locomotive',
 ];
+
+const TOD_NAMES: readonly string[] = ['Morning', 'Afternoon', 'Dusk', 'Moonlit Night'];
 
 const AURA_MAP: readonly HeartAura[] = [
   'NONE',
@@ -322,10 +331,10 @@ export class WasmHearthEngine {
     }
     this.palettes = loadedPalettes;
 
-    // Load 6 x 16-color per-zone terrain palettes from HEARTH_ZONE_PALETTES_RGB
+    // Load 10 x 16-color per-zone terrain palettes from HEARTH_ZONE_PALETTES_RGB
     const zpalBase = (wasm.wasm_get_zone_palettes_ptr() >>> 0) >> 2;
     const loadedZonePals: string[][] = [];
-    for (let z = 0; z < 6; z++) {
+    for (let z = 0; z < 10; z++) {
       const row: string[] = [];
       for (let c = 0; c < 16; c++) {
         const rgb = u32[zpalBase + z * 16 + c] & 0xffffff;
@@ -455,6 +464,10 @@ export class WasmHearthEngine {
 
   public startIntro(): void {
     this.wasm.wasm_start_intro();
+  }
+
+  public startStoryCg(scriptId: number): void {
+    this.wasm.wasm_start_story_cg(scriptId);
   }
 
   public skipIntro(): void {
@@ -784,7 +797,10 @@ export class WasmHearthEngine {
       bgmId: BGM_MAP[i32[s + 97]] ?? 'HAMLET',
       zoneIsDark: i32[s + 98] !== 0,
       zoneBannerFrames: i32[s + 99],
-      zoneName: this.readCString(i32[s + 100]) || 'Windmill Hamlet',
+      zoneName: this.readCString(i32[s + 100]) || 'Alderbrook',
+      timeOfDay: (Math.min(3, Math.max(0, i32[s + 147])) as TimeOfDay),
+      hasMountainVista: i32[s + 148] !== 0,
+      objectiveText: this.readCString(i32[s + 149]),
       heroWorldX: fromFp(i32[s + 18]),
       heroWorldY: fromFp(i32[s + 19]),
       camX,
@@ -806,6 +822,7 @@ export class WasmHearthEngine {
         label: this.readCString(i32[s + 15]),
       },
       intro: {
+        scriptId: i32[s + 145],
         beat: i32[s + 136],
         beatCount: Math.max(1, i32[s + 137]),
         scene: i32[s + 82],
@@ -890,24 +907,24 @@ export class WasmHearthEngine {
 
     const zoneId = (i32[s + 95] as ZoneId) ?? 1;
     const storyStage = i32[s + 101];
-    const zoneLabel = this.readCString(i32[s + 100]) || 'Windmill Hamlet';
+    const zoneLabel = this.readCString(i32[s + 100]) || 'Alderbrook';
     const hasWand = i32[s + 134] !== 0;
     const hasSewerKey = i32[s + 135] !== 0;
+    const timeOfDay = (Math.min(3, Math.max(0, i32[s + 147])) as TimeOfDay);
+    const timeOfDayLabel = TOD_NAMES[timeOfDay] ?? 'Morning';
+    const ch1Step = i32[s + 150];
+    const hasMiloBell = i32[s + 153] !== 0;
+    const coreObjective = this.readCString(i32[s + 149]);
 
-    let objectiveLabel = 'Explore Evertale, fish at piers, or visit shops';
-    if (storyStage === 0) {
-      objectiveLabel = 'Age 5 Memory: Follow Milo east into the shimmering glade';
-    } else if (storyStage === 1) {
-      objectiveLabel = 'Age 10 Alderbrook: Walk east to the Hollow Oak beyond the creek';
-    } else if (storyStage === 2) {
-      objectiveLabel = 'Travel north to Whiskerburgh (Mouse Market) & speak to Mayor Brie';
-    } else if (storyStage === 3) {
-      objectiveLabel = 'Enter the Sunken Sewers (north gate) & defeat King Muckmaw';
-    } else if (storyStage === 4) {
-      objectiveLabel = 'Ascend to Boarhold Citadel & challenge Lord Ironfang';
-    } else {
-      objectiveLabel = 'Chapter 1 Complete! Explore all 5 zones, fish, shop, or rematch bosses';
-    }
+    const objectiveLabel =
+      coreObjective ||
+      (storyStage === 2
+        ? 'Travel north to Whiskerburgh & speak to Mayor Brie'
+        : storyStage === 3
+          ? 'Enter the Sunken Sewers & defeat King Muckmaw'
+          : storyStage === 4
+            ? 'Ascend to Boarhold Citadel & challenge Lord Ironfang'
+            : 'Explore Evertale, fish at piers, or visit shops');
 
     const speaker = this.readCString(i32[s + 34]);
     const choiceCount = i32[s + 38];
@@ -949,9 +966,14 @@ export class WasmHearthEngine {
       mode: MODE_MAP[i32[s + 3]] ?? 'TITLE',
       zoneId,
       zoneLabel,
+      timeOfDay,
+      timeOfDayLabel,
+      ch1Step,
+      hasMiloBell,
       storyStage,
       objectiveLabel,
       intro: {
+        scriptId: i32[s + 145],
         beat: i32[s + 136],
         beatCount: Math.max(1, i32[s + 137]),
         scene: i32[s + 82],
@@ -974,6 +996,7 @@ export class WasmHearthEngine {
         active: i32[s + 33] !== 0,
         speaker,
         portrait: portraitFromSpeaker(speaker),
+        portraitId: i32[s + 146],
         fullText: this.readCString(i32[s + 35]),
         visibleChars: i32[s + 36],
         finishedTyping: i32[s + 37] !== 0,

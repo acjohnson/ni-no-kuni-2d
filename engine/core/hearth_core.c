@@ -19,7 +19,9 @@ enum {
     ACT_OPEN_SHOP_0   = 5,
     ACT_OPEN_SHOP_1   = 6,
     ACT_MEND_CAPTAIN  = 7,
-    ACT_START_FISHING = 8
+    ACT_START_FISHING = 8,
+    ACT_OPEN_SHOP_2   = 9,
+    ACT_REST_BED      = 10
 };
 
 /* Forward declarations */
@@ -379,6 +381,13 @@ static void set_portal(
     pt->label = label;
 }
 
+static uint8_t tod_to_mountain_pal(uint8_t tod) {
+    if (tod == TOD_MORNING) return (uint8_t)ZPAL_AUTUMN_MORNING;
+    if (tod == TOD_DUSK)    return (uint8_t)ZPAL_AUTUMN_DUSK;
+    if (tod == TOD_NIGHT)   return (uint8_t)ZPAL_AUTUMN_NIGHT;
+    return (uint8_t)ZPAL_ALDERBROOK;
+}
+
 static void clear_zone_entities(HearthState *st) {
     int i;
     for (i = 0; i < HEARTH_MAX_NPCS; i++) st->npcs[i].active = false;
@@ -389,20 +398,99 @@ static void clear_zone_entities(HearthState *st) {
     st->has_waystone = false;
     st->has_sign = false;
     st->has_windmill = false;
+    st->has_locomotive = false;
+    st->has_mountain_vista = false;
     st->zone_is_dark = false;
 }
 
+static void populate_zone_rowan_home(HearthState *st) {
+    st->terrain_pal_id = ZPAL_COTTAGE_INTERIOR;
+    st->bgm_id = (st->time_of_day >= TOD_DUSK) ? (uint8_t)BGM_CINEMA_LULLABY : (uint8_t)BGM_ALDERBROOK;
+    st->zone_is_dark = (st->time_of_day == TOD_NIGHT);
+    st->pip_visible = false;
+
+    set_npc(&st->npcs[0], 0, "Grandma Mara", SPR_NPC_MARA, 19, 12, DIR_DOWN, AURA_NONE);
+    if (st->time_of_day != TOD_NIGHT && st->ch1_step < 6u) {
+        set_npc(&st->npcs[1], 1, "Milo", SPR_PET_MILO, 22, 11, DIR_LEFT, AURA_NONE);
+    }
+    set_portal(&st->portals[0], 20, 20, ZONE_ALDERBROOK, 11, 14, 0, "Step Outside");
+    set_portal(&st->portals[1], 21, 20, ZONE_ALDERBROOK, 11, 14, 0, "Step Outside");
+}
+
 static void populate_zone_alderbrook(HearthState *st) {
-    st->terrain_pal_id = ZPAL_ALDERBROOK;
-    st->bgm_id = BGM_ALDERBROOK;
+    st->terrain_pal_id = tod_to_mountain_pal(st->time_of_day);
+    st->bgm_id = (st->time_of_day == TOD_NIGHT) ? (uint8_t)BGM_CINEMA_LULLABY : (uint8_t)BGM_ALDERBROOK;
+    st->zone_is_dark = (st->time_of_day == TOD_NIGHT);
+    st->has_mountain_vista = true;
+    st->has_locomotive = true;
+    st->loco_tx = 20;
+    st->loco_ty = 5;
     st->pip_visible = st->flag_has_wand;
     st->has_sign = true;
-    st->sign_tx = 15;
-    st->sign_ty = 16;
+    st->sign_tx = 18;
+    st->sign_ty = 14;
 
-    set_npc(&st->npcs[0], 0, "Aunt Martha",  SPR_NPC_TOWNSFOLK, 12, 16, DIR_UP,   AURA_NONE);
-    set_npc(&st->npcs[1], 1, "Neighbor Tom", SPR_NPC_TOWNSFOLK, 20, 10, DIR_DOWN, AURA_NONE);
-    set_portal(&st->portals[0], 38, 14, ZONE_HAMLET, 4, 13, 0, "Hollow Oak");
+    st->fish_spot.active = true;
+    st->fish_spot.tx = 22;
+    st->fish_spot.ty = 20;
+    st->fish_spot.cast_dx = 0;
+    st->fish_spot.cast_dy = 2;
+
+    st->chest.active = true;
+    st->chest.tx = 5;
+    st->chest.ty = 24;
+    st->chest.chest_bit = 4;
+    st->chest.reward_kind = 0;
+
+    if (st->time_of_day == TOD_NIGHT) {
+        set_npc(&st->npcs[0], 0, "Milo", SPR_PET_MILO, 36, 13, DIR_RIGHT, AURA_RADIANT_COURAGE);
+    } else {
+        set_npc(&st->npcs[0], 0, "Barnaby",     SPR_NPC_BARNABY, 13,  7, DIR_DOWN,  AURA_NONE);
+        set_npc(&st->npcs[1], 1, "Baker Maple", SPR_NPC_MAPLE,   24, 13, DIR_DOWN,  AURA_NONE);
+        set_npc(&st->npcs[2], 2, "Jasper",      SPR_NPC_JASPER,  13, 23, DIR_RIGHT, AURA_NONE);
+        set_npc(&st->npcs[3], 3, "Milo",        SPR_PET_MILO,    12, 14, DIR_RIGHT, AURA_NONE);
+    }
+
+    set_portal(&st->portals[0], 11, 13, ZONE_ROWAN_HOME,       20, 19, 0, "Rowan's Cottage");
+    set_portal(&st->portals[1], 41,  9, ZONE_WHISPERING_WOODS,  3, 21, 0, "Whispering Woods");
+}
+
+static void populate_zone_whispering_woods(HearthState *st) {
+    st->terrain_pal_id = tod_to_mountain_pal(st->time_of_day);
+    st->bgm_id = (st->time_of_day == TOD_NIGHT) ? (uint8_t)BGM_CINEMA_LULLABY : (uint8_t)BGM_ALDERBROOK;
+    st->zone_is_dark = (st->time_of_day == TOD_NIGHT);
+    st->has_mountain_vista = true;
+    st->pip_visible = st->flag_has_wand;
+    st->has_sign = true;
+    st->sign_tx = 7;
+    st->sign_ty = 20;
+
+    st->chest.active = true;
+    st->chest.tx = 38;
+    st->chest.ty = 21;
+    st->chest.chest_bit = 5;
+    st->chest.reward_kind = 1;
+
+    set_npc(&st->npcs[0], 0, "Jasper", SPR_NPC_JASPER, 12, 11, DIR_DOWN, AURA_NONE);
+    if (st->ch1_step >= 6u) {
+        set_npc(&st->npcs[1], 1, "Milo", SPR_PET_MILO, 16, 15, DIR_RIGHT, AURA_RADIANT_COURAGE);
+    }
+
+    set_portal(&st->portals[0],  2, 21, ZONE_ALDERBROOK,   39,  9, 0, "To Alderbrook");
+    set_portal(&st->portals[1], 37,  4, ZONE_HOLLOW_GLADE, 21, 23, 0, "Hollow Glade");
+}
+
+static void populate_zone_hollow_glade(HearthState *st) {
+    st->terrain_pal_id = tod_to_mountain_pal(st->time_of_day);
+    st->bgm_id = (st->time_of_day == TOD_NIGHT) ? (uint8_t)BGM_CINEMA_LULLABY : (uint8_t)BGM_ALDERBROOK;
+    st->zone_is_dark = (st->time_of_day == TOD_NIGHT);
+    st->has_mountain_vista = true;
+    st->pip_visible = st->flag_has_wand;
+
+    if (st->ch1_step >= 6u || st->flag_has_wand) {
+        set_npc(&st->npcs[0], 0, "Milo", SPR_PET_MILO, 19, 13, DIR_RIGHT, AURA_RADIANT_COURAGE);
+    }
+    set_portal(&st->portals[0], 21, 25, ZONE_WHISPERING_WOODS, 37, 6, 0, "Whispering Woods");
 }
 
 static void populate_zone_hamlet(HearthState *st) {
@@ -444,7 +532,7 @@ static void populate_zone_hamlet(HearthState *st) {
     set_npc(&st->npcs[2], 2, "Guard Bram", SPR_NPC_GUARD, 22, 13, DIR_LEFT,
         st->flag_guard_mended ? AURA_MENDED : AURA_HOLLOW_FEAR);
 
-    set_portal(&st->portals[0], 2,  13, ZONE_ALDERBROOK,   36, 14, 0, "Hollow Oak");
+    set_portal(&st->portals[0], 2,  13, ZONE_HOLLOW_GLADE, 21, 14, 0, "Hollow Oak");
     set_portal(&st->portals[1], 42, 13, ZONE_WHISKERBURGH,  2, 13, 0, "To Whiskerburgh");
 
     set_field_enemy(&st->field_enemies[0], "Gloomcap",     SPR_ENEMY_GLOOMCAP,  ENCOUNTER_MEADOW_PACK, BIOME_MEADOW, false, 26, 15, DIR_LEFT, 30);
@@ -565,11 +653,18 @@ void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint8_t tx, uint8_t ty)
     clear_zone_entities(st);
     hearth_build_zone_map(zone_id, st->map_bg1, st->map_bg2, st->map_col);
 
-    if (zone_id == ZONE_ALDERBROOK)        populate_zone_alderbrook(st);
-    else if (zone_id == ZONE_WHISKERBURGH) populate_zone_whiskerburgh(st);
-    else if (zone_id == ZONE_SEWERS)       populate_zone_sewers(st);
-    else if (zone_id == ZONE_BOARHOLD)     populate_zone_boarhold(st);
-    else                                   populate_zone_hamlet(st);
+    if (zone_id == ZONE_ALDERBROOK)            populate_zone_alderbrook(st);
+    else if (zone_id == ZONE_ROWAN_HOME)       populate_zone_rowan_home(st);
+    else if (zone_id == ZONE_WHISPERING_WOODS) populate_zone_whispering_woods(st);
+    else if (zone_id == ZONE_HOLLOW_GLADE)     populate_zone_hollow_glade(st);
+    else if (zone_id == ZONE_WHISKERBURGH)     populate_zone_whiskerburgh(st);
+    else if (zone_id == ZONE_SEWERS)           populate_zone_sewers(st);
+    else if (zone_id == ZONE_BOARHOLD)         populate_zone_boarhold(st);
+    else                                       populate_zone_hamlet(st);
+
+    if (zone_id == ZONE_WHISPERING_WOODS && st->ch1_step == 6u) {
+        st->ch1_step = 7u;
+    }
 
     snap_cam_to_hero(st);
     build_ppu_packet(st);
@@ -594,13 +689,25 @@ void hearth_respawn_enemies(HearthState *st) {
 }
 
 /* ============================================================================
- * 7-ACT ILLUSTRATED OPENING CINEMA DIRECTOR & STORY LAUNCHERS
+ * 7-ACT OPENING CINEMA & MID-CHAPTER STORY CG DIRECTOR
  * ============================================================================ */
+static const HearthCinemaBeat *get_cinema_script(uint8_t script_id, uint8_t *out_count) {
+    if (script_id == 1u) { *out_count = (uint8_t)HEARTH_CG_ATTIC_COUNT; return HEARTH_CG_ATTIC_SCRIPT; }
+    if (script_id == 2u) { *out_count = (uint8_t)HEARTH_CG_DREAM_COUNT; return HEARTH_CG_DREAM_SCRIPT; }
+    if (script_id == 3u) { *out_count = (uint8_t)HEARTH_CG_OAK_COUNT;   return HEARTH_CG_OAK_SCRIPT; }
+    *out_count = (uint8_t)HEARTH_CINEMA_BEAT_COUNT;
+    return HEARTH_CINEMA_SCRIPT;
+}
+
 static void apply_cinema_beat(HearthState *st, uint8_t beat_idx, bool plate_changed) {
     HearthIntroState *in = &st->intro;
+    const HearthCinemaBeat *scr;
     const HearthCinemaBeat *b;
-    if (beat_idx >= HEARTH_CINEMA_BEAT_COUNT) beat_idx = (uint8_t)(HEARTH_CINEMA_BEAT_COUNT - 1u);
-    b = &HEARTH_CINEMA_SCRIPT[beat_idx];
+    uint8_t bcnt = 0u;
+    scr = get_cinema_script(in->script_id, &bcnt);
+    in->beat_count = bcnt;
+    if (beat_idx >= bcnt) beat_idx = (uint8_t)(bcnt - 1u);
+    b = &scr[beat_idx];
     in->beat = beat_idx;
     in->scene = b->plate_id;
     in->act_num = b->act_num;
@@ -623,6 +730,9 @@ static void apply_cinema_beat(HearthState *st, uint8_t beat_idx, bool plate_chan
             st->shake_intensity = 3;
             st->flash_level = 10;
             push_sfx(st, SFX_BATTLE_SWOOP);
+        } else if (b->plate_id == CG_HOLLOW_OAK_AWAKENS) {
+            st->flash_level = 8;
+            push_sfx(st, SFX_HEART_GIVE);
         }
     }
 }
@@ -632,32 +742,80 @@ static void frame_title_camera(HearthState *st) {
     uint8_t lim;
     int16_t tx, ty;
     get_ppu_dims(st, &w, &h, &lim);
-    tx = iclamp16((int16_t)(10 * 16 - (int16_t)(w >> 1)), 0, (int16_t)(HEARTH_MAP_W * 16 - (int)w));
-    ty = iclamp16((int16_t)(12 * 16 - (int16_t)(h >> 1)), 0, (int16_t)(HEARTH_MAP_H * 16 - (int)h));
+    tx = iclamp16((int16_t)(18 * 16 - (int16_t)(w >> 1)), 0, (int16_t)(HEARTH_MAP_W * 16 - (int)w));
+    ty = iclamp16((int16_t)(9 * 16 - (int16_t)(h >> 1)), 0, (int16_t)(HEARTH_MAP_H * 16 - (int)h));
     st->cam_fx = TO_FP(tx);
     st->cam_fy = TO_FP(ty);
 }
 
-static void launch_cinema_mode(HearthState *st, bool launch_story) {
+static void launch_cinema_mode(HearthState *st, uint8_t script_id, bool launch_story) {
     st->mode = MODE_INTRO;
     st->battle.active = false;
     st->dialogue.active = false;
     st->shop.active = false;
     st->fishing.active = false;
     st->cam_override = false;
+    st->intro.script_id = script_id;
     st->intro.auto_play = false;
     st->intro.launch_story = launch_story;
     st->intro.fade = 15;
     st->intro.fade_dir = 1u;
     apply_cinema_beat(st, 0u, true);
-    frame_title_camera(st);
+    if (script_id == 0u) frame_title_camera(st);
     build_ppu_packet(st);
 }
 
 static void finish_cinema_mode(HearthState *st, bool play_sfx) {
+    uint8_t sid = st->intro.script_id;
+    st->intro.fade = 0;
+    st->intro.fade_dir = 0;
+    if (sid == 1u) {
+        /* Attic Keepsake CG finished -> Dusk settles, Milo's Bell found! */
+        st->has_milo_bell = true;
+        st->time_of_day = TOD_DUSK;
+        if (st->ch1_step < 4u) st->ch1_step = 4u;
+        st->mode = MODE_EXPLORE;
+        st->warp_fade = 12;
+        populate_zone_rowan_home(st);
+        if (play_sfx) push_sfx(st, SFX_CONFIRM);
+        build_ppu_packet(st);
+        return;
+    }
+    if (sid == 2u) {
+        /* Pip Dream Return CG finished -> Moonlit Night awakens Rowan beside his bed! */
+        st->time_of_day = TOD_NIGHT;
+        if (st->ch1_step < 6u) st->ch1_step = 6u;
+        st->mode = MODE_EXPLORE;
+        hearth_enter_zone(st, ZONE_ROWAN_HOME, 16, 15);
+        st->hero_dir = DIR_RIGHT;
+        st->warp_fade = 14;
+        if (play_sfx) push_sfx(st, SFX_CONFIRM);
+        build_ppu_packet(st);
+        return;
+    }
+    if (sid == 3u) {
+        /* Hollow Oak Awakens CG finished -> Step through into Evertale Windmill Hamlet! */
+        st->story_stage = STORY_EVERTALE_AWAKENED;
+        st->ch1_step = 8u;
+        st->flag_has_wand = true;
+        st->pip_visible = true;
+        st->mode = MODE_EXPLORE;
+        hearth_enter_zone(st, ZONE_HAMLET, 4, 13);
+        st->hero_dir = DIR_RIGHT;
+        st->warp_fade = 12;
+        hearth_start_cutscene(st, CUTSCENE_PIP_REUNION);
+        build_ppu_packet(st);
+        return;
+    }
+
     if (st->intro.launch_story) {
-        /* Smoothly enter playable Alderbrook at Age 10 dawn */
+        /* Opening Cinema -> Chapter 1 Dawn inside Rowan & Grandma Mara's Cottage! */
         st->story_stage = STORY_AGE10_ALDERBROOK;
+        st->time_of_day = TOD_MORNING;
+        st->ch1_step = 0u;
+        st->ch1_errands_mask = 0u;
+        st->woods_shrines_mask = 0u;
+        st->has_milo_bell = false;
         st->flag_has_wand = false;
         st->flag_has_courage = false;
         st->flag_guard_mended = false;
@@ -668,18 +826,14 @@ static void finish_cinema_mode(HearthState *st, bool play_sfx) {
         st->flag_boss_defeated = false;
         st->flashback_triggered = true;
         st->mode = MODE_EXPLORE;
-        st->intro.fade = 0;
-        st->intro.fade_dir = 0;
         st->intro.launch_story = false;
-        hearth_enter_zone(st, ZONE_ALDERBROOK, 9, 13);
-        st->hero_dir = DIR_DOWN;
+        hearth_enter_zone(st, ZONE_ROWAN_HOME, 16, 15);
+        st->hero_dir = DIR_RIGHT;
         st->warp_fade = 14;
         if (play_sfx) push_sfx(st, SFX_CONFIRM);
         build_ppu_packet(st);
     } else {
         st->mode = MODE_TITLE;
-        st->intro.fade = 0;
-        st->intro.fade_dir = 0;
         st->title_cursor = 0;
         frame_title_camera(st);
         if (play_sfx) push_sfx(st, SFX_CONFIRM);
@@ -688,7 +842,11 @@ static void finish_cinema_mode(HearthState *st, bool play_sfx) {
 }
 
 void hearth_start_intro(HearthState *st) {
-    launch_cinema_mode(st, false);
+    launch_cinema_mode(st, 0u, false);
+}
+
+void hearth_start_story_cg(HearthState *st, uint8_t script_id) {
+    launch_cinema_mode(st, script_id, false);
 }
 
 void hearth_skip_intro(HearthState *st) {
@@ -703,18 +861,17 @@ void hearth_toggle_cinema_auto(HearthState *st) {
 
 static void request_cinema_advance(HearthState *st) {
     HearthIntroState *in = &HS.intro;
-    if ((uint8_t)(in->beat + 1u) < HEARTH_CINEMA_BEAT_COUNT) {
-        const HearthCinemaBeat *cur = &HEARTH_CINEMA_SCRIPT[in->beat];
-        const HearthCinemaBeat *nxt = &HEARTH_CINEMA_SCRIPT[in->beat + 1u];
+    uint8_t bcnt = 0u;
+    const HearthCinemaBeat *scr = get_cinema_script(in->script_id, &bcnt);
+    if ((uint8_t)(in->beat + 1u) < bcnt) {
+        const HearthCinemaBeat *cur = &scr[in->beat];
+        const HearthCinemaBeat *nxt = &scr[in->beat + 1u];
         if (cur->plate_id != nxt->plate_id || cur->act_num != nxt->act_num) {
-            /* Crossfade to black before switching CG plate or Act */
             in->fade_dir = 2u;
         } else {
-            /* Same painted plate: keep Ken Burns motion continuous! */
             apply_cinema_beat(st, (uint8_t)(in->beat + 1u), false);
         }
     } else {
-        /* End of Act VII: gentle fade out into Alderbrook dawn (or Title) */
         in->fade_dir = 2u;
     }
 }
@@ -722,6 +879,8 @@ static void request_cinema_advance(HearthState *st) {
 static void step_intro_cutscene(HearthState *st, uint16_t just_pressed) {
     HearthIntroState *in = &HS.intro;
     uint16_t total_chars;
+    uint8_t bcnt = 0u;
+    const HearthCinemaBeat *scr;
     const HearthCinemaBeat *cur_beat;
 
     if (just_pressed & PAD_START) {
@@ -734,6 +893,7 @@ static void step_intro_cutscene(HearthState *st, uint16_t just_pressed) {
 
     in->timer++;
     in->plate_timer++;
+    scr = get_cinema_script(in->script_id, &bcnt);
 
     /* Smooth fade-out transition between plates or at cinema end */
     if (in->fade_dir == 2u) {
@@ -741,7 +901,7 @@ static void step_intro_cutscene(HearthState *st, uint16_t just_pressed) {
             if (in->fade < 15u) {
                 in->fade++;
             } else {
-                if ((uint8_t)(in->beat + 1u) < HEARTH_CINEMA_BEAT_COUNT) {
+                if ((uint8_t)(in->beat + 1u) < bcnt) {
                     apply_cinema_beat(st, (uint8_t)(in->beat + 1u), true);
                 } else {
                     finish_cinema_mode(st, false);
@@ -762,7 +922,7 @@ static void step_intro_cutscene(HearthState *st, uint16_t just_pressed) {
     }
 
     total_chars = (uint16_t)(str_len16(in->line1) + str_len16(in->line2));
-    cur_beat = &HEARTH_CINEMA_SCRIPT[(in->beat < HEARTH_CINEMA_BEAT_COUNT) ? in->beat : 0u];
+    cur_beat = &scr[(in->beat < bcnt) ? in->beat : 0u];
 
     if (just_pressed & (PAD_A | PAD_B)) {
         if (in->fade > 3u) {
@@ -796,16 +956,35 @@ static void step_intro_cutscene(HearthState *st, uint16_t just_pressed) {
     }
 }
 
+const char *hearth_get_objective_text(const HearthState *st) {
+    if (st->story_stage < STORY_EVERTALE_AWAKENED) {
+        if (st->ch1_step == 0u) return "Talk to Grandma Mara by the hearth";
+        if (st->ch1_step == 1u) return "Visit Baker Maple & Stationmaster Barnaby";
+        if (st->ch1_step == 2u) return "Return home to Grandma Mara";
+        if (st->ch1_step == 3u) return "Inspect the cedar chest in the attic loft";
+        if (st->ch1_step == 4u) return "Show Milo's brass bell to Grandma Mara";
+        if (st->ch1_step == 5u) return "Rest in Rowan's patchwork bed";
+        if (st->ch1_step == 6u) return "Follow Milo northeast to Whispering Woods";
+        if ((st->woods_shrines_mask & 7u) != 7u) return "Light the 3 Lantern Shrines in the woods";
+        return "Climb north to Hollow Glade & awaken the Oak";
+    }
+    if (st->story_stage == STORY_EVERTALE_AWAKENED) return "Explore Windmill Hamlet & head east to Whiskerburgh";
+    if (st->story_stage == STORY_SEWER_KEY) return "Descend into the Sunken Sewers north of Whiskerburgh";
+    if (st->story_stage == STORY_MUCKMAW_DEFEATED) return "Cross into Boarhold Citadel & face Lord Ironfang";
+    return "Evertale shines bright! Fish, explore & master combat";
+}
+
 void hearth_init(HearthState *st) {
     hearth_memset(st, 0, (uint16_t)sizeof(*st));
     hearth_default_tuning(&st->tuning);
     hearth_prng_seed(&st->prng, (uint16_t)0x5EEDu);
     init_party(st);
 
-    /* Boot cleanly onto the Title Screen framed over Alderbrook mountain town */
+    /* Boot cleanly onto the Title Screen framed over redesigned Autumn Alderbrook */
     st->story_stage = STORY_AGE10_ALDERBROOK;
+    st->time_of_day = TOD_AFTERNOON;
     st->flag_has_wand = false;
-    hearth_enter_zone(st, ZONE_ALDERBROOK, 9, 13);
+    hearth_enter_zone(st, ZONE_ALDERBROOK, 18, 14);
     st->zone_banner_frames = 0;
     st->mode = MODE_TITLE;
     st->title_cursor = 0;
@@ -835,8 +1014,13 @@ void hearth_toggle_ppu_mode(HearthState *st) {
 }
 
 void hearth_start_story(HearthState *st) {
-    /* New Story launches the full 7-Act Illustrated Opening Cinema -> Age-10 Alderbrook! */
+    /* New Story launches the 7-Act Illustrated Opening Cinema -> Rowan's Cottage Dawn! */
     st->story_stage = STORY_AGE10_ALDERBROOK;
+    st->time_of_day = TOD_MORNING;
+    st->ch1_step = 0u;
+    st->ch1_errands_mask = 0u;
+    st->woods_shrines_mask = 0u;
+    st->has_milo_bell = false;
     st->flag_has_wand = false;
     st->flag_has_courage = false;
     st->flag_guard_mended = false;
@@ -847,7 +1031,7 @@ void hearth_start_story(HearthState *st) {
     st->flag_boss_defeated = false;
     st->flashback_triggered = false;
     push_sfx(st, SFX_CONFIRM);
-    launch_cinema_mode(st, true);
+    launch_cinema_mode(st, 0u, true);
 }
 
 void hearth_start_sandbox(HearthState *st) {
@@ -2070,7 +2254,9 @@ void hearth_open_shop(HearthState *st, uint8_t shop_id) {
     sh->tab = 0;
     sh->cursor = 0;
     sh->msg_timer = 90;
-    sh->title = (shop_id == 1u) ? "PORKINS' CITADEL PROVISIONS" : "BARNABY'S MOUSE MARKET";
+    if (shop_id == 2u) sh->title = "MAPLE'S MOUNTAIN BAKERY";
+    else if (shop_id == 1u) sh->title = "PORKINS' CITADEL PROVISIONS";
+    else sh->title = "BARNABY'S MOUSE MARKET";
     copy_str_safe(sh->msg, sizeof(sh->msg), "L/R: Switch BUY / SELL FISH  B: Exit");
     st->dialogue.active = false;
     st->mode = MODE_SHOP;
@@ -2163,6 +2349,7 @@ static uint8_t roll_fish_species(HearthState *st) {
     if (st->lure_tier >= 1u && r >= 84) return 4u; /* Golden Koi! */
     if (st->zone_id == ZONE_SEWERS) return (r < 68) ? 3u : 4u; /* Sewer Glow-Eel */
     if (st->zone_id == ZONE_WHISKERBURGH) return (r < 65) ? 2u : 1u; /* Whisker Perch */
+    if (st->zone_id == ZONE_ALDERBROOK) return (r < 72) ? 1u : 0u; /* Mountain Meadow Trout */
     return (r < 55) ? 0u : 1u; /* Sun Carp or Meadow Trout */
 }
 
@@ -2294,6 +2481,33 @@ static void step_fishing(HearthState *st, uint16_t pad_bits, uint16_t just_press
 /* ============================================================================
  * DIALOGUE, INTERACTION & BYTECODE CUTSCENE VM
  * ============================================================================ */
+static uint8_t infer_portrait_id(const HearthState *st, const char *speaker) {
+    if (!speaker || speaker[0] == '\0') return (uint8_t)PORTRAIT_NONE;
+    if ((speaker[0] == 'R' && speaker[1] == 'o' && speaker[2] == 'w') ||
+        (speaker[0] == 'L' && speaker[1] == 'i' && speaker[2] == 't')) {
+        return (uint8_t)PORTRAIT_ROWAN;
+    }
+    if (speaker[0] == 'G' && speaker[1] == 'r' && speaker[2] == 'a') {
+        return (uint8_t)PORTRAIT_MARA;
+    }
+    if (speaker[0] == 'P' && speaker[1] == 'i' && speaker[2] == 'p') {
+        return (uint8_t)PORTRAIT_PIP;
+    }
+    if ((speaker[0] == 'B' && speaker[1] == 'a' && speaker[2] == 'k') ||
+        (speaker[0] == 'M' && speaker[1] == 'a' && speaker[2] == 'p')) {
+        return (uint8_t)PORTRAIT_MAPLE;
+    }
+    if (speaker[0] == 'J' && speaker[1] == 'a' && speaker[2] == 's') {
+        return (uint8_t)PORTRAIT_JASPER;
+    }
+    if (speaker[0] == 'B' && speaker[1] == 'a' && speaker[2] == 'r' &&
+        (st->zone_id == ZONE_ALDERBROOK || st->zone_id == ZONE_ROWAN_HOME ||
+         st->zone_id == ZONE_WHISPERING_WOODS || st->zone_id == ZONE_HOLLOW_GLADE)) {
+        return (uint8_t)PORTRAIT_BARNABY;
+    }
+    return (uint8_t)PORTRAIT_NONE;
+}
+
 static void open_dialogue(
     HearthState *st, const char *speaker, uint8_t voice, const char *text,
     uint8_t choice_count, const HearthChoice *choices
@@ -2308,6 +2522,7 @@ static void open_dialogue(
     d->finished = false;
     d->pause_frames = 0;
     d->voice_sfx = voice;
+    d->portrait_id = infer_portrait_id(st, speaker);
     d->choice_count = choice_count;
     d->selected_choice = 0;
     for (i = 0; i < choice_count && i < HEARTH_MAX_CHOICES; i++) {
@@ -2325,8 +2540,16 @@ static void confirm_dialogue_choice(HearthState *st) {
     else if (act == ACT_JUMP_BOSS)     hearth_start_battle(st, ENCOUNTER_SHRINE_BOSS, BIOME_SHRINE, -1);
     else if (act == ACT_OPEN_SHOP_0)   hearth_open_shop(st, 0);
     else if (act == ACT_OPEN_SHOP_1)   hearth_open_shop(st, 1);
+    else if (act == ACT_OPEN_SHOP_2)   hearth_open_shop(st, 2);
     else if (act == ACT_MEND_CAPTAIN)  hearth_start_cutscene(st, CUTSCENE_MEND_CAPTAIN);
     else if (act == ACT_START_FISHING) hearth_start_fishing(st);
+    else if (act == ACT_REST_BED) {
+        if (st->ch1_step == 5u) {
+            hearth_start_story_cg(st, 2u);
+        } else {
+            hearth_heal_party(st);
+        }
+    }
 }
 
 static void step_dialogue(HearthState *st, uint16_t just_pressed) {
@@ -2416,6 +2639,31 @@ static void apply_cutscene_flag(HearthState *st, int16_t flag_id) {
     } else if (flag_id == FLAG_IRONFANG_DEFEATED) {
         st->flag_ironfang_defeated = true;
         st->story_stage = STORY_IRONFANG_DEFEATED;
+    } else if (flag_id == FLAG_CH1_MARA_GREETED) {
+        if (st->ch1_step < 1u) st->ch1_step = 1u;
+    } else if (flag_id == FLAG_CH1_MAPLE_LOAF) {
+        st->ch1_errands_mask |= 1u;
+        st->guilders = (uint16_t)(st->guilders + 15u);
+        if ((st->ch1_errands_mask & 3u) == 3u) {
+            if (st->ch1_step < 2u) st->ch1_step = 2u;
+            if (st->time_of_day < TOD_AFTERNOON) {
+                st->time_of_day = TOD_AFTERNOON;
+                if (st->zone_id == ZONE_ALDERBROOK) st->terrain_pal_id = ZPAL_ALDERBROOK;
+            }
+        }
+    } else if (flag_id == FLAG_CH1_BARNABY_THERMOS) {
+        st->ch1_errands_mask |= 2u;
+        if ((st->ch1_errands_mask & 3u) == 3u) {
+            if (st->ch1_step < 2u) st->ch1_step = 2u;
+            if (st->time_of_day < TOD_AFTERNOON) {
+                st->time_of_day = TOD_AFTERNOON;
+                if (st->zone_id == ZONE_ALDERBROOK) st->terrain_pal_id = ZPAL_ALDERBROOK;
+            }
+        }
+    } else if (flag_id == FLAG_CH1_JASPER_MET) {
+        st->ch1_errands_mask |= 4u;
+    } else if (flag_id == FLAG_CH1_DUSK_TEA) {
+        if (st->ch1_step < 5u) st->ch1_step = 5u;
     }
 }
 
@@ -2687,11 +2935,53 @@ static bool near_point_px(int16_t hx, int16_t hy, int16_t tx, int16_t ty, int16_
     return (doct < (int16_t)(rad + 2));
 }
 
+static int find_ch1_prop_interactable(const HearthState *st, int16_t hx, int16_t hy, int16_t *ox, int16_t *oy, const char **olabel) {
+    static const uint8_t s_tx[3] = { 12u, 26u, 33u };
+    static const uint8_t s_ty[3] = { 17u, 15u,  9u };
+    int16_t nx, ny, i;
+    ST_UNUSED(st);
+
+    if (HS.zone_id == ZONE_ROWAN_HOME) {
+        nx = (int16_t)(29 * 16 + 8);
+        ny = (int16_t)(9 * 16 + 8);
+        if (near_point_px(hx, hy, nx, ny, 24)) {
+            *ox = nx; *oy = (int16_t)(ny - 18); *olabel = "Cedar Chest";
+            return 14;
+        }
+        nx = (int16_t)(14 * 16 + 8);
+        ny = (int16_t)(15 * 16 + 12);
+        if (near_point_px(hx, hy, nx, ny, 24)) {
+            *ox = nx; *oy = (int16_t)(ny - 18); *olabel = (HS.ch1_step == 5u) ? "Sleep" : "Rowan's Bed";
+            return 15;
+        }
+    } else if (HS.zone_id == ZONE_WHISPERING_WOODS) {
+        for (i = 0; i < 3; i++) {
+            nx = (int16_t)((int16_t)s_tx[i] * 16 + 8);
+            ny = (int16_t)((int16_t)s_ty[i] * 16 + 8);
+            if (near_point_px(hx, hy, nx, ny, 24)) {
+                *ox = nx; *oy = (int16_t)(ny - 20);
+                *olabel = ((HS.woods_shrines_mask & (uint8_t)(1u << i)) != 0u) ? "Lit Lantern" : "Light Lantern";
+                return 16 + (int)i;
+            }
+        }
+    } else if (HS.zone_id == ZONE_HOLLOW_GLADE) {
+        nx = (int16_t)(21 * 16 + 8);
+        ny = (int16_t)(12 * 16 + 8);
+        if (near_point_px(hx, hy, nx, ny, 26)) {
+            *ox = nx; *oy = (int16_t)(ny - 22);
+            *olabel = HS.flag_has_wand ? "Enter Evertale" : "Hollow Oak";
+            return 19;
+        }
+    }
+    return -1;
+}
+
 static int find_interactable(const HearthState *st, int16_t *ox, int16_t *oy, const char **olabel) {
     int16_t hx = FP_PX(HS.hero_fx);
     int16_t hy = FP_PX(HS.hero_fy);
     int16_t px = hx, py = hy, nx, ny;
     int16_t i;
+    int ch1_hit;
     ST_UNUSED(st);
 
     if (HS.hero_dir == DIR_UP) py -= 15;
@@ -2708,6 +2998,9 @@ static int find_interactable(const HearthState *st, int16_t *ox, int16_t *oy, co
             return (int)i;
         }
     }
+    ch1_hit = find_ch1_prop_interactable(st, hx, hy, ox, oy, olabel);
+    if (ch1_hit >= 0) return ch1_hit;
+
     if (HS.has_waystone) {
         nx = (int16_t)((int16_t)HS.waystone_tx * 16 + 8);
         ny = (int16_t)((int16_t)HS.waystone_ty * 16 + 8);
@@ -2769,7 +3062,7 @@ static void interact_chest(HearthState *st, int16_t ox, int16_t oy) {
         st->guilders = (uint16_t)(st->guilders + 35u);
         spawn_ftext(st, ox, oy, "+2 STARS +35G", 3, 15, true);
         open_dialogue(st, "Treasure Chest", SFX_TEXT_HERO,
-            "Found 2 Star Drops and 35 Guilders hidden behind the market!", 0, NULL);
+            "Found 2 Star Drops and 35 Guilders tucked among the rocks!", 0, NULL);
     } else if (rk == 2u) {
         st->snacks += 1;
         st->guilders = (uint16_t)(st->guilders + 50u);
@@ -2789,7 +3082,10 @@ static void interact_signpost(HearthState *st) {
     push_sfx(st, SFX_CONFIRM);
     if (st->zone_id == ZONE_ALDERBROOK) {
         open_dialogue(st, "Alderbrook Sign", SFX_TEXT_ELDER,
-            "ALDERBROOK VILLAGE | EAST across the brook: Ancient Hollow Oak Woods.", 0, NULL);
+            "NORTH: Steam Rail Station | WEST: Rowan's Cottage | EAST: Maple's Bakery & Whispering Woods | SOUTH: Mountain Brook Pier.", 0, NULL);
+    } else if (st->zone_id == ZONE_WHISPERING_WOODS) {
+        open_dialogue(st, "Trail Marker", SFX_TEXT_ELDER,
+            "WHISPERING WOODS | Follow the 3 ancient stone lanterns across the rapids bridge to reach Hollow Glade atop the ridge.", 0, NULL);
     } else if (st->zone_id == ZONE_WHISKERBURGH) {
         open_dialogue(st, "Market Sign", SFX_TEXT_ELDER,
             "WEST: Windmill Hamlet | NORTH: Sunken Sewers | SOUTH: Canal Fishing Jetty | EAST: Barnaby's Shop.", 0, NULL);
@@ -2807,6 +3103,13 @@ static void interact_signpost(HearthState *st) {
 
 static void interact_portal(HearthState *st, int pidx) {
     const HearthPortal *pt = &st->portals[pidx];
+    if (st->zone_id == ZONE_WHISPERING_WOODS && pt->dst_zone == ZONE_HOLLOW_GLADE &&
+        st->time_of_day == TOD_NIGHT && (st->woods_shrines_mask & 7u) != 7u) {
+        push_sfx(st, SFX_CANCEL);
+        open_dialogue(st, "Misty Ridge Pass", SFX_TEXT_HERO,
+            "Thick silver mountain fog hides the upper switchback! Light all 3 ancient stone lanterns along the Whispering Woods trail first.", 0, NULL);
+        return;
+    }
     if (pt->req_stage > 0u && st->story_stage < pt->req_stage) {
         push_sfx(st, SFX_CANCEL);
         if (pt->req_stage == STORY_SEWER_KEY) {
@@ -2872,15 +3175,85 @@ static void interact_npc_hamlet(HearthState *st, int hit) {
     }
 }
 
-static void interact_npc_other_zones(HearthState *st, int hit) {
-    if (st->zone_id == ZONE_ALDERBROOK) {
+static void interact_npc_chapter1(HearthState *st, int hit) {
+    if (st->zone_id == ZONE_ROWAN_HOME) {
         if (hit == 0) {
-            open_dialogue(st, "Aunt Martha", SFX_TEXT_PIP,
-                "Rowan, dear! You've been staring east toward the old Hollow Oak all morning. Did you find Milo's brass bell?", 0, NULL);
+            if (st->ch1_step == 0u) {
+                hearth_start_cutscene(st, CUTSCENE_CH1_MORNING_MARA);
+            } else if (st->ch1_step == 1u) {
+                open_dialogue(st, "Grandma Mara", SFX_TEXT_ELDER,
+                    "Step outside into Pine Square, dear! Pick up the honey-rye loaf from Baker Maple and bring Barnaby his hot ginger thermos up by the train.", 0, NULL);
+            } else if (st->ch1_step == 2u) {
+                st->ch1_step = 3u;
+                open_dialogue(st, "Grandma Mara", SFX_TEXT_ELDER,
+                    "Oh, thank you, Rowan! The afternoon breeze is turning crisp off the peaks. Could you fetch my red wool shawl from the cedar chest up in the attic loft?", 0, NULL);
+            } else if (st->ch1_step == 3u) {
+                open_dialogue(st, "Grandma Mara", SFX_TEXT_ELDER,
+                    "Climb the little stairs on the right side of the room to check my heirloom cedar chest, sparrow.", 0, NULL);
+            } else if (st->ch1_step == 4u) {
+                hearth_start_cutscene(st, CUTSCENE_CH1_DUSK_TEA);
+            } else if (st->ch1_step == 5u) {
+                open_dialogue(st, "Grandma Mara", SFX_TEXT_ELDER,
+                    "Go crawl under your patchwork quilt, Rowan. A good night's sleep will settle your heart.", 0, NULL);
+            } else {
+                open_dialogue(st, "Grandma Mara", SFX_TEXT_ELDER,
+                    "Grandma is fast asleep by the embers... Rowan gently pulls on his autumn scarf and slips quietly toward the door.", 0, NULL);
+            }
         } else {
-            open_dialogue(st, "Neighbor Tom", SFX_TEXT_ELDER,
-                "Four years since that ginger pup vanished by the brook! Cross the footbridge east if you're checking the Hollow Oak.", 0, NULL);
+            open_dialogue(st, "Milo", SFX_TEXT_PIP,
+                "Yip! Milo wags his fluffy tail beside the warm stone hearth, sniffing the cedar air.", 0, NULL);
         }
+    } else if (st->zone_id == ZONE_ALDERBROOK) {
+        if (st->time_of_day == TOD_NIGHT) {
+            open_dialogue(st, "Milo", SFX_TEXT_PIP,
+                "Yip! Yip! Milo paws excitedly toward the northeast rocky switchback leading into Whispering Woods!", 0, NULL);
+        } else if (hit == 0) {
+            if (st->ch1_step == 1u && (st->ch1_errands_mask & 2u) == 0u) {
+                hearth_start_cutscene(st, CUTSCENE_CH1_BARNABY_THERMOS);
+            } else {
+                open_dialogue(st, "Barnaby", SFX_TEXT_ELDER,
+                    "Old No. 7's brass boiler is purring sweet today! Nothing beats watching the autumn fog drift past those snow peaks.", 0, NULL);
+            }
+        } else if (hit == 1) {
+            if (st->ch1_step == 1u && (st->ch1_errands_mask & 1u) == 0u) {
+                hearth_start_cutscene(st, CUTSCENE_CH1_MAPLE_LOAF);
+            } else {
+                static const HearthChoice shop2_opts[2] = {
+                    { "Open Maple's Bakery", ACT_OPEN_SHOP_2 },
+                    { "Just Visiting",       ACT_CLOSE }
+                };
+                open_dialogue(st, "Baker Maple", SFX_TEXT_PIP,
+                    "Fresh ginger loaves, fishing lures, and top Guilders for mountain brook trout! Want to browse my counter, Rowan?",
+                    2, shop2_opts);
+            }
+        } else if (hit == 2) {
+            st->ch1_errands_mask |= 4u;
+            open_dialogue(st, "Jasper", SFX_TEXT_ELDER,
+                "Hear that whitewater rushing over the granite, boy? Follow the northeast steps into Whispering Woods sometime - the old Hollow Oak still hums when the wind turns silver.", 0, NULL);
+        } else {
+            open_dialogue(st, "Milo", SFX_TEXT_PIP,
+                "Arf! Milo leaps at a falling crimson maple leaf and looks eagerly toward the mountain brook.", 0, NULL);
+        }
+    } else if (st->zone_id == ZONE_WHISPERING_WOODS) {
+        if (hit == 0) {
+            open_dialogue(st, "Jasper", SFX_TEXT_ELDER,
+                (st->time_of_day == TOD_NIGHT)
+                    ? "Out under the harvest moon, Rowan? Light all three ancient stone lanterns along this trail and the mist over Hollow Glade will part for you."
+                    : "Careful on the wet granite by the rapids, lad. Three stone lanterns mark the old lumber trail up to Hollow Glade.", 0, NULL);
+        } else {
+            open_dialogue(st, "Milo", SFX_TEXT_PIP,
+                "Yip! Milo bounds across the timber bridge, glancing back to make sure Rowan is following!", 0, NULL);
+        }
+    } else if (st->zone_id == ZONE_HOLLOW_GLADE) {
+        open_dialogue(st, "Milo", SFX_TEXT_PIP,
+            "Milo sits beneath the monumental roots of the Hollow Oak, his brass bell chiming softly toward the glowing archway!", 0, NULL);
+    }
+}
+
+static void interact_npc_other_zones(HearthState *st, int hit) {
+    if (st->zone_id == ZONE_ROWAN_HOME || st->zone_id == ZONE_ALDERBROOK ||
+        st->zone_id == ZONE_WHISPERING_WOODS || st->zone_id == ZONE_HOLLOW_GLADE) {
+        interact_npc_chapter1(st, hit);
     } else if (st->zone_id == ZONE_WHISKERBURGH) {
         if (hit == 0) {
             if (!st->flag_sewer_key) {
@@ -2933,6 +3306,65 @@ static void interact_npc_other_zones(HearthState *st, int hit) {
     }
 }
 
+static void interact_ch1_prop(HearthState *st, int hit, int16_t ox, int16_t oy) {
+    if (hit == 14) {
+        if (st->ch1_step == 3u) {
+            hearth_start_story_cg(st, 1u);
+        } else if (st->has_milo_bell) {
+            open_dialogue(st, "Rowan", SFX_TEXT_HERO,
+                "Grandma's heirloom cedar chest... I already tucked Milo's brass bell and the golden oak leaf safely in my pocket.", 0, NULL);
+        } else {
+            open_dialogue(st, "Rowan", SFX_TEXT_HERO,
+                "Grandma's carved cedar chest smells like mountain pine and lavender. I should ask her before opening it.", 0, NULL);
+        }
+    } else if (hit == 15) {
+        if (st->ch1_step == 5u) {
+            static const HearthChoice sleep_opts[2] = {
+                { "Sleep Until Night", ACT_REST_BED },
+                { "Stay Awake",        ACT_CLOSE }
+            };
+            open_dialogue(st, "Rowan", SFX_TEXT_HERO,
+                "Milo's brass bell feels warm in my hand. Crawl beneath the patchwork quilt and close my eyes?",
+                2, sleep_opts);
+        } else {
+            static const HearthChoice rest_opts[2] = {
+                { "Rest (Restore HP/MP)", ACT_REST_BED },
+                { "Not Tired Yet",        ACT_CLOSE }
+            };
+            open_dialogue(st, "Rowan's Bed", SFX_TEXT_HERO,
+                "A cozy patchwork quilt stitched by Grandma Mara. Take a quick breather?",
+                2, rest_opts);
+        }
+    } else if (hit >= 16 && hit <= 18) {
+        uint8_t bit = (uint8_t)(1u << (hit - 16));
+        if ((st->woods_shrines_mask & bit) == 0u) {
+            st->woods_shrines_mask |= bit;
+            push_sfx(st, SFX_HEART_GIVE);
+            spawn_burst(st, 3, ox, (int16_t)(oy + 10), 12, 3, 11, false);
+            spawn_ftext(st, ox, oy, "LANTERN LIT!", 3, 11, true);
+            if ((st->woods_shrines_mask & 7u) == 7u) {
+                open_dialogue(st, "Rowan", SFX_TEXT_HERO,
+                    "All three woodland lanterns are glowing golden! Look - the mountain mist over the northern pass to Hollow Glade just lifted!", 0, NULL);
+            } else {
+                open_dialogue(st, "Rowan", SFX_TEXT_HERO,
+                    "The mossy stone lantern sparks to life with amber warmth, lighting the granite trail deeper into Whispering Woods!", 0, NULL);
+            }
+        } else {
+            open_dialogue(st, "Stone Lantern", SFX_TEXT_ELDER,
+                "A steady golden flame flickers inside the carved granite lantern, pushing back the autumn chill.", 0, NULL);
+        }
+    } else if (hit == 19) {
+        if (st->flag_has_wand) {
+            request_zone_warp(st, ZONE_HAMLET, 4, 13);
+        } else if (st->ch1_step >= 6u) {
+            hearth_start_story_cg(st, 3u);
+        } else {
+            open_dialogue(st, "Rowan", SFX_TEXT_HERO,
+                "An enormous, ancient oak standing alone beneath the alpine peaks... Why does staring into its hollow trunk make my heart race?", 0, NULL);
+        }
+    }
+}
+
 static void try_interact(HearthState *st) {
     int16_t ox = 0, oy = 0;
     const char *lbl = NULL;
@@ -2955,6 +3387,8 @@ static void try_interact(HearthState *st) {
         open_dialogue(st, "Fishing Pier", SFX_TEXT_PIP,
             "Ripples dance on the water! Cast your line and keep the fish inside the reel bar?",
             2, fish_opts);
+    } else if (hit >= 14 && hit <= 19) {
+        interact_ch1_prop(st, hit, ox, oy);
     } else if (hit >= 20 && hit < 20 + HEARTH_MAX_PORTALS) {
         interact_portal(st, hit - 20);
     } else if (st->zone_id == ZONE_HAMLET) {
@@ -2986,9 +3420,10 @@ static void check_explore_triggers(HearthState *st) {
         px = (int16_t)((int16_t)pt->tx * 16 + 8);
         py = (int16_t)((int16_t)pt->ty * 16 + 8);
         if (near_point_px(hx, hy, px, py, 13)) {
-            if (pt->req_stage > 0u && st->story_stage < pt->req_stage) {
-                /* Gently push hero back 6px & explain locked gate */
-                st->hero_fy += TO_FP(8);
+            if ((st->zone_id == ZONE_WHISPERING_WOODS && pt->dst_zone == ZONE_HOLLOW_GLADE &&
+                 st->time_of_day == TOD_NIGHT && (st->woods_shrines_mask & 7u) != 7u) ||
+                (pt->req_stage > 0u && st->story_stage < pt->req_stage)) {
+                st->hero_fy += TO_FP(10);
                 interact_portal(st, i);
                 return;
             }
@@ -3006,8 +3441,8 @@ static bool step_zone_warp(HearthState *st) {
             uint8_t prev_zone = st->zone_id;
             st->warp_fade = 15u;
             hearth_enter_zone(st, st->warp_dst_zone, st->warp_dst_tx, st->warp_dst_ty);
-            /* Stepping from Age-10 Alderbrook back into Evertale triggers Pip Reunion & Wand! */
-            if (prev_zone == ZONE_ALDERBROOK && st->zone_id == ZONE_HAMLET && !st->flag_has_wand) {
+            if ((prev_zone == ZONE_ALDERBROOK || prev_zone == ZONE_HOLLOW_GLADE) &&
+                st->zone_id == ZONE_HAMLET && !st->flag_has_wand) {
                 st->warp_pending = false;
                 st->warp_fade = 0;
                 hearth_start_cutscene(st, CUTSCENE_PIP_REUNION);
@@ -3240,14 +3675,26 @@ static uint16_t build_explore_ppu_props_and_actors(
         }
     }
 
-    /* 2. Hollow Oak Gateway Arch Sprite in Alderbrook & Windmill Hamlet */
-    if (HS.zone_id == ZONE_ALDERBROOK || HS.zone_id == ZONE_HAMLET) {
-        ny = (HS.zone_id == ZONE_ALDERBROOK) ? (int16_t)(14 * 16 + 8) : (int16_t)(13 * 16 + 8);
-        sx = (int16_t)(((HS.zone_id == ZONE_ALDERBROOK) ? (int16_t)(38 * 16 + 8) : (int16_t)(2 * 16 + 8)) - cx);
+    /* 2. Hollow Oak Gateway Arch Sprite in Hollow Glade & Windmill Hamlet */
+    if (HS.zone_id == ZONE_HOLLOW_GLADE || HS.zone_id == ZONE_HAMLET) {
+        ny = (HS.zone_id == ZONE_HOLLOW_GLADE) ? (int16_t)(12 * 16 + 4) : (int16_t)(13 * 16 + 8);
+        sx = (int16_t)(((HS.zone_id == ZONE_HOLLOW_GLADE) ? (int16_t)(21 * 16 + 8) : (int16_t)(2 * 16 + 8)) - cx);
         sy = (int16_t)(ny - cy);
         if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
             OAM_SET_IDX(p, cnt, sx, sy, SPR_HOLLOW_OAK, npc_f, DIR_DOWN, OAM_FLAG_SHADOW,
                 FP_ONE, FP_ONE, AURA_NONE, 1, (int16_t)(ny - 4), 0);
+            cnt++;
+        }
+    }
+
+    /* 2b. Idling Steam Locomotive on Alderbrook Mountain Rail Shelf */
+    if (HS.has_locomotive) {
+        ny = (int16_t)((int16_t)HS.loco_ty * 16 + 10);
+        sx = (int16_t)((int16_t)HS.loco_tx * 16 + 8 - cx);
+        sy = (int16_t)(ny - cy);
+        if (sx >= -32 && sx <= (int16_t)(max_sx + 16) && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
+            OAM_SET_IDX(p, cnt, sx, sy, SPR_LOCOMOTIVE, npc_f, DIR_RIGHT, OAM_FLAG_SHADOW,
+                FP_ONE, FP_ONE, AURA_NONE, 1, ny, 0);
             cnt++;
         }
     }
@@ -3470,9 +3917,12 @@ static void build_ppu_packet(HearthState *st) {
     HP.zone_id = HS.zone_id;
     HP.terrain_pal_id = HS.terrain_pal_id;
     HP.bgm_id = resolve_active_bgm(st);
+    HP.time_of_day = HS.time_of_day;
     HP.zone_is_dark = HS.zone_is_dark;
+    HP.has_mountain_vista = HS.has_mountain_vista;
     HP.zone_banner_frames = HS.zone_banner_frames;
     HP.zone_name = HEARTH_ZONE_NAMES[(HS.zone_id < ZONE_COUNT) ? HS.zone_id : 1u];
+    HP.objective_text = hearth_get_objective_text(st);
     HP.cam_x = FP_PX(HS.cam_fx);
     HP.cam_y = FP_PX(HS.cam_fy);
     HP.shake_x = (HS.shake_frames > 0) ? (int8_t)hearth_prng_range(&HS.prng, -(int16_t)HS.shake_intensity, (int16_t)HS.shake_intensity) : 0;
@@ -3574,6 +4024,20 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
                     if (just_pressed & PAD_R) { HS.active_slot = (uint8_t)((HS.active_slot + 1) % 3); push_sfx(st, SFX_CURSOR); }
                 }
             }
+#if !defined(HEARTH_TARGET_SNES)
+            if (HS.has_mountain_vista && ((HS.frame_count & 31u) == 0u)) {
+                int16_t px = (int16_t)(FP_PX(HS.cam_fx) + hearth_prng_range(&HS.prng, 16, 304));
+                int16_t py = (int16_t)(FP_PX(HS.cam_fy) + hearth_prng_range(&HS.prng, 40, 200));
+                if (HS.time_of_day == TOD_NIGHT) {
+                    spawn_particle(st, 3, px, py, hearth_prng_range(&HS.prng, -24, 24),
+                        hearth_prng_range(&HS.prng, -32, -8), 54, 2, 0, 8, false);
+                } else {
+                    spawn_particle(st, 0, px, py, hearth_prng_range(&HS.prng, -42, -14),
+                        hearth_prng_range(&HS.prng, 28, 62), 60, 2, 0,
+                        ((HS.frame_count & 32u) != 0u) ? 15 : 5, false);
+                }
+            }
+#endif
             step_camera(st);
             break;
         }

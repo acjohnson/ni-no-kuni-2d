@@ -30,9 +30,15 @@ typedef struct {
     uint8_t      zone_id;
     uint8_t      terrain_pal_id;
     uint8_t      bgm_id;
+    uint8_t      time_of_day;     /* TOD_MORNING..TOD_NIGHT */
     bool         zone_is_dark;
+    bool         has_mountain_vista;
     uint8_t      zone_banner_frames;
     uint8_t      story_stage;
+    uint8_t      ch1_step;        /* 0..8 Chapter 1 Alderbrook & Woods progression */
+    uint8_t      ch1_errands_mask;/* bit0=Maple Loaf, bit1=Barnaby Thermos, bit2=Jasper Met */
+    uint8_t      woods_shrines_mask; /* bits 0..2: 3 lantern markers in Whispering Woods */
+    bool         has_milo_bell;
     uint8_t      map_revision;
     uint8_t      warp_fade;       /* 0..15 fade out/in on zone warp */
     bool         warp_pending;
@@ -50,6 +56,8 @@ typedef struct {
     uint8_t         sign_tx, sign_ty;
     bool            has_sign;
     bool            has_windmill;
+    bool            has_locomotive;
+    uint8_t         loco_tx, loco_ty;
 
     /* Hero Fixed-Point 16.8 State */
     fp16_t   hero_fx, hero_fy;
@@ -151,10 +159,12 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits);
 
 /* Direct Mode Launchers & Utility Hooks */
 void hearth_start_intro(HearthState *st);
+void hearth_start_story_cg(HearthState *st, uint8_t script_id);
 void hearth_skip_intro(HearthState *st);
 void hearth_toggle_cinema_auto(HearthState *st);
 void hearth_start_story(HearthState *st);
 void hearth_start_sandbox(HearthState *st);
+const char *hearth_get_objective_text(const HearthState *st);
 void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint8_t tx, uint8_t ty);
 void hearth_start_cutscene(HearthState *st, const HearthCutsceneOp *script);
 void hearth_start_battle(HearthState *st, uint8_t preset, uint8_t biome, int8_t field_idx);

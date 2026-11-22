@@ -36,7 +36,27 @@ enum {
     T_SHRINE_PILLAR = 24,
     T_SIGNPOST      = 25,
     T_LANTERN_POST  = 26,
-    T_FLOWER_BED    = 27
+    T_FLOWER_BED    = 27,
+    /* Ground-Up Mountain Autumn & Cottage Interior Tileset (Milestone 2) */
+    T_MTN_SKY       = 28, /* Distant Snow-Dusted Alpine Peaks & Viaduct Skyline */
+    T_CLIFF_WALL    = 29, /* Layered Granite Cliff Face */
+    T_CLIFF_LEDGE   = 30, /* Mossy Granite Cliff Rim */
+    T_BOULDER       = 31, /* Mossy Mountain Boulder on Autumn Meadow */
+    T_AUTUMN_GRASS  = 32, /* Ochre/Sage Mountain Meadow with Fallen Autumn Leaves */
+    T_ROCKY_PATH    = 33, /* Crushed Granite Gravel & Flagstone Mountain Trail */
+    T_RAPIDS        = 34, /* Winding Mountain Stream with Whitewater Riffles */
+    T_RAIL_TRACK    = 35, /* Mountain Railway Iron Ties & Gravel Ballast */
+    T_MAPLE_TRUNK   = 36, /* Autumn Maple Tree Trunk */
+    T_PINE_TRUNK    = 37, /* Alpine Spruce Tree Base */
+    T_WOOD_FLOOR    = 38, /* Warm Honey Cedar Interior Plank Floor */
+    T_HEARTH_RUG    = 39, /* Woven Burgundy & Gold Hearthside Rug */
+    T_FIREPLACE     = 40, /* Crackling Stone Cottage Fireplace */
+    T_BED_QUILT     = 41, /* Rowan's Patchwork Quilt Bed */
+    T_ATTIC_CHEST   = 42, /* Grandma's Heirloom Cedar Chest */
+    T_HOLLOW_OAK    = 43, /* Monumental Gnarled Hollow Oak Archway */
+    T_STONE_STAIRS  = 44, /* Carved Granite Mountain Steps */
+    T_INTERIOR_WALL = 45, /* Cedar-Beam Cottage Interior Wall */
+    T_TILE_COUNT    = 46
 };
 
 /* BG2 Overhead Canopy / Roof Eave / Archway Tile IDs */
@@ -47,7 +67,11 @@ enum {
     O_CANOPY_BL   = 3,
     O_CANOPY_BR   = 4,
     O_ROOF_EAVE   = 5,
-    O_SHRINE_ARCH = 6
+    O_SHRINE_ARCH = 6,
+    O_MAPLE_TL    = 7,
+    O_MAPLE_TR    = 8,
+    O_PINE_TOP    = 9,
+    O_OAK_CROWN   = 10
 };
 
 /* Collision Codes */
@@ -82,7 +106,12 @@ enum {
     FLAG_SEWER_KEY          = 6,
     FLAG_CAPTAIN_MENDED     = 7,
     FLAG_MUCKMAW_DEFEATED   = 8,
-    FLAG_IRONFANG_DEFEATED  = 9
+    FLAG_IRONFANG_DEFEATED  = 9,
+    FLAG_CH1_MARA_GREETED   = 10,
+    FLAG_CH1_MAPLE_LOAF     = 11,
+    FLAG_CH1_BARNABY_THERMOS= 12,
+    FLAG_CH1_JASPER_MET     = 13,
+    FLAG_CH1_DUSK_TEA       = 14
 };
 
 /* Fish Species Metadata */
@@ -106,11 +135,12 @@ typedef struct {
 /* 4 x 16-Color Master Hardware Sub-Palettes (Default PAL0..PAL3, 0xRRGGBB) */
 extern const uint32_t HEARTH_PALETTES_RGB[4][16];
 
-/* 6 x 16-Color Per-Zone Terrain Sub-Palettes (Loaded into PAL0 per zone/mood) */
+/* 10 x 16-Color Per-Zone & Time-of-Day Terrain Sub-Palettes (Loaded into PAL0) */
 extern const uint32_t HEARTH_ZONE_PALETTES_RGB[ZPAL_COUNT][16];
 
-/* Zone Display Names */
+/* Zone Display Names & Time-of-Day Labels */
 extern const char * const HEARTH_ZONE_NAMES[ZONE_COUNT];
+extern const char * const HEARTH_TOD_NAMES[4];
 
 /* Fish & Shop Static Tables */
 extern const HearthFishInfo HEARTH_FISH_TABLE[HEARTH_FISH_SPECIES];
@@ -123,9 +153,15 @@ extern const int8_t HEARTH_SIN64[64];
 void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t *col);
 void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col);
 
-/* 7-Act Illustrated Opening Cinema Script (23 player-paced beats) */
+/* 7-Act Illustrated Opening Cinema & 3 Mid-Chapter Story CG Scripts */
 #define HEARTH_CINEMA_BEAT_COUNT 23u
+#define HEARTH_CG_ATTIC_COUNT     4u
+#define HEARTH_CG_DREAM_COUNT     4u
+#define HEARTH_CG_OAK_COUNT       5u
 extern const HearthCinemaBeat HEARTH_CINEMA_SCRIPT[HEARTH_CINEMA_BEAT_COUNT];
+extern const HearthCinemaBeat HEARTH_CG_ATTIC_SCRIPT[HEARTH_CG_ATTIC_COUNT];
+extern const HearthCinemaBeat HEARTH_CG_DREAM_SCRIPT[HEARTH_CG_DREAM_COUNT];
+extern const HearthCinemaBeat HEARTH_CG_OAK_SCRIPT[HEARTH_CG_OAK_COUNT];
 
 /* Cutscene ROM Bytecode Scripts */
 extern const HearthCutsceneOp CUTSCENE_INTRO_DEMO[];
@@ -137,6 +173,10 @@ extern const HearthCutsceneOp CUTSCENE_PIP_REUNION[];
 extern const HearthCutsceneOp CUTSCENE_MAYOR_SEWER_KEY[];
 extern const HearthCutsceneOp CUTSCENE_MEND_CAPTAIN[];
 extern const HearthCutsceneOp CUTSCENE_IRONFANG_VICTORY[];
+extern const HearthCutsceneOp CUTSCENE_CH1_MORNING_MARA[];
+extern const HearthCutsceneOp CUTSCENE_CH1_MAPLE_LOAF[];
+extern const HearthCutsceneOp CUTSCENE_CH1_BARNABY_THERMOS[];
+extern const HearthCutsceneOp CUTSCENE_CH1_DUSK_TEA[];
 
 /* Hardware Palette Packers for Sega Genesis (BGR333) & SNES (BGR555) */
 HEARTH_INLINE uint16_t hearth_rgb_to_genesis_bgr333(uint32_t rgb) {

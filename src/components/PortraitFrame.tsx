@@ -1,27 +1,48 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { PortraitId } from '../core/types';
+import portraitRowan from '../assets/images/portrait_rowan_1795315522922.jpg';
+import portraitMara from '../assets/images/portrait_grandma_mara_1795315523861.jpg';
+import portraitPip from '../assets/images/portrait_pip_1795315522510.jpg';
+import portraitBarnaby from '../assets/images/portrait_barnaby_1795315522478.jpg';
+import portraitMaple from '../assets/images/portrait_maple_1795315522927.jpg';
+import portraitJasper from '../assets/images/portrait_jasper_1795315522636.jpg';
+import portraitElder from '../assets/images/portrait_villager_elder_1794938563121.jpg';
+
+const PAINTED_PORTRAITS_BY_ID: Record<number, string> = {
+  1: portraitRowan,
+  2: portraitMara,
+  3: portraitPip,
+  4: portraitBarnaby,
+  5: portraitMaple,
+  6: portraitJasper,
+};
 
 const GENERATED_PORTRAITS: Partial<Record<PortraitId, string>> = {
-  hero: '/src/assets/images/portrait_hero_1794938562548.jpg',
-  pip: '/src/assets/images/portrait_lantern_sprite_1794938563176.jpg',
-  elder: '/src/assets/images/portrait_villager_elder_1794938563121.jpg',
+  hero: portraitRowan,
+  pip: portraitPip,
+  elder: portraitElder,
 };
 
 interface PortraitFrameProps {
   portrait: PortraitId;
+  portraitId?: number;
   speaker: string;
 }
 
-export const PortraitFrame: React.FC<PortraitFrameProps> = ({ portrait, speaker }) => {
+export const PortraitFrame: React.FC<PortraitFrameProps> = ({ portrait, portraitId = 0, speaker }) => {
   const [imgFailed, setImgFailed] = useState(false);
 
-  if (portrait === 'none') return null;
+  useEffect(() => {
+    setImgFailed(false);
+  }, [portrait, portraitId]);
 
-  const src = GENERATED_PORTRAITS[portrait];
+  const src = (portraitId > 0 ? PAINTED_PORTRAITS_BY_ID[portraitId] : undefined) ?? GENERATED_PORTRAITS[portrait];
+  if (portrait === 'none' && !src) return null;
+
   const usePhoto = Boolean(src) && !imgFailed;
 
   return (
-    <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[2px] border-2 border-[#9B7A45] bg-[#1E202C] shadow-inner sm:h-22 sm:w-22">
+    <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[2px] border-2 border-[#B38E4E] bg-[#1A1C28] shadow-inner transition-opacity duration-150 sm:h-22 sm:w-22">
       {usePhoto && src ? (
         <img
           src={src}

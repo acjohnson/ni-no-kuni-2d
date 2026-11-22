@@ -10,7 +10,7 @@
 
 #define WASM_EXPORT(name) __attribute__((export_name(#name)))
 
-#define SCALAR_LEN       152
+#define SCALAR_LEN       160
 #define OAM_STRIDE       12
 #define PARTY_STRIDE     16
 #define ENEMY_STRIDE     28
@@ -324,9 +324,9 @@ static void sync_snapshot(void) {
     g_scalars[134] = g_state.flag_has_wand ? 1 : 0;
     g_scalars[135] = g_state.flag_sewer_key ? 1 : 0;
 
-    /* 7-Act Illustrated Cinema Registers */
+    /* 7-Act Illustrated Cinema & Story CG Registers */
     g_scalars[136] = g_state.intro.beat;
-    g_scalars[137] = (int32_t)HEARTH_CINEMA_BEAT_COUNT;
+    g_scalars[137] = g_state.intro.beat_count;
     g_scalars[138] = g_state.intro.act_num;
     g_scalars[139] = g_state.intro.cam_mode;
     g_scalars[140] = g_state.intro.fx_mode;
@@ -334,6 +334,17 @@ static void sync_snapshot(void) {
     g_scalars[142] = g_state.intro.plate_timer;
     g_scalars[143] = (int32_t)(uintptr_t)g_state.intro.speaker;
     g_scalars[144] = g_state.intro.fade_dir;
+    g_scalars[145] = g_state.intro.script_id;
+
+    /* Chapter 1 Mountain Alderbrook, Time-of-Day & Dialogue Portraits */
+    g_scalars[146] = d->portrait_id;
+    g_scalars[147] = p->time_of_day;
+    g_scalars[148] = p->has_mountain_vista ? 1 : 0;
+    g_scalars[149] = (int32_t)(uintptr_t)p->objective_text;
+    g_scalars[150] = g_state.ch1_step;
+    g_scalars[151] = g_state.ch1_errands_mask;
+    g_scalars[152] = g_state.woods_shrines_mask;
+    g_scalars[153] = g_state.has_milo_bell ? 1 : 0;
 }
 
 static void inject_ui_pad(uint16_t mask) {
@@ -422,6 +433,14 @@ WASM_EXPORT(wasm_start_intro)
 void wasm_start_intro(void) {
     g_state.ppu.sfx_count = 0;
     hearth_start_intro(&g_state);
+    append_ppu_sfx();
+    sync_snapshot();
+}
+
+WASM_EXPORT(wasm_start_story_cg)
+void wasm_start_story_cg(uint32_t script_id) {
+    g_state.ppu.sfx_count = 0;
+    hearth_start_story_cg(&g_state, (uint8_t)script_id);
     append_ppu_sfx();
     sync_snapshot();
 }

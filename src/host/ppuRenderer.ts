@@ -15,6 +15,7 @@ import {
   PartyMemberState,
   PpuFramePacket,
   T_LANTERN_POST,
+  T_MTN_SKY,
   TILE_SIZE,
   WorldMapData,
 } from '../core/types';
@@ -116,12 +117,18 @@ export class SoftwarePpuRenderer {
     const startRow = Math.max(0, Math.floor(camY / TILE_SIZE));
     const endRow = Math.min(MAP_H - 1, Math.ceil((camY + height) / TILE_SIZE));
 
+    // 0. Parallax Snow-Dusted Alpine Mountain Vista (Alderbrook, Whispering Woods, Hollow Glade!)
+    if (packet.hasMountainVista) {
+      this.renderMountainVista(ctx, packet);
+    }
+
     // 1. BG1 Terrain & Architecture Plane
     for (let r = startRow; r <= endRow; r++) {
       const sy = r * TILE_SIZE - camY;
       for (let c = startCol; c <= endCol; c++) {
         const sx = c * TILE_SIZE - camX;
         const tileId = map.bg1[r * MAP_W + c];
+        if (tileId === T_MTN_SKY && packet.hasMountainVista) continue;
         const img = atlas.getBg1Tile(tileId, animTick);
         ctx.drawImage(img, sx, sy, TILE_SIZE, TILE_SIZE);
       }
@@ -187,7 +194,9 @@ export class SoftwarePpuRenderer {
       const dctx = this.darkCtx;
       dctx.globalCompositeOperation = 'source-over';
       dctx.clearRect(0, 0, width, height);
-      dctx.fillStyle = 'rgba(7, 11, 18, 0.76)';
+      dctx.fillStyle = packet.hasMountainVista
+        ? 'rgba(10, 16, 38, 0.52)'
+        : 'rgba(7, 11, 18, 0.76)';
       dctx.fillRect(0, 0, width, height);
 
       const punchLight = (lx: number, ly: number, r: number) => {
@@ -258,6 +267,93 @@ export class SoftwarePpuRenderer {
       ctx.fillStyle = '#FFF3C4';
       ctx.textBaseline = 'top';
       ctx.fillText(label, bx + 9, 9);
+    }
+  }
+
+  /* ========================================================================
+   * PARALLAX SNOW-DUSTED ALPINE MOUNTAIN VISTA (Morning / Afternoon / Dusk / Night)
+   * ======================================================================== */
+  private renderMountainVista(ctx: CanvasRenderingContext2D, packet: PpuFramePacket): void {
+    const { width, camX, camY, frameCount, timeOfDay } = packet;
+    const horizonH = Math.min(packet.height, Math.max(88, 128 - Math.floor(camY * 0.25)));
+
+    // 1. Time-of-Day Sky Gradient Bands
+    const skyPalettes: readonly (readonly string[])[] = [
+      ['#3A5C88', '#6B8EB5', '#B9978A', '#ECC89E'], // 0 = Morning Rose-Gold Dawn
+      ['#2E649E', '#528EC4', '#86B8DF', '#D6E2E8'], // 1 = Crisp Autumn Afternoon
+      ['#2B204A', '#6A3656', '#C25F4A', '#EEA05B'], // 2 = Copper-Amber Dusk
+      ['#0B1228', '#142042', '#1D315C', '#2A4370'], // 3 = Moonlit Indigo Night
+    ];
+    const bands = skyPalettes[timeOfDay] ?? skyPalettes[1];
+    const bandH = Math.ceil(horizonH / 4);
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = bands[i];
+      ctx.fillRect(0, i * bandH, width, bandH + 1);
+    }
+
+    // 2. Celestial Body / Drifting Autumn Clouds
+    if (timeOfDay === 3) {
+      // Twinkling alpine stars + harvest crescent moon
+      ctx.fillStyle = '#E8F0FF';
+      for (let i = 0; i < 20; i++) {
+        const sx = (i * 47 + 13) % width;
+        const sy = (i * 19 + 5) % Math.max(24, horizonH - 28);
+        if (((frameCount >> 4) + i) % 5 !== 0) {
+          ctx.fillRect(sx, sy, 1, 1);
+        }
+      }
+      ctx.fillStyle = '#FFF5D0';
+      ctx.fillRect(width - 54, 12, 12, 12);
+      ctx.fillRect(width - 52, 10, 8, 16);
+      ctx.fillStyle = '#142042';
+      ctx.fillRect(width - 49, 11, 7, 10);
+    } else {
+      const cloudCol = timeOfDay === 2 ? '#F6B882' : timeOfDay === 0 ? '#FBE3C6' : '#F4F7FA';
+      ctx.fillStyle = cloudCol;
+      for (let i = 0; i < 4; i++) {
+        const cx = (((i * 98 + Math.floor(frameCount * 0.08) - Math.floor(camX * 0.06)) % (width + 64)) + (width + 64)) % (width + 64) - 32;
+        const cy = 9 + (i & 1) * 11;
+        ctx.fillRect(cx, cy, 30, 5);
+        ctx.fillRect(cx + 6, cy - 3, 18, 4);
+      }
+    }
+
+    // 3. Far Snow-Dusted Alpine Peaks (Parallax 0.14x)
+    const farPeakCol =
+      timeOfDay === 3 ? '#1F2D4E' : timeOfDay === 2 ? '#543554' : timeOfDay === 0 ? '#5E6B8A' : '#586E8C';
+    const snowCapCol =
+      timeOfDay === 3 ? '#B4C6E6' : timeOfDay === 2 ? '#F4C6A0' : timeOfDay === 0 ? '#FBEAD6' : '#F2F6FA';
+    const farScroll = Math.floor(camX * 0.14);
+    for (let x = 0; x < width; x += 4) {
+      const wx = x + farScroll;
+      const ridge =
+        Math.abs(((wx % 96) + 96) % 96 - 48) * 0.65 +
+        Math.abs((((wx + 34) % 64) + 64) % 64 - 32) * 0.45;
+      const peakY = Math.max(12, Math.round(24 + ridge * 0.72));
+      ctx.fillStyle = farPeakCol;
+      ctx.fillRect(x, peakY, 4, horizonH - peakY + 8);
+      if (peakY < 42) {
+        ctx.fillStyle = snowCapCol;
+        ctx.fillRect(x, peakY, 4, Math.min(10, 42 - peakY));
+      }
+    }
+
+    // 4. Midground Autumn Pine & Crimson Maple Foothill Ridge (Parallax 0.28x)
+    const midCol =
+      timeOfDay === 3 ? '#15243A' : timeOfDay === 2 ? '#4A2B36' : timeOfDay === 0 ? '#3E5448' : '#355444';
+    const midMaple =
+      timeOfDay === 3 ? '#3B2846' : timeOfDay === 2 ? '#A64A32' : timeOfDay === 0 ? '#B8663A' : '#B84A32';
+    const midScroll = Math.floor(camX * 0.28);
+    for (let x = 0; x < width; x += 4) {
+      const wx = x + midScroll;
+      const hill = Math.round(Math.sin(wx * 0.025) * 9 + Math.cos(wx * 0.052) * 5);
+      const hy = Math.max(38, 56 + hill);
+      ctx.fillStyle = midCol;
+      ctx.fillRect(x, hy, 4, horizonH - hy + 8);
+      if (((wx >> 3) & 3) === 1) {
+        ctx.fillStyle = midMaple;
+        ctx.fillRect(x, hy + 2, 4, 6);
+      }
     }
   }
 

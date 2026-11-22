@@ -84,7 +84,7 @@ typedef int32_t fp16_t;
 #define HEARTH_MAX_FIELD_ENEMIES  4
 #define HEARTH_MAX_BATTLE_ENEMIES 2
 #define HEARTH_MAX_LOCKS          3
-#define HEARTH_MAX_PORTALS        3
+#define HEARTH_MAX_PORTALS        4
 #define HEARTH_FISH_SPECIES       6
 
 /* Directions */
@@ -114,25 +114,40 @@ typedef enum {
     MODE_FISHING        = 8
 } HearthMode;
 
-/* 5 Connected World Regions (Alderbrook + 4 Regions of Evertale) */
+/* 8 Connected World Regions (4 Real-World Mountain Autumn Maps + 4 Evertale Regions) */
 typedef enum {
-    ZONE_ALDERBROOK   = 0,  /* Rowan's ordinary hometown (Age 10 real world) */
-    ZONE_HAMLET       = 1,  /* Evertale: Windmill Hamlet, Creek Pier & Age-5 Glade */
-    ZONE_WHISKERBURGH = 2,  /* Evertale: Anthropomorphic Mouse Market Town */
-    ZONE_SEWERS       = 3,  /* Evertale: Dark Lantern-Lit Sunken Sewers */
-    ZONE_BOARHOLD     = 4,  /* Evertale: Anthropomorphic Pig Citadel & Twilight Shrine */
-    ZONE_COUNT        = 5
+    ZONE_ALDERBROOK       = 0,  /* Redesigned Autumn Mountain Rail Town (Big Town) */
+    ZONE_HAMLET           = 1,  /* Evertale: Windmill Hamlet, Creek Pier & Age-5 Glade */
+    ZONE_WHISKERBURGH     = 2,  /* Evertale: Anthropomorphic Mouse Market Town */
+    ZONE_SEWERS           = 3,  /* Evertale: Dark Lantern-Lit Sunken Sewers */
+    ZONE_BOARHOLD         = 4,  /* Evertale: Anthropomorphic Pig Citadel & Twilight Shrine */
+    ZONE_ROWAN_HOME       = 5,  /* Chapter 1: Rowan & Grandma Mara's Cedar Cottage Interior + Attic */
+    ZONE_WHISPERING_WOODS = 6,  /* Chapter 1: Rocky Autumn Mountain Forest, Rapids & Lantern Trail */
+    ZONE_HOLLOW_GLADE     = 7,  /* Chapter 1: High-Ridge Mountain Sanctuary & Hollow Oak Gate */
+    ZONE_COUNT            = 8
 } HearthZoneId;
 
-/* Per-Zone Terrain Sub-Palette IDs (Swapped Dynamically into PAL0 on all 4 hosts) */
+/* Story-Driven Time of Day (Chapter 1: Morning -> Afternoon -> Dusk -> Moonlit Night) */
 typedef enum {
-    ZPAL_HAMLET       = 0,
-    ZPAL_ALDERBROOK   = 1,
-    ZPAL_WHISKERBURGH = 2,
-    ZPAL_SEWERS       = 3,
-    ZPAL_BOARHOLD     = 4,
-    ZPAL_SHADOW       = 5,
-    ZPAL_COUNT        = 6
+    TOD_MORNING   = 0,
+    TOD_AFTERNOON = 1,
+    TOD_DUSK      = 2,
+    TOD_NIGHT     = 3
+} HearthTimeOfDay;
+
+/* Per-Zone & Time-of-Day Terrain Sub-Palette IDs (Swapped Dynamically into PAL0 on all 4 hosts) */
+typedef enum {
+    ZPAL_HAMLET           = 0,
+    ZPAL_ALDERBROOK       = 1, /* Autumn Mountain Afternoon */
+    ZPAL_WHISKERBURGH     = 2,
+    ZPAL_SEWERS           = 3,
+    ZPAL_BOARHOLD         = 4,
+    ZPAL_SHADOW           = 5,
+    ZPAL_AUTUMN_MORNING   = 6, /* Autumn Mountain Dawn Rose-Gold */
+    ZPAL_AUTUMN_DUSK      = 7, /* Autumn Mountain Copper-Amber Sunset */
+    ZPAL_AUTUMN_NIGHT     = 8, /* Autumn Mountain Moonlit Indigo & Silver */
+    ZPAL_COTTAGE_INTERIOR = 9, /* Cozy Honey Cedar & Hearthstone Interior */
+    ZPAL_COUNT            = 10
 } HearthZonePalId;
 
 /* Music Track IDs (Consumed by Web Audio, SDL2 Synth, Genesis PSG, SNES SPC700) */
@@ -151,16 +166,31 @@ typedef enum {
     BGM_COUNT          = 11
 } HearthBgmId;
 
-/* Opening Cinema CG Plates, Camera Motions & Atmospheric Moods */
+/* Opening Cinema & Mid-Chapter Story CG Plates, Camera Motions & Atmospheric Moods */
 typedef enum {
-    CG_ALDERBROOK_DUSK  = 0,
-    CG_HOLLOW_OAK_CHASE = 1,
-    CG_EVERTALE_VISTA   = 2,
-    CG_SHADOW_GRANDMA   = 3,
-    CG_BEDROOM_COMFORT  = 4,
-    CG_PIP_WINDOW       = 5,
-    CG_PLATE_COUNT      = 6
+    CG_ALDERBROOK_DUSK    = 0,
+    CG_HOLLOW_OAK_CHASE   = 1,
+    CG_EVERTALE_VISTA     = 2,
+    CG_SHADOW_GRANDMA     = 3,
+    CG_BEDROOM_COMFORT    = 4,
+    CG_PIP_WINDOW         = 5,
+    CG_ATTIC_KEEPSAKE     = 6,
+    CG_PIP_DREAM_RETURN   = 7,
+    CG_HOLLOW_OAK_AWAKENS = 8,
+    CG_PLATE_COUNT        = 9
 } HearthCinemaPlate;
+
+/* Expressive Character Dialogue Portraits (1:1 Painted Busts on Web/PC) */
+typedef enum {
+    PORTRAIT_NONE    = 0,
+    PORTRAIT_ROWAN   = 1,
+    PORTRAIT_MARA    = 2,
+    PORTRAIT_PIP     = 3,
+    PORTRAIT_BARNABY = 4,
+    PORTRAIT_MAPLE   = 5,
+    PORTRAIT_JASPER  = 6,
+    PORTRAIT_COUNT   = 7
+} HearthPortraitId;
 
 typedef enum {
     CIN_CAM_PAN_RIGHT   = 0,
@@ -255,7 +285,12 @@ typedef enum {
     SPR_HOLLOW_OAK       = 29,
     SPR_BOBBER           = 30,
     SPR_NPC_TOWNSFOLK    = 31,
-    SPR_COUNT            = 32
+    SPR_NPC_MARA         = 32,
+    SPR_NPC_BARNABY      = 33,
+    SPR_NPC_MAPLE        = 34,
+    SPR_NPC_JASPER       = 35,
+    SPR_LOCOMOTIVE       = 36,
+    SPR_COUNT            = 37
 } HearthSpriteId;
 
 /* Abstract Sound Driver Command IDs (SDL2 Synth / Genesis PSG / SNES SPC700 / Web Audio) */
@@ -506,8 +541,10 @@ typedef struct {
 } HearthCinemaBeat;
 
 typedef struct {
+    uint8_t     script_id;     /* 0=Opening Cinema, 1=Attic Keepsake, 2=Pip Dream, 3=Hollow Oak */
     uint8_t     beat;
-    uint8_t     scene;         /* active CG plate_id (0..5) */
+    uint8_t     beat_count;
+    uint8_t     scene;         /* active CG plate_id (0..8) */
     uint8_t     act_num;       /* 1..7 */
     uint8_t     bgm_id;
     uint8_t     cam_mode;
@@ -515,7 +552,7 @@ typedef struct {
     uint8_t     fade;          /* 0..15 hardware crossfade */
     uint8_t     fade_dir;      /* 0=steady, 1=fading_in, 2=out_to_next, 3=out_to_end */
     bool        auto_play;     /* false = player-paced reading; true = gentle auto-advance */
-    bool        launch_story;  /* true = New Story -> Alderbrook Dawn; false = Replay -> Title */
+    bool        launch_story;  /* true = New Story -> Rowan Cottage Dawn; false = Replay -> Title */
     uint16_t    timer;
     uint16_t    plate_timer;   /* continuous frames on current CG plate for smooth pan */
     uint16_t    auto_hold;
@@ -581,6 +618,7 @@ typedef struct {
     bool         finished;
     uint8_t      pause_frames;
     uint8_t      voice_sfx;
+    uint8_t      portrait_id;
     uint8_t      choice_count;
     uint8_t      selected_choice;
     HearthChoice choices[HEARTH_MAX_CHOICES];
@@ -683,9 +721,12 @@ typedef struct {
     uint8_t  zone_id;
     uint8_t  terrain_pal_id;
     uint8_t  bgm_id;
+    uint8_t  time_of_day;
     bool     zone_is_dark;
+    bool     has_mountain_vista;
     uint8_t  zone_banner_frames;
     const char *zone_name;
+    const char *objective_text;
     int16_t  cam_x;
     int16_t  cam_y;
     int8_t   shake_x;

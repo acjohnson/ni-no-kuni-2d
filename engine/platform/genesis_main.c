@@ -23,12 +23,12 @@ static HearthState g_hearth;
  * VRAM TILE INDEX ALLOCATION (All well below TILE_FONT_INDEX)
  * ============================================================================ */
 #define VRAM_BG_BASE    ((u16)(TILE_USER_INDEX))
-#define VRAM_UI_BASE    ((u16)(VRAM_BG_BASE + 40u))
+#define VRAM_UI_BASE    ((u16)(VRAM_BG_BASE + 64u))
 #define VRAM_SPR_BASE   ((u16)(VRAM_UI_BASE + 16u))
-#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 160u))
+#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 184u))
 #define VRAM_CG_BASE    ((u16)(VRAM_FONT_BASE + 80u))
 
-/* BG Tile IDs (offsets from VRAM_BG_BASE) */
+/* BG Tile IDs (offsets from VRAM_BG_BASE — 55 tiles total, < 64) */
 enum {
     GT_EMPTY = 0,
     GT_GRASS,
@@ -64,6 +64,28 @@ enum {
     GT_BATTLE_SKY_SHRINE,
     GT_BATTLE_GROUND_MEADOW,
     GT_BATTLE_GROUND_SHRINE,
+    /* Milestone 2: Ground-Up Autumn Mountain & Cottage Interior Tiles */
+    GT_MTN_SKY,
+    GT_CLIFF_WALL,
+    GT_CLIFF_LEDGE,
+    GT_BOULDER,
+    GT_AUTUMN_GRASS,
+    GT_ROCKY_PATH,
+    GT_RAPIDS,
+    GT_RAIL_TRACK,
+    GT_MAPLE_TRUNK,
+    GT_PINE_TRUNK,
+    GT_WOOD_FLOOR,
+    GT_HEARTH_RUG,
+    GT_FIREPLACE,
+    GT_BED_QUILT,
+    GT_ATTIC_CHEST,
+    GT_HOLLOW_OAK,
+    GT_STONE_STAIRS,
+    GT_INTERIOR_WALL,
+    GT_MAPLE_CANOPY,
+    GT_PINE_TOP,
+    GT_OAK_CROWN,
     GT_COUNT
 };
 
@@ -80,14 +102,14 @@ enum {
     GUI_BR
 };
 
-/* Sprite VRAM Slots (32 core sprites + 7 host internal slots = 39 x 4 = 156 tiles) */
-#define SPR_TIMED_RING_SLOT  32u
-#define SPR_HERO_DOWN_1      33u
-#define SPR_HERO_UP_0        34u
-#define SPR_HERO_UP_1        35u
-#define SPR_HERO_SIDE_0      36u
-#define SPR_HERO_SIDE_1      37u
-#define SPR_BATTLE_VFX_SLOT  38u
+/* Sprite VRAM Slots (37 core sprites + 7 host internal slots = 44 x 4 = 176 tiles) */
+#define SPR_TIMED_RING_SLOT  37u
+#define SPR_HERO_DOWN_1      38u
+#define SPR_HERO_UP_0        39u
+#define SPR_HERO_UP_1        40u
+#define SPR_HERO_SIDE_0      41u
+#define SPR_HERO_SIDE_1      42u
+#define SPR_BATTLE_VFX_SLOT  43u
 
 /* ============================================================================
  * 1. COMPACT 5x7 UPPERCASE ASCII FONT (ASCII 32..95) -> OPAQUE 4bpp VRAM
@@ -211,6 +233,7 @@ static u32 g_anim_water[4][8];
 static u32 g_anim_ford[4][8];
 static u32 g_anim_tgrass[4][8];
 static u32 g_anim_rune[4][8];
+static u32 g_anim_rapids[4][8];
 static u32 g_anim_windmill[4][32];
 static u8  g_last_env_frame = 255;
 
@@ -368,6 +391,72 @@ static void bake_bg_and_ui_tiles(void) {
     upload_pix8_to_vram(VRAM_BG_BASE + GT_BATTLE_GROUND_MEADOW);
     p8_fill(9); p8_rect(0, 0, 8, 1, 11); p8_rect(0, 4, 8, 1, 1);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_BATTLE_GROUND_SHRINE);
+
+    /* 34..54: Ground-Up Autumn Mountain & Cottage Interior Tiles */
+    /* GT_MTN_SKY: Distant Snow-Dusted Alpine Peaks & Horizon Sky */
+    p8_fill(13); p8_rect(0, 0, 8, 2, 12);
+    p8_rect(2, 2, 4, 2, 14); p8_rect(3, 1, 2, 1, 14); /* Snow cap */
+    p8_rect(1, 4, 6, 4, 9);  p8_rect(0, 6, 8, 2, 2);  /* Granite peak + autumn ridge */
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_MTN_SKY);
+
+    /* GT_CLIFF_WALL & GT_CLIFF_LEDGE */
+    p8_fill(9); p8_rect(0, 0, 7, 3, 10); p8_rect(1, 0, 5, 1, 11);
+    p8_rect(0, 3, 8, 1, 1); p8_rect(1, 4, 6, 3, 10); p8_rect(0, 7, 8, 1, 1);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_CLIFF_WALL);
+    p8_fill(9); p8_rect(0, 0, 8, 3, 3); p8_rect(1, 0, 6, 2, 4); p8_rect(2, 0, 3, 1, 5);
+    p8_rect(0, 3, 8, 2, 11); p8_rect(0, 5, 8, 1, 1); p8_rect(1, 6, 6, 2, 10);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_CLIFF_LEDGE);
+
+    /* GT_BOULDER, GT_AUTUMN_GRASS, GT_ROCKY_PATH */
+    p8_fill(4); p8_rect(1, 2, 6, 5, 9); p8_rect(2, 2, 4, 4, 10); p8_rect(2, 2, 3, 2, 11); g_pix8[2*8+2] = 3;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_BOULDER);
+    p8_fill(4); g_pix8[1*8+2] = 5; g_pix8[5*8+6] = 3; g_pix8[2*8+5] = 15; g_pix8[6*8+2] = 8; g_pix8[4*8+3] = 15;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_AUTUMN_GRASS);
+    p8_fill(7); p8_rect(1, 1, 3, 2, 10); g_pix8[1*8+1] = 11; p8_rect(4, 5, 3, 2, 10); g_pix8[5*8+5] = 11;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_ROCKY_PATH);
+
+    /* GT_RAPIDS & GT_RAIL_TRACK */
+    p8_fill(12); p8_rect(1, 1, 4, 1, 13); p8_rect(2, 2, 3, 1, 14); p8_rect(3, 5, 4, 1, 14);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_RAPIDS);
+    p8_fill(9); p8_rect(1, 0, 2, 8, 6); p8_rect(5, 0, 2, 8, 6);
+    p8_rect(0, 1, 8, 2, 1); p8_rect(0, 1, 8, 1, 11);
+    p8_rect(0, 5, 8, 2, 1); p8_rect(0, 5, 8, 1, 11);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_RAIL_TRACK);
+
+    /* GT_MAPLE_TRUNK & GT_PINE_TRUNK */
+    p8_fill(4); p8_rect(2, 0, 4, 8, 6); p8_rect(3, 0, 2, 7, 7); g_pix8[6*8+1] = 15; g_pix8[7*8+6] = 8;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_MAPLE_TRUNK);
+    p8_fill(3); p8_rect(3, 4, 2, 4, 6); p8_rect(1, 0, 6, 5, 2); p8_rect(2, 1, 4, 3, 3);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_PINE_TRUNK);
+
+    /* GT_WOOD_FLOOR, GT_HEARTH_RUG, GT_FIREPLACE, GT_BED_QUILT, GT_ATTIC_CHEST */
+    p8_fill(7); p8_rect(0, 3, 8, 1, 6); p8_rect(0, 7, 8, 1, 6); p8_rect(1, 1, 4, 1, 8); p8_rect(4, 5, 3, 1, 8);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_WOOD_FLOOR);
+    p8_fill(15); p8_rect(1, 1, 6, 6, 8); p8_rect(2, 2, 4, 4, 15); p8_rect(3, 3, 2, 2, 14);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_HEARTH_RUG);
+    p8_fill(9); p8_rect(0, 0, 8, 2, 11); p8_rect(2, 2, 4, 6, 1); p8_rect(2, 4, 4, 3, 15); p8_rect(3, 5, 2, 2, 8);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_FIREPLACE);
+    p8_fill(6); p8_rect(1, 1, 6, 2, 14); p8_rect(1, 3, 3, 2, 15); p8_rect(4, 3, 3, 2, 13); p8_rect(1, 5, 6, 2, 8);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_BED_QUILT);
+    p8_fill(7); p8_rect(1, 1, 6, 6, 6); p8_rect(2, 2, 4, 2, 15); p8_rect(2, 4, 4, 2, 8); g_pix8[4*8+3] = 14;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_ATTIC_CHEST);
+
+    /* GT_HOLLOW_OAK, GT_STONE_STAIRS, GT_INTERIOR_WALL */
+    p8_fill(6); p8_rect(1, 0, 6, 8, 7); p8_rect(2, 2, 4, 6, 1); p8_rect(3, 3, 2, 4, 14);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_HOLLOW_OAK);
+    p8_fill(9); p8_rect(0, 0, 8, 1, 11); p8_rect(0, 1, 8, 2, 10); p8_rect(0, 3, 8, 1, 1);
+    p8_rect(0, 4, 8, 1, 11); p8_rect(0, 5, 8, 2, 10); p8_rect(0, 7, 8, 1, 1);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_STONE_STAIRS);
+    p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 6, 8, 2, 6); p8_rect(3, 1, 2, 5, 7);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_INTERIOR_WALL);
+
+    /* BG_B Overhead Autumn Canopies: GT_MAPLE_CANOPY, GT_PINE_TOP, GT_OAK_CROWN */
+    p8_fill(0); p8_rect(1, 1, 6, 6, 6); p8_rect(1, 1, 6, 5, 15); p8_rect(2, 2, 4, 3, 8); g_pix8[2*8+3] = 14;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_MAPLE_CANOPY);
+    p8_fill(0); p8_rect(3, 0, 2, 2, 3); p8_rect(2, 2, 4, 3, 2); p8_rect(1, 5, 6, 3, 2); p8_rect(2, 5, 3, 2, 3);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_PINE_TOP);
+    p8_fill(0); p8_rect(0, 1, 8, 6, 6); p8_rect(1, 1, 6, 5, 15); p8_rect(2, 2, 4, 3, 8); p8_rect(3, 2, 2, 2, 14);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_OAK_CROWN);
 
     /* UI Box Tiles (PAL2: 1=dark slate, 7=gold, 15=warm cream) */
     p8_fill(1); upload_pix8_to_vram(VRAM_UI_BASE + GUI_FILL);
@@ -640,6 +729,50 @@ static void bake_all_sprites(void) {
     p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_TOWNSFOLK * 4);
 
+    /* 32: SPR_NPC_MARA (Grandma Mara — Silver Bun, Burgundy Shawl, Cream Apron - PAL2) */
+    p16_clear();
+    p16_rect(5, 0, 6, 2, 15); p16_rect(4, 2, 8, 3, 4);
+    p16_rect(4, 5, 8, 3, 2); g_pix16[6*16+6]=1; g_pix16[6*16+9]=1;
+    p16_rect(3, 8, 10, 6, 10); p16_rect(5, 9, 6, 5, 15);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_MARA * 4);
+
+    /* 33: SPR_NPC_BARNABY (Stationmaster Barnaby — Navy Cap & Brass Badge - PAL2) */
+    p16_clear();
+    p16_rect(3, 1, 10, 3, 8); p16_rect(6, 2, 4, 1, 7);
+    p16_rect(4, 4, 8, 4, 2); g_pix16[5*16+6]=1; g_pix16[5*16+9]=1;
+    p16_rect(5, 7, 6, 1, 15);
+    p16_rect(4, 8, 8, 6, 8); p16_rect(7, 9, 2, 4, 7);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_BARNABY * 4);
+
+    /* 34: SPR_NPC_MAPLE (Baker Maple — Kerchief & Flour Apron - PAL2) */
+    p16_clear();
+    p16_rect(4, 1, 8, 2, 15); p16_rect(4, 3, 8, 2, 11);
+    p16_rect(5, 5, 6, 3, 2); g_pix16[6*16+6]=1; g_pix16[6*16+9]=1;
+    p16_rect(4, 8, 8, 6, 12); p16_rect(6, 9, 4, 5, 15);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_MAPLE * 4);
+
+    /* 35: SPR_NPC_JASPER (Old Woodsman Jasper — Knit Cap & Silver Beard - PAL2) */
+    p16_clear();
+    p16_rect(4, 1, 8, 3, 10); p16_rect(4, 4, 8, 3, 2);
+    g_pix16[5*16+6]=1; g_pix16[5*16+9]=1;
+    p16_rect(4, 7, 8, 2, 15);
+    p16_rect(3, 9, 10, 5, 5); p16_rect(5, 10, 6, 2, 10);
+    p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_JASPER * 4);
+
+    /* 36: SPR_LOCOMOTIVE (Alderbrook Mountain Steam Engine - PAL2) */
+    p16_clear();
+    p16_rect(2, 1, 3, 4, 5); p16_rect(1, 1, 5, 1, 7);       /* Smokestack & brass lip */
+    p16_rect(1, 5, 9, 7, 5); p16_rect(5, 3, 3, 2, 7);       /* Iron boiler & brass dome */
+    p16_rect(10, 2, 5, 10, 10); p16_rect(11, 4, 3, 3, 15);  /* Cab & glowing window */
+    p16_rect(0, 9, 2, 4, 4);                                /* Cowcatcher */
+    p16_rect(2, 12, 3, 3, 10); p16_rect(6, 12, 3, 3, 10); p16_rect(11, 12, 3, 3, 10);
+    p16_rect(2, 13, 12, 1, 7);                              /* Coupling rod */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_LOCOMOTIVE * 4);
+
     /* 32: Timed-Hit / Parry Ring Marker (PAL3) */
     p16_clear();
     p16_rect(3, 1, 10, 2, 11); p16_rect(3, 13, 10, 2, 11);
@@ -780,6 +913,18 @@ static void bake_env_anim_frames(void) {
         }
         pack_pix8_to_buf(g_anim_rune[f]);
 
+        /* 7b. Mountain Whitewater Rapids (scrolling downward riffles) */
+        p8_fill(12);
+        {
+            u8 r1 = (u8)((f * 2u) & 7u);
+            u8 r2 = (u8)((f * 2u + 4u) & 7u);
+            p8_rect(1, r1, 3, 1, 13);
+            g_pix8[r1 * 8u + 2u] = 14;
+            p8_rect(4, r2, 3, 1, 14);
+            g_pix8[((r2 + 1u) & 7u) * 8u + 5u] = 13;
+        }
+        pack_pix8_to_buf(g_anim_rapids[f]);
+
         /* 8. Windmill Blades (4 smooth rotational frames: 0°, 22.5°, 45°, 67.5°) */
         p16_clear();
         if (f == 0u) {
@@ -834,6 +979,7 @@ static void tick_env_animations(u32 frame_count) {
     VDP_loadTileData(g_anim_ford[af],      VRAM_BG_BASE + GT_FORD,       1, DMA_QUEUE);
     VDP_loadTileData(g_anim_tgrass[af],    VRAM_BG_BASE + GT_TALL_GRASS, 1, DMA_QUEUE);
     VDP_loadTileData(g_anim_rune[af],      VRAM_BG_BASE + GT_SHRINE_RUNE,1, DMA_QUEUE);
+    VDP_loadTileData(g_anim_rapids[af],    VRAM_BG_BASE + GT_RAPIDS,     1, DMA_QUEUE);
     VDP_loadTileData(g_anim_windmill[af],  VRAM_SPR_BASE + SPR_WINDMILL_BLADES * 4u, 4, DMA_QUEUE);
 }
 
@@ -870,6 +1016,24 @@ static u16 map_bg1_to_vram_tile(u8 t) {
         case T_SHRINE_FLOOR:   return VRAM_BG_BASE + GT_SHRINE_FLOOR;
         case T_SHRINE_RUNE:    return VRAM_BG_BASE + GT_SHRINE_RUNE;
         case T_SHRINE_PILLAR:  return VRAM_BG_BASE + GT_SHRINE_PILLAR;
+        case T_MTN_SKY:        return VRAM_BG_BASE + GT_MTN_SKY;
+        case T_CLIFF_WALL:     return VRAM_BG_BASE + GT_CLIFF_WALL;
+        case T_CLIFF_LEDGE:    return VRAM_BG_BASE + GT_CLIFF_LEDGE;
+        case T_BOULDER:        return VRAM_BG_BASE + GT_BOULDER;
+        case T_AUTUMN_GRASS:   return VRAM_BG_BASE + GT_AUTUMN_GRASS;
+        case T_ROCKY_PATH:     return VRAM_BG_BASE + GT_ROCKY_PATH;
+        case T_RAPIDS:         return VRAM_BG_BASE + GT_RAPIDS;
+        case T_RAIL_TRACK:     return VRAM_BG_BASE + GT_RAIL_TRACK;
+        case T_MAPLE_TRUNK:    return VRAM_BG_BASE + GT_MAPLE_TRUNK;
+        case T_PINE_TRUNK:     return VRAM_BG_BASE + GT_PINE_TRUNK;
+        case T_WOOD_FLOOR:     return VRAM_BG_BASE + GT_WOOD_FLOOR;
+        case T_HEARTH_RUG:     return VRAM_BG_BASE + GT_HEARTH_RUG;
+        case T_FIREPLACE:      return VRAM_BG_BASE + GT_FIREPLACE;
+        case T_BED_QUILT:      return VRAM_BG_BASE + GT_BED_QUILT;
+        case T_ATTIC_CHEST:    return VRAM_BG_BASE + GT_ATTIC_CHEST;
+        case T_HOLLOW_OAK:     return VRAM_BG_BASE + GT_HOLLOW_OAK;
+        case T_STONE_STAIRS:   return VRAM_BG_BASE + GT_STONE_STAIRS;
+        case T_INTERIOR_WALL:  return VRAM_BG_BASE + GT_INTERIOR_WALL;
         default:               return VRAM_BG_BASE + GT_GRASS;
     }
 }
@@ -878,6 +1042,9 @@ static u16 map_bg2_to_vram_tile(u8 t) {
     if (t == O_NONE) return VRAM_BG_BASE + GT_EMPTY;
     if (t == O_ROOF_EAVE) return VRAM_BG_BASE + GT_ROOF_EAVE;
     if (t == O_SHRINE_ARCH) return VRAM_BG_BASE + GT_SHRINE_ARCH;
+    if (t == O_MAPLE_TL || t == O_MAPLE_TR) return VRAM_BG_BASE + GT_MAPLE_CANOPY;
+    if (t == O_PINE_TOP) return VRAM_BG_BASE + GT_PINE_TOP;
+    if (t == O_OAK_CROWN) return VRAM_BG_BASE + GT_OAK_CROWN;
     return VRAM_BG_BASE + GT_CANOPY;
 }
 
@@ -1378,7 +1545,8 @@ static u16 sprite_palette(u8 spr_id) {
     if (spr_id <= SPR_FAMILIAR_LUMINA || spr_id == SPR_PET_MILO || spr_id == SPR_BOBBER) return PAL1;
     if (spr_id <= SPR_NPC_GUARD || spr_id == SPR_WINDMILL_BLADES || spr_id == SPR_WAYSTONE ||
         spr_id == SPR_CHEST || spr_id == SPR_CHEST_OPEN || spr_id == SPR_NPC_MOUSE ||
-        spr_id == SPR_NPC_PIG || spr_id == SPR_HOLLOW_OAK || spr_id == SPR_NPC_TOWNSFOLK) return PAL2;
+        spr_id == SPR_NPC_PIG || spr_id == SPR_HOLLOW_OAK || spr_id == SPR_NPC_TOWNSFOLK ||
+        (spr_id >= SPR_NPC_MARA && spr_id <= SPR_LOCOMOTIVE)) return PAL2;
     return PAL3;
 }
 
