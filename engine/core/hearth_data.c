@@ -1207,208 +1207,340 @@ uint8_t hearth_globe_region_at(uint16_t tx, uint16_t ty) {
     return macro_char_to_region(GLOBE_MACRO_CHAR(mx, my), mx, my);
 }
 
+/* Fast ASCII -> base collision LUT for macro globe tiles (0xFF = hash-dependent: 'o','p','v') */
+static const uint8_t GLOBE_CHAR_BASE_COL[128] = {
+    4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4, /* 0..15 */
+    4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4, /* 16..31 */
+    4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4, /* 32..47 */
+    4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4, /* 48..63 */
+    4,4,4,4,4,4,4,4,4,               /* 64..72: @..H */
+    1,                               /* 73: 'I' -> COL_SOLID */
+    1,                               /* 74: 'J' -> COL_SOLID */
+    4,4,4,4,4,4,4,4,4,               /* 75..83: K..S */
+    1,                               /* 84: 'T' -> COL_SOLID */
+    4,                               /* 85: 'U' */
+    1,                               /* 86: 'V' -> COL_SOLID */
+    4,4,4,4,4,4,4,4,4,4,             /* 87..96: W..` */
+    4,                               /* 97: 'a' */
+    0,                               /* 98: 'b' -> COL_WALKABLE */
+    4,                               /* 99: 'c' */
+    0,                               /* 100: 'd' -> COL_WALKABLE */
+    4,                               /* 101: 'e' */
+    1,                               /* 102: 'f' -> COL_SOLID */
+    0,                               /* 103: 'g' -> COL_WALKABLE */
+    0,                               /* 104: 'h' -> COL_WALKABLE */
+    0,                               /* 105: 'i' -> COL_WALKABLE */
+    0,                               /* 106: 'j' -> COL_WALKABLE */
+    4,                               /* 107: 'k' */
+    5,                               /* 108: 'l' -> COL_LAVA */
+    1,                               /* 109: 'm' -> COL_SOLID */
+    4,                               /* 110: 'n' */
+    255,                             /* 111: 'o' -> hash-dependent */
+    255,                             /* 112: 'p' -> hash-dependent */
+    4,                               /* 113: 'q' */
+    3,                               /* 114: 'r' -> COL_SHALLOW */
+    3,                               /* 115: 's' -> COL_SHALLOW */
+    0,                               /* 116: 't' -> COL_WALKABLE */
+    4,                               /* 117: 'u' */
+    255,                             /* 118: 'v' -> hash-dependent */
+    4,4,4,4,4,4,                     /* 119..124: w..| */
+    4,                               /* 125: '}' */
+    4,                               /* 126: '~' -> COL_WATER */
+    4                                /* 127 */
+};
+
+/* Pruned Emerald Heartland (x=68..148, y=64..118) landmark/road overlay.
+ * Splits by tight Y-bands so 90%+ of Heartland tiles take only 2-5 comparisons instead of 23! */
+static void globe_apply_heartland(uint16_t x, uint16_t y, uint8_t *p_bg1, uint8_t *p_bg2, uint8_t *p_col) {
+    if (y <= 76u) {
+        if (x >= 101u && x <= 107u) {
+            if (y >= 69u && x >= 103u && x <= 105u) { *p_bg1 = T_COBBLE; *p_col = COL_WALKABLE; }
+            if (y >= 65u && y <= 67u) { *p_bg1 = T_WORLD_CASTLE; *p_col = COL_SOLID; }
+        } else if (x >= 130u && x <= 140u) {
+            if (y >= 75u && x <= 132u) { *p_bg1 = T_DIRT; *p_col = COL_WALKABLE; }
+            if (y >= 74u && x >= 131u) { *p_bg1 = T_DIRT; *p_col = COL_WALKABLE; }
+            if (y >= 72u && y <= 73u && x >= 136u) { *p_bg1 = T_WORLD_TOWN; *p_col = COL_SOLID; }
+        }
+        return;
+    }
+    if (y <= 88u) {
+        if (x <= 79u) {
+            if (x >= 77u) {
+                if (y >= 86u) { *p_bg1 = T_DIRT; *p_col = COL_WALKABLE; }
+                else if (y >= 84u) { *p_bg1 = T_WORLD_TOWN; *p_col = COL_SOLID; }
+            }
+            return;
+        }
+        if (y >= 86u && x <= 135u) { *p_bg1 = T_DIRT; *p_col = COL_WALKABLE; }
+        if (x >= 101u && x <= 107u) {
+            if (x >= 103u && x <= 105u) { *p_bg1 = T_COBBLE; *p_col = COL_WALKABLE; }
+            if (y >= 80u && y <= 81u && x >= 102u && x <= 106u) { *p_bg1 = T_WORLD_TOWN; *p_col = COL_SOLID; }
+            if ((x == 101u || x == 107u) && y >= 79u && y <= 83u) { *p_bg1 = T_COBBLE; *p_col = COL_WALKABLE; }
+        } else if (x >= 130u && x <= 132u) {
+            *p_bg1 = T_DIRT; *p_col = COL_WALKABLE;
+            if (x == 132u) {
+                if (y == 85u) { *p_bg1 = T_SHRINE_PILLAR; *p_col = COL_SOLID; }
+                else if (y == 86u) { *p_bg1 = T_SHRINE_RUNE; *p_col = COL_WALKABLE; }
+            }
+        }
+        return;
+    }
+    if (y <= 101u) {
+        /* Vast central Heartland plain: ONLY 3 narrow north-south roads! */
+        if (x <= 79u) {
+            if (x >= 77u) { *p_bg1 = T_DIRT; *p_col = COL_WALKABLE; }
+        } else if (x <= 105u) {
+            if (x >= 103u) { *p_bg1 = T_COBBLE; *p_col = COL_WALKABLE; }
+        } else if (x >= 130u && x <= 132u) {
+            *p_bg1 = T_DIRT; *p_col = COL_WALKABLE;
+        }
+        return;
+    }
+    /* Southern Heartland (y = 102..118) */
+    if (y <= 113u) {
+        if (y >= 106u && x >= 72u && x <= 82u) {
+            *p_bg1 = (y >= 110u && y <= 111u) ? T_DIRT : T_GRASS; *p_col = COL_WALKABLE;
+        }
+        if (x >= 77u && x <= 79u && y <= 111u) { *p_bg1 = T_DIRT; *p_col = COL_WALKABLE; }
+        if (x >= 103u && x <= 110u) {
+            if (x <= 105u && y <= 104u) { *p_bg1 = T_COBBLE; *p_col = COL_WALKABLE; }
+            if (y <= 104u && x >= 104u) { *p_bg1 = T_DIRT; *p_col = COL_WALKABLE; }
+            if (x >= 107u && x <= 109u) { *p_bg1 = T_DIRT; *p_col = COL_WALKABLE; }
+        }
+        if (y >= 109u && y <= 111u && x >= 74u && x <= 132u) { *p_bg1 = T_DIRT; *p_col = COL_WALKABLE; }
+        if (x >= 130u && x <= 132u && y <= 109u) { *p_bg1 = T_DIRT; *p_col = COL_WALKABLE; }
+        if (x >= 73u && x <= 75u) {
+            if (x == 74u && y == 108u) { *p_bg1 = T_HOLLOW_OAK; *p_col = COL_SOLID; }
+            if (y == 107u && p_bg2 != NULL) { *p_bg2 = O_OAK_CROWN; }
+            if (x == 74u && y == 109u) { *p_bg1 = T_SHRINE_RUNE; *p_col = COL_WALKABLE; }
+        }
+        if (y >= 104u && y <= 105u && x >= 129u && x <= 131u) { *p_bg1 = T_WORLD_RUINS; *p_col = COL_SOLID; }
+    } else if (y <= 116u && x >= 107u && x <= 109u) {
+        *p_bg1 = T_DOCK_PIER; *p_col = COL_WALKABLE;
+    }
+}
+
+static void globe_apply_outer_landmarks(uint16_t x, uint16_t y, uint8_t *p_bg1, uint8_t *p_col) {
+    if (y >= 143u && y <= 157u) {
+        if (x >= 49u && x <= 55u && y <= 149u) {
+            *p_bg1 = T_WORLD_BEACH; *p_col = COL_WALKABLE;
+            if (x >= 51u && x <= 53u && y >= 144u && y <= 145u) { *p_bg1 = T_WORLD_TOWN; *p_col = COL_SOLID; }
+            if (x == 52u && y == 147u) { *p_bg1 = T_DOCK_PIER; *p_col = COL_WALKABLE; }
+        } else if (x >= 129u && x <= 135u && y >= 151u) {
+            *p_bg1 = T_GRASS; *p_col = COL_WALKABLE;
+            if (x >= 131u && x <= 133u && y >= 152u && y <= 153u) { *p_bg1 = T_WORLD_TOWN; *p_col = COL_SOLID; }
+            if ((x == 129u || x == 135u) && y == 153u) { *p_bg1 = T_PALM_TREE; *p_col = COL_SOLID; }
+        }
+    } else if (y <= 24u) {
+        if (y >= 20u && x >= 126u && x <= 130u) {
+            *p_bg1 = T_WORLD_SNOW; *p_col = COL_WALKABLE;
+            if (x >= 127u && x <= 129u && y == 21u) { *p_bg1 = T_WORLD_TOWN; *p_col = COL_SOLID; }
+        }
+    } else if (y >= 60u && y <= 63u) {
+        if (x >= 30u && x <= 34u) {
+            *p_bg1 = T_ROCKY_PATH; *p_col = COL_WALKABLE;
+            if (x >= 31u && x <= 33u && y == 61u) { *p_bg1 = T_WORLD_RUINS; *p_col = COL_SOLID; }
+        } else if (x >= 218u && x <= 222u) {
+            *p_bg1 = T_WORLD_TECH; *p_col = COL_WALKABLE;
+            if (x >= 219u && x <= 221u && y == 61u) { *p_bg1 = T_WORLD_CASTLE; *p_col = COL_SOLID; }
+        }
+    } else if (y >= 124u && y <= 128u) {
+        if (x >= 210u && x <= 214u) {
+            *p_bg1 = T_WORLD_JUNGLE; *p_col = COL_WALKABLE;
+            if (x >= 211u && x <= 213u && y == 125u) { *p_bg1 = T_DOCK_PIER; *p_col = COL_SOLID; }
+        }
+    }
+}
+
+static uint8_t globe_base_bg1(char c, uint16_t x, uint16_t y, uint8_t hash) {
+    switch (c) {
+        case '~': return T_WORLD_OCEAN;
+        case 's': return T_WORLD_SHALLOW;
+        case 'r': return ((hash & 3u) == 0u) ? T_WORLD_CORAL : T_WORLD_SHALLOW;
+        case 'b': return T_WORLD_BEACH;
+        case 'g':
+            if (hash == 2u || hash == 10u) return T_GRASS_ALT;
+            if (hash == 7u)                return T_FLOWERS;
+            return T_GRASS;
+        case 'h': return ((hash & 3u) == 0u) ? T_GRASS : T_WORLD_HILL;
+        case 'f': return T_WORLD_FOREST;
+        case 'm':
+        case 'I':
+        case 'V': return T_WORLD_PEAK;
+        case 'd': return (hash == 5u) ? T_WORLD_BEACH : T_WORLD_SAND;
+        case 'o':
+            if (hash == 1u && ((x & 3u) == 0u || (x & 3u) == 3u)) return T_PALM_TREE;
+            return (hash == 4u) ? T_FLOWERS : T_GRASS;
+        case 'p':
+            if (hash == 3u && (y & 3u) == 0u && (x & 3u) == 2u) return T_PALM_TREE;
+            return (hash == 9u) ? T_GRASS : T_WORLD_BEACH;
+        case 'i': return (hash == 6u) ? T_WORLD_HILL : T_WORLD_SNOW;
+        case 'j': return (hash == 4u) ? T_FLOWERS : T_WORLD_JUNGLE;
+        case 'J': return T_WORLD_FOREST;
+        case 'v': return (hash == 2u) ? T_BOULDER : T_ROCKY_PATH;
+        case 'l': return T_WORLD_LAVA;
+        case 't': return (hash == 5u) ? T_COBBLE : T_WORLD_TECH;
+        case 'T': return T_WORLD_CASTLE;
+        default:  return T_WORLD_OCEAN;
+    }
+}
+
 void hearth_globe_cell(uint16_t tx, uint16_t ty, uint8_t *out_bg1, uint8_t *out_bg2, uint8_t *out_col, uint8_t *out_region) {
     uint16_t x = (uint16_t)(tx & 255u);
     uint16_t y = ty;
-    uint8_t  mx, my, lx, ly, hash;
+    uint8_t  mx, my, hash, col, bg1, bg2 = O_NONE;
     char     c;
-    uint8_t  bg1 = T_WORLD_OCEAN;
-    uint8_t  bg2 = O_NONE;
-    uint8_t  col = COL_WATER;
 
     while (y >= HEARTH_GLOBE_H) y = (uint16_t)(y - HEARTH_GLOBE_H);
     mx = (uint8_t)(x >> 2);
     my = (uint8_t)(y >> 2);
     c  = GLOBE_MACRO_CHAR(mx, my);
 
-    /* Multiply-free 4-bit deterministic hash (pure shift/add/xor for 3.58MHz SNES 65816) */
+    /* Multiply-free 4-bit deterministic hash */
     hash = (uint8_t)(((x + (x << 2)) ^ (y + (y << 2) + (y << 1)) ^ ((x >> 2) + (y >> 3))) & 15u);
-
-    /* 1. Base macro-biome decode via O(1) switch (0 bytes RAM, 0 multiplies, 0 divides) */
-    switch (c) {
-        case '~':
-            bg1 = T_WORLD_OCEAN;   col = COL_WATER;
-            break;
-        case 's':
-            bg1 = T_WORLD_SHALLOW; col = COL_SHALLOW;
-            break;
-        case 'r':
-            bg1 = ((hash & 3u) == 0u) ? T_WORLD_CORAL : T_WORLD_SHALLOW;
-            col = COL_SHALLOW;
-            break;
-        case 'b':
-            bg1 = T_WORLD_BEACH;   col = COL_WALKABLE;
-            break;
-        case 'g':
-            if (hash == 2u || hash == 10u) bg1 = T_GRASS_ALT;
-            else if (hash == 7u)           bg1 = T_FLOWERS;
-            else                           bg1 = T_GRASS;
-            col = COL_WALKABLE;
-            break;
-        case 'h':
-            bg1 = ((hash & 3u) == 0u) ? T_GRASS : T_WORLD_HILL;
-            col = COL_WALKABLE;
-            break;
-        case 'f':
-            bg1 = T_WORLD_FOREST;  col = COL_SOLID;
-            break;
-        case 'm':
-        case 'I':
-        case 'V':
-            bg1 = T_WORLD_PEAK;    col = COL_SOLID;
-            break;
-        case 'd':
-            bg1 = (hash == 5u) ? T_WORLD_BEACH : T_WORLD_SAND;
-            col = COL_WALKABLE;
-            break;
-        case 'o':
-            lx = (uint8_t)(x & 3u);
-            if (hash == 1u && (lx == 0u || lx == 3u)) {
-                bg1 = T_PALM_TREE; col = COL_SOLID;
-            } else {
-                bg1 = (hash == 4u) ? T_FLOWERS : T_GRASS;
-                col = COL_WALKABLE;
-            }
-            break;
-        case 'p':
-            lx = (uint8_t)(x & 3u);
-            ly = (uint8_t)(y & 3u);
-            if (hash == 3u && ly == 0u && lx == 2u) {
-                bg1 = T_PALM_TREE; col = COL_SOLID;
-            } else if (hash == 9u) {
-                bg1 = T_GRASS;     col = COL_WALKABLE;
-            } else {
-                bg1 = T_WORLD_BEACH; col = COL_WALKABLE;
-            }
-            break;
-        case 'i':
-            bg1 = (hash == 6u) ? T_WORLD_HILL : T_WORLD_SNOW;
-            col = COL_WALKABLE;
-            break;
-        case 'j':
-            bg1 = (hash == 4u) ? T_FLOWERS : T_WORLD_JUNGLE;
-            col = COL_WALKABLE;
-            break;
-        case 'J':
-            bg1 = T_WORLD_FOREST;  col = COL_SOLID;
-            break;
-        case 'v':
-            bg1 = (hash == 2u) ? T_BOULDER : T_ROCKY_PATH;
-            col = (hash == 2u) ? COL_SOLID : COL_WALKABLE;
-            break;
-        case 'l':
-            bg1 = T_WORLD_LAVA;    col = COL_LAVA;
-            break;
-        case 't':
-            bg1 = (hash == 5u) ? T_COBBLE : T_WORLD_TECH;
-            col = COL_WALKABLE;
-            break;
-        case 'T':
-            bg1 = T_WORLD_CASTLE;  col = COL_SOLID;
-            break;
-        default:
-            break;
+    bg1  = globe_base_bg1(c, x, y, hash);
+    col  = GLOBE_CHAR_BASE_COL[(uint8_t)c & 127u];
+    if (col == 255u) {
+        if (c == 'o')      col = (bg1 == T_PALM_TREE) ? COL_SOLID : COL_WALKABLE;
+        else if (c == 'p') col = (bg1 == T_PALM_TREE) ? COL_SOLID : COL_WALKABLE;
+        else               col = (bg1 == T_BOULDER)   ? COL_SOLID : COL_WALKABLE;
     }
 
-    /* 2. Y-Band Culled Landmark & Road Clearings (skips 90%+ of globe tiles in 1 branch!) */
     if (y >= 64u && y <= 118u) {
         if (x >= 68u && x <= 148u) {
-            /* Hollow Oak Clearing (72..82, 106..113) + North Road to Windmill Hamlet (77..79, 86..111) */
-            if (y >= 106u && y <= 113u && x >= 72u && x <= 82u) {
-                bg1 = (y >= 110u && y <= 111u) ? T_DIRT : T_GRASS; col = COL_WALKABLE;
-            }
-            if (x >= 77u && x <= 79u && y >= 86u && y <= 111u) {
-                bg1 = T_DIRT; col = COL_WALKABLE;
-            }
-            /* Main West-East Highway: Windmill Hamlet (78,87) -> Sunhill (104,87) -> Bramblewood (132,87) */
-            if (y >= 86u && y <= 88u && x >= 77u && x <= 135u) {
-                bg1 = T_DIRT; col = COL_WALKABLE;
-            }
-            /* Central Royal Cobble Avenue: Castle Aurelia (104,69) -> Sunhill (104,82) -> Timber Pier (108,114) */
-            if (x >= 103u && x <= 105u && y >= 69u && y <= 104u) {
-                bg1 = T_COBBLE; col = COL_WALKABLE;
-            }
-            if (y >= 102u && y <= 104u && x >= 104u && x <= 110u) {
-                bg1 = T_DIRT; col = COL_WALKABLE;
-            }
-            if (x >= 107u && x <= 109u && y >= 102u && y <= 114u) {
-                bg1 = T_DIRT; col = COL_WALKABLE;
-            }
-            /* Southern Meadow Connector: Hollow Oak (78,110) -> Timber Pier (108,110) -> Watchtower (130,108) */
-            if (y >= 109u && y <= 111u && x >= 74u && x <= 132u) {
-                bg1 = T_DIRT; col = COL_WALKABLE;
-            }
-            /* East Bank Highway: Watchtower (130,108) -> Bramblewood (132,86) -> Whiskerburgh (138,75) */
-            if (x >= 130u && x <= 132u && y >= 75u && y <= 109u) {
-                bg1 = T_DIRT; col = COL_WALKABLE;
-            }
-            if (y >= 74u && y <= 76u && x >= 131u && x <= 140u) {
-                bg1 = T_DIRT; col = COL_WALKABLE;
-            }
-            /* Heartland Timber Pier Wooden Jetty into Turquoise Bay (107..109, 114..116) */
-            if (y >= 114u && y <= 116u && x >= 107u && x <= 109u) {
-                bg1 = T_DOCK_PIER; col = COL_WALKABLE;
-            }
-            /* Hollow Oak Gate Landmark (74, 108) */
-            if (x == 74u && y == 108u) { bg1 = T_HOLLOW_OAK; col = COL_SOLID; }
-            if (y == 107u && x >= 73u && x <= 75u) { bg2 = O_OAK_CROWN; }
-            if (x == 74u && y == 109u) { bg1 = T_SHRINE_RUNE; col = COL_WALKABLE; }
-            /* Windmill Hamlet (77..79, 84..85) */
-            if (y >= 84u && y <= 85u && x >= 77u && x <= 79u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
-            /* Sunhill Market (102..106, 80..81) with walkable bypasses */
-            if (y >= 80u && y <= 81u && x >= 102u && x <= 106u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
-            if ((x == 101u || x == 107u) && y >= 79u && y <= 83u) { bg1 = T_COBBLE; col = COL_WALKABLE; }
-            /* Castle Aurelia (101..107, 65..67) */
-            if (y >= 65u && y <= 67u && x >= 101u && x <= 107u) { bg1 = T_WORLD_CASTLE; col = COL_SOLID; }
-            /* Bramblewood Crossing (132, 85) */
-            if (x == 132u && y == 85u) { bg1 = T_SHRINE_PILLAR; col = COL_SOLID; }
-            if (x == 132u && y == 86u) { bg1 = T_SHRINE_RUNE;   col = COL_WALKABLE; }
-            /* Sunken Watchtower (129..131, 104..105) */
-            if (y >= 104u && y <= 105u && x >= 129u && x <= 131u) { bg1 = T_WORLD_RUINS; col = COL_SOLID; }
-            /* Whiskerburgh (136..140, 72..73) */
-            if (y >= 72u && y <= 73u && x >= 136u && x <= 140u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
+            globe_apply_heartland(x, y, &bg1, &bg2, &col);
         } else if (y == 64u) {
             if (x >= 30u && x <= 34u) { bg1 = T_ROCKY_PATH; col = COL_WALKABLE; }
             else if (x >= 218u && x <= 222u) { bg1 = T_WORLD_TECH; col = COL_WALKABLE; }
         }
-    } else if (y >= 143u && y <= 157u) {
-        /* 3. Suncrest Coral Cove (52, 146) & Oasis of Babana (132, 154) Clearings & Docks */
-        if (x >= 49u && x <= 55u && y <= 149u) {
-            bg1 = T_WORLD_BEACH; col = COL_WALKABLE;
-            if (x >= 51u && x <= 53u && y >= 144u && y <= 145u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
-            if (x == 52u && y == 147u) { bg1 = T_DOCK_PIER; col = COL_WALKABLE; }
-        } else if (x >= 129u && x <= 135u && y >= 151u) {
-            bg1 = T_GRASS; col = COL_WALKABLE;
-            if (x >= 131u && x <= 133u && y >= 152u && y <= 153u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
-            if ((x == 129u || x == 135u) && y == 153u) { bg1 = T_PALM_TREE; col = COL_SOLID; }
-        }
-    } else if (y <= 24u) {
-        /* 4a. Frostmere Noel Village Plaza */
-        if (y >= 20u && x >= 126u && x <= 130u) {
-            bg1 = T_WORLD_SNOW; col = COL_WALKABLE;
-            if (x >= 127u && x <= 129u && y == 21u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
-        }
-    } else if (y >= 60u && y <= 63u) {
-        /* 4b. Cinderpeak Caldera Gate & Aetheris Citadel Spire */
-        if (x >= 30u && x <= 34u) {
-            bg1 = T_ROCKY_PATH; col = COL_WALKABLE;
-            if (x >= 31u && x <= 33u && y == 61u) { bg1 = T_WORLD_RUINS; col = COL_SOLID; }
-        } else if (x >= 218u && x <= 222u) {
-            bg1 = T_WORLD_TECH; col = COL_WALKABLE;
-            if (x >= 219u && x <= 221u && y == 61u) { bg1 = T_WORLD_CASTLE; col = COL_SOLID; }
-        }
-    } else if (y >= 124u && y <= 128u) {
-        /* 4c. Canopy Treetop Village */
-        if (x >= 210u && x <= 214u) {
-            bg1 = T_WORLD_JUNGLE; col = COL_WALKABLE;
-            if (x >= 211u && x <= 213u && y == 125u) { bg1 = T_DOCK_PIER; col = COL_SOLID; }
-        }
+    } else {
+        globe_apply_outer_landmarks(x, y, &bg1, &col);
     }
 
     if (out_bg1)    *out_bg1 = bg1;
     if (out_bg2)    *out_bg2 = bg2;
     if (out_col)    *out_col = col;
     if (out_region) *out_region = macro_char_to_region(c, mx, my);
+}
+
+/* Ultra-fast 2-argument collision query (zero pointer args, 1-instruction LUT for 15/18 biomes!) */
+uint8_t hearth_globe_col(uint16_t tx, uint16_t ty) {
+    uint16_t x = (uint16_t)(tx & 255u);
+    uint16_t y = ty;
+    uint8_t  col, dummy_bg1 = 0u;
+    char     c;
+
+    if (y >= HEARTH_GLOBE_H) {
+        while (y >= HEARTH_GLOBE_H) y = (uint16_t)(y - HEARTH_GLOBE_H);
+    }
+    c = GLOBE_MACRO_CHAR((uint8_t)(x >> 2), (uint8_t)(y >> 2));
+    col = GLOBE_CHAR_BASE_COL[(uint8_t)c & 127u];
+    if (col == 255u) {
+        uint8_t hash = (uint8_t)(((x + (x << 2)) ^ (y + (y << 2) + (y << 1)) ^ ((x >> 2) + (y >> 3))) & 15u);
+        if (c == 'o')      col = (hash == 1u && ((x & 3u) == 0u || (x & 3u) == 3u)) ? COL_SOLID : COL_WALKABLE;
+        else if (c == 'p') col = (hash == 3u && (y & 3u) == 0u && (x & 3u) == 2u)   ? COL_SOLID : COL_WALKABLE;
+        else               col = (hash == 2u) ? COL_SOLID : COL_WALKABLE;
+    }
+
+    if (y >= 64u && y <= 118u) {
+        if (x >= 68u && x <= 148u) {
+            globe_apply_heartland(x, y, &dummy_bg1, NULL, &col);
+        } else if (y == 64u) {
+            if ((x >= 30u && x <= 34u) || (x >= 218u && x <= 222u)) col = COL_WALKABLE;
+        }
+    } else if (y <= 24u || (y >= 60u && y <= 63u) || (y >= 124u && y <= 128u) || (y >= 143u && y <= 157u)) {
+        globe_apply_outer_landmarks(x, y, &dummy_bg1, &col);
+    }
+    return col;
+}
+
+/* Batch horizontal globe metatile streamer (hoists constant Y, macro row pointer & Y-band checks!) */
+void hearth_globe_stream_row(uint16_t wx0, uint16_t wy, uint8_t count, uint8_t *dst_meta) {
+    uint16_t y = wy;
+    uint16_t x = (uint16_t)(wx0 & 255u);
+    uint16_t y_h, y_s;
+    const char *mrow;
+    uint8_t k, y_band, bg1, bg2, col, hash;
+
+    while (y >= HEARTH_GLOBE_H) y = (uint16_t)(y - HEARTH_GLOBE_H);
+    mrow = GLOBE_MACRO_ROWS[(uint8_t)(y >> 2)];
+    y_h  = (uint16_t)(y + (y << 2) + (y << 1));
+    y_s  = (uint16_t)(y >> 3);
+
+    /* Classify Y-band ONCE for the entire row! (0 = zero landmarks in this row!) */
+    if (y >= 64u && y <= 118u) {
+        y_band = 1u;
+    } else if ((y >= 143u && y <= 157u) || y <= 24u || (y >= 60u && y <= 63u) || (y >= 124u && y <= 128u)) {
+        y_band = 2u;
+    } else {
+        y_band = 0u;
+    }
+
+    for (k = 0u; k < count; k++) {
+        char c = mrow[(uint8_t)(x >> 2)];
+        hash = (uint8_t)(((x + (x << 2)) ^ y_h ^ ((x >> 2) + y_s)) & 15u);
+        bg1  = globe_base_bg1(c, x, y, hash);
+        bg2  = O_NONE;
+        if (y_band == 1u) {
+            if (x >= 68u && x <= 148u) {
+                globe_apply_heartland(x, y, &bg1, &bg2, &col);
+            } else if (y == 64u) {
+                if (x >= 30u && x <= 34u) bg1 = T_ROCKY_PATH;
+                else if (x >= 218u && x <= 222u) bg1 = T_WORLD_TECH;
+            }
+        } else if (y_band == 2u) {
+            globe_apply_outer_landmarks(x, y, &bg1, &col);
+        }
+        *dst_meta++ = (bg2 != O_NONE) ? (uint8_t)63u : ((bg1 < 63u) ? bg1 : (uint8_t)T_WORLD_OCEAN);
+        x = (uint16_t)((x + 1u) & 255u);
+    }
+}
+
+/* Batch vertical globe metatile streamer (hoists constant X, mx & X-band checks!) */
+void hearth_globe_stream_col(uint16_t wx, uint16_t wy0, uint8_t count, uint8_t *dst_meta) {
+    uint16_t x = (uint16_t)(wx & 255u);
+    uint16_t y = wy0;
+    uint16_t x_h, x_s;
+    uint8_t  mx, k, x_band, bg1, bg2, col, hash;
+
+    while (y >= HEARTH_GLOBE_H) y = (uint16_t)(y - HEARTH_GLOBE_H);
+    mx  = (uint8_t)(x >> 2);
+    x_h = (uint16_t)(x + (x << 2));
+    x_s = (uint16_t)(x >> 2);
+
+    /* Classify X-band ONCE for the entire column! (0 = zero landmarks in this column!) */
+    if (x >= 68u && x <= 148u) {
+        x_band = 1u; /* Heartland (+ possibly Frostmere 126..130 or Babana 129..135) */
+    } else if ((x >= 30u && x <= 34u) || (x >= 49u && x <= 55u) ||
+               (x >= 210u && x <= 214u) || (x >= 218u && x <= 222u)) {
+        x_band = 2u; /* Outer continent landmark column */
+    } else {
+        x_band = 0u;
+    }
+
+    for (k = 0u; k < count; k++) {
+        char c = GLOBE_MACRO_CHAR(mx, (uint8_t)(y >> 2));
+        hash = (uint8_t)((x_h ^ (y + (y << 2) + (y << 1)) ^ (x_s + (y >> 3))) & 15u);
+        bg1  = globe_base_bg1(c, x, y, hash);
+        bg2  = O_NONE;
+        if (x_band == 1u) {
+            if (y >= 64u && y <= 118u) {
+                globe_apply_heartland(x, y, &bg1, &bg2, &col);
+            } else if (y <= 24u || (y >= 151u && y <= 157u)) {
+                globe_apply_outer_landmarks(x, y, &bg1, &col);
+            }
+        } else if (x_band == 2u) {
+            if (y == 64u) {
+                if (x >= 30u && x <= 34u) bg1 = T_ROCKY_PATH;
+                else if (x >= 218u && x <= 222u) bg1 = T_WORLD_TECH;
+            } else if ((y >= 60u && y <= 63u) || (y >= 124u && y <= 128u) || (y >= 143u && y <= 149u)) {
+                globe_apply_outer_landmarks(x, y, &bg1, &col);
+            }
+        }
+        *dst_meta++ = (bg2 != O_NONE) ? (uint8_t)63u : ((bg1 < 63u) ? bg1 : (uint8_t)T_WORLD_OCEAN);
+        y++;
+        if (y >= HEARTH_GLOBE_H) y = 0u;
+    }
 }
 
 /* ============================================================================

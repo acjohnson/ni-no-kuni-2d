@@ -184,6 +184,9 @@ extern const int8_t HEARTH_SIN64[64];
 extern const HearthGlobeLandmark HEARTH_GLOBE_LANDMARKS[HEARTH_GLOBE_LANDMARK_COUNT];
 extern const HearthGlobeFauna    HEARTH_GLOBE_FAUNA[HEARTH_GLOBE_FAUNA_COUNT];
 void    hearth_globe_cell(uint16_t tx, uint16_t ty, uint8_t *out_bg1, uint8_t *out_bg2, uint8_t *out_col, uint8_t *out_region);
+uint8_t hearth_globe_col(uint16_t tx, uint16_t ty);
+void    hearth_globe_stream_row(uint16_t wx0, uint16_t wy, uint8_t count, uint8_t *dst_meta);
+void    hearth_globe_stream_col(uint16_t wx, uint16_t wy0, uint8_t count, uint8_t *dst_meta);
 uint8_t hearth_globe_region_at(uint16_t tx, uint16_t ty);
 uint8_t hearth_globe_atlas_cell(uint8_t mx, uint8_t my);
 

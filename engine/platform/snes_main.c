@@ -92,16 +92,19 @@ enum {
 /* BG1 Terrain & Battle Tile Indices (at VRAM_BG1_GFX) */
 enum {
     ST_EMPTY = 0,
+    /* Contiguous 8 animated BG1 tiles (1..8) -> single 256-byte VBlank DMA! */
     ST_GRASS,
     ST_GRASS_ALT,
     ST_FLOWERS,
-    ST_DIRT,
-    ST_COBBLE,
     ST_WATER,
     ST_FORD,
+    ST_TALL_GRASS,
+    ST_SHRINE_RUNE,
+    ST_RAPIDS,
+    ST_DIRT,
+    ST_COBBLE,
     ST_BRIDGE,
     ST_BRIDGE_RAIL,
-    ST_TALL_GRASS,
     ST_BUSH,
     ST_TRUNK,
     ST_ROOF_TOP,
@@ -116,7 +119,6 @@ enum {
     ST_LAMP,
     ST_SIGN,
     ST_SHRINE_FLOOR,
-    ST_SHRINE_RUNE,
     ST_SHRINE_PILLAR,
     ST_CANOPY,
     ST_ROOF_EAVE,
@@ -125,14 +127,13 @@ enum {
     ST_BATTLE_SKY_SHRINE,
     ST_BATTLE_GROUND_MEADOW,
     ST_BATTLE_GROUND_SHRINE,
-    /* Milestone 2: Ground-Up Autumn Mountain & Cottage Interior Tiles (34..54 < VRAM_CG_TILE_BASE=64) */
+    /* Milestone 2: Ground-Up Autumn Mountain & Cottage Interior Tiles */
     ST_MTN_SKY,
     ST_CLIFF_WALL,
     ST_CLIFF_LEDGE,
     ST_BOULDER,
     ST_AUTUMN_GRASS,
     ST_ROCKY_PATH,
-    ST_RAPIDS,
     ST_RAIL_TRACK,
     ST_MAPLE_TRUNK,
     ST_PINE_TRUNK,
@@ -147,7 +148,7 @@ enum {
     ST_MAPLE_CANOPY,
     ST_PINE_TOP,
     ST_OAK_CROWN,
-    /* Milestone 3: Evertale Open World Map Tiles (55..62) */
+    /* Milestone 3: Evertale Open World Map Tiles */
     ST_WORLD_OCEAN,
     ST_WORLD_BEACH,
     ST_WORLD_PEAK,
@@ -156,7 +157,7 @@ enum {
     ST_WORLD_CASTLE,
     ST_WORLD_TOWN,
     ST_WORLD_RUINS,
-    /* True 16x16 2x2 Metatile Lower/Alternate Halves (63..82) */
+    /* True 16x16 2x2 Metatile Lower/Alternate Halves */
     ST_ROOF_TOP_B,
     ST_ROOF_BODY_B,
     ST_WALL_WOOD_B,
@@ -233,6 +234,8 @@ static u8  g_bg1_dirty_l      = 0;
 static u8  g_full_pal_dirty   = 0;
 static u8  g_bg2_enabled      = 0;
 static u8  g_bg1_dirty_r      = 0;
+static u8  g_bg1_row_dirty    = 0;
+static u16 g_bg1_dirty_row_off = 0u;
 static u8  g_env_dirty        = 0;
 static u8  g_env_frame        = 255;
 static u8  g_prev_oam_cnt     = 0;
@@ -248,15 +251,12 @@ static u8  g_ui_tick          = 0;
 static u16 g_last_hud_sig     = 0xFFFFu;
 static u16 g_cur_bgm_mod      = 0xFFFFu;
 
-/* Pre-baked 4bpp SNES planar tile buffers for zero-CPU VBlank environmental animation */
-static u8 g_anim_grass[4][32];
-static u8 g_anim_grass_alt[4][32];
-static u8 g_anim_flowers[4][32];
-static u8 g_anim_water[4][32];
-static u8 g_anim_ford[4][32];
-static u8 g_anim_tgrass[4][32];
-static u8 g_anim_rune[4][32];
-static u8 g_anim_rapids[4][32];
+/* Scratch buffer in Bank $7E WRAM for fast strip-batched open-world globe streaming */
+static u8 g_stream_meta[18];
+
+/* Pre-baked 4bpp SNES planar tile buffer for zero-CPU single-DMA environmental animation:
+ * 8 contiguous BG1 tiles (ST_GRASS..ST_RAPIDS = 1..8) packed as 8 * 32 = 256 bytes per frame! */
+static u8 g_anim_bg1[4][256];
 /* Windmill 16x16 OBJ: [frame][0..1 = top row T,T+1; 2..3 = bottom row T+16,T+17] */
 static u8 g_anim_windmill[4][4][32];
 
@@ -1923,21 +1923,21 @@ static void bake_env_bg_frames(void) {
     for (f = 0; f < 4u; f++) {
         dx = sway_dx[f];
 
-        /* Sunlit meadow grass breeze */
+        /* 0: ST_GRASS - Sunlit meadow grass breeze */
         p8_fill(4);
         g_pix8[(u16)(8u + (u16)((2 + dx) & 7))]  = 5; g_pix8[18] = 3;
         g_pix8[(u16)(40u + (u16)((6 - dx) & 7))] = 5; g_pix8[54] = 3;
         g_pix8[33] = 3;
-        encode_pix8_to_buf(g_anim_grass[f]);
+        encode_pix8_to_buf(g_anim_bg1[f] + 0u);
 
-        /* Alternate meadow grass breeze */
+        /* 1: ST_GRASS_ALT - Alternate meadow grass breeze */
         p8_fill(4);
         g_pix8[(u16)(8u + (u16)((5 - dx) & 7))]  = 5; g_pix8[21] = 3;
         g_pix8[(u16)(40u + (u16)((2 + dx) & 7))] = 5; g_pix8[51] = 3;
         g_pix8[31] = 3;
-        encode_pix8_to_buf(g_anim_grass_alt[f]);
+        encode_pix8_to_buf(g_anim_bg1[f] + 32u);
 
-        /* Wildflowers bobbing gently */
+        /* 2: ST_FLOWERS - Wildflowers bobbing gently */
         p8_fill(4);
         g_pix8[(u16)(16u + (u16)((2 + dx) & 7))] = 15;
         g_pix8[(u16)(16u + (u16)((3 + dx) & 7))] = 8;
@@ -1945,9 +1945,9 @@ static void bake_env_bg_frames(void) {
         g_pix8[(u16)(40u + (u16)((5 - dx) & 7))] = 14;
         g_pix8[(u16)(40u + (u16)((6 - dx) & 7))] = 8;
         g_pix8[53] = 3;
-        encode_pix8_to_buf(g_anim_flowers[f]);
+        encode_pix8_to_buf(g_anim_bg1[f] + 64u);
 
-        /* Flowing sunlit creek water */
+        /* 3: ST_WATER - Flowing sunlit creek water */
         p8_fill(12);
         s1 = (u8)((f << 1) & 7u);
         s2 = (u8)(((f << 1) + 4u) & 7u);
@@ -1960,18 +1960,18 @@ static void bake_env_bg_frames(void) {
         g_pix8[(u16)(48u + ((s2 + 1u) & 7u))] = 14;
         g_pix8[(u16)(48u + ((s2 + 2u) & 7u))] = 14;
         g_pix8[(u16)(24u + ((s2 + 3u) & 7u))] = 13;
-        encode_pix8_to_buf(g_anim_water[f]);
+        encode_pix8_to_buf(g_anim_bg1[f] + 96u);
 
-        /* Shallow pebble ford shimmering current */
+        /* 4: ST_FORD - Shallow pebble ford shimmering current */
         p8_fill(13);
         p8_rect(1, 2, 2, 2, 10); p8_rect(5, 5, 2, 2, 11);
         g_pix8[(u16)(8u  + ((s1 + 1u) & 7u))] = 14;
         g_pix8[(u16)(8u  + ((s1 + 2u) & 7u))] = 14;
         g_pix8[(u16)(48u + ((s1 + 5u) & 7u))] = 14;
         g_pix8[(u16)(32u + ((s1 + 3u) & 7u))] = 12;
-        encode_pix8_to_buf(g_anim_ford[f]);
+        encode_pix8_to_buf(g_anim_bg1[f] + 128u);
 
-        /* Tall wildgrass swaying tips */
+        /* 5: ST_TALL_GRASS - Tall wildgrass swaying tips */
         p8_fill(3);
         g_pix8[(u16)(8u  + (u16)((1 + dx) & 7))] = 5;
         g_pix8[(u16)(16u + (u16)((1 + dx) & 7))] = 5; p8_rect(1, 3, 1, 4, 4);
@@ -1981,9 +1981,9 @@ static void bake_env_bg_frames(void) {
         g_pix8[(u16)(24u + (u16)((5 + dx) & 7))] = 5; p8_rect(5, 4, 1, 3, 4);
         g_pix8[(u16)(8u  + (u16)((7 + dx) & 7))] = 5;
         g_pix8[(u16)(16u + (u16)((7 + dx) & 7))] = 4; p8_rect(7, 3, 1, 4, 4);
-        encode_pix8_to_buf(g_anim_tgrass[f]);
+        encode_pix8_to_buf(g_anim_bg1[f] + 160u);
 
-        /* Ancient Shrine pulsing arcane rune */
+        /* 6: ST_SHRINE_RUNE - Ancient Shrine pulsing arcane rune */
         p8_fill(9); p8_rect(1, 1, 6, 6, 10);
         if (f == 0u) {
             p8_rect(3, 3, 2, 2, 13);
@@ -1992,15 +1992,15 @@ static void bake_env_bg_frames(void) {
         } else {
             p8_rect(2, 2, 4, 4, 14); p8_rect(3, 3, 2, 2, 15);
         }
-        encode_pix8_to_buf(g_anim_rune[f]);
+        encode_pix8_to_buf(g_anim_bg1[f] + 192u);
 
-        /* Mountain whitewater rapids */
+        /* 7: ST_RAPIDS - Mountain whitewater rapids */
         p8_fill(12);
         p8_rect(1, s1, 3, 1, 13);
         g_pix8[(u16)((u16)s1 * 8u + 2u)] = 14;
         p8_rect(4, s2, 3, 1, 14);
         g_pix8[(u16)((u16)((s2 + 1u) & 7u) * 8u + 5u)] = 13;
-        encode_pix8_to_buf(g_anim_rapids[f]);
+        encode_pix8_to_buf(g_anim_bg1[f] + 224u);
     }
 }
 
@@ -2239,9 +2239,11 @@ static void bake_world_tile_cache(void) {
 }
 
 static void stream_world_col(s16 mx, s16 my_start) {
-    u16 half_col, row_off, off, k, idx, idx_valid, step_w, wx, wy;
+    u16 half_col, row_off, k, idx, idx_valid, step_w, wx, wy;
     s16 my, mw, mh, wy_s;
-    u8 bg1, bg2, m;
+    u8 m;
+    u16 *dst;
+    const u8 *sp;
 
     half_col = (u16)(((u16)mx & 15u) << 1);
     if (((u16)mx & 16u) == 0u) {
@@ -2258,17 +2260,16 @@ static void stream_world_col(s16 mx, s16 my_start) {
         while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
         while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
         wy = (u16)wy_s;
+        hearth_globe_stream_col(wx, wy, 16u, g_stream_meta);
+        sp = g_stream_meta;
         for (k = 0u; k < 16u; k++) {
-            hearth_globe_cell(wx, wy, &bg1, &bg2, NULL, NULL);
-            m = (bg2 != 0u) ? META_OV_CANOPY : ((bg1 < 63u) ? bg1 : (u8)T_WORLD_OCEAN);
-            off = (u16)(half_col + row_off);
-            g_bg1_map[off]              = g_meta_tl[m];
-            g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
-            g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
-            g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
+            m = *sp++;
+            dst = g_bg1_map + (u16)(half_col + row_off);
+            dst[0]  = g_meta_tl[m];
+            dst[1]  = g_meta_tr[m];
+            dst[32] = g_meta_bl[m];
+            dst[33] = g_meta_br[m];
             row_off = (u16)((row_off + 64u) & 1023u);
-            wy++;
-            if (wy >= HEARTH_GLOBE_H) wy = 0u;
         }
         return;
     }
@@ -2280,11 +2281,11 @@ static void stream_world_col(s16 mx, s16 my_start) {
     if (mx < 0 || mx >= mw) {
         m = (u8)T_BUSH;
         for (k = 0u; k < 16u; k++) {
-            off = (u16)(half_col + row_off);
-            g_bg1_map[off]              = g_meta_tl[m];
-            g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
-            g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
-            g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
+            dst = g_bg1_map + (u16)(half_col + row_off);
+            dst[0]  = g_meta_tl[m];
+            dst[1]  = g_meta_tr[m];
+            dst[32] = g_meta_bl[m];
+            dst[33] = g_meta_br[m];
             row_off = (u16)((row_off + 64u) & 1023u);
         }
         return;
@@ -2304,11 +2305,11 @@ static void stream_world_col(s16 mx, s16 my_start) {
             m = g_world_meta[idx];
             idx = (u16)(idx + step_w);
         }
-        off = (u16)(half_col + row_off);
-        g_bg1_map[off]              = g_meta_tl[m];
-        g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
-        g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
-        g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
+        dst = g_bg1_map + (u16)(half_col + row_off);
+        dst[0]  = g_meta_tl[m];
+        dst[1]  = g_meta_tr[m];
+        dst[32] = g_meta_bl[m];
+        dst[33] = g_meta_br[m];
         row_off = (u16)((row_off + 64u) & 1023u);
     }
 }
@@ -2316,11 +2317,26 @@ static void stream_world_col(s16 mx, s16 my_start) {
 static void stream_world_row(s16 mx_start, s16 my) {
     u16 row_off, off, k, idx, wx, wy;
     s16 mx, mw, mh, wy_s;
-    u8 bg1, bg2, m;
+    u8 m;
+    u16 *dst;
+    const u8 *sp;
 
     row_off = (u16)(((u16)my & 15u) << 6);
-    g_bg1_dirty_l = 1;
-    g_bg1_dirty_r = 1;
+    if (!g_bg1_dirty_l && !g_bg1_dirty_r) {
+        if (!g_bg1_row_dirty || g_bg1_dirty_row_off == row_off) {
+            /* Surgical 256-byte row-strip VBlank DMA (16x smaller than 4096B full-map DMA!) */
+            g_bg1_row_dirty = 1u;
+            g_bg1_dirty_row_off = row_off;
+        } else {
+            g_bg1_row_dirty = 0u;
+            g_bg1_dirty_l = 1;
+            g_bg1_dirty_r = 1;
+        }
+    } else {
+        g_bg1_row_dirty = 0u;
+        g_bg1_dirty_l = 1;
+        g_bg1_dirty_r = 1;
+    }
 
     mx = mx_start;
     off = (u16)(row_off + (((u16)mx & 15u) << 1));
@@ -2332,16 +2348,17 @@ static void stream_world_row(s16 mx_start, s16 my) {
         while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
         while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
         wy = (u16)wy_s;
+        hearth_globe_stream_row(wx, wy, 18u, g_stream_meta);
+        sp = g_stream_meta;
         for (k = 0u; k < 18u; k++) {
-            hearth_globe_cell(wx, wy, &bg1, &bg2, NULL, NULL);
-            m = (bg2 != 0u) ? META_OV_CANOPY : ((bg1 < 63u) ? bg1 : (u8)T_WORLD_OCEAN);
-            g_bg1_map[off]              = g_meta_tl[m];
-            g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
-            g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
-            g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
+            m = *sp++;
+            dst = g_bg1_map + off;
+            dst[0]  = g_meta_tl[m];
+            dst[1]  = g_meta_tr[m];
+            dst[32] = g_meta_bl[m];
+            dst[33] = g_meta_br[m];
             off = (u16)(off + 2u);
             if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
-            wx = (u16)((wx + 1u) & 255u);
         }
         return;
     }
@@ -2352,10 +2369,11 @@ static void stream_world_row(s16 mx_start, s16 my) {
     if (my < 0 || my >= mh) {
         m = (g_hearth.has_mountain_vista && my < 0) ? META_EMPTY : (u8)T_BUSH;
         for (k = 0u; k < 18u; k++) {
-            g_bg1_map[off]              = g_meta_tl[m];
-            g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
-            g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
-            g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
+            dst = g_bg1_map + off;
+            dst[0]  = g_meta_tl[m];
+            dst[1]  = g_meta_tr[m];
+            dst[32] = g_meta_bl[m];
+            dst[33] = g_meta_br[m];
             off = (u16)(off + 2u);
             if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
         }
@@ -2364,13 +2382,14 @@ static void stream_world_row(s16 mx_start, s16 my) {
 
     idx = snes_map_row_off((u16)my);
     if (mx >= 0 && (s16)(mx + 18) <= mw) {
-        idx = (u16)(idx + (u16)mx);
+        sp = g_world_meta + (u16)(idx + (u16)mx);
         for (k = 0u; k < 18u; k++) {
-            m = g_world_meta[idx++];
-            g_bg1_map[off]              = g_meta_tl[m];
-            g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
-            g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
-            g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
+            m = *sp++;
+            dst = g_bg1_map + off;
+            dst[0]  = g_meta_tl[m];
+            dst[1]  = g_meta_tr[m];
+            dst[32] = g_meta_bl[m];
+            dst[33] = g_meta_br[m];
             off = (u16)(off + 2u);
             if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
         }
@@ -2379,10 +2398,11 @@ static void stream_world_row(s16 mx_start, s16 my) {
 
     for (k = 0u; k < 18u; k++, mx++) {
         m = (mx < 0 || mx >= mw) ? (u8)T_BUSH : g_world_meta[(u16)(idx + (u16)mx)];
-        g_bg1_map[off]              = g_meta_tl[m];
-        g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
-        g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
-        g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
+        dst = g_bg1_map + off;
+        dst[0]  = g_meta_tl[m];
+        dst[1]  = g_meta_tr[m];
+        dst[32] = g_meta_bl[m];
+        dst[33] = g_meta_br[m];
         off = (u16)(off + 2u);
         if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
     }
@@ -2396,6 +2416,9 @@ static void build_full_world_bg1(s16 cam_x, s16 cam_y) {
     for (dy = 0; dy < 16; dy++) {
         stream_world_row(mx0, (s16)(my0 + dy));
     }
+    g_bg1_dirty_l = 1;
+    g_bg1_dirty_r = 1;
+    g_bg1_row_dirty = 0u;
     g_last_cam_mx = (s16)(cam_x >> 4);
     g_last_cam_my = (s16)(cam_y >> 4);
 }
@@ -2421,32 +2444,32 @@ static void stream_world_bg1(s16 cam_x, s16 cam_y) {
         return;
     }
 
-    while (dx > 0) {
+    /* Stagger diagonal tile-boundary crossings across 2 frames (at most 1 axis strip per frame).
+     * The 16-pixel offscreen tile margin absorbs 1 frame cleanly while halving peak diagonal CPU! */
+    if (dx > 0) {
         g_last_cam_mx++;
         if (g_hearth.is_world_map && g_last_cam_mx >= HEARTH_GLOBE_W) g_last_cam_mx = 0;
         stream_world_col((s16)(g_last_cam_mx + 16), (s16)(g_last_cam_my - 1));
-        dx--;
+        return;
     }
-    while (dx < 0) {
+    if (dx < 0) {
         g_last_cam_mx--;
         if (g_hearth.is_world_map && g_last_cam_mx < 0) g_last_cam_mx = (s16)(HEARTH_GLOBE_W - 1);
         stream_world_col((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my - 1));
-        dx++;
+        return;
     }
-    while (dy > 0) {
+    if (dy > 0) {
         g_last_cam_my++;
         if (g_hearth.is_world_map && g_last_cam_my >= HEARTH_GLOBE_H) g_last_cam_my = 0;
         stream_world_row((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my + 14));
-        dy--;
+        return;
     }
-    while (dy < 0) {
+    if (dy < 0) {
         g_last_cam_my--;
         if (g_hearth.is_world_map && g_last_cam_my < 0) g_last_cam_my = (s16)(HEARTH_GLOBE_H - 1);
         stream_world_row((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my - 1));
-        dy++;
+        return;
     }
-    g_last_cam_mx = cmx;
-    g_last_cam_my = cmy;
 }
 
 static void build_battle_bg1(u8 biome) {
@@ -2464,6 +2487,7 @@ static void build_battle_bg1(u8 biome) {
     }
     g_bg1_dirty_l = 1;
     g_bg1_dirty_r = 0;
+    g_bg1_row_dirty = 0u;
 }
 
 static u8 *snes_cg_tiles_ptr(u8 p) {
@@ -2539,6 +2563,7 @@ static void build_intro_bg1(u8 scene) {
     }
     g_bg1_dirty_l = 1;
     g_bg1_dirty_r = 0;
+    g_bg1_row_dirty = 0u;
 }
 
 /* ============================================================================
@@ -3584,32 +3609,28 @@ static void flush_all_maps_force_blank(void) {
     setScreenOff();
     dmaCopyVram((u8 *)g_bg1_map, VRAM_BG1_MAP, 4096u);
     dmaCopyVram((u8 *)g_bg0_map, VRAM_BG0_MAP, 2048u);
-    g_bg1_dirty_l = 0;
-    g_bg1_dirty_r = 0;
-    g_bg0_dirty   = 0;
+    g_bg1_dirty_l   = 0;
+    g_bg1_dirty_r   = 0;
+    g_bg1_row_dirty = 0u;
+    g_bg0_dirty     = 0;
     setScreenOn();
 }
 
 static void flush_env_vblank_dma(void) {
     u8 af = g_env_frame;
-    u16 t = sprite_slot_to_tile(SPR_WINDMILL_BLADES);
 
-    /* 8 BG1 tiles (256 B) + 4 Windmill OBJ tiles (128 B) = 384 bytes total! */
-    dmaCopyVram(g_anim_grass[af],       (u16)(VRAM_BG1_GFX + ((u16)ST_GRASS << 4)),       32u);
-    dmaCopyVram(g_anim_grass_alt[af],   (u16)(VRAM_BG1_GFX + ((u16)ST_GRASS_ALT << 4)),   32u);
-    dmaCopyVram(g_anim_flowers[af],     (u16)(VRAM_BG1_GFX + ((u16)ST_FLOWERS << 4)),     32u);
-    dmaCopyVram(g_anim_water[af],       (u16)(VRAM_BG1_GFX + ((u16)ST_WATER << 4)),       32u);
-    dmaCopyVram(g_anim_ford[af],        (u16)(VRAM_BG1_GFX + ((u16)ST_FORD << 4)),        32u);
-    dmaCopyVram(g_anim_tgrass[af],      (u16)(VRAM_BG1_GFX + ((u16)ST_TALL_GRASS << 4)),  32u);
-    dmaCopyVram(g_anim_rune[af],        (u16)(VRAM_BG1_GFX + ((u16)ST_SHRINE_RUNE << 4)), 32u);
-    dmaCopyVram(g_anim_rapids[af],      (u16)(VRAM_BG1_GFX + ((u16)ST_RAPIDS << 4)),      32u);
-    dmaCopyVram(g_anim_windmill[af][0], (u16)(VRAM_OBJ_GFX + (t << 4)),                   64u);
-    dmaCopyVram(g_anim_windmill[af][2], (u16)(VRAM_OBJ_GFX + ((t + 16u) << 4)),           64u);
+    /* Single contiguous 256-byte DMA updates all 8 animated BG1 tiles (ST_GRASS..ST_RAPIDS = 1..8) */
+    dmaCopyVram(g_anim_bg1[af], (u16)(VRAM_BG1_GFX + ((u16)ST_GRASS << 4)), 256u);
+    if (g_hearth.has_windmill) {
+        u16 t = sprite_slot_to_tile(SPR_WINDMILL_BLADES);
+        dmaCopyVram(g_anim_windmill[af][0], (u16)(VRAM_OBJ_GFX + (t << 4)),         64u);
+        dmaCopyVram(g_anim_windmill[af][2], (u16)(VRAM_OBJ_GFX + ((t + 16u) << 4)), 64u);
+    }
     g_env_dirty = 0;
 }
 
 static void flush_one_vblank_dma(void) {
-    /* Stay well under SNES NTSC VBlank DMA budget: max ~2.2 KB per frame! */
+    /* Stay well under SNES NTSC VBlank DMA budget (~2.6 KB max per frame)! */
     if (g_pal_dirty) {
         upload_zone_pal0(g_last_pal_id);
         g_pal_dirty = 0u;
@@ -3620,10 +3641,23 @@ static void flush_one_vblank_dma(void) {
     if (g_bg1_dirty_l) {
         dmaCopyVram((u8 *)g_bg1_map, VRAM_BG1_MAP, 2048u);
         g_bg1_dirty_l = 0;
+        if (!g_bg1_dirty_r && g_env_dirty) {
+            flush_env_vblank_dma();
+        }
     } else if (g_bg1_dirty_r) {
         dmaCopyVram((u8 *)(g_bg1_map + 1024), (u16)(VRAM_BG1_MAP + 1024u), 2048u);
         g_bg1_dirty_r = 0;
+        if (g_env_dirty) {
+            flush_env_vblank_dma();
+        }
     } else {
+        if (g_bg1_row_dirty) {
+            /* Surgical 128B + 128B = 256B metatile row strip across both SC_64x32 halves */
+            u16 roff = g_bg1_dirty_row_off;
+            dmaCopyVram((u8 *)(g_bg1_map + roff), (u16)(VRAM_BG1_MAP + roff), 128u);
+            dmaCopyVram((u8 *)(g_bg1_map + 1024u + roff), (u16)(VRAM_BG1_MAP + 1024u + roff), 128u);
+            g_bg1_row_dirty = 0u;
+        }
         if (g_bg0_dirty == 1u) {
             /* Explore HUD row 0 only (64 bytes -> 0.4 scanlines) */
             dmaCopyVram((u8 *)g_bg0_map, VRAM_BG0_MAP, 64u);
@@ -3828,10 +3862,11 @@ int main(void) {
             }
             dmaCopyVram((u8 *)g_bg1_map, VRAM_BG1_MAP, 4096u);
             dmaCopyVram((u8 *)g_bg0_map, VRAM_BG0_MAP, 2048u);
-            g_bg1_dirty_l = 0;
-            g_bg1_dirty_r = 0;
-            g_bg0_dirty   = 0;
-            g_env_dirty   = 0;
+            g_bg1_dirty_l   = 0;
+            g_bg1_dirty_r   = 0;
+            g_bg1_row_dirty = 0u;
+            g_bg0_dirty     = 0;
+            g_env_dirty     = 0;
             /* Latch exact hardware scroll BEFORE revealing display -> zero 1-frame scroll jump! */
             if (scene_kind != 0u) {
                 bgSetScroll(1, (u16)(-ppu->shake_x), (u16)(-ppu->shake_y));
@@ -3857,12 +3892,7 @@ int main(void) {
             }
             spcProcess();
             WaitForVBlank();
-            flush_one_vblank_dma();
-            if (want_bright != g_last_bright) {
-                setBrightness(want_bright);
-                g_last_bright = want_bright;
-            }
-            /* Hardware-scroll BG1 world & BG2 2bpp Alpine Mountain Parallax (BG0 locked to 0,0) */
+            /* Latch BG1/BG2 hardware scroll immediately at scanline 225 before DMA */
             if (scene_kind != 0u) {
                 bgSetScroll(1, (u16)(-ppu->shake_x), (u16)(-ppu->shake_y));
             } else {
@@ -3872,6 +3902,11 @@ int main(void) {
                         (u16)((ppu->cam_x >> 2) - ppu->shake_x),
                         (u16)((ppu->cam_y >> 3) - ppu->shake_y));
                 }
+            }
+            flush_one_vblank_dma();
+            if (want_bright != g_last_bright) {
+                setBrightness(want_bright);
+                g_last_bright = want_bright;
             }
         }
     }
