@@ -327,13 +327,25 @@ int main(void) {
         CHECK(pal_mask != 0u && bgm_mask != 0u, "All 7 continents stream distinct palettes and regional BGM");
     }
 
-    /* Verify World Atlas toggle via PAD_SELECT */
+    /* Verify World Atlas toggle via PAD_SELECT, PAD_START (Genesis 3-btn & SNES), and PAD_X */
     CHECK(!g_st.atlas_open, "Atlas starts closed");
     hearth_step_60hz(&g_st, PAD_SELECT);
     CHECK(g_st.atlas_open && g_st.ppu.atlas_open, "PAD_SELECT toggles World Atlas open");
     hearth_step_60hz(&g_st, 0);
     hearth_step_60hz(&g_st, PAD_SELECT);
     CHECK(!g_st.atlas_open && !g_st.ppu.atlas_open, "PAD_SELECT closes World Atlas cleanly");
+    hearth_step_60hz(&g_st, 0);
+    hearth_step_60hz(&g_st, PAD_START);
+    CHECK(g_st.atlas_open, "PAD_START opens World Atlas (3-button Genesis & SNES parity)");
+    hearth_step_60hz(&g_st, 0);
+    hearth_step_60hz(&g_st, PAD_B);
+    CHECK(!g_st.atlas_open, "PAD_B closes World Atlas cleanly");
+    hearth_step_60hz(&g_st, 0);
+    hearth_step_60hz(&g_st, PAD_X);
+    CHECK(g_st.atlas_open, "PAD_X opens World Atlas");
+    hearth_step_60hz(&g_st, 0);
+    hearth_step_60hz(&g_st, PAD_X);
+    CHECK(!g_st.atlas_open, "PAD_X closes World Atlas cleanly");
 
     /* Verify Coral Cove fishing (Coral Snapper), Babana Oasis, Golden Babana, & Desert Encounters */
     hearth_enter_zone(&g_st, ZONE_CORAL_COVE, 22, 14);
@@ -356,11 +368,23 @@ int main(void) {
 #endif
     printf("[PASS] Full 256x192 Toroidal Globe, 7 Continents, Chapter 2 Raft Story & Atlas\n");
 
-    /* 4. Explore Evertale Sandbox + 8-Way Fixed-Point Movement + Pip Breadcrumb Trail */
+    /* 4. Explore Evertale Sandbox + Atlas Quick-Warp/Vessel Cycling + 8-Way Fixed-Point Movement */
     hearth_start_sandbox(&g_st);
 #if HEARTH_DESIGNER_MODE
     CHECK(g_st.mode == MODE_EXPLORE && g_st.zone_id == ZONE_EVERTALE_WORLD && g_st.is_world_map && g_st.pip_visible,
           "Sandbox starts on Evertale Toroidal Globe outside Sunhill Market with Pip");
+    hearth_step_60hz(&g_st, 0);
+    hearth_step_60hz(&g_st, PAD_START);
+    CHECK(g_st.atlas_open && g_st.atlas_cursor == REGION_HEARTLAND, "Designer Atlas opens on active continent");
+    hearth_step_60hz(&g_st, 0);
+    hearth_step_60hz(&g_st, PAD_UP);
+    CHECK(g_st.active_vehicle == VEH_RAFT, "PAD_UP inside Designer Atlas cycles vessel (3-button Genesis parity)");
+    hearth_step_60hz(&g_st, 0);
+    hearth_step_60hz(&g_st, PAD_RIGHT);
+    CHECK(g_st.atlas_cursor == REGION_DESERT, "PAD_RIGHT inside Designer Atlas selects next continent");
+    hearth_step_60hz(&g_st, 0);
+    hearth_step_60hz(&g_st, PAD_A);
+    CHECK(!g_st.atlas_open && g_st.world_region_id == REGION_DESERT, "PAD_A inside Designer Atlas warps to selected continent");
 #else
     CHECK(!g_st.designer_sandbox && g_st.mode == MODE_INTRO,
           "DESIGNER_MODE=0 redirects sandbox call safely into Story Mode");

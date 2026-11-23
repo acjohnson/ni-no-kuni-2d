@@ -1855,7 +1855,7 @@ static void draw_title_ui(void) {
     bg0_text(5u,  6u,  PAL_UI_CYAN, "16-BIT JRPG CORE (SNES)");
     bg0_text(3u,  9u,  PAL_UI_TEXT, "DPAD : MOVE   B : DASH");
     bg0_text(3u,  11u, PAL_UI_TEXT, "A    : ACT / TIMED HIT");
-    bg0_text(3u,  13u, PAL_UI_TEXT, "L / R: SWAP FAMILIAR");
+    bg0_text(3u,  13u, PAL_UI_TEXT, "SEL/ST: ATLAS L/R:SWAP");
     draw_title_cursor();
     bg0_text(4u,  23u, PAL_UI_CYAN, "DPAD:PICK  START/A:GO");
 }
@@ -2197,7 +2197,7 @@ static void draw_fishing_ui(void) {
 
 static void draw_atlas_ui(void) {
     static const char *VEH_LBL[6] = { "FOOT", "RAFT", "SHIP", "BALLOON", "AIRSHIP", "STARSHIP" };
-    u16 rx, ry, pal, pos, htx;
+    u16 rx, ry, pal, pos, htx, tmp_y;
     s16 hty_s;
     u8 ax, ay, cell, hx, hy;
     char ch;
@@ -2210,12 +2210,14 @@ static void draw_atlas_ui(void) {
     while (hty_s < 0) hty_s = (s16)(hty_s + HEARTH_GLOBE_H);
     while (hty_s >= HEARTH_GLOBE_H) hty_s = (s16)(hty_s - HEARTH_GLOBE_H);
     hx = (u8)((htx * 28u) >> 8);
-    hy = (u8)((u16)hty_s / 12u);
+    tmp_y = (u16)hty_s;
+    hy = 0u;
+    while (tmp_y >= 12u) { tmp_y = (u16)(tmp_y - 12u); hy++; }
     if (hx >= 28u) hx = 27u;
     if (hy >= 16u) hy = 15u;
 
     for (ry = 0u; ry < 16u; ry++) {
-        ay = (u8)(ry * 3u + 1u);
+        ay = (u8)(ry + ry + ry + 1u);
         for (rx = 0u; rx < 28u; rx++) {
             ax = (u8)((rx << 1) + (rx >> 2));
             if (ax >= HEARTH_ATLAS_W) ax = HEARTH_ATLAS_W - 1u;
@@ -2226,7 +2228,7 @@ static void draw_atlas_ui(void) {
                 cell = hearth_globe_atlas_cell(ax, ay);
                 if (cell == 0u) { ch = '.'; pal = PAL_UI_TEXT; }      /* Deep Ocean */
                 else if (cell == 1u) { ch = ':'; pal = PAL_UI_CYAN; } /* Shallows (Raft) */
-                else if (cell == 2u) { ch = '~'; pal = PAL_UI_CYAN; } /* Coral Shoals */
+                else if (cell == 2u) { ch = ';'; pal = PAL_UI_CYAN; } /* Coral Shoals */
                 else if (cell == 3u) { ch = 'G'; pal = PAL_UI_TEXT; } /* Heartland */
                 else if (cell == 4u) { ch = '='; pal = PAL_UI_GOLD; } /* Sands of Babana */
                 else if (cell == 5u) { ch = 'P'; pal = PAL_UI_CYAN; } /* Suncrest Paradise */
@@ -2239,17 +2241,37 @@ static void draw_atlas_ui(void) {
         }
     }
 
-    line_reset(&pos);
-    line_str(&pos, HEARTH_REGION_NAMES[g_hearth.world_region_id % REGION_COUNT]);
-    bg0_text_n(2u, 20u, PAL_UI_GOLD, g_line, 28u);
+#if HEARTH_DESIGNER_MODE
+    if (g_hearth.designer_sandbox) {
+        line_reset(&pos);
+        line_str(&pos, "< ");
+        line_str(&pos, HEARTH_REGION_NAMES[(g_hearth.atlas_cursor < REGION_COUNT) ? g_hearth.atlas_cursor : 0u]);
+        line_str(&pos, " >");
+        bg0_text_n(2u, 20u, PAL_UI_GOLD, g_line, 28u);
 
-    line_reset(&pos);
-    line_str(&pos, "TRAVEL: ");
-    line_str(&pos, VEH_LBL[g_hearth.active_vehicle < 6u ? g_hearth.active_vehicle : 0u]);
-    bg0_text_n(2u, 22u, PAL_UI_CYAN, g_line, 28u);
+        line_reset(&pos);
+        line_str(&pos, "VESSEL: ");
+        line_str(&pos, VEH_LBL[g_hearth.active_vehicle < 6u ? g_hearth.active_vehicle : 0u]);
+        line_str(&pos, " (UP/DN)");
+        bg0_text_n(2u, 22u, PAL_UI_CYAN, g_line, 28u);
 
-    bg0_text(2u, 24u, PAL_UI_TEXT, "@:ROWAN  ::RAFT  =:SAND");
-    bg0_text(2u, 25u, PAL_UI_CYAN, "SELECT OR B: CLOSE ATLAS");
+        bg0_text(2u, 24u, PAL_UI_TEXT, "L/R:REGION   A:WARP THERE");
+        bg0_text(2u, 25u, PAL_UI_CYAN, "START/SEL/B: CLOSE ATLAS");
+    } else
+#endif
+    {
+        line_reset(&pos);
+        line_str(&pos, HEARTH_REGION_NAMES[(g_hearth.world_region_id < REGION_COUNT) ? g_hearth.world_region_id : 0u]);
+        bg0_text_n(2u, 20u, PAL_UI_GOLD, g_line, 28u);
+
+        line_reset(&pos);
+        line_str(&pos, "TRAVEL: ");
+        line_str(&pos, VEH_LBL[g_hearth.active_vehicle < 6u ? g_hearth.active_vehicle : 0u]);
+        bg0_text_n(2u, 22u, PAL_UI_CYAN, g_line, 28u);
+
+        bg0_text(2u, 24u, PAL_UI_TEXT, "@:ROWAN  ::RAFT  =:SAND");
+        bg0_text(2u, 25u, PAL_UI_CYAN, "START/SEL/B: CLOSE ATLAS");
+    }
     g_bg0_dirty = 3u;
 }
 
@@ -2260,6 +2282,7 @@ static u16 compute_hud_sig(u8 want, const HearthPpuPacket *ppu) {
     if (want == 7u) {
         return (u16)(sig ^ ((u16)(FP_PX(g_hearth.hero_fx) >> 4) << 4) ^
                      (u16)(FP_PX(g_hearth.hero_fy) >> 4) ^
+                     ((u16)g_hearth.atlas_cursor << 8) ^
                      ((u16)g_hearth.active_vehicle << 12));
     }
     if (want == 0u) {

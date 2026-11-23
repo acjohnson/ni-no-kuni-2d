@@ -3575,26 +3575,34 @@ static void render_world_atlas_overlay(const HearthState *st) {
     static const char *VEH_LABELS[6] = {
         "ON FOOT", "CEDAR RAFT", "SHIP", "BALLOON", "AIRSHIP", "SPACESHIP"
     };
+    static const uint16_t WARP_RX[REGION_COUNT] = { 104u, 132u,  52u, 128u, 212u,  32u, 220u };
+    static const uint16_t WARP_RY[REGION_COUNT] = {  84u, 155u, 147u,  22u, 126u,  62u,  62u };
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
     int scale = (w >= 300) ? 3 : 2;
     int map_w = HEARTH_ATLAS_W * scale;
     int map_h = HEARTH_ATLAS_H * scale;
+#if HEARTH_DESIGNER_MODE
+    bool show_designer = st->designer_sandbox;
+#else
+    bool show_designer = false;
+#endif
+    int extra_h = show_designer ? 54 : 44;
     int bx = (w - (map_w + 24)) / 2;
-    int by = (h - (map_h + 44)) / 2;
+    int by = (h - (map_h + extra_h)) / 2;
     int bw = map_w + 24;
-    int bh = map_h + 44;
+    int bh = map_h + extra_h;
     int mx0 = bx + 12;
-    int my0 = by + 20;
+    int my0 = by + 18;
 
     fill_rect_alpha(0, 0, w, h, 0xFF0A0C16u, 185);
     fill_rect_alpha(bx, by, bw, bh, 0xFF161322u, 245);
     draw_rect_outline(bx, by, bw, bh, 0xFFE8B852u);
     draw_rect_outline(bx + 1, by + 1, bw - 2, bh - 2, 0xFF5C4A28u);
 
-    draw_text(bx + 8, by + 6, "EVERTALE WORLD ATLAS", 0xFFFFF1A8u, true);
+    draw_text(bx + 8, by + 5, "EVERTALE WORLD ATLAS", 0xFFFFF1A8u, true);
     const char *reg = (st->world_region_id < REGION_COUNT) ? HEARTH_REGION_NAMES[st->world_region_id] : "EVERTALE";
-    draw_text(bx + bw - (int)strlen(reg) * 6 - 8, by + 6, reg, 0xFF9AD8F4u, false);
+    draw_text(bx + bw - (int)strlen(reg) * 6 - 8, by + 5, reg, 0xFF9AD8F4u, false);
 
     /* 64x48 ROM Biome Grid */
     for (uint8_t ay = 0; ay < HEARTH_ATLAS_H; ay++) {
@@ -3614,6 +3622,15 @@ static void render_world_atlas_overlay(const HearthState *st) {
         fill_rect_px(lx, ly, scale, scale, lm->enterable ? 0xFFFFF1A8u : 0xFFE8A048u);
     }
 
+    /* Designer Mode Selected Continent Warp Reticle */
+    if (show_designer) {
+        uint8_t cid = (st->atlas_cursor < REGION_COUNT) ? st->atlas_cursor : 0u;
+        int wx = mx0 + ((int)(WARP_RX[cid] / 4u)) * scale;
+        int wy = my0 + ((int)(WARP_RY[cid] / 4u)) * scale;
+        uint32_t rc = ((st->frame_count >> 3) & 1u) ? 0xFFFFF1A8u : 0xFF66E2FFu;
+        draw_rect_outline(wx - 3, wy - 3, scale + 6, scale + 6, rc);
+    }
+
     /* Blinking Live Hero Marker */
     int htx = ((FROM_FP(st->hero_fx) / HEARTH_TILE_SIZE) % HEARTH_GLOBE_W + HEARTH_GLOBE_W) % HEARTH_GLOBE_W;
     int hty = ((FROM_FP(st->hero_fy) / HEARTH_TILE_SIZE) % HEARTH_GLOBE_H + HEARTH_GLOBE_H) % HEARTH_GLOBE_H;
@@ -3623,10 +3640,18 @@ static void render_world_atlas_overlay(const HearthState *st) {
     fill_rect_px(px - 1, py - 1, scale + 2, scale + 2, 0xFF14101Cu);
     fill_rect_px(px, py, scale, scale, hc);
 
-    char foot[64];
+    char foot[72];
     const char *vname = (st->active_vehicle < 6u) ? VEH_LABELS[st->active_vehicle] : "ON FOOT";
-    snprintf(foot, sizeof(foot), "TRAVEL: %s   [M / TAB] CLOSE", vname);
-    draw_text_centered(w / 2, by + bh - 14, foot, 0xFFD8D0C0u, false);
+    if (show_designer) {
+        uint8_t cid = (st->atlas_cursor < REGION_COUNT) ? st->atlas_cursor : 0u;
+        snprintf(foot, sizeof(foot), "WARP: < %s >  [SPACE] GO", HEARTH_REGION_NAMES[cid]);
+        draw_text_centered(w / 2, by + bh - 23, foot, 0xFFFFF1A8u, false);
+        snprintf(foot, sizeof(foot), "VESSEL: %s [UP/DN]  [M/ESC] CLOSE", vname);
+        draw_text_centered(w / 2, by + bh - 12, foot, 0xFF9AD8F4u, false);
+    } else {
+        snprintf(foot, sizeof(foot), "TRAVEL: %s   [M / ESC / B] CLOSE", vname);
+        draw_text_centered(w / 2, by + bh - 14, foot, 0xFFD8D0C0u, false);
+    }
 }
 
 static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {

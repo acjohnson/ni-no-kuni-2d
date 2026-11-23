@@ -1439,6 +1439,7 @@ void hearth_start_sandbox(HearthState *st) {
 void hearth_toggle_atlas(HearthState *st) {
     if (st->mode != MODE_EXPLORE || st->dialogue.active || st->warp_pending) return;
     st->atlas_open = !st->atlas_open;
+    if (st->atlas_open) st->atlas_cursor = st->world_region_id;
     push_sfx(st, SFX_CURSOR);
     build_ppu_packet(st);
 }
@@ -5102,13 +5103,29 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
             if (HS.dialogue.active) {
                 step_dialogue(st, just_pressed);
             } else if (HS.atlas_open) {
-                if (just_pressed & (PAD_SELECT | PAD_B | PAD_START)) {
+                if (just_pressed & (PAD_SELECT | PAD_B | PAD_START | PAD_X)) {
                     HS.atlas_open = false;
                     push_sfx(st, SFX_CANCEL);
                 }
+#if HEARTH_DESIGNER_MODE
+                else if (HS.designer_sandbox) {
+                    if (just_pressed & PAD_LEFT) {
+                        HS.atlas_cursor = (uint8_t)((HS.atlas_cursor + REGION_COUNT - 1u) % REGION_COUNT);
+                        push_sfx(st, SFX_CURSOR);
+                    } else if (just_pressed & PAD_RIGHT) {
+                        HS.atlas_cursor = (uint8_t)((HS.atlas_cursor + 1u) % REGION_COUNT);
+                        push_sfx(st, SFX_CURSOR);
+                    } else if (just_pressed & PAD_A) {
+                        hearth_designer_warp_region(st, HS.atlas_cursor);
+                    } else if ((just_pressed & (PAD_UP | PAD_DOWN | PAD_Y | PAD_L | PAD_R)) && HS.is_world_map) {
+                        hearth_designer_cycle_vehicle(st);
+                    }
+                }
+#endif
             } else {
-                if (just_pressed & PAD_SELECT) {
+                if (just_pressed & (PAD_SELECT | PAD_START | PAD_X)) {
                     HS.atlas_open = true;
+                    HS.atlas_cursor = HS.world_region_id;
                     push_sfx(st, SFX_CURSOR);
                     break;
                 }

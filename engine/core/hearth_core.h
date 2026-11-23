@@ -35,6 +35,7 @@ typedef struct {
     uint8_t      active_vehicle;  /* VEH_FOOT..VEH_SPACESHIP */
     uint8_t      vehicle_unlocked_mask; /* Bitmask of story-unlocked travel tiers */
     bool         atlas_open;      /* Toggleable World Atlas minimap overlay */
+    uint8_t      atlas_cursor;    /* Selected continent index (0..6) for Designer Atlas warp */
     bool         deep_sea_hint_shown;
     bool         designer_sandbox;/* True when launched via Explore Evertale (Designer) */
     uint8_t      planks_found_mask; /* bits 0..2: 3 Sun-Cedar Driftwood Planks at Timber Pier */

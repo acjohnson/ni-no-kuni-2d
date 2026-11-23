@@ -1366,6 +1366,7 @@ static void append_int(char *dst, u16 *pos, u16 cap, s16 val) {
 static u8  g_win_layout = 255;
 static u16 g_hud_tick = 0;
 static u8  g_last_title_cursor = 255;
+static u16 g_last_atlas_sig = 0xFFFFu;
 
 static void draw_genesis_title_cursor(void) {
 #if HEARTH_DESIGNER_MODE
@@ -1391,10 +1392,37 @@ static void draw_genesis_title_cursor(void) {
     g_last_title_cursor = g_hearth.title_cursor;
 }
 
-static void draw_genesis_atlas_window(void) {
+static void draw_genesis_atlas_footer(void) {
     static const char *VEH_LBL[6] = { "FOOT", "RAFT", "SHIP", "BALLOON", "AIRSHIP", "STARSHIP" };
     char line[40];
     u16 pos;
+
+    VDP_fillTileMapRect(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FILL), 2, 21, 36, 5);
+#if HEARTH_DESIGNER_MODE
+    if (g_hearth.designer_sandbox) {
+        pos = 0;
+        append_str(line, &pos, sizeof(line), "< ");
+        append_str(line, &pos, sizeof(line), HEARTH_REGION_NAMES[g_hearth.atlas_cursor % REGION_COUNT]);
+        append_str(line, &pos, sizeof(line), " >  ");
+        append_str(line, &pos, sizeof(line), VEH_LBL[g_hearth.active_vehicle < 6u ? g_hearth.active_vehicle : 0u]);
+        win_text_n(3, 21, PAL3, line, 34u);
+        win_text(3, 23, PAL2, "L/R:REGION  A:WARP  U/D:VESSEL");
+        win_text(3, 25, PAL3, "START / B : CLOSE ATLAS");
+    } else
+#endif
+    {
+        pos = 0;
+        append_str(line, &pos, sizeof(line), HEARTH_REGION_NAMES[g_hearth.world_region_id % REGION_COUNT]);
+        append_str(line, &pos, sizeof(line), " - ");
+        append_str(line, &pos, sizeof(line), VEH_LBL[g_hearth.active_vehicle < 6u ? g_hearth.active_vehicle : 0u]);
+        win_text_n(3, 21, PAL3, line, 34u);
+        win_text(3, 23, PAL2, "@:ROWAN  ::RAFT CHANNEL  =:SAND");
+        win_text(3, 25, PAL3, "START / B : CLOSE ATLAS");
+    }
+    g_last_atlas_sig = (u16)(((u16)g_hearth.atlas_cursor << 8) | g_hearth.active_vehicle);
+}
+
+static void draw_genesis_atlas_window(void) {
     u16 htx = (u16)((u16)(FP_PX(g_hearth.hero_fx) >> 4) & 255u);
     s16 hty_s = (s16)(FP_PX(g_hearth.hero_fy) >> 4);
     while (hty_s < 0) hty_s = (s16)(hty_s + HEARTH_GLOBE_H);
@@ -1422,7 +1450,7 @@ static void draw_genesis_atlas_window(void) {
                 u8 cell = hearth_globe_atlas_cell(ax, ay);
                 if (cell == 0u) ch = '.';                       /* Deep Ocean */
                 else if (cell == 1u) { ch = ':'; pal = PAL3; }  /* Shallows (Raft) */
-                else if (cell == 2u) { ch = '~'; pal = PAL3; }  /* Coral Shoals */
+                else if (cell == 2u) { ch = ';'; pal = PAL3; }  /* Coral Shoals */
                 else if (cell == 3u) ch = 'G';                  /* Heartland */
                 else if (cell == 4u) { ch = '='; pal = PAL3; }  /* Sands of Babana */
                 else if (cell == 5u) { ch = 'P'; pal = PAL3; }  /* Suncrest Paradise */
@@ -1435,13 +1463,7 @@ static void draw_genesis_atlas_window(void) {
         }
     }
 
-    pos = 0;
-    append_str(line, &pos, sizeof(line), HEARTH_REGION_NAMES[g_hearth.world_region_id % REGION_COUNT]);
-    append_str(line, &pos, sizeof(line), " - ");
-    append_str(line, &pos, sizeof(line), VEH_LBL[g_hearth.active_vehicle < 6u ? g_hearth.active_vehicle : 0u]);
-    win_text_n(3, 21, PAL3, line, 34u);
-    win_text(3, 23, PAL2, "@:ROWAN  ::RAFT CHANNEL  =:SAND");
-    win_text(3, 25, PAL3, "MODE / B : CLOSE ATLAS");
+    draw_genesis_atlas_footer();
 }
 
 static void update_window_ui(const HearthPpuPacket *ppu) {
@@ -1458,6 +1480,7 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
     if (want_layout != g_win_layout) {
         g_win_layout = want_layout;
         g_last_title_cursor = 255;
+        g_last_atlas_sig = 0xFFFFu;
         if (want_layout == 7) {
             draw_genesis_atlas_window();
             return;
@@ -1469,7 +1492,7 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
             win_text(8,  6,  PAL2, "16-BIT JRPG CORE (GENESIS)");
             win_text(5,  9,  PAL2, "DPAD  : MOVE    B : DASH");
             win_text(5,  11, PAL2, "A / C : ACT / TIMED HIT / PARRY");
-            win_text(5,  13, PAL2, "X / Z : SWAP FAMILIAR IN BATTLE");
+            win_text(5,  13, PAL2, "START : WORLD ATLAS  X/Z: SWAP");
             draw_genesis_title_cursor();
             win_text(7,  23, PAL3, "DPAD:PICK  START OR A:BEGIN");
         } else if (want_layout == 0) {
@@ -1484,6 +1507,10 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
     }
 
     if (want_layout == 7) {
+        u16 asig = (u16)(((u16)g_hearth.atlas_cursor << 8) | g_hearth.active_vehicle);
+        if (asig != g_last_atlas_sig) {
+            draw_genesis_atlas_footer();
+        }
         return;
     }
     if (want_layout == 1) {
