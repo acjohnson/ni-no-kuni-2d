@@ -1395,8 +1395,12 @@ static void draw_genesis_atlas_window(void) {
     static const char *VEH_LBL[6] = { "FOOT", "RAFT", "SHIP", "BALLOON", "AIRSHIP", "STARSHIP" };
     char line[40];
     u16 pos;
-    u8 hx = (u8)((g_hearth.ppu.hero_tx * 32u) >> 8);
-    u8 hy = (u8)((g_hearth.ppu.hero_ty * 16u) / HEARTH_GLOBE_H);
+    u16 htx = (u16)((u16)(FP_PX(g_hearth.hero_fx) >> 4) & 255u);
+    s16 hty_s = (s16)(FP_PX(g_hearth.hero_fy) >> 4);
+    while (hty_s < 0) hty_s = (s16)(hty_s + HEARTH_GLOBE_H);
+    while (hty_s >= HEARTH_GLOBE_H) hty_s = (s16)(hty_s - HEARTH_GLOBE_H);
+    u8 hx = (u8)((htx * 32u) >> 8);
+    u8 hy = (u8)(((u16)hty_s * 16u) / HEARTH_GLOBE_H);
     if (hx >= 32u) hx = 31u;
     if (hy >= 16u) hy = 15u;
 

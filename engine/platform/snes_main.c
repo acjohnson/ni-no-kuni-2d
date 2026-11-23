@@ -2177,15 +2177,20 @@ static void draw_fishing_ui(void) {
 
 static void draw_atlas_ui(void) {
     static const char *VEH_LBL[6] = { "FOOT", "RAFT", "SHIP", "BALLOON", "AIRSHIP", "STARSHIP" };
-    u16 rx, ry, pal, pos;
+    u16 rx, ry, pal, pos, htx;
+    s16 hty_s;
     u8 ax, ay, cell, hx, hy;
     char ch;
 
     bg0_draw_box(0u, 0u, 32u, 27u);
     bg0_text(5u, 1u, PAL_UI_GOLD, "EVERTALE WORLD ATLAS");
 
-    hx = (u8)((g_hearth.ppu.hero_tx * 28u) >> 8);
-    hy = (u8)(g_hearth.ppu.hero_ty / 12u);
+    htx = (u16)((u16)(FP_PX(g_hearth.hero_fx) >> 4) & 255u);
+    hty_s = (s16)(FP_PX(g_hearth.hero_fy) >> 4);
+    while (hty_s < 0) hty_s = (s16)(hty_s + HEARTH_GLOBE_H);
+    while (hty_s >= HEARTH_GLOBE_H) hty_s = (s16)(hty_s - HEARTH_GLOBE_H);
+    hx = (u8)((htx * 28u) >> 8);
+    hy = (u8)((u16)hty_s / 12u);
     if (hx >= 28u) hx = 27u;
     if (hy >= 16u) hy = 15u;
 
@@ -2233,7 +2238,8 @@ static u16 compute_hud_sig(u8 want, const HearthPpuPacket *ppu) {
     u16 sig = (u16)(((u16)g_hearth.mode << 4) | (u16)want);
     (void)ppu;
     if (want == 7u) {
-        return (u16)(sig ^ ((u16)g_hearth.ppu.hero_tx << 4) ^ (u16)g_hearth.ppu.hero_ty ^
+        return (u16)(sig ^ ((u16)(FP_PX(g_hearth.hero_fx) >> 4) << 4) ^
+                     (u16)(FP_PX(g_hearth.hero_fy) >> 4) ^
                      ((u16)g_hearth.active_vehicle << 12));
     }
     if (want == 0u) {
