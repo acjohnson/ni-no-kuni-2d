@@ -1495,7 +1495,7 @@ export class SoftwarePpuRenderer {
           ? 24
           : spr.spriteId === 'hollow_oak'
             ? 20
-            : spr.spriteId === 'pet_milo' || spr.spriteId === 'bobber'
+            : spr.spriteId === 'pip' || spr.spriteId === 'pet_milo' || spr.spriteId === 'bobber'
               ? 8
               : 12;
       const shadowY = spr.spriteId === 'pip' ? spr.sortY : spr.y;
@@ -1506,7 +1506,7 @@ export class SoftwarePpuRenderer {
       ctx.save();
       ctx.fillStyle = 'rgba(255, 224, 128, 0.22)';
       ctx.beginPath();
-      ctx.ellipse(spr.x, spr.y - 5, 9, 8, 0, 0, Math.PI * 2);
+      ctx.ellipse(spr.x, spr.y - 4, 7, 6, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }

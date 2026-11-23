@@ -15,6 +15,7 @@
 #include <genesis.h>
 #include "hearth_core.h"
 #include "cinema_cg_rom.h"
+#include "hearth_hero24.h"
 
 /* Placed statically in Sega Genesis 64KB 68000 Work RAM (zero malloc!) */
 static HearthState g_hearth;
@@ -27,15 +28,17 @@ static HearthState g_hearth;
  *   Opaque 5x7 ASCII Font (64 glyphs):                   380..443  (64 tiles)
  *   Full-Color 24x16 Pixel-Art World Atlas:              444..827  (384 tiles)
  *   Cinema CG (<= 480 lossless tiles) / Shared Vista:    828..1307 (480 tiles)
- *   Headroom below TILE_FONT_INDEX (1440):               132 tiles free!
+ *   Tall 16x24 Sprites (Rowan + 13 Adult NPCs x 6):     1308..1391 (84 tiles)
+ *   Headroom below TILE_FONT_INDEX (1440):               48 tiles free!
  * ============================================================================ */
-#define VRAM_BG_BASE    ((u16)(TILE_USER_INDEX))
-#define VRAM_UI_BASE    ((u16)(VRAM_BG_BASE + 96u))
-#define VRAM_SPR_BASE   ((u16)(VRAM_UI_BASE + 24u))
-#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 244u))
-#define VRAM_ATLAS_BASE ((u16)(VRAM_FONT_BASE + 64u))
-#define VRAM_CG_BASE    ((u16)(VRAM_ATLAS_BASE + 384u))
-#define VRAM_VISTA_BASE VRAM_CG_BASE
+#define VRAM_BG_BASE       ((u16)(TILE_USER_INDEX))
+#define VRAM_UI_BASE       ((u16)(VRAM_BG_BASE + 96u))
+#define VRAM_SPR_BASE      ((u16)(VRAM_UI_BASE + 24u))
+#define VRAM_FONT_BASE     ((u16)(VRAM_SPR_BASE + 244u))
+#define VRAM_ATLAS_BASE    ((u16)(VRAM_FONT_BASE + 64u))
+#define VRAM_CG_BASE       ((u16)(VRAM_ATLAS_BASE + 384u))
+#define VRAM_VISTA_BASE    VRAM_CG_BASE
+#define VRAM_TALL_SPR_BASE ((u16)(VRAM_CG_BASE + 480u))
 
 #define GEN_ATLAS_TW    24u
 #define GEN_ATLAS_TH    16u
@@ -292,6 +295,48 @@ static void upload_pix16_sprite_to_vram(u16 base_tile) {
     u32 tiles[32];
     pack_pix16_sprite_to_buf(tiles);
     VDP_loadTileData(tiles, base_tile, 4, CPU);
+}
+
+/* Genesis 2x3 (16x24) tall hardware sprites are COLUMN-MAJOR:
+ * Tile 0=(0,0), Tile 1=(0,8), Tile 2=(0,16), Tile 3=(8,0), Tile 4=(8,8), Tile 5=(8,16) */
+static u8  g_pix24[384];
+static u32 g_rowan_tiles[48];
+static u8  g_last_rowan_key = 0xFFu;
+
+static void pack_pix16x24_sprite_to_buf(const u8 *src384, u32 dst[48]) {
+    static const u8 ox[6] = { 0, 0, 0, 8, 8, 8 };
+    static const u8 oy[6] = { 0, 8, 16, 0, 8, 16 };
+    for (u16 t = 0; t < 6u; t++) {
+        for (u16 y = 0; y < 8u; y++) {
+            u32 row = 0;
+            for (u16 x = 0; x < 8u; x++) {
+                u8 c = src384[(u16)(oy[t] + y) * 16u + (u16)(ox[t] + x)] & 0x0Fu;
+                row = (row << 4) | (u32)c;
+            }
+            dst[t * 8u + y] = row;
+        }
+    }
+}
+
+/* Map tall 16x24 character sprite_ids to VRAM_TALL_SPR_BASE slots 0..13 (0xFF = standard 16x16) */
+static u8 genesis_tall_slot(u8 sprite_id) {
+    switch (sprite_id) {
+        case SPR_HERO:            return 0u;
+        case SPR_NPC_MARA:        return 1u;
+        case SPR_NPC_ELDER:       return 2u;
+        case SPR_NPC_CLARA:       return 3u;
+        case SPR_NPC_GUARD:       return 4u;
+        case SPR_NPC_BARNABY:     return 5u;
+        case SPR_NPC_MAPLE:       return 6u;
+        case SPR_NPC_JASPER:      return 7u;
+        case SPR_NPC_TESSA:       return 8u;
+        case SPR_NPC_CORIN:       return 9u;
+        case SPR_NPC_SENTINEL:    return 10u;
+        case SPR_NPC_TOWNSFOLK:   return 11u;
+        case SPR_NPC_SHADOW_GRAN: return 12u;
+        case SPR_NPC_SHIPWRIGHT:  return 13u;
+        default:                  return 0xFFu;
+    }
 }
 
 /* Persistent RAM buffers for tear-free VBlank DMA_QUEUE environmental animations */
@@ -903,18 +948,8 @@ static void bake_all_sprites(void) {
     p16_rect(5, 14, 2, 2, 4); p16_rect(9, 14, 2, 2, 4);    /* Boots */
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_HERO * 4);
 
-    /* 1: SPR_PIP (Unified Wingless Garden-Gnome Pip — Pose 0: Grounded Idle - PAL1) */
-    p16_clear();
-    p16_rect(7, 0, 2, 2, 7); p16_rect(6, 1, 4, 2, 7); p16_rect(5, 2, 6, 2, 6); /* Pointy moss cap */
-    g_pix16[1*16+10] = 7; g_pix16[2*16+11] = 7; g_pix16[2*16+10] = 6;          /* Sprouting leaf */
-    p16_rect(4, 3, 8, 2, 7); p16_rect(4, 4, 8, 1, 6);                          /* Cap brim */
-    p16_rect(5, 5, 6, 1, 5); p16_rect(4, 6, 8, 3, 2);                          /* Hair tuft & face */
-    g_pix16[6*16+3] = 2; g_pix16[6*16+12] = 2;                                 /* Elfin ears */
-    g_pix16[6*16+6] = 1; g_pix16[6*16+9] = 1;                                  /* Warm dark eyes */
-    g_pix16[7*16+5] = 3; g_pix16[7*16+10] = 3;                                 /* Rosy cheeks */
-    p16_rect(3, 9, 10, 2, 9); p16_rect(3, 10, 10, 1, 8); g_pix16[9*16+7] = 10; /* Terracotta capelet */
-    p16_rect(4, 11, 8, 3, 10); p16_rect(6, 11, 4, 3, 11);                      /* Belly & glowing lantern */
-    p16_rect(5, 14, 2, 2, 4); p16_rect(9, 14, 2, 2, 4);                        /* Grounded boots */
+    /* 1: SPR_PIP (Petite ~11x13 Wingless Garden-Gnome Pip — Pose 0: Grounded Idle - PAL1) */
+    hearth_bake_pip_16x16(g_pix16, 0u);
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_PIP * 4);
 
     /* 2: SPR_FAMILIAR_BRAMBLE (Acorn Knight - PAL1) */
@@ -1379,29 +1414,34 @@ static void bake_all_sprites(void) {
     g_pix16[7*16+10] = 12;     g_pix16[8*16+10] = 12;                       /* Gill arc */
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_FISH_ICON_SLOT * 4);
 
-    /* 59: SPR_PIP_HOP_SLOT (Wingless Garden-Gnome Pip — Pose 1: Mid-Air Stretched Hop - PAL1) */
-    p16_clear();
-    p16_rect(7, 0, 2, 2, 7); p16_rect(6, 1, 4, 2, 7); p16_rect(5, 2, 6, 2, 6);
-    g_pix16[0*16+10] = 7; g_pix16[1*16+11] = 7; g_pix16[2*16+10] = 6;
-    p16_rect(5, 3, 6, 2, 7); p16_rect(5, 4, 6, 1, 5);
-    p16_rect(4, 5, 8, 3, 2); g_pix16[5*16+6] = 1; g_pix16[5*16+9] = 1;
-    g_pix16[6*16+5] = 3; g_pix16[6*16+10] = 3;
-    p16_rect(2, 8, 12, 2, 9); p16_rect(3, 9, 10, 1, 8); g_pix16[8*16+7] = 10; /* Flared capelet */
-    p16_rect(5, 10, 6, 4, 10); p16_rect(6, 10, 4, 3, 11);                     /* Stretched belly lantern */
-    p16_rect(4, 14, 2, 2, 4); p16_rect(10, 14, 2, 2, 4);                      /* Dangling feet */
+    /* 59 & 60: Petite ~11x13 Wingless Garden-Gnome Pip Hop & Landing Squash (PAL1) */
+    hearth_bake_pip_16x16(g_pix16, 1u);
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_PIP_HOP_SLOT * 4);
-
-    /* 60: SPR_PIP_SQUASH_SLOT (Wingless Garden-Gnome Pip — Pose 2: Wide Landing Squash - PAL1) */
-    p16_clear();
-    p16_rect(6, 2, 4, 2, 7); p16_rect(5, 3, 6, 2, 7); p16_rect(4, 4, 8, 2, 6);
-    g_pix16[3*16+11] = 7; g_pix16[4*16+12] = 7; g_pix16[4*16+11] = 6;
-    p16_rect(3, 5, 10, 1, 7); p16_rect(4, 6, 8, 1, 5);
-    p16_rect(3, 7, 10, 3, 2); g_pix16[8*16+5] = 1; g_pix16[8*16+10] = 1;
-    g_pix16[9*16+4] = 3; g_pix16[9*16+11] = 3;
-    p16_rect(2, 10, 12, 2, 9); p16_rect(2, 11, 12, 1, 8); g_pix16[10*16+7] = 10;
-    p16_rect(3, 12, 10, 2, 10); p16_rect(5, 12, 6, 2, 11);                    /* Wide squashed lantern */
-    p16_rect(3, 14, 3, 2, 4); p16_rect(10, 14, 3, 2, 4);                      /* Wide planted boots */
+    hearth_bake_pip_16x16(g_pix16, 2u);
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_PIP_SQUASH_SLOT * 4);
+
+    /* Tall 16x24 Hardware Sprites (SPRITE_SIZE(2,3), 6 column-major tiles each):
+     * Slot 0 = Rowan (dynamically updated via VBlank DMA_QUEUE on pose change),
+     * Slots 1..13 = Grandma Mara + 12 key adult NPCs! */
+    {
+        static const u8 TALL_NPCS[13] = {
+            SPR_NPC_MARA, SPR_NPC_ELDER, SPR_NPC_CLARA, SPR_NPC_GUARD,
+            SPR_NPC_BARNABY, SPR_NPC_MAPLE, SPR_NPC_JASPER, SPR_NPC_TESSA,
+            SPR_NPC_CORIN, SPR_NPC_SENTINEL, SPR_NPC_TOWNSFOLK,
+            SPR_NPC_SHADOW_GRAN, SPR_NPC_SHIPWRIGHT
+        };
+        u32 tmp_tiles[48];
+        hearth_bake_rowan_16x24(g_pix24, DIR_DOWN, HERO_POSE_IDLE);
+        pack_pix16x24_sprite_to_buf(g_pix24, g_rowan_tiles);
+        VDP_loadTileData(g_rowan_tiles, VRAM_TALL_SPR_BASE, 6, CPU);
+        g_last_rowan_key = 0u;
+
+        for (u8 i = 0; i < 13u; i++) {
+            hearth_bake_npc_16x24(g_pix24, TALL_NPCS[i], 0u);
+            pack_pix16x24_sprite_to_buf(g_pix24, tmp_tiles);
+            VDP_loadTileData(tmp_tiles, (u16)(VRAM_TALL_SPR_BASE + (u16)(i + 1u) * 6u), 6, CPU);
+        }
+    }
 }
 
 /* Pre-bake 4 animated frames for meadow grass, flowers, water, ford, tall grass,
@@ -2178,6 +2218,7 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
             win_text(5,  13, PAL2, "START : WORLD ATLAS  X/Z: SWAP");
             draw_genesis_title_cursor();
             win_text(7,  23, PAL3, "DPAD:PICK  START OR A:BEGIN");
+            win_text(30, 24, PAL2, HEARTH_VERSION_STR);
         } else if (want_layout == 0) {
             VDP_setWindowOnTop(2);
             VDP_fillTileMapRect(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FILL), 0, 0, 40, 2);
@@ -2578,45 +2619,55 @@ static void render_sprites(const HearthPpuPacket *ppu) {
 
     for (u8 i = 0; i < ppu->oam_count && count < 58u; i++) {
         const HearthOamSprite *o = &ppu->oam[i];
+        u8 tslot = genesis_tall_slot(o->sprite_id);
         s16 sx = (s16)(o->x - 8 + ppu->shake_x);
-        s16 sy = (s16)(o->y - ((o->layer == 2) ? 8 : 16) + ppu->shake_y);
+        s16 sy;
         u16 pal, tile;
         u8 flip_x;
 
-        if (sx < -16 || sx >= 320 || sy < -16 || sy >= 224) continue;
-        /* Keep sprites behind bottom dialogue/battle/intro/shop/fishing window */
-        if (g_win_layout >= 2u && sy >= 148) continue;
-        if (g_win_layout == 0u && sy < 8) continue;
-
         pal = sprite_palette(o->sprite_id);
         flip_x = (o->flags & OAM_FLAG_FLIP_X) ? 1u : 0u;
-        if (o->sprite_id == SPR_HERO) {
-            u8 step = (u8)(o->frame & 1u);
-            u8 slot = SPR_HERO;
-            if (o->dir == DIR_DOWN) {
-                slot = step ? SPR_HERO_DOWN_1 : SPR_HERO;
-                flip_x = 0u;
-            } else if (o->dir == DIR_UP) {
-                slot = step ? SPR_HERO_UP_1 : SPR_HERO_UP_0;
-                flip_x = 0u;
-            } else if (o->dir == DIR_LEFT) {
-                slot = step ? SPR_HERO_SIDE_1 : SPR_HERO_SIDE_0;
-                flip_x = 1u;
-            } else {
-                slot = step ? SPR_HERO_SIDE_1 : SPR_HERO_SIDE_0;
+
+        if (tslot != 0xFFu) {
+            /* Tall 16x24 JRPG character sprite (SPRITE_SIZE(2, 3), feet anchored at o->y) */
+            sy = (s16)(o->y - 24 + ppu->shake_y);
+            if (sx < -16 || sx >= 320 || sy < -24 || sy >= 224) continue;
+            if (g_win_layout >= 2u && sy >= 140) continue;
+            if (g_win_layout == 0u && sy < 0) continue;
+
+            if (o->sprite_id == SPR_HERO) {
+                u8 pose = (o->frame <= HERO_POSE_BTL_VICTORY) ? o->frame : hearth_compute_hero_pose(&g_hearth);
+                u8 rkey = (u8)(((o->dir & 3u) << 4) | (pose & 0x0Fu));
+                if (rkey != g_last_rowan_key) {
+                    g_last_rowan_key = rkey;
+                    hearth_bake_rowan_16x24(g_pix24, o->dir, pose);
+                    pack_pix16x24_sprite_to_buf(g_pix24, g_rowan_tiles);
+                    VDP_loadTileData(g_rowan_tiles, VRAM_TALL_SPR_BASE, 6, DMA_QUEUE);
+                }
                 flip_x = 0u;
             }
-            tile = (u16)(VRAM_SPR_BASE + (u16)slot * 4u);
-        } else if (o->sprite_id == SPR_PIP) {
-            u8 pslot = (o->frame == 1u) ? SPR_PIP_HOP_SLOT
-                     : ((o->frame == 2u) ? SPR_PIP_SQUASH_SLOT : SPR_PIP);
-            tile = (u16)(VRAM_SPR_BASE + (u16)pslot * 4u);
+            tile = (u16)(VRAM_TALL_SPR_BASE + (u16)tslot * 6u);
+            VDP_setSpriteFull(count, sx, sy, SPRITE_SIZE(2, 3),
+                TILE_ATTR_FULL(pal, 0, 0, flip_x, tile), (u8)(count + 1u));
+            count++;
         } else {
-            tile = (u16)(VRAM_SPR_BASE + (u16)o->sprite_id * 4u);
+            sy = (s16)(o->y - ((o->layer == 2) ? 8 : 16) + ppu->shake_y);
+            if (sx < -16 || sx >= 320 || sy < -16 || sy >= 224) continue;
+            /* Keep sprites behind bottom dialogue/battle/intro/shop/fishing window */
+            if (g_win_layout >= 2u && sy >= 148) continue;
+            if (g_win_layout == 0u && sy < 8) continue;
+
+            if (o->sprite_id == SPR_PIP) {
+                u8 pslot = (o->frame == 1u) ? SPR_PIP_HOP_SLOT
+                         : ((o->frame == 2u) ? SPR_PIP_SQUASH_SLOT : SPR_PIP);
+                tile = (u16)(VRAM_SPR_BASE + (u16)pslot * 4u);
+            } else {
+                tile = (u16)(VRAM_SPR_BASE + (u16)o->sprite_id * 4u);
+            }
+            VDP_setSpriteFull(count, sx, sy, SPRITE_SIZE(2, 2),
+                TILE_ATTR_FULL(pal, 0, 0, flip_x, tile), (u8)(count + 1u));
+            count++;
         }
-        VDP_setSpriteFull(count, sx, sy, SPRITE_SIZE(2, 2),
-            TILE_ATTR_FULL(pal, 0, 0, flip_x, tile), (u8)(count + 1u));
-        count++;
     }
 
     /* Battle Choreography VFX Burst Sprite (Solar Meteor / Star Bolt / Staff Arc / Guard) */

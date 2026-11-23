@@ -199,5 +199,6 @@ void hearth_start_fishing(HearthState *st);
 void hearth_respawn_enemies(HearthState *st);
 void hearth_heal_party(HearthState *st);
 void hearth_toggle_ppu_mode(HearthState *st);
+uint8_t hearth_compute_hero_pose(const HearthState *st);
 
 #endif /* HEARTH_CORE_H */

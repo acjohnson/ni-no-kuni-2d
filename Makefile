@@ -23,6 +23,11 @@ APP_NAME        := hearth
 BUILD_DIR       := build
 TOOLCHAIN_DIR   := .toolchains
 
+# Single source-of-truth build version (VERSION file + optional short git commit hash)
+HEARTH_VERSION  := $(strip $(shell cat VERSION 2>/dev/null || echo 0.6.0))
+GIT_SHA         := $(strip $(shell git rev-parse --short=7 HEAD 2>/dev/null || true))
+BUILD_VER_FULL  := v$(HEARTH_VERSION)$(if $(GIT_SHA), ($(GIT_SHA)),)
+
 CORE_DIR        := engine/core
 PLAT_DIR        := engine/platform
 CORE_SRCS       := $(CORE_DIR)/hearth_data.c $(CORE_DIR)/hearth_core.c
@@ -32,6 +37,7 @@ CORE_HDRS       := $(CORE_DIR)/hearth_types.h $(CORE_DIR)/hearth_prng.h \
 SDL2_SRC        := $(PLAT_DIR)/sdl2_main.c
 SDL2_CG_HDR     := $(PLAT_DIR)/cinema_cg_sdl2.h
 ROM_CG_HDR      := $(PLAT_DIR)/cinema_cg_rom.h
+HERO24_HDR      := $(PLAT_DIR)/hearth_hero24.h
 SNES_CG_ASM     := $(PLAT_DIR)/cinema_cg_snes.asm
 TEST_SRC        := $(PLAT_DIR)/headless_test.c
 GENESIS_SRC     := $(PLAT_DIR)/genesis_main.c
@@ -44,7 +50,15 @@ ZIG_CACHE       := $(TOOLCHAIN_DIR)/zig
 
 # Optional compile-time Designer / Explore Evertale mode (1=enabled for dev, 0=release story-only)
 DESIGNER_MODE   ?= 1
-CFLAGS_DESIGNER := -DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE)
+BUILD_MODE_LBL  := $(if $(filter 1,$(DESIGNER_MODE)),DESIGNER,RELEASE)
+CFLAGS_VERSION  := -DHEARTH_VERSION_STR=\"v$(HEARTH_VERSION)\"
+CFLAGS_DESIGNER := -DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE) $(CFLAGS_VERSION)
+
+define PRINT_BUILD_BANNER
+	@echo "========================================================================"
+	@echo "  Project Hearth $(BUILD_VER_FULL)  |  Target: $(1)  |  Mode: $(BUILD_MODE_LBL)"
+	@echo "========================================================================"
+endef
 
 # Strict portable compiler flags
 CFLAGS_COMMON   := -std=c99 -O2 -Wall -Wextra -Wshadow -Wconversion -Wno-sign-conversion $(CFLAGS_DESIGNER) -I$(CORE_DIR)
@@ -98,7 +112,8 @@ all: $(HOST_TARGET)
 # ------------------------------------------------------------------------------
 linux: $(BUILD_DIR)/linux/$(APP_NAME)
 
-$(BUILD_DIR)/linux/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_HDR)
+$(BUILD_DIR)/linux/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_HDR) $(HERO24_HDR)
+	$(call PRINT_BUILD_BANNER,linux-sdl2)
 	@if [ -z "$(SDL2_CFLAGS)" ] && [ ! -f /usr/include/SDL2/SDL.h ]; then \
 		echo "ERROR: SDL2 development headers not found."; \
 		echo "On Ubuntu Noble amd64, run: make deps-ubuntu"; \
@@ -109,28 +124,30 @@ $(BUILD_DIR)/linux/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_
 	$(CC) $(CFLAGS_COMMON) $(if $(SDL2_CFLAGS),$(SDL2_CFLAGS),-I/usr/include/SDL2) \
 		$(CORE_SRCS) $(SDL2_SRC) \
 		-o $@ $(if $(SDL2_LIBS),$(SDL2_LIBS),-lSDL2)
-	@echo "Built native Linux binary: $@"
+	@echo "Built native Linux binary: $@ ($(BUILD_VER_FULL))"
 
 # ------------------------------------------------------------------------------
 # 2. NATIVE MACOS (Homebrew SDL2)
 # ------------------------------------------------------------------------------
 macos: $(BUILD_DIR)/macos/$(APP_NAME)
 
-$(BUILD_DIR)/macos/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_HDR)
+$(BUILD_DIR)/macos/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_HDR) $(HERO24_HDR)
+	$(call PRINT_BUILD_BANNER,macos-sdl2)
 	@if [ -z "$(SDL2_CFLAGS)" ]; then \
 		echo "ERROR: SDL2 not found. Install via Homebrew: brew install sdl2 pkg-config"; \
 		exit 1; \
 	fi
 	@mkdir -p $(BUILD_DIR)/macos
 	$(CC) $(CFLAGS_COMMON) $(SDL2_CFLAGS) $(CORE_SRCS) $(SDL2_SRC) -o $@ $(SDL2_LIBS)
-	@echo "Built native macOS binary: $@"
+	@echo "Built native macOS binary: $@ ($(BUILD_VER_FULL))"
 
 # ------------------------------------------------------------------------------
 # 3. WINDOWS x64 CROSS-COMPILE FROM LINUX (MinGW-w64 + auto-fetched SDL2)
 # ------------------------------------------------------------------------------
 windows: $(BUILD_DIR)/windows/$(APP_NAME).exe
 
-$(BUILD_DIR)/windows/$(APP_NAME).exe: $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_HDR)
+$(BUILD_DIR)/windows/$(APP_NAME).exe: $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_HDR) $(HERO24_HDR)
+	$(call PRINT_BUILD_BANNER,windows-x64)
 	@command -v $(MINGW_CC) >/dev/null 2>&1 || { \
 		echo "ERROR: $(MINGW_CC) not found. Install with: sudo apt install -y mingw-w64"; \
 		exit 1; \
@@ -149,12 +166,13 @@ $(BUILD_DIR)/windows/$(APP_NAME).exe: $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SD
 	@if [ -f "$(MINGW_SDL2_DIR)/bin/SDL2.dll" ]; then \
 		cp "$(MINGW_SDL2_DIR)/bin/SDL2.dll" "$(BUILD_DIR)/windows/SDL2.dll"; \
 	fi
-	@echo "Built Windows x64 executable: $@"
+	@echo "Built Windows x64 executable: $@ ($(BUILD_VER_FULL))"
 
 # ------------------------------------------------------------------------------
 # 4. ZERO-DEPENDENCY CORE VERIFICATION SUITE (Checks BOTH strict C89 & C99!)
 # ------------------------------------------------------------------------------
 core-test: $(BUILD_DIR)/test/$(APP_NAME)_core_test
+	$(call PRINT_BUILD_BANNER,core-test)
 	@$(CC) $(CFLAGS_C89) -fsyntax-only $(CORE_SRCS)
 	@echo "[PASS] engine/core compiles cleanly under strict ANSI C89 (SNES 816-tcc safe)"
 	@./$(BUILD_DIR)/test/$(APP_NAME)_core_test
@@ -166,16 +184,17 @@ $(BUILD_DIR)/test/$(APP_NAME)_core_test: $(CORE_SRCS) $(CORE_HDRS) $(TEST_SRC)
 # ------------------------------------------------------------------------------
 # 5. SEGA GENESIS / MEGA DRIVE ROM (Implicit Docker SGDK — Zero Manual Setup!)
 # ------------------------------------------------------------------------------
-genesis-stage: $(CORE_SRCS) $(CORE_HDRS) $(GENESIS_SRC) $(ROM_CG_HDR)
+genesis-stage: $(CORE_SRCS) $(CORE_HDRS) $(GENESIS_SRC) $(ROM_CG_HDR) $(HERO24_HDR)
 	@rm -rf $(BUILD_DIR)/genesis/src $(BUILD_DIR)/genesis/out
 	@mkdir -p $(BUILD_DIR)/genesis/src $(BUILD_DIR)/genesis/res $(BUILD_DIR)/genesis/inc
-	@cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) $(BUILD_DIR)/genesis/src/
+	@cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) $(HERO24_HDR) $(BUILD_DIR)/genesis/src/
 	@cp $(GENESIS_SRC) $(BUILD_DIR)/genesis/src/main.c
 
 genesis: genesis-stage
+	$(call PRINT_BUILD_BANNER,sega-genesis)
 	@if [ -n "$(GDK)" ] && [ -f "$(GDK)/makefile.gen" ]; then \
 		echo "Building Sega Genesis ROM using local SGDK at $(GDK)..."; \
-		GDK="$(GDK)" $(MAKE) -C $(BUILD_DIR)/genesis -f "$(GDK)/makefile.gen" EXTRA_FLAGS="-DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE)"; \
+		GDK="$(GDK)" $(MAKE) -C $(BUILD_DIR)/genesis -f "$(GDK)/makefile.gen" EXTRA_FLAGS="-DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE) $(CFLAGS_VERSION)"; \
 	else \
 		command -v docker >/dev/null 2>&1 || { \
 			echo "ERROR: Docker is required for automatic SGDK builds (or set GDK=/path/to/sgdk)."; \
@@ -184,17 +203,18 @@ genesis: genesis-stage
 		}; \
 		echo "Building Sega Genesis ROM via Docker SGDK ($(SGDK_IMAGE))..."; \
 		docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp \
-			-e EXTRA_FLAGS="-DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE)" \
+			-e EXTRA_FLAGS="-DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE) $(CFLAGS_VERSION)" \
 			-v "$(CURDIR)/$(BUILD_DIR)/genesis:/m68k" \
 			$(SGDK_IMAGE); \
 	fi
 	@cp "$(BUILD_DIR)/genesis/out/rom.bin" "$(BUILD_DIR)/genesis/$(APP_NAME).bin"
-	@echo "Built Sega Genesis ROM: $(BUILD_DIR)/genesis/$(APP_NAME).bin (and out/rom.bin)"
+	@echo "Built Sega Genesis ROM: $(BUILD_DIR)/genesis/$(APP_NAME).bin ($(BUILD_VER_FULL))"
 
 # ------------------------------------------------------------------------------
 # 6. SUPER NINTENDO (SNES) ROM (FastROM + SPC700 Audio + Auto-Fetched PVSnesLib)
 # ------------------------------------------------------------------------------
-snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(SNES_CG_ASM) $(SNES_AUDIO_GEN)
+snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(HERO24_HDR) $(SNES_CG_ASM) $(SNES_AUDIO_GEN)
+	$(call PRINT_BUILD_BANNER,snes-fastrom)
 	@set -e; \
 	PV_ROOT=""; \
 	if [ -n "$(PVSNESLIB_HOME)" ] && [ -f "$(PVSNESLIB_HOME)/devkitsnes/snes_rules" ]; then \
@@ -229,7 +249,7 @@ snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(SNES_CG_ASM) $(SNES_
 	mkdir -p "$(BUILD_DIR)/snes/src" "$(BUILD_DIR)/snes/res"; \
 	$(CC) -std=c99 -O2 $(SNES_AUDIO_GEN) -o "$(BUILD_DIR)/snes/gen_snes_audio"; \
 	"$(BUILD_DIR)/snes/gen_snes_audio" "$(BUILD_DIR)/snes/res"; \
-	cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) "$(BUILD_DIR)/snes/src/"; \
+	cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) $(HERO24_HDR) "$(BUILD_DIR)/snes/src/"; \
 	cp $(SNES_SRC) "$(BUILD_DIR)/snes/src/main.c"; \
 	DATA_OBJ="data.obj"; \
 	if grep -qE '^[^#]*(SRC|dir)[^#]*\*\.asm' "$$PV_ROOT/devkitsnes/snes_rules" 2>/dev/null; then \
@@ -249,7 +269,7 @@ snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(SNES_CG_ASM) $(SNES_
 		'AUDIOFILES := res/hearth_sfx.it res/hearth_alderbrook.it res/hearth_wonder.it res/hearth_shadow.it res/hearth_lullaby.it res/hearth_hamlet.it res/hearth_battle.it res/hearth_boss.it' \
 		'export SOUNDBANK := res/soundbank' \
 		'SRC := src' \
-		'CFLAGS += -DHEARTH_TARGET_SNES -DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE) -Isrc -I.' \
+		'CFLAGS += -DHEARTH_TARGET_SNES -DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE) $(CFLAGS_VERSION) -Isrc -I.' \
 		"include $${PV_ROOT}/devkitsnes/snes_rules" \
 		'SMCONVFLAGS := -s -o $$(SOUNDBANK) -V -b 15 -f' \
 		'musics: $$(SOUNDBANK).obj' \
@@ -299,7 +319,7 @@ snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(SNES_CG_ASM) $(SNES_
 	fi; \
 	PVSNESLIB_HOME="$$PV_ROOT" $(MAKE) -C "$(BUILD_DIR)/snes" musics; \
 	PVSNESLIB_HOME="$$PV_ROOT" $(MAKE) -C "$(BUILD_DIR)/snes"; \
-	echo "Built SNES FastROM + SPC700 ROM: $(BUILD_DIR)/snes/hearth.sfc"
+	echo "Built SNES FastROM + SPC700 ROM: $(BUILD_DIR)/snes/hearth.sfc ($(BUILD_VER_FULL))"
 
 # ------------------------------------------------------------------------------
 # 7. FREESTANDING WEBASSEMBLY CORE FOR BROWSER STUDIO PREVIEW
@@ -307,6 +327,7 @@ snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(SNES_CG_ASM) $(SNES_
 wasm: $(WASM_OUT)
 
 $(WASM_OUT): $(CORE_SRCS) $(CORE_HDRS) $(WASM_SRC)
+	$(call PRINT_BUILD_BANNER,wasm32-core)
 	@set -e; \
 	ZIG_BIN=$$(command -v zig 2>/dev/null || true); \
 	if [ -z "$$ZIG_BIN" ]; then \
@@ -338,12 +359,13 @@ root = tf.getmembers()[0].name.split("/")[0]; \
 	fi; \
 	mkdir -p public; \
 	"$$ZIG_BIN" cc -target wasm32-freestanding -O2 -Wall -Wextra -Werror -Wno-sign-conversion \
-		-DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE) \
+		-DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE) $(CFLAGS_VERSION) \
 		-nostdlib -Wl,--no-entry,--strip-all \
 		-I$(CORE_DIR) $(CORE_SRCS) $(WASM_SRC) -o $@; \
-	echo "Built WebAssembly C99 core: $@ ($$(wc -c < $@) bytes)"
+	echo "Built WebAssembly C99 core: $@ ($$(wc -c < $@) bytes, $(BUILD_VER_FULL))"
 
 web: wasm
+	$(call PRINT_BUILD_BANNER,web-bundle)
 	@set -e; \
 	if [ -z "$(DOCKER_WEB)" ] && command -v npm >/dev/null 2>&1; then \
 		if [ ! -d node_modules ]; then \
@@ -371,9 +393,10 @@ web: wasm
 				fi; \
 				/work/node_modules/.bin/vite build'; \
 	fi
-	@echo "Built browser preview bundle: dist/ (includes dist/hearth_core.wasm)"
+	@echo "Built browser preview bundle: dist/ ($(BUILD_VER_FULL))"
 
 web-run: wasm
+	$(call PRINT_BUILD_BANNER,web-run)
 	@set -e; \
 	if [ -z "$(DOCKER_WEB)" ] && command -v npm >/dev/null 2>&1; then \
 		if [ ! -d node_modules ]; then \
@@ -422,9 +445,9 @@ distclean:
 	rm -rf $(BUILD_DIR) dist $(TOOLCHAIN_DIR)
 
 help:
-	@echo "Project Hearth — Native C99 & Multi-Platform Makefile"
+	@echo "Project Hearth $(BUILD_VER_FULL) — Native C99 & Multi-Platform Makefile"
 	@echo ""
-	@echo "Host detected: $(UNAME_S) -> default target: $(HOST_TARGET)"
+	@echo "Host detected: $(UNAME_S) -> default target: $(HOST_TARGET)  |  Mode: $(BUILD_MODE_LBL)"
 	@echo ""
 	@echo "Targets:"
 	@echo "  make              Build native executable for this OS ($(HOST_BIN))"

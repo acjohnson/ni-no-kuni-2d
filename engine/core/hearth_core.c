@@ -5234,6 +5234,41 @@ static uint16_t build_explore_ppu_layer2(
     return cnt;
 }
 
+uint8_t hearth_compute_hero_pose(const HearthState *st) {
+    uint16_t fc16 = (uint16_t)st->frame_count;
+    if (st->mode == MODE_BATTLE || st->mode == MODE_BATTLE_VICTORY || st->mode == MODE_BATTLE_DEFEAT) {
+        const HearthBattleState *b = &st->battle;
+        if (st->mode == MODE_BATTLE_VICTORY || b->phase == BPHASE_VICTORY_POSE) {
+            return (uint8_t)HERO_POSE_BTL_VICTORY;
+        }
+        if (b->hero_flash_frames > 0u || b->phase == BPHASE_DEFEAT_POSE) {
+            return (uint8_t)HERO_POSE_BTL_HURT;
+        }
+        if (b->active_slot == 0u) {
+            if (b->phase == BPHASE_PLAYER_WINDUP || b->phase == BPHASE_PLAYER_LUNGE ||
+                b->phase == BPHASE_PLAYER_IMPACT || b->phase == BPHASE_PLAYER_FOLLOWUP) {
+                if (b->active_action == 1u || b->vfx_kind == BVFX_HEAL_BLOOM ||
+                    b->vfx_kind == BVFX_SOLAR_METEOR || b->vfx_kind == BVFX_STAR_BOLT ||
+                    b->vfx_kind == BVFX_PRISM_NOVA) {
+                    return (uint8_t)HERO_POSE_BTL_CAST;
+                }
+                return (uint8_t)HERO_POSE_BTL_ATTACK;
+            }
+        }
+        return (uint8_t)HERO_POSE_BTL_READY;
+    }
+    if (st->hero_anim_tick == 0u) {
+        if ((fc16 & 0xFFu) >= 248u) return (uint8_t)HERO_POSE_BLINK;
+        return (uint8_t)HERO_POSE_IDLE;
+    }
+    if (st->hero_dashing) {
+        return (((st->hero_anim_tick >> 2) & 1u) != 0u)
+            ? (uint8_t)HERO_POSE_DASH_B
+            : (uint8_t)HERO_POSE_DASH_A;
+    }
+    return (uint8_t)((st->hero_anim_tick >> 3) & 3u);
+}
+
 static void build_explore_ppu_oam(HearthState *st, HearthPpuPacket *p) {
     int16_t cx = HP.cam_x, cy = HP.cam_y;
     int16_t max_sx = (int16_t)(HP.width + 24);
@@ -5256,10 +5291,10 @@ static void build_explore_ppu_oam(HearthState *st, HearthPpuPacket *p) {
             FP_ONE, FP_ONE, AURA_NONE, 1, (int16_t)(hsy - 1), 0);
         cnt++;
     }
-    wf = (HS.hero_anim_tick == 0) ? 0 : (uint8_t)((HS.hero_anim_tick >> 3) & 3u);
+    wf = hearth_compute_hero_pose(st);
     if ((HS.hero_safe_frames == 0 || (HS.hero_safe_frames & 4u) == 0u) && cnt < HEARTH_MAX_OAM) {
         OAM_SET_IDX(p, cnt, hsx, (int16_t)(hsy + raft_bob), SPR_HERO, wf, HS.hero_dir, OAM_FLAG_SHADOW,
-            HS.hero_dashing ? 270 : FP_ONE, HS.hero_dashing ? 244 : FP_ONE,
+            HS.hero_dashing ? 264 : FP_ONE, HS.hero_dashing ? 250 : FP_ONE,
             AURA_NONE, 1, hsy, 0);
         cnt++;
     }
@@ -5310,19 +5345,22 @@ static void build_battle_ppu_oam(HearthState *st, HearthPpuPacket *p) {
     const HearthBattleState *b = &HS.battle;
     uint16_t fc16 = (uint16_t)HS.frame_count;
     uint8_t ei;
-    (void)st;
+    uint8_t hpose = hearth_compute_hero_pose(st);
 
     if (b->active_slot != 0) {
         emit_oam_std(p, b->wizard_back_x, b->wizard_back_y, SPR_HERO,
-            (uint8_t)((fc16 >> 5) & 1u), DIR_RIGHT, OAM_FLAG_SHADOW,
+            (uint8_t)((HS.mode == MODE_BATTLE_VICTORY || b->phase == BPHASE_VICTORY_POSE)
+                ? HERO_POSE_BTL_VICTORY : HERO_POSE_BTL_READY),
+            DIR_RIGHT, OAM_FLAG_SHADOW,
             1, b->wizard_back_y);
     }
 
     if (b->phase != BPHASE_SWAP_ARC) {
         const HearthPartyMember *actor = &HS.party[b->active_slot];
         uint8_t hflags = (uint8_t)(OAM_FLAG_SHADOW | ((b->hero_flash_frames > 0) ? OAM_FLAG_FLASH_WHITE : 0));
+        uint8_t aframe = (actor->sprite_id == SPR_HERO) ? hpose : (uint8_t)((fc16 >> 4) & 1u);
         emit_oam(p, b->hero_x, b->hero_y, actor->sprite_id,
-            (uint8_t)((fc16 >> 4) & 1u), DIR_RIGHT, hflags,
+            aframe, DIR_RIGHT, hflags,
             b->hero_scale_x_fp, b->hero_scale_y_fp,
             b->hero_guarding ? AURA_RADIANT_COURAGE : AURA_NONE, 1, b->hero_y, 0);
     }

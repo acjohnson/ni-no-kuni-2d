@@ -27,6 +27,7 @@ import {
   EncounterPreset,
   EngineTuning,
   FamiliarSlot,
+  HEARTH_VERSION,
   UiSnapshot,
   VEHICLE_NAMES,
 } from './core/types';
@@ -502,6 +503,9 @@ export default function App() {
                       <span>Q/E: SWAP FAMILIAR</span>
                     </div>
                   </div>
+                  <span className="pointer-events-none absolute right-3 bottom-2 font-pixel text-[9px] tracking-wider text-[#CFC8B8]/65 select-none">
+                    {HEARTH_VERSION}
+                  </span>
                 </div>
               )}
 

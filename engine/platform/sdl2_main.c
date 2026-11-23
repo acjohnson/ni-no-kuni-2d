@@ -28,6 +28,7 @@
 #include "../core/hearth_core.h"
 #include "pixel_art_data.h"
 #include "cinema_cg_sdl2.h"
+#include "hearth_hero24.h"
 
 /* ============================================================================
  * 1. VIRTUAL PPU FRAMEBUFFER & PIXEL HELPERS
@@ -1956,6 +1957,28 @@ static void draw_pixel_art(const char *const *rows, int nrows, int ox, int oy,
     }
 }
 
+static void draw_indexed_buf(const uint8_t *buf, int bw, int bh,
+                             int ox, int oy, int anchor_x, int anchor_y,
+                             uint8_t pal_idx, bool flip_x, bool flash_white,
+                             int16_t sx_fp, int16_t sy_fp) {
+    for (int y = 0; y < bh; y++) {
+        int ry = y - anchor_y;
+        int y0 = oy + ((ry * sy_fp) >> 8);
+        int y1 = oy + (((ry + 1) * sy_fp) >> 8);
+        if (y1 <= y0) y1 = y0 + 1;
+        for (int x = 0; x < bw; x++) {
+            uint8_t idx = buf[y * bw + x];
+            if (idx == 0u) continue;
+            uint32_t col = flash_white ? 0xFFFFFFFFu : pal_col(pal_idx, idx);
+            int rx = flip_x ? (anchor_x - 1 - x) : (x - anchor_x);
+            int x0 = ox + ((rx * sx_fp) >> 8);
+            int x1 = ox + (((rx + 1) * sx_fp) >> 8);
+            if (x1 <= x0) x1 = x0 + 1;
+            fill_rect_px(x0, y0, x1 - x0, y1 - y0, col);
+        }
+    }
+}
+
 static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t frame) {
     bool flip  = (o->flags & OAM_FLAG_FLIP_X) != 0;
     bool flash = (o->flags & OAM_FLAG_FLASH_WHITE) != 0;
@@ -1966,7 +1989,7 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
         int r = (o->sprite_id == SPR_LOCOMOTIVE) ? 22
               : (o->sprite_id == SPR_BOSS_BRIAR || o->sprite_id == SPR_BOSS_MUCKMAW || o->sprite_id == SPR_BOSS_IRONFANG || o->sprite_id == SPR_ENEMY_SANDWORM) ? 15
               : (o->sprite_id == SPR_HOLLOW_OAK) ? 12
-              : (o->sprite_id == SPR_PET_MILO || o->sprite_id == SPR_BOBBER) ? 4 : 6;
+              : (o->sprite_id == SPR_PIP || o->sprite_id == SPR_PET_MILO || o->sprite_id == SPR_BOBBER) ? 4 : 6;
         int sh_y = (o->sprite_id == SPR_PIP) ? ((int)o->sort_y + 1) : (oy + 1);
         fill_ellipse_alpha(ox, sh_y, r, 3, 0xFF10141Au, 115);
     }
@@ -1986,26 +2009,18 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
 
     switch (o->sprite_id) {
         case SPR_HERO: {
-            /* 16x18 Handcrafted Pixel-Art Rowan (all 4 directions + animated stride!) */
-            const char *const *head = HERO_HEAD_DOWN;
-            if (o->dir == DIR_UP)         head = HERO_HEAD_UP;
-            else if (o->dir == DIR_LEFT)  head = HERO_HEAD_LEFT;
-            else if (o->dir == DIR_RIGHT) head = HERO_HEAD_RIGHT;
-
-            int lx = (step == 1) ? -1 : (step == 3 ? 1 : 0);
-            int rx_leg = -lx;
-            /* Animated boots underneath body */
-            spr_box(ox, oy, -4 + lx, -3 + (step == 1 ? -1 : 0), 3, 3, pal_col(1, 15), flip, flash, sx, sy);
-            spr_box(ox, oy,  1 + rx_leg, -3 + (step == 3 ? -1 : 0), 3, 3, pal_col(1, 15), flip, flash, sx, sy);
-            draw_pixel_art(HERO_BODY, 7, ox, oy + bob, 8, 9, 1, flip, flash, sx, sy);
-            draw_pixel_art(head, 7, ox, oy + bob, 8, 16, 1, flip, flash, sx, sy);
+            /* Expressive 16x24 JRPG Hero Rowan (4 dirs x 12 poses: walk, blink, dash, battle!) */
+            static uint8_t s_hero_buf[384];
+            hearth_bake_rowan_16x24(s_hero_buf, o->dir, o->frame);
+            draw_indexed_buf(s_hero_buf, 16, 24, ox, oy, 8, 24, 1, false, flash, sx, sy);
             break;
         }
         case SPR_PIP: {
-            const char *const *pf = (o->frame == 2u) ? PIP_FRAME2
-                                  : (o->frame == 1u) ? PIP_FRAME1 : PIP_FRAME0;
-            fill_ellipse_alpha(ox, oy - 5, 9, 8, pal_col(1, 10), 46);
-            draw_pixel_art(pf, 16, ox, oy, 8, 16, 1, flip, flash, sx, sy);
+            /* Petite ~11x13 Bouncy Garden-Gnome Pip (zero wings, Oliver & Mr. Drippy scale!) */
+            static uint8_t s_pip_buf[256];
+            hearth_bake_pip_16x16(s_pip_buf, o->frame);
+            fill_ellipse_alpha(ox, oy - 4, 7, 6, pal_col(1, 10), 42);
+            draw_indexed_buf(s_pip_buf, 16, 16, ox, oy, 8, 16, 1, flip, flash, sx, sy);
             break;
         }
         case SPR_FAMILIAR_BRAMBLE: {
@@ -2018,19 +2033,22 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
             draw_pixel_art(LUMINA_ART, 12, ox, oy + fy, 10, 12, 1, flip, flash, sx, sy);
             break;
         }
-        case SPR_NPC_ELDER: {
-            draw_pixel_art(NPC_ELDER_ART, 12, ox, oy, 8, 12, 2, flip, flash, sx, sy);
-            break;
-        }
-        case SPR_NPC_CLARA: {
-            draw_pixel_art(NPC_CLARA_ART, 12, ox, oy, 8, 12, 2, flip, flash, sx, sy);
-            break;
-        }
-        case SPR_NPC_GUARD: {
-            draw_pixel_art(NPC_GUARD_ART, 12, ox, oy, 8, 12, 2, flip, flash, sx, sy);
-            /* Guard spear */
-            spr_box(ox, oy, 6, -15, 2, 15, pal_col(2, 5), flip, flash, sx, sy);
-            spr_box(ox, oy, 6, -17, 2, 3,  pal_col(2, 15), flip, flash, sx, sy);
+        case SPR_NPC_ELDER:
+        case SPR_NPC_CLARA:
+        case SPR_NPC_GUARD:
+        case SPR_NPC_TOWNSFOLK:
+        case SPR_NPC_MARA:
+        case SPR_NPC_BARNABY:
+        case SPR_NPC_MAPLE:
+        case SPR_NPC_JASPER:
+        case SPR_NPC_TESSA:
+        case SPR_NPC_CORIN:
+        case SPR_NPC_SENTINEL:
+        case SPR_NPC_SHIPWRIGHT: {
+            /* Tall 16x24 Adult Cast (Grandma Mara, Elder Wren, Clara, Guard Bram & Townsfolk) */
+            static uint8_t s_npc_buf[384];
+            hearth_bake_npc_16x24(s_npc_buf, o->sprite_id, (uint8_t)((frame >> 4) & 1u));
+            draw_indexed_buf(s_npc_buf, 16, 24, ox, oy, 8, 24, 2, flip, flash, sx, sy);
             break;
         }
         case SPR_ENEMY_GLOOMCAP: {
@@ -2147,15 +2165,12 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
             break;
         }
         case SPR_NPC_SHADOW_GRAN: {
-            /* Shadow Grandma — Dark Hooded Cloak, Silver Bun, Glowing Lavender Eyes */
+            /* Tall 16x24 Shadow Grandma — Dark Hooded Cloak, Silver Bun & Glowing Lavender Eyes */
+            static uint8_t s_sg_buf[384];
             int sw = ((frame >> 4) & 1u) ? -1 : 0;
-            fill_ellipse_alpha(ox, oy - 10 + sw, 11, 12, 0xFF4C2278u, 70);
-            spr_box(ox, oy + sw, -6, -18, 12, 18, 0xFF1D132Cu, flip, flash, sx, sy);
-            spr_box(ox, oy + sw, -4, -17,  8,  6, 0xFF2D1E42u, flip, flash, sx, sy);
-            spr_box(ox, oy + sw, -3, -19,  6,  2, 0xFFC8C2DCu, flip, flash, sx, sy);
-            spr_box(ox, oy + sw, -3, -14,  2,  2, 0xFFE87CF8u, flip, flash, sx, sy);
-            spr_box(ox, oy + sw,  1, -14,  2,  2, 0xFFE87CF8u, flip, flash, sx, sy);
-            spr_box(ox, oy + sw, -7,  -6, 14,  6, 0xFF140D20u, flip, flash, sx, sy);
+            fill_ellipse_alpha(ox, oy - 11 + sw, 11, 12, 0xFF4C2278u, 70);
+            hearth_bake_npc_16x24(s_sg_buf, SPR_NPC_SHADOW_GRAN, 0u);
+            draw_indexed_buf(s_sg_buf, 16, 24, ox, oy + sw, 8, 24, 3, flip, flash, sx, sy);
             break;
         }
         case SPR_PET_MILO: {
@@ -2273,70 +2288,7 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
             fill_rect_px(ox - 2, oy - 1 + boby, 4, 2, 0xFFFFF8E8u);
             break;
         }
-        case SPR_NPC_TOWNSFOLK: {
-            /* Alderbrook Neighbor (friendly tunic & dark hair) */
-            spr_box(ox, oy, -4, -15, 8, 4, 0xFF4A3228u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -12, 8, 5, 0xFFF4C8A4u, flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -10, 1, 2, 0xFF18141Cu, flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -10, 1, 2, 0xFF18141Cu, flip, flash, sx, sy);
-            spr_box(ox, oy, -5,  -7, 10, 6, 0xFF486C8Cu, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF3E2A20u, flip, flash, sx, sy);
-            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF3E2A20u, flip, flash, sx, sy);
-            break;
-        }
-        case SPR_NPC_MARA: {
-            /* Grandma Mara — Silver Bun, Warm Burgundy Wool Shawl & Cream Apron */
-            spr_box(ox, oy, -3, -18, 6, 3, 0xFFE6E4EEu, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -15, 8, 4, 0xFFD2D0DEu, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -12, 8, 5, 0xFFF2C6A2u, flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -10, 1, 2, 0xFF28202Cu, flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -10, 1, 2, 0xFF28202Cu, flip, flash, sx, sy);
-            spr_box(ox, oy, -6,  -7, 12, 5, 0xFF8C3642u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -5,  8, 4, 0xFFF4EAD2u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF4C3024u, flip, flash, sx, sy);
-            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF4C3024u, flip, flash, sx, sy);
-            break;
-        }
-        case SPR_NPC_BARNABY: {
-            /* Stationmaster Barnaby — Navy Peaked Rail Cap, Brass Badge & Lantern */
-            spr_box(ox, oy, -5, -17, 10, 3, 0xFF283C5Cu, flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -16,  4, 1, 0xFFF5C84Cu, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -14,  8, 6, 0xFFEEC09Au, flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -12,  1, 2, 0xFF1C1822u, flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -12,  1, 2, 0xFF1C1822u, flip, flash, sx, sy);
-            spr_box(ox, oy, -3,  -9,  6, 2, 0xFFD4C8BEu, flip, flash, sx, sy);
-            spr_box(ox, oy, -5,  -8, 10, 7, 0xFF324C74u, flip, flash, sx, sy);
-            spr_box(ox, oy, -1,  -7,  2, 4, 0xFFF5C84Cu, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF2E221Cu, flip, flash, sx, sy);
-            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF2E221Cu, flip, flash, sx, sy);
-            break;
-        }
-        case SPR_NPC_MAPLE: {
-            /* Baker Maple — Auburn Hair, White Baker Kerchief & Flour-Dusted Apron */
-            spr_box(ox, oy, -4, -17,  8, 3, 0xFFF8F4E8u, flip, flash, sx, sy);
-            spr_box(ox, oy, -5, -15, 10, 4, 0xFFA84828u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -12,  8, 5, 0xFFF4C8A6u, flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -10,  1, 2, 0xFF241C24u, flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -10,  1, 2, 0xFF241C24u, flip, flash, sx, sy);
-            spr_box(ox, oy, -5,  -7, 10, 6, 0xFFC66A36u, flip, flash, sx, sy);
-            spr_box(ox, oy, -3,  -6,  6, 5, 0xFFF8F2E2u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF563626u, flip, flash, sx, sy);
-            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF563626u, flip, flash, sx, sy);
-            break;
-        }
-        case SPR_NPC_JASPER: {
-            /* Old Woodsman Jasper — Cedar Knit Cap, Silver Beard & Flannel Coat */
-            spr_box(ox, oy, -5, -17, 10, 4, 0xFF8C4228u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -13,  8, 5, 0xFFE8BA94u, flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -12,  1, 2, 0xFF1C1822u, flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -12,  1, 2, 0xFF1C1822u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -9,  8, 3, 0xFFD4D2DCu, flip, flash, sx, sy);
-            spr_box(ox, oy, -6,  -7, 12, 6, 0xFF3E6444u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -6,  8, 2, 0xFFB84434u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF3C281Eu, flip, flash, sx, sy);
-            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF3C281Eu, flip, flash, sx, sy);
-            break;
-        }
+        /* Tall 16x24 Alderbrook NPCs (Townsfolk, Mara, Barnaby, Maple, Jasper) handled above */
         case SPR_LOCOMOTIVE: {
             /* Alderbrook Mountain Steam Locomotive (48x28 idling brass & iron engine) */
             int chug = ((frame >> 4) & 1u) ? -1 : 0;
@@ -2368,47 +2320,7 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
             spr_box(ox, oy, -16, -4 + (chug ? 1 : 0), 32, 2, 0xFFD4DCE6u, flip, flash, sx, sy);
             break;
         }
-        case SPR_NPC_TESSA: {
-            /* Baker Tessa — Sunhill Market Kerchief, Braids & Honey-Gold Apron */
-            spr_box(ox, oy, -5, -17, 10, 3, 0xFFE46048u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -15,  8, 3, 0xFF723C24u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -12,  8, 5, 0xFFF4C8A4u, flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -10,  1, 2, 0xFF221A24u, flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -10,  1, 2, 0xFF221A24u, flip, flash, sx, sy);
-            spr_box(ox, oy, -5,  -7, 10, 6, 0xFF3E6C62u, flip, flash, sx, sy);
-            spr_box(ox, oy, -3,  -6,  6, 5, 0xFFFAF0D8u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF563626u, flip, flash, sx, sy);
-            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF563626u, flip, flash, sx, sy);
-            break;
-        }
-        case SPR_NPC_CORIN: {
-            /* Archivist Corin — Silver Spectacles, Indigo Scholar Robe & Brass Clasp */
-            spr_box(ox, oy, -4, -17,  8, 4, 0xFFD4D0DCu, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -13,  8, 6, 0xFFEEC29Cu, flip, flash, sx, sy);
-            spr_box(ox, oy, -3, -11,  2, 2, 0xFF9AD8F4u, flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -11,  2, 2, 0xFF9AD8F4u, flip, flash, sx, sy);
-            spr_box(ox, oy, -5,  -7, 10, 6, 0xFF2F3E6Cu, flip, flash, sx, sy);
-            spr_box(ox, oy, -1,  -6,  2, 3, 0xFFF5C84Cu, flip, flash, sx, sy);
-            spr_box(ox, oy,  5, -13,  2, 13, 0xFF7A5230u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF3A2820u, flip, flash, sx, sy);
-            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF3A2820u, flip, flash, sx, sy);
-            break;
-        }
-        case SPR_NPC_SENTINEL: {
-            /* Castle Aurelia Sentinel — Sun-Crested Steel Helm, Blue Surcoat & Halberd */
-            spr_box(ox, oy, -4, -18,  8, 5, 0xFFB8C2D4u, flip, flash, sx, sy);
-            spr_box(ox, oy, -1, -20,  2, 3, 0xFFF5B841u, flip, flash, sx, sy);
-            spr_box(ox, oy, -3, -13,  6, 5, 0xFFEEC29Cu, flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -11,  1, 2, 0xFF1C1822u, flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -11,  1, 2, 0xFF1C1822u, flip, flash, sx, sy);
-            spr_box(ox, oy, -6,  -8, 12, 7, 0xFF34568Cu, flip, flash, sx, sy);
-            spr_box(ox, oy, -2,  -7,  4, 4, 0xFFF5C84Cu, flip, flash, sx, sy);
-            spr_box(ox, oy,  6, -18,  2, 18, 0xFF6E4A2Eu, flip, flash, sx, sy);
-            spr_box(ox, oy,  7, -18,  3,  5, 0xFFD8E2F0u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF3A3E4Au, flip, flash, sx, sy);
-            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF3A3E4Au, flip, flash, sx, sy);
-            break;
-        }
+        /* Tall 16x24 Sunhill NPCs (Tessa, Corin, Sentinel) handled above */
         case SPR_RAFT: {
             /* Sun-Cedar Raft + Animated Turquoise Water Wake */
             int wake = (int)((frame >> 3) & 3u);
@@ -2484,21 +2396,7 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
             fill_ellipse_alpha(ox, oy - 2, 5, 2, 0xFF4AF2FFu, 150);
             break;
         }
-        case SPR_NPC_SHIPWRIGHT: {
-            /* Shipwright Orin — Sun-Tanned Beard, Canvas Vest & Cedar Mallet */
-            spr_box(ox, oy, -5, -17, 10, 3, 0xFF8C5832u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4, -14,  8, 6, 0xFFE8B892u, flip, flash, sx, sy);
-            spr_box(ox, oy, -2, -12,  1, 2, 0xFF1C1822u, flip, flash, sx, sy);
-            spr_box(ox, oy,  1, -12,  1, 2, 0xFF1C1822u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -9,  8, 3, 0xFF724424u, flip, flash, sx, sy);
-            spr_box(ox, oy, -6,  -7, 12, 6, 0xFF3E688Cu, flip, flash, sx, sy);
-            spr_box(ox, oy, -3,  -6,  6, 5, 0xFFE6D4AEu, flip, flash, sx, sy);
-            spr_box(ox, oy,  6, -11,  2, 7, 0xFF6E4424u, flip, flash, sx, sy);
-            spr_box(ox, oy,  5, -13,  4, 3, 0xFF9CA4B4u, flip, flash, sx, sy);
-            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF4A2E1Cu, flip, flash, sx, sy);
-            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF4A2E1Cu, flip, flash, sx, sy);
-            break;
-        }
+        /* Tall 16x24 Shipwright Orin handled above */
         case SPR_BABANA_STALL: {
             /* Golden Babana Desert Market Stall with Striped Canopy */
             spr_box(ox, oy, -11, -16, 22,  5, 0xFFE4503Cu, flip, flash, sx, sy);
@@ -3892,6 +3790,7 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
         }
         draw_text_centered(w / 2, h - 34, "WASD/ARROWS MOVE  SPACE/Z ACT  M ATLAS  Q/E SWAP", 0xFFC8D2DCu, true);
         draw_text_centered(w / 2, h - 20, "F1 PPU  F2 CRT  F3 BOSS  F4 INTRO  F7 MUTE", 0xFF9AD8F4u, true);
+        draw_text(w - 40, h - 10, HEARTH_VERSION_STR, 0xFF8A92A4u, false);
     }
 
     /* Battle Victory / Defeat Banners */

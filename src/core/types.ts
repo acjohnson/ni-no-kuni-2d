@@ -7,6 +7,8 @@
  * for future ports to Sega Genesis (SGDK), SNES (PVSnesLib), or SDL2.
  */
 
+export const HEARTH_VERSION = 'v0.6.0';
+
 /* 16.8 Fixed-Point Arithmetic (1 pixel = 256 subpixels) */
 export const FP_SHIFT = 8;
 export const FP_ONE = 1 << FP_SHIFT; // 256

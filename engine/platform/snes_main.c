@@ -23,6 +23,7 @@
 #include "hearth_core.h"
 #include "res/soundbank.h"
 #include "cinema_cg_rom.h"
+#include "hearth_hero24.h"
 
 extern char SOUNDBANK__;
 
@@ -208,6 +209,7 @@ static u16 g_meta_bl[META_COUNT];
 static u16 g_meta_br[META_COUNT];
 static u8  g_pix8[64];
 static u8  g_pix16[256];
+static u8  g_pix24[384];
 static u8  g_tile32[32];
 static u16 g_pal16[16];
 static char g_line[36];
@@ -216,6 +218,12 @@ static u8  g_atlas_row3[3][64];
 static u8  g_atlas_below[64];
 static u8  g_lm_px[HEARTH_GLOBE_LANDMARK_COUNT];
 static u8  g_lm_py[HEARTH_GLOBE_LANDMARK_COUNT];
+
+/* Rowan 16x24 VBlank DMA staging in Bank $7E WRAM (6 tiles = 192 bytes):
+ *   [0..1] = top row (0x00, 0x01), [2..3] = mid row (0x10, 0x11), [4..5] = boot strip (0xC4, 0xC5) */
+static u8  g_rowan_dma[6][32];
+static u8  g_last_rowan_key   = 0xFFu;
+static u8  g_rowan_dma_dirty  = 0u;
 
 static u8  g_bg0_dirty        = 0;
 static u8  g_bg1_dirty_l      = 0;
@@ -248,6 +256,29 @@ static u8 g_anim_rune[4][32];
 static u8 g_anim_rapids[4][32];
 /* Windmill 16x16 OBJ: [frame][0..1 = top row T,T+1; 2..3 = bottom row T+16,T+17] */
 static u8 g_anim_windmill[4][4][32];
+
+/* Boot-strip left 8x8 OBJ tile index for tall 16x24 sprites (0 = standard 16x16 sprite).
+ * Packed into freed 16x16 slots 50..54 & 61..62 (2 horizontal 16x8 strips per slot, all <= 0xFD). */
+static const u8 SPR_BOOT_TILE_LUT[49] = {
+    0xC4u, 0x00u, 0x00u, 0x00u, /* 0..3: Hero, Pip, Bramble, Lumina */
+    0xC6u, 0xD6u, 0xC8u,        /* 4..6: Elder, Clara, Guard */
+    0x00u, 0x00u, 0x00u, 0x00u, /* 7..10: Enemies */
+    0x00u, 0x00u, 0x00u,        /* 11..13: Windmill, Waystone, Chest */
+    0x00u, 0x00u, 0x00u, 0x00u, 0x00u, /* 14..18: Emotes + Orb */
+    0x00u, 0x00u, 0x00u,        /* 19..21: Chest Open, Mouse, Pig */
+    0xECu,                      /* 22: Shadow Grandma */
+    0x00u,                      /* 23: Mido */
+    0x00u, 0x00u, 0x00u, 0x00u, 0x00u, /* 24..28: Enemies */
+    0x00u,                      /* 29: Hollow Oak */
+    0x00u,                      /* 30: Bobber */
+    0xFAu,                      /* 31: Alderbrook Townsfolk */
+    0xD4u, 0xD8u, 0xCAu, 0xDAu, 0x00u, /* 32..36: Mara, Barnaby, Maple, Jasper, Loco */
+    0xCCu, 0xDCu, 0xEAu,        /* 37..39: Tessa, Corin, Sentinel */
+    0x00u,                      /* 40: Raft */
+    0x00u, 0x00u,               /* 41..42: Desert Enemies */
+    0x00u, 0x00u, 0x00u, 0x00u, /* 43..46: Fauna */
+    0xFCu, 0x00u                /* 47..48: Shipwright Orin, Babana Stall */
+};
 
 /* ============================================================================
  * 2. COMPACT 5x7 UPPERCASE ASCII FONT (ASCII 32..95) -> OPAQUE 4bpp BG0 TILES
@@ -402,6 +433,39 @@ static void upload_obj_sprite16(u8 slot) {
     encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((t + 16u) << 4)));
     copy_sub16_to_pix8(8, 8);
     encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((t + 17u) << 4)));
+}
+
+static void copy_sub24_to_pix8(u8 ox, u8 oy) {
+    u8 y, x;
+    for (y = 0u; y < 8u; y++) {
+        for (x = 0u; x < 8u; x++) {
+            g_pix8[(u16)(y * 8u + x)] = g_pix24[(u16)((u16)(oy + y) * 16u + (u16)(ox + x))];
+        }
+    }
+}
+
+/* Upload 16x24 sprite during Force Blank: top 16x16 into slot, bottom 16x8 into boot_tile & boot_tile+1 */
+static void upload_obj_sprite24_fb(u8 slot, u8 boot_tile) {
+    u16 t = sprite_slot_to_tile(slot);
+    u16 bt = (u16)boot_tile;
+    copy_sub24_to_pix8(0u, 0u);  encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((t + 0u) << 4)));
+    copy_sub24_to_pix8(8u, 0u);  encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((t + 1u) << 4)));
+    copy_sub24_to_pix8(0u, 8u);  encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((t + 16u) << 4)));
+    copy_sub24_to_pix8(8u, 8u);  encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((t + 17u) << 4)));
+    copy_sub24_to_pix8(0u, 16u); encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((bt + 0u) << 4)));
+    copy_sub24_to_pix8(8u, 16u); encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((bt + 1u) << 4)));
+}
+
+/* Encode Rowan's current 16x24 pose into Bank $7E VBlank DMA buffer (192 bytes) */
+static void stage_rowan_16x24_dma(u8 dir, u8 pose) {
+    hearth_bake_rowan_16x24(g_pix24, dir, pose);
+    copy_sub24_to_pix8(0u, 0u);  encode_pix8_to_buf(g_rowan_dma[0]);
+    copy_sub24_to_pix8(8u, 0u);  encode_pix8_to_buf(g_rowan_dma[1]);
+    copy_sub24_to_pix8(0u, 8u);  encode_pix8_to_buf(g_rowan_dma[2]);
+    copy_sub24_to_pix8(8u, 8u);  encode_pix8_to_buf(g_rowan_dma[3]);
+    copy_sub24_to_pix8(0u, 16u); encode_pix8_to_buf(g_rowan_dma[4]);
+    copy_sub24_to_pix8(8u, 16u); encode_pix8_to_buf(g_rowan_dma[5]);
+    g_rowan_dma_dirty = 1u;
 }
 
 static void p8_fill(u8 col) {
@@ -1150,38 +1214,9 @@ static void bake_obj_sprites_part1(void) {
     p16_rect(5, 14, 2, 2, 4); p16_rect(9, 14, 2, 2, 4);
     upload_obj_sprite16(SPR_HERO);
 
-    /* 1: SPR_PIP — Unified Wingless Garden-Gnome Pip (Idle / Grounded Pose, PAL1) */
-    {
-        static const char *const PIP_IDLE_ART[16] = {
-            "......111.......",
-            ".....16761..11..",
-            "....167761.1771.",
-            "...167766611761.",
-            "..166677666661..",
-            "..114555555411..",
-            ".12121222212121.",
-            "..112922229211..",
-            "..189988889981..",
-            ".18988a11a88981.",
-            ".188aa1bb1aa881.",
-            "..1aa1bbbb1aa1..",
-            "..1aaa1bb1aaa1..",
-            "...1aaaaaaaa1...",
-            "...1441111441...",
-            "..1fff1..1fff1.."
-        };
-        u8 py, px;
-        char ch;
-        p16_clear();
-        for (py = 0u; py < 16u; py++) {
-            for (px = 0u; px < 16u; px++) {
-                ch = PIP_IDLE_ART[py][px];
-                if (ch >= '1' && ch <= '9') g_pix16[(u16)(py * 16u + px)] = (u8)(ch - '0');
-                else if (ch >= 'a' && ch <= 'f') g_pix16[(u16)(py * 16u + px)] = (u8)(10u + (u8)(ch - 'a'));
-            }
-        }
-        upload_obj_sprite16(SPR_PIP);
-    }
+    /* 1: SPR_PIP — Petite ~11x13 Wingless Garden-Gnome Pip (Idle / Grounded Pose, PAL1) */
+    hearth_bake_pip_16x16(g_pix16, 0u);
+    upload_obj_sprite16(SPR_PIP);
 
     /* 2: SPR_FAMILIAR_BRAMBLE */
     p16_clear();
@@ -1568,57 +1603,15 @@ static void bake_obj_sprites_part7(void) {
 }
 
 static void bake_obj_sprites_hero_ext(void) {
-    /* 20: SPR_HERO_DOWN_1 (Rowan facing DOWN walking stride) */
-    p16_clear();
-    p16_rect(4, 0, 8, 4, 4); p16_rect(5, 0, 6, 2, 5);
-    p16_rect(4, 3, 8, 4, 2); g_pix16[70] = 1; g_pix16[73] = 1;
-    p16_rect(4, 7, 8, 2, 9); p16_rect(2, 8, 2, 3, 8);
-    p16_rect(3, 9, 10, 4, 6); p16_rect(5, 9, 6, 3, 7);
-    g_pix16[179] = 2; g_pix16[204] = 2;
-    p16_rect(4, 13, 3, 3, 4); p16_rect(10, 13, 2, 2, 4);
-    upload_obj_sprite16(SPR_HERO_DOWN_1);
+    static const u8 TALL_NPCS[13] = {
+        SPR_NPC_MARA, SPR_NPC_ELDER, SPR_NPC_CLARA, SPR_NPC_GUARD,
+        SPR_NPC_BARNABY, SPR_NPC_MAPLE, SPR_NPC_JASPER, SPR_NPC_TESSA,
+        SPR_NPC_CORIN, SPR_NPC_SENTINEL, SPR_NPC_TOWNSFOLK,
+        SPR_NPC_SHADOW_GRAN, SPR_NPC_SHIPWRIGHT
+    };
+    u8 idx, sid;
 
-    /* 21: SPR_HERO_UP_0 (Rowan facing UP idle - back of hair & red scarf) */
-    p16_clear();
-    p16_rect(4, 1, 8, 6, 4); p16_rect(5, 1, 6, 3, 5);
-    p16_rect(4, 7, 8, 2, 9);
-    p16_rect(3, 9, 10, 5, 6); p16_rect(5, 9, 6, 3, 7);
-    p16_rect(6, 9, 4, 3, 8);
-    p16_rect(5, 14, 2, 2, 4); p16_rect(9, 14, 2, 2, 4);
-    upload_obj_sprite16(SPR_HERO_UP_0);
-
-    /* 22: SPR_HERO_UP_1 (Rowan facing UP walking stride) */
-    p16_clear();
-    p16_rect(4, 0, 8, 6, 4); p16_rect(5, 0, 6, 3, 5);
-    p16_rect(4, 6, 8, 2, 9);
-    p16_rect(3, 8, 10, 5, 6); p16_rect(5, 8, 6, 3, 7);
-    p16_rect(7, 8, 3, 4, 8);
-    p16_rect(4, 13, 2, 2, 4); p16_rect(9, 13, 3, 3, 4);
-    upload_obj_sprite16(SPR_HERO_UP_1);
-
-    /* 23: SPR_HERO_SIDE_0 (Rowan facing RIGHT idle; hardware H-flipped for LEFT) */
-    p16_clear();
-    p16_rect(4, 1, 8, 4, 4); p16_rect(5, 1, 6, 2, 5);
-    p16_rect(4, 4, 3, 3, 4);
-    p16_rect(7, 4, 5, 4, 2); g_pix16[90] = 1;
-    p16_rect(4, 8, 8, 2, 9); p16_rect(2, 8, 3, 3, 8);
-    p16_rect(5, 10, 6, 4, 6); p16_rect(6, 10, 4, 3, 7);
-    g_pix16[202] = 2;
-    p16_rect(6, 14, 4, 2, 4);
-    upload_obj_sprite16(SPR_HERO_SIDE_0);
-
-    /* 24: SPR_HERO_SIDE_1 (Rowan facing RIGHT walking stride; H-flipped for LEFT) */
-    p16_clear();
-    p16_rect(4, 0, 8, 4, 4); p16_rect(5, 0, 6, 2, 5);
-    p16_rect(4, 3, 3, 3, 4);
-    p16_rect(7, 3, 5, 4, 2); g_pix16[74] = 1;
-    p16_rect(4, 7, 8, 2, 9); p16_rect(1, 7, 4, 3, 8);
-    p16_rect(5, 9, 6, 4, 6); p16_rect(6, 9, 4, 3, 7);
-    g_pix16[187] = 2;
-    p16_rect(4, 13, 3, 3, 4); p16_rect(9, 13, 3, 3, 4);
-    upload_obj_sprite16(SPR_HERO_SIDE_1);
-
-    /* 25: SPR_BATTLE_VFX_SLOT (Solar / Starlight / Slash Choreography Burst) */
+    /* 55: SPR_BATTLE_VFX_SLOT (Solar / Starlight / Slash Choreography Burst) */
     p16_clear();
     p16_rect(7, 0, 2, 16, 11); p16_rect(0, 7, 16, 2, 11);
     p16_rect(3, 3, 10, 10, 15);
@@ -1649,82 +1642,37 @@ static void bake_obj_sprites_hero_ext(void) {
 
     /* 58: SPR_FISH_ICON_SLOT (16x16 Pixel-Art Sun Carp / Meadow Trout facing RIGHT - PAL1) */
     p16_clear();
-    /* Forked tail fin */
     p16_rect(0, 4, 3, 2, 1);  p16_rect(0, 10, 3, 2, 1); p16_rect(1, 5, 3, 6, 8);
     p16_rect(1, 5, 2, 2, 10); p16_rect(1, 9, 2, 2, 10);
-    /* Dorsal & pelvic fins */
     p16_rect(6, 2, 5, 2, 1);  p16_rect(7, 3, 3, 1, 10);
     p16_rect(7, 12, 3, 2, 1); g_pix16[200] = 10;
-    /* Plump arched fish body with dark outline, orange scales, golden belly, & crisp eye */
     p16_rect(4, 4, 10, 8, 1);
     p16_rect(4, 5, 10, 6, 9);
     p16_rect(5, 4, 8, 2, 8);
     p16_rect(5, 6, 7, 2, 10);
     p16_rect(6, 9, 6, 2, 11);
     p16_rect(14, 6, 2, 4, 1); p16_rect(13, 7, 2, 2, 9);
-    g_pix16[107] = 14; g_pix16[108] = 1; /* Bright eye */
-    g_pix16[118] = 11; g_pix16[120] = 11; /* Shimmering scales */
+    g_pix16[107] = 14; g_pix16[108] = 1;
+    g_pix16[118] = 11; g_pix16[120] = 11;
     upload_obj_sprite16(SPR_FISH_ICON_SLOT);
 
-    /* 59 & 60: Unified Wingless Garden-Gnome Pip Mid-Air Stretch Hop & Landing Squash */
-    {
-        static const char *const PIP_HOP_ART[16] = {
-            "......111...11..",
-            ".....16761.1771.",
-            "....16776611761.",
-            "...16677666661..",
-            "...1455555541...",
-            "..1212122212121.",
-            "..112922229211..",
-            "..189988889981..",
-            ".1898aa11aa8981.",
-            "..18aa1bb1aa81..",
-            "..1aa1bbbb1aa1..",
-            "...1aa1bb1aa1...",
-            "...1aaaaaaaa1...",
-            "....14411441....",
-            "...1ff1..1ff1...",
-            "................"
-        };
-        static const char *const PIP_SQUASH_ART[16] = {
-            "................",
-            "................",
-            ".....11111......",
-            "....1677661.11..",
-            "...166776661771.",
-            "..1666776666661.",
-            "..1145555555411.",
-            ".121212222212121",
-            "..1129222229211.",
-            ".189988888889981",
-            "1898aa1bb1aa8981",
-            "188aa1bbbb1aa881",
-            ".1aaaa1bb1aaaa1.",
-            "..1aaaaaaaaaa1..",
-            "..144411114441..",
-            ".1ffff1..1ffff1."
-        };
-        u8 py, px;
-        char ch;
-        p16_clear();
-        for (py = 0u; py < 16u; py++) {
-            for (px = 0u; px < 16u; px++) {
-                ch = PIP_HOP_ART[py][px];
-                if (ch >= '1' && ch <= '9') g_pix16[(u16)(py * 16u + px)] = (u8)(ch - '0');
-                else if (ch >= 'a' && ch <= 'f') g_pix16[(u16)(py * 16u + px)] = (u8)(10u + (u8)(ch - 'a'));
-            }
-        }
-        upload_obj_sprite16(SPR_PIP_HOP_SLOT);
+    /* 59 & 60: Petite ~11x13 Wingless Garden-Gnome Pip Hop & Landing Squash (PAL1) */
+    hearth_bake_pip_16x16(g_pix16, 1u);
+    upload_obj_sprite16(SPR_PIP_HOP_SLOT);
+    hearth_bake_pip_16x16(g_pix16, 2u);
+    upload_obj_sprite16(SPR_PIP_SQUASH_SLOT);
 
-        p16_clear();
-        for (py = 0u; py < 16u; py++) {
-            for (px = 0u; px < 16u; px++) {
-                ch = PIP_SQUASH_ART[py][px];
-                if (ch >= '1' && ch <= '9') g_pix16[(u16)(py * 16u + px)] = (u8)(ch - '0');
-                else if (ch >= 'a' && ch <= 'f') g_pix16[(u16)(py * 16u + px)] = (u8)(10u + (u8)(ch - 'a'));
-            }
-        }
-        upload_obj_sprite16(SPR_PIP_SQUASH_SLOT);
+    /* Tall 16x24 Rowan initial pose (upper 16x16 at slot 0 + lower 16x8 boot strip at 0xC4,0xC5) */
+    hearth_bake_rowan_16x24(g_pix24, DIR_DOWN, HERO_POSE_IDLE);
+    upload_obj_sprite24_fb(SPR_HERO, 0xC4u);
+    g_last_rowan_key = 0u;
+    g_rowan_dma_dirty = 0u;
+
+    /* Tall 16x24 Adult NPCs: Grandma Mara + 12 key cast (upper 16x16 in own slot, lower 16x8 in boot strip) */
+    for (idx = 0u; idx < 13u; idx++) {
+        sid = TALL_NPCS[idx];
+        hearth_bake_npc_16x24(g_pix24, sid, 0u);
+        upload_obj_sprite24_fb(sid, SPR_BOOT_TILE_LUT[sid]);
     }
 }
 
@@ -2709,6 +2657,7 @@ static void draw_title_ui(void) {
     bg0_text(3u,  13u, PAL_UI_TEXT, "SEL/ST: ATLAS L/R:SWAP");
     draw_title_cursor();
     bg0_text(4u,  23u, PAL_UI_CYAN, "DPAD:PICK  START/A:GO");
+    bg0_text(24u, 24u, PAL_UI_TEXT, HEARTH_VERSION_STR);
 }
 
 static u16 put_hud_u16(u16 col, u16 v) {
@@ -3272,23 +3221,31 @@ static const u16 SPR_TILE_ATTR_LUT[49] = {
     0x24AEu, 0x24C0u                    /* 47..48: Shipwright Orin, Babana Stall (PAL2) */
 };
 
-static const u16 HERO_TA_LUT[8] = {
-    0x2200u, /* 0: DOWN  step 0 (slot 0,  tile 0x00) */
-    0x22C6u, /* 1: UP    step 0 (slot 51, tile 0xC6) */
-    0x62CAu, /* 2: LEFT  step 0 (slot 53, tile 0xCA + H-flip) */
-    0x22CAu, /* 3: RIGHT step 0 (slot 53, tile 0xCA) */
-    0x22C4u, /* 4: DOWN  step 1 (slot 50, tile 0xC4) */
-    0x22C8u, /* 5: UP    step 1 (slot 52, tile 0xC8) */
-    0x62CCu, /* 6: LEFT  step 1 (slot 54, tile 0xCC + H-flip) */
-    0x22CCu  /* 7: RIGHT step 1 (slot 54, tile 0xCC) */
-};
-
 static const u8 HI_TAIL_MASK[4] = { 0x00u, 0x54u, 0x50u, 0x40u };
+
+/* Emit one SNES OAM entry under OBJ_SIZE8_L16 (is_large=1 -> 16x16, is_large=0 -> 8x8) */
+#define EMIT_SNES_OAM(ox_, oy_, otile_, oattr_, is_large_) do { \
+    oamMemory[oidx]               = (u8)(ox_); \
+    oamMemory[(u16)(oidx + 1u)]   = (u8)(oy_); \
+    oamMemory[(u16)(oidx + 2u)]   = (u8)(otile_); \
+    oamMemory[(u16)(oidx + 3u)]   = (u8)(oattr_); \
+    oidx = (u16)(oidx + 4u); \
+    if ((ox_) < 0) hi_byte |= hi_mask; \
+    if (is_large_) hi_byte |= (u16)(hi_mask << 1); \
+    hi_mask <<= 2; \
+    if (hi_mask >= 0x0100u) { \
+        oamMemory[hi_idx++] = (u8)hi_byte; \
+        hi_byte = 0u; \
+        hi_mask = 1u; \
+    } \
+    count++; \
+} while (0)
 
 static void render_snes_sprites(const HearthPpuPacket *ppu) {
     u16 i, n, count, sid, ta, flg, oidx, hi_idx, hi_byte, hi_mask, prev_cnt, end_lane;
-    s16 sx, sy, shx, shy, min_y, max_y;
+    s16 sx, sy, sy_bot, sx_r, shx, shy, min_y, max_y, min_y_tall, max_y_tall;
     u16 prog, rem, rpal;
+    u8 boot_tile, hdir, hpose, rkey, hflip, bt_l, bt_r, battr;
     (void)ppu;
 
     count = 0u;
@@ -3300,54 +3257,85 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
     if (g_hearth.mode != MODE_TITLE && !g_hearth.atlas_open) {
         shx = (s16)g_hearth.ppu.shake_x;
         shy = (s16)g_hearth.ppu.shake_y;
-        min_y = (g_ui_layout == 0u) ? 10 : -15;
-        max_y = (g_ui_layout >= 2u) ? 140 : 224;
+        min_y      = (g_ui_layout == 0u) ? 10 : -15;
+        max_y      = (g_ui_layout >= 2u) ? 140 : 224;
+        min_y_tall = (g_ui_layout == 0u) ? 0  : -23;
+        max_y_tall = (g_ui_layout >= 2u) ? 132 : 224;
         n = (u16)g_hearth.ppu.oam_count;
         if (n > 48u) n = 48u;
 
-        for (i = 0u; i < n; i++) {
+        for (i = 0u; i < n && count < 118u; i++) {
             flg = (u16)g_hearth.ppu.oam[i].flags;
-            sy = (s16)(g_hearth.ppu.oam[i].y - ((flg & OAM_FLAG_LAYER2) ? 8 : 16) + shy);
-            if (sy < min_y || sy >= max_y) continue;
-            sx = (s16)(g_hearth.ppu.oam[i].x - 8 + shx);
-            if (sx < -15 || sx >= 256) continue;
-
             sid = (u16)g_hearth.ppu.oam[i].sprite_id;
-            if (sid == 0u) {
-                ta = HERO_TA_LUT[(flg >> 3) & 7u];
-            } else if (sid == 1u) {
-                /* Unified 3-Pose Bouncy Garden-Gnome Pip: Idle (0x02), Hop (0xE6), Squash (0xE8) */
-                if ((flg & OAM_FLAG_WALK_BIT) != 0u) {
-                    ta = ((flg & OAM_FLAG_STEP_BIT) != 0u) ? 0x22E6u : 0x22E8u;
+            if (sid >= 49u) sid = 0u;
+            boot_tile = SPR_BOOT_TILE_LUT[sid];
+
+            if (boot_tile != 0u) {
+                /* Tall 16x24 JRPG character: 1x 16x16 (OBJ_LARGE) + 2x 8x8 boot tiles (OBJ_SMALL) */
+                sy = (s16)(g_hearth.ppu.oam[i].y - 24 + shy);
+                if (sy < min_y_tall || sy >= max_y_tall) continue;
+                sx = (s16)(g_hearth.ppu.oam[i].x - 8 + shx);
+                if (sx < -15 || sx >= 256) continue;
+
+                if (sid == 0u) {
+                    hdir = (u8)((flg >> 3) & 3u);
+                    hpose = hearth_compute_hero_pose(&g_hearth);
+                    rkey = (u8)((hdir << 4) | (hpose & 0x0Fu));
+                    if (rkey != g_last_rowan_key) {
+                        g_last_rowan_key = rkey;
+                        stage_rowan_16x24_dma(hdir, hpose);
+                    }
+                    ta = 0x2200u;
+                    hflip = 0u;
                 } else {
-                    ta = 0x2202u;
+                    ta = SPR_TILE_ATTR_LUT[sid];
+                    hflip = (u8)((flg & OAM_FLAG_FLIP_X) ? 1u : 0u);
+                    if (hflip) ta |= 0x4000u;
                 }
-                if (flg & OAM_FLAG_FLIP_X) ta |= 0x4000u;
+                if (flg & OAM_FLAG_LAYER2) ta |= 0x1000u;
+
+                EMIT_SNES_OAM(sx, sy, (u8)ta, (u8)(ta >> 8), 1u);
+
+                sy_bot = (s16)(sy + 16);
+                battr = (u8)(ta >> 8);
+                bt_l = hflip ? (u8)(boot_tile + 1u) : boot_tile;
+                bt_r = hflip ? boot_tile : (u8)(boot_tile + 1u);
+                if (sy_bot >= -7 && sy_bot < 224) {
+                    if (sx >= -7 && sx < 256 && count < 120u) {
+                        EMIT_SNES_OAM(sx, sy_bot, bt_l, battr, 0u);
+                    }
+                    sx_r = (s16)(sx + 8);
+                    if (sx_r >= -7 && sx_r < 256 && count < 120u) {
+                        EMIT_SNES_OAM(sx_r, sy_bot, bt_r, battr, 0u);
+                    }
+                }
             } else {
-                if (sid >= 49u) sid = 0u;
-                ta = SPR_TILE_ATTR_LUT[sid];
-                if (flg & OAM_FLAG_FLIP_X) ta |= 0x4000u;
-            }
-            if (flg & OAM_FLAG_LAYER2) ta |= 0x1000u;
+                /* Standard 16x16 sprite (OBJ_LARGE under OBJ_SIZE8_L16) */
+                sy = (s16)(g_hearth.ppu.oam[i].y - ((flg & OAM_FLAG_LAYER2) ? 8 : 16) + shy);
+                if (sy < min_y || sy >= max_y) continue;
+                sx = (s16)(g_hearth.ppu.oam[i].x - 8 + shx);
+                if (sx < -15 || sx >= 256) continue;
 
-            oamMemory[oidx]               = (u8)sx;
-            oamMemory[(u16)(oidx + 1u)]   = (u8)sy;
-            oamMemory[(u16)(oidx + 2u)]   = (u8)ta;
-            oamMemory[(u16)(oidx + 3u)]   = (u8)(ta >> 8);
-            oidx = (u16)(oidx + 4u);
+                if (sid == 1u) {
+                    /* Petite 3-Pose Bouncy Garden-Gnome Pip: Idle (0x02), Hop (0xE6), Squash (0xE8) */
+                    if ((flg & OAM_FLAG_WALK_BIT) != 0u) {
+                        ta = ((flg & OAM_FLAG_STEP_BIT) != 0u) ? 0x22E6u : 0x22E8u;
+                    } else {
+                        ta = 0x2202u;
+                    }
+                    if (flg & OAM_FLAG_FLIP_X) ta |= 0x4000u;
+                } else {
+                    ta = SPR_TILE_ATTR_LUT[sid];
+                    if (flg & OAM_FLAG_FLIP_X) ta |= 0x4000u;
+                }
+                if (flg & OAM_FLAG_LAYER2) ta |= 0x1000u;
 
-            if (sx < 0) hi_byte |= hi_mask;
-            hi_mask <<= 2;
-            if (hi_mask >= 0x0100u) {
-                oamMemory[hi_idx++] = (u8)hi_byte;
-                hi_byte = 0u;
-                hi_mask = 1u;
+                EMIT_SNES_OAM(sx, sy, (u8)ta, (u8)(ta >> 8), 1u);
             }
-            count++;
         }
 
-        /* Battle Choreography VFX burst sprite (Solar Meteor / Star Bolt / Staff Arc / Guard) */
-        if (g_hearth.mode == MODE_BATTLE && g_hearth.battle.vfx_kind != BVFX_NONE && count < 49u) {
+        /* Battle Choreography VFX burst sprite (16x16 OBJ_LARGE) */
+        if (g_hearth.mode == MODE_BATTLE && g_hearth.battle.vfx_kind != BVFX_NONE && count < 122u) {
             rem = (g_hearth.battle.vfx_dur > 0u) ? g_hearth.battle.vfx_dur : 1u;
             prog = (u16)(((u16)g_hearth.battle.vfx_timer << 4) / rem);
             if (prog > 16u) prog = 16u;
@@ -3356,23 +3344,12 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             rpal = (u16)(0x36u | ((((u16)g_hearth.frame_count) & 2u) ? 0x40u : 0x00u)
                                | ((((u16)g_hearth.frame_count) & 4u) ? 0x80u : 0x00u));
             if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
-                oamMemory[oidx]             = (u8)sx;
-                oamMemory[(u16)(oidx + 1u)] = (u8)sy;
-                oamMemory[(u16)(oidx + 2u)] = 0xCEu;
-                oamMemory[(u16)(oidx + 3u)] = (u8)rpal;
-                oidx = (u16)(oidx + 4u);
-                hi_mask <<= 2;
-                if (hi_mask >= 0x0100u) {
-                    oamMemory[hi_idx++] = (u8)hi_byte;
-                    hi_byte = 0u;
-                    hi_mask = 1u;
-                }
-                count++;
+                EMIT_SNES_OAM(sx, sy, 0xCEu, (u8)rpal, 1u);
             }
         }
 
-        /* Converging & flashing Timed-Hit / Parry indicator ring sprite */
-        if (g_hearth.mode == MODE_BATTLE && g_hearth.battle.ring.active && count < 50u) {
+        /* Converging & flashing Timed-Hit / Parry indicator ring sprite (16x16 OBJ_LARGE) */
+        if (g_hearth.mode == MODE_BATTLE && g_hearth.battle.ring.active && count < 124u) {
             prog = g_hearth.battle.ring.progress_fp;
             rem = (prog < 256u) ? (u16)(256u - prog) : 0u;
             rpal = (prog >= g_hearth.battle.ring.sweet_start_fp)
@@ -3381,58 +3358,25 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             sx = (s16)(g_hearth.battle.ring.x - 8);
             sy = (s16)(g_hearth.battle.ring.y - 20 - (s16)(rem >> 4));
             if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
-                oamMemory[oidx]             = (u8)sx;
-                oamMemory[(u16)(oidx + 1u)] = (u8)sy;
-                oamMemory[(u16)(oidx + 2u)] = 0xC2u;
-                oamMemory[(u16)(oidx + 3u)] = (u8)rpal;
-                oidx = (u16)(oidx + 4u);
-                hi_mask <<= 2;
-                if (hi_mask >= 0x0100u) {
-                    oamMemory[hi_idx++] = (u8)hi_byte;
-                    hi_byte = 0u;
-                    hi_mask = 1u;
-                }
-                count++;
+                EMIT_SNES_OAM(sx, sy, 0xC2u, (u8)rpal, 1u);
             }
         }
 
-        /* 60fps Pixel-Art Swimming / Trophy Fish Hardware Sprite over BG0 Fishing Gauge */
-        if (g_hearth.mode == MODE_FISHING && count < 51u) {
+        /* 60fps Pixel-Art Swimming / Trophy Fish Hardware Sprite (16x16 OBJ_LARGE) */
+        if (g_hearth.mode == MODE_FISHING && count < 126u) {
             if (g_hearth.fishing.phase == FISH_PHASE_REELING) {
                 sx = (s16)(40 + (s16)(((u16)g_hearth.fishing.fish_pos * 205u) >> 7));
                 sy = 172;
-                rpal = (g_hearth.fishing.fish_vel < 0) ? 0x72u : 0x32u; /* OBJ prio 3, PAL1, H-flip when left */
-                oamMemory[oidx]             = (u8)sx;
-                oamMemory[(u16)(oidx + 1u)] = (u8)sy;
-                oamMemory[(u16)(oidx + 2u)] = 0xE4u;
-                oamMemory[(u16)(oidx + 3u)] = (u8)rpal;
-                oidx = (u16)(oidx + 4u);
-                hi_mask <<= 2;
-                if (hi_mask >= 0x0100u) {
-                    oamMemory[hi_idx++] = (u8)hi_byte;
-                    hi_byte = 0u;
-                    hi_mask = 1u;
-                }
-                count++;
+                rpal = (g_hearth.fishing.fish_vel < 0) ? 0x72u : 0x32u;
+                EMIT_SNES_OAM(sx, sy, 0xE4u, (u8)rpal, 1u);
             } else if (g_hearth.fishing.phase == FISH_PHASE_CAUGHT) {
                 sx = 16;
                 sy = (s16)(170 + ((((u16)g_hearth.frame_count) & 16u) ? 1 : 0));
-                oamMemory[oidx]             = (u8)sx;
-                oamMemory[(u16)(oidx + 1u)] = (u8)sy;
-                oamMemory[(u16)(oidx + 2u)] = 0xE4u;
-                oamMemory[(u16)(oidx + 3u)] = 0x32u; /* OBJ prio 3, PAL1 */
-                oidx = (u16)(oidx + 4u);
-                hi_mask <<= 2;
-                if (hi_mask >= 0x0100u) {
-                    oamMemory[hi_idx++] = (u8)hi_byte;
-                    hi_byte = 0u;
-                    hi_mask = 1u;
-                }
-                count++;
+                EMIT_SNES_OAM(sx, sy, 0xE4u, 0x32u, 1u);
             }
         }
     } else if (g_hearth.atlas_open) {
-        /* 60fps Hardware Sprites floating over the 192x128 Pixel-Art World Atlas (cols 4..27, rows 3..18) */
+        /* 60fps Hardware Sprites floating over the 192x128 Pixel-Art World Atlas (16x16 OBJ_LARGE) */
         u16 htx = (u16)((u16)(FP_PX(g_hearth.hero_fx) >> 4) & 255u);
         s16 hty_s = (s16)(FP_PX(g_hearth.hero_fy) >> 4);
         while (hty_s < 0) hty_s = (s16)(hty_s + HEARTH_GLOBE_H);
@@ -3440,13 +3384,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
         sx = (s16)(24 + (s16)(((htx + htx + htx) >> 2)));
         sy = (s16)(16 + (s16)(((u16)hty_s * 171u) >> 8));
         rpal = ((((u16)g_hearth.frame_count) & 8u) != 0u) ? 0x36u : 0x32u;
-        oamMemory[oidx]             = (u8)sx;
-        oamMemory[(u16)(oidx + 1u)] = (u8)sy;
-        oamMemory[(u16)(oidx + 2u)] = 0xE0u; /* SPR_ATLAS_HERO_SLOT */
-        oamMemory[(u16)(oidx + 3u)] = (u8)rpal;
-        oidx = (u16)(oidx + 4u);
-        hi_mask <<= 2;
-        count++;
+        EMIT_SNES_OAM(sx, sy, 0xE0u, (u8)rpal, 1u);
 
 #if HEARTH_DESIGNER_MODE
         if (g_hearth.designer_sandbox) {
@@ -3457,18 +3395,12 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             sx = (s16)(24 + (s16)(((wtx + wtx + wtx) >> 2)));
             sy = (s16)(16 + (s16)((WARP_RY[cid] * 171u) >> 8));
             rpal = ((((u16)g_hearth.frame_count) & 8u) != 0u) ? 0x32u : 0x36u;
-            oamMemory[oidx]             = (u8)sx;
-            oamMemory[(u16)(oidx + 1u)] = (u8)sy;
-            oamMemory[(u16)(oidx + 2u)] = 0xE2u; /* SPR_ATLAS_RETICLE_SLOT */
-            oamMemory[(u16)(oidx + 3u)] = (u8)rpal;
-            oidx = (u16)(oidx + 4u);
-            hi_mask <<= 2;
-            count++;
+            EMIT_SNES_OAM(sx, sy, 0xE2u, (u8)rpal, 1u);
         }
 #endif
     }
 
-    /* Delta OAM hide: clear previously used slots (x=255, y=240, x8=1, size=0) */
+    /* Delta OAM hide: clear previously used slots (x=255, y=240, x8=1, size=0 -> 8x8 offscreen) */
     prev_cnt = (u16)g_prev_oam_cnt;
     for (i = count; i < prev_cnt; i++) {
         oamMemory[oidx]             = 0xFFu;
@@ -3490,6 +3422,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
     }
     g_prev_oam_cnt = (u8)count;
 }
+#undef EMIT_SNES_OAM
 
 /* ============================================================================
  * 8b. SONY SPC700 MUSIC & SOUND EFFECTS DRIVER (SNESMod Soundbank)
@@ -3631,11 +3564,22 @@ static void flush_env_vblank_dma(void) {
     g_env_dirty = 0;
 }
 
+static void flush_rowan_vblank_dma(void) {
+    /* 6 tiles (192 bytes total -> ~1.1 scanlines) for tear-free 16x24 Rowan animation */
+    dmaCopyVram(g_rowan_dma[0], (u16)(VRAM_OBJ_GFX + (0x00u << 4)), 64u);
+    dmaCopyVram(g_rowan_dma[2], (u16)(VRAM_OBJ_GFX + (0x10u << 4)), 64u);
+    dmaCopyVram(g_rowan_dma[4], (u16)(VRAM_OBJ_GFX + (0xC4u << 4)), 64u);
+    g_rowan_dma_dirty = 0u;
+}
+
 static void flush_one_vblank_dma(void) {
-    /* Stay well under SNES NTSC VBlank DMA budget: max 2048 bytes per frame! */
+    /* Stay well under SNES NTSC VBlank DMA budget: max ~2.2 KB per frame! */
     if (g_pal_dirty) {
         upload_zone_pal0(g_last_pal_id);
         g_pal_dirty = 0u;
+    }
+    if (g_rowan_dma_dirty) {
+        flush_rowan_vblank_dma();
     }
     if (g_bg1_dirty_l) {
         dmaCopyVram((u8 *)g_bg1_map, VRAM_BG1_MAP, 2048u);
@@ -3706,7 +3650,7 @@ int main(void) {
     bgSetMapPtr(1, VRAM_BG1_MAP, SC_64x32);
     bgSetGfxPtr(2, VRAM_BG2_GFX);
     bgSetMapPtr(2, VRAM_BG2_MAP, SC_64x32);
-    oamInitGfxAttr(VRAM_OBJ_GFX, OBJ_SIZE16_L32);
+    oamInitGfxAttr(VRAM_OBJ_GFX, OBJ_SIZE8_L16);
     oamClear(0, 0);
 
     setMode(BG_MODE1, 0);
@@ -3843,6 +3787,9 @@ int main(void) {
                 g_bg2_enabled = want_bg2;
             }
             load_snes_music(want_mod);
+            if (g_rowan_dma_dirty) {
+                flush_rowan_vblank_dma();
+            }
             dmaCopyVram((u8 *)g_bg1_map, VRAM_BG1_MAP, 4096u);
             dmaCopyVram((u8 *)g_bg0_map, VRAM_BG0_MAP, 2048u);
             g_bg1_dirty_l = 0;

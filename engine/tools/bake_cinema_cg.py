@@ -31,8 +31,8 @@ SDL_PLATES = [
     ("BEDROOM_COMFORT",      "cinema_bedroom_comfort_v2_1795309287400.jpg"),
     ("PIP_WINDOW",           "cinema_pip_window_1795309260734.jpg"),
     ("ATTIC_KEEPSAKE",       "cg_attic_keepsake_1795315522510.jpg"),
-    ("PIP_DREAM_RETURN",     "cg_pip_dream_return_1795315522510.jpg"),
-    ("HOLLOW_OAK_AWAKENS",   "cg_hollow_oak_awakens_1795315522718.jpg"),
+    ("PIP_DREAM_RETURN",     "cg_pip_dream_return_gnome_1795450641504.jpg"),
+    ("HOLLOW_OAK_AWAKENS",   "cg_hollow_oak_awakens_gnome_1795450642131.jpg"),
     ("EVERTALE_WORLD_VISTA", "cg_evertale_world_vista_1795319776319.jpg"),
 ]
 

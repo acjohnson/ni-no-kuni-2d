@@ -19,6 +19,11 @@
     #define HEARTH_DESIGNER_MODE 1
 #endif
 
+/* Unified Build Version String (injected by Makefile from VERSION file) */
+#ifndef HEARTH_VERSION_STR
+    #define HEARTH_VERSION_STR "v0.6.0"
+#endif
+
 #if defined(HEARTH_TARGET_SNES)
     #include <snes.h>
     typedef s8  int8_t;
@@ -426,6 +431,22 @@ typedef enum {
 } HearthSfxId;
 
 #define HEARTH_MAX_SFX_QUEUE 16
+
+/* Rowan 16x24 Expressive Hero Animation Frame / Pose IDs (shared across Web, SDL2, Genesis, SNES) */
+typedef enum {
+    HERO_POSE_IDLE        = 0,  /* Standing neutral */
+    HERO_POSE_WALK_A      = 1,  /* Left stride + scarf lift */
+    HERO_POSE_WALK_PASS   = 2,  /* Passing stride + gentle bob */
+    HERO_POSE_WALK_B      = 3,  /* Right stride + scarf flutter */
+    HERO_POSE_BLINK       = 4,  /* Standing idle gentle eye blink */
+    HERO_POSE_DASH_A      = 5,  /* Forward-leaning dash stride A + streaming scarf */
+    HERO_POSE_DASH_B      = 6,  /* Forward-leaning dash stride B + streaming scarf */
+    HERO_POSE_BTL_READY   = 7,  /* Battle ready stance with wand drawn */
+    HERO_POSE_BTL_ATTACK  = 8,  /* Battle wand swing lunge + scarf whip */
+    HERO_POSE_BTL_CAST    = 9,  /* Battle spell cast wand raised + billowing scarf */
+    HERO_POSE_BTL_HURT    = 10, /* Battle hurt recoil */
+    HERO_POSE_BTL_VICTORY = 11  /* Battle joyful victory arm raise */
+} HearthHeroPose;
 
 /* OAM Flags (bits 3..6 carry compact dir & walk-stride bits for 8-byte SNES OAM) */
 #define OAM_FLAG_FLIP_X      (1u << 0)

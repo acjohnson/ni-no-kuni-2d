@@ -1407,142 +1407,330 @@ export class PixelAtlas {
       this.sprites.set(`${id}_${dir}_${frame}`, c);
     };
 
-    /* 1. HERO (ROWAN) — 16x22 pixel art across 4 directions x 4 walk frames */
+    /* 1. HERO (ROWAN) — Expressive 16x24 JRPG Hero with Flowing Terracotta Scarf
+     *    4 directions x 12 poses (Idle, 3-beat Walk, Idle Blink, 2 Dash, 5 Battle) */
+    const heroHeadDown = [
+      '.....111111.....',
+      '...1145554411...',
+      '..145544445441..',
+      '.14544444444441.',
+      '.14414422441441.',
+      '.14222222222241.',
+      '..12e122221e21..',
+      '..121122221121..',
+      '...1232222321...',
+      '....11222211....',
+    ];
+    const heroHeadDownBlink = [
+      '.....111111.....',
+      '...1145554411...',
+      '..145544445441..',
+      '.14544444444441.',
+      '.14414422441441.',
+      '.14222222222241.',
+      '..122222222221..',
+      '..121122221121..',
+      '...1232222321...',
+      '....11222211....',
+    ];
+    const heroHeadUp = [
+      '.....111111.....',
+      '...1145554411...',
+      '..145544445541..',
+      '.14544444445441.',
+      '.14444555444441.',
+      '.14444444444441.',
+      '..144444444441..',
+      '..144444444441..',
+      '...1144444411...',
+      '....11111111....',
+    ];
+    const heroHeadSide = [
+      '....1111111.....',
+      '..11455544411...',
+      '.1455444454441..',
+      '.14444444445441.',
+      '..1444444422441.',
+      '..144444222221..',
+      '...14442221e21..',
+      '...14432221121..',
+      '....114222231...',
+      '......112211....',
+    ];
+    const heroHeadSideBlink = [
+      '....1111111.....',
+      '..11455544411...',
+      '.1455444454441..',
+      '.14444444445441.',
+      '..1444444422441.',
+      '..144444222221..',
+      '...14442222221..',
+      '...14432221121..',
+      '....114222231...',
+      '......112211....',
+    ];
+    const heroTorsoFront = [
+      '...118899998811.',
+      '..1899888888981.',
+      '..168889aa98861.',
+      '..167666bb66761.',
+      '.1676667aa766761',
+      '.126666666666621',
+      '..114544aa44541.',
+      '...16666666661..',
+      '...1cccccccc1...',
+    ];
+    const heroTorsoUp = [
+      '...118899998811.',
+      '..1899888888981.',
+      '..1688888888861.',
+      '..1676666666761.',
+      '.167666666666761',
+      '.126666666666621',
+      '..1144444444441.',
+      '...16666666661..',
+      '...1cccccccc1...',
+    ];
+    const heroTorsoSide = [
+      '....1188999881..',
+      '...18998888981..',
+      '...16688998861..',
+      '...1676666aa61..',
+      '...16766676761..',
+      '...16662266661..',
+      '....145444aa1...',
+      '....166666661...',
+      '....1cccccc1....',
+    ];
+
+    const pal1 = PALETTES[1];
+    const paintHeroFrame = (effDir: Direction, pose: number): HTMLCanvasElement => {
+      const base = makeCanvas(16, 24);
+      const ctx = base.getContext('2d')!;
+      const isDash = pose === 5 || pose === 6;
+      const isBattle = pose >= 7;
+      const drawDir: Direction = isBattle ? 3 : effDir === 2 ? 3 : effDir;
+      let bob = 0;
+      let leanX = 0;
+      let lLegX = 0;
+      let rLegX = 0;
+      let lLegY = 0;
+      let rLegY = 0;
+      let scarfWave = 0;
+
+      if (pose === 1) {
+        bob = -1; lLegX = -1; rLegX = 1; lLegY = -1; scarfWave = -1;
+      } else if (pose === 3) {
+        bob = -1; lLegX = 1; rLegX = -1; rLegY = -1; scarfWave = 1;
+      } else if (pose === 5) {
+        bob = -1; leanX = 1; lLegX = -2; rLegX = 2; lLegY = -1; scarfWave = -2;
+      } else if (pose === 6) {
+        bob = 0; leanX = 1; lLegX = 2; rLegX = -2; rLegY = -1; scarfWave = -1;
+      } else if (pose === 8) {
+        leanX = 2; lLegX = -2; rLegX = 2; scarfWave = -2;
+      } else if (pose === 9) {
+        bob = -1; scarfWave = -2;
+      } else if (pose === 10) {
+        bob = 1; leanX = -2; scarfWave = 1;
+      } else if (pose === 11) {
+        bob = -1; scarfWave = -1;
+      }
+
+      const rect = (x: number, y: number, w: number, h: number, idx: number) => {
+        ctx.fillStyle = pal1[idx];
+        ctx.fillRect(x, y, w, h);
+      };
+
+      // 1. Legs & Boots
+      if (drawDir === 0 || drawDir === 1) {
+        rect(4, 18 + lLegY, 3, 2, 12);
+        rect(3, 20 + lLegY, 4, 4, 1);
+        rect(4, 20 + lLegY, 2, 3, 15);
+        rect(4, 20 + lLegY, 1, 1, 5);
+        rect(9, 18 + rLegY, 3, 2, 12);
+        rect(9, 20 + rLegY, 4, 4, 1);
+        rect(10, 20 + rLegY, 2, 3, 15);
+        rect(10, 20 + rLegY, 1, 1, 5);
+      } else {
+        const bx = 5 + lLegX;
+        const fx = 8 + rLegX;
+        rect(bx, 18 + lLegY, 3, 2, 12);
+        rect(bx, 20 + lLegY, 4, 4, 1);
+        rect(bx + 1, 20 + lLegY, 2, 3, 15);
+        rect(fx, 18 + rLegY, 3, 2, 12);
+        rect(fx, 20 + rLegY, 4, 4, 1);
+        rect(fx + 1, 20 + rLegY, 2, 3, 15);
+        rect(fx + 2, 21 + rLegY, 1, 1, 5);
+      }
+
+      // 2. Animated Flowing Terracotta Scarf Tail
+      if (drawDir === 0) {
+        const sy = 11 + bob;
+        rect(11, sy, 3, 4, 1);
+        rect(11, sy + 1, 2, 2, 8);
+        rect(12, sy + 1, 1, 1, 9);
+        const sx = 12 + (scarfWave < 0 ? 1 : 0);
+        rect(sx, sy + 3, 2, 3, 8);
+        rect(sx + 1, sy + 4, 1, 1, 9);
+      } else if (drawDir === 1) {
+        const sy = 11 + bob;
+        rect(5 + (scarfWave >> 1), sy, 6, 5, 1);
+        rect(6 + (scarfWave >> 1), sy, 4, 4, 8);
+        rect(7 + (scarfWave >> 1), sy, 2, 3, 9);
+        rect(5 + scarfWave, sy + 4, 2, 3, 8);
+        rect(9 + scarfWave, sy + 4, 2, 2, 9);
+      } else {
+        const sy = 10 + bob;
+        const tailY = sy + 1 + scarfWave;
+        if (isDash || pose === 8 || pose === 9) {
+          rect(0, tailY + 1, 5, 4, 1);
+          rect(0, tailY + 2, 4, 2, 8);
+          rect(1, tailY + 2, 3, 1, 9);
+          rect(0, tailY + 1, 1, 1, 9);
+        } else {
+          rect(1, sy + 1, 4, 4, 1);
+          rect(1, sy + 2, 3, 2, 8);
+          rect(2, sy + 2, 1, 1, 9);
+          const sx = 1 + (scarfWave > 0 ? 1 : 0);
+          rect(sx, sy + 4, 2, 3, 8);
+          rect(sx, sy + 5, 1, 1, 9);
+        }
+      }
+
+      // 3. Layered Tunic Torso
+      if (drawDir === 0) {
+        paintPattern(ctx, heroTorsoFront, 1, 0, 10 + bob);
+        if (pose === 1 || pose === 5) {
+          rect(1, 14 + bob, 1, 1, 2);
+          rect(14, 16 + bob, 1, 1, 2);
+        } else if (pose === 3 || pose === 6) {
+          rect(1, 16 + bob, 1, 1, 2);
+          rect(14, 14 + bob, 1, 1, 2);
+        }
+      } else if (drawDir === 1) {
+        paintPattern(ctx, heroTorsoUp, 1, 0, 10 + bob);
+      } else {
+        paintPattern(ctx, heroTorsoSide, 1, leanX, 10 + bob);
+      }
+
+      // 4. Sculpted Head & Blink
+      if (drawDir === 0) {
+        paintPattern(ctx, pose === 4 ? heroHeadDownBlink : heroHeadDown, 1, 0, 1 + bob);
+      } else if (drawDir === 1) {
+        paintPattern(ctx, heroHeadUp, 1, 0, 1 + bob);
+      } else {
+        paintPattern(
+          ctx,
+          pose === 4 || pose === 10 ? heroHeadSideBlink : heroHeadSide,
+          1,
+          leanX,
+          1 + bob
+        );
+      }
+
+      // 5. Battle Hearthwood Wand & Heroic Action Arms
+      if (pose === 7) {
+        rect(11, 13 + bob, 2, 2, 2);
+        rect(12, 12 + bob, 1, 1, 4);
+        rect(13, 11 + bob, 1, 1, 5);
+        rect(14, 10 + bob, 1, 1, 10);
+        rect(14, 9 + bob, 1, 1, 11);
+      } else if (pose === 8) {
+        rect(11, 12 + bob, 3, 2, 2);
+        rect(13, 11 + bob, 2, 2, 5);
+        rect(15, 10 + bob, 1, 1, 11);
+        rect(15, 11 + bob, 1, 1, 14);
+        rect(14, 9 + bob, 1, 1, 10);
+      } else if (pose === 9) {
+        rect(11, 9 + bob, 2, 4, 6);
+        rect(11, 7 + bob, 2, 2, 2);
+        rect(12, 3 + bob, 1, 5, 5);
+        rect(11, 1 + bob, 3, 3, 10);
+        rect(12, 2 + bob, 1, 1, 11);
+        rect(14, 2 + bob, 1, 1, 14);
+      } else if (pose === 11) {
+        rect(11, 8 + bob, 2, 5, 7);
+        rect(11, 6 + bob, 2, 2, 2);
+        rect(12, 2 + bob, 1, 4, 5);
+        rect(12, 1 + bob, 1, 1, 11);
+        rect(13, 2 + bob, 1, 1, 10);
+      }
+
+      if (!isBattle && effDir === 2) {
+        const flipped = makeCanvas(16, 24);
+        const fctx = flipped.getContext('2d')!;
+        fctx.translate(16, 0);
+        fctx.scale(-1, 1);
+        fctx.drawImage(base, 0, 0);
+        return flipped;
+      }
+      return base;
+    };
+
     for (let dir = 0 as Direction; dir < 4; dir = (dir + 1) as Direction) {
-      for (let f = 0; f < 4; f++) {
-        const c = makeCanvas(16, 22);
-        const ctx = c.getContext('2d')!;
-        const bob = f === 1 || f === 3 ? -1 : 0;
-        const stepL = f === 1 ? -1 : f === 3 ? 1 : 0;
-        const stepR = -stepL;
-
-        // Head & Tousled Chestnut Hair
-        const headPattern =
-          dir === 1
-            ? [
-                '....11111111....',
-                '...1445544441...',
-                '..145544444441..',
-                '..144444444441..',
-                '..144444444441..',
-                '...1444444441...',
-                '....11111111....',
-              ]
-            : dir === 2
-              ? [
-                  '....11111111....',
-                  '...1455444441...',
-                  '..144444444441..',
-                  '..12224444441...',
-                  '..1212244441....',
-                  '...12223441.....',
-                  '....111111......',
-                ]
-              : dir === 3
-                ? [
-                    '....11111111....',
-                    '...1444445541...',
-                    '..144444444441..',
-                    '...14444442221..',
-                    '....1444422121..',
-                    '.....14432221...',
-                    '......111111....',
-                  ]
-                : [
-                    '....11111111....',
-                    '...1445544441...',
-                    '..145444445441..',
-                    '..142222222241..',
-                    '..122122221221..',
-                    '...1222222221...',
-                    '....11111111....',
-                  ];
-
-        paintPattern(ctx, headPattern, 1, 0, 1 + bob);
-
-        // Terracotta Scarf + Forest Green Tunic + Brass Heart Locket
-        const bodyPattern = [
-          '...1889999881...',
-          '..16888aa88861..',
-          '..16676aa67661..',
-          '..166766667661..',
-          '..126666666621..',
-          '...1155555511...',
-          '...1cccccccc1...',
-        ];
-        paintPattern(ctx, bodyPattern, 1, 0, 8 + bob);
-
-        // Animated Boots
-        const pal1 = PALETTES[1];
-        ctx.fillStyle = pal1[1];
-        ctx.fillRect(4, 15 + stepL, 4, 5);
-        ctx.fillRect(8, 15 + stepR, 4, 5);
-        ctx.fillStyle = pal1[15];
-        ctx.fillRect(5, 16 + stepL, 2, 3);
-        ctx.fillRect(9, 16 + stepR, 2, 3);
-
-        register('hero', dir, f, c);
+      for (let pose = 0; pose < 12; pose++) {
+        register('hero', dir, pose, paintHeroFrame(dir, pose));
       }
     }
 
-    /* 2. PIP THE LANTERN GNOME — 16x16 (Unified wingless garden gnome + 3 bouncy Mr. Drippy poses) */
+    /* 2. PETITE BOUNCY GARDEN-GNOME PIP — ~11x13 inside 16x16 (Oliver & Mr. Drippy scale!) */
     const pipPoses: string[][] = [
-      /* Pose 0: Grounded / Idle (moss-green leaf cap, terracotta capelet, belly lantern, zero wings) */
+      /* Pose 0: Grounded / Idle (petite moss-green leaf cap, terracotta capelet, lantern, ZERO wings) */
       [
-        '......111.......',
-        '.....16761..11..',
-        '....167761.1771.',
-        '...167766611761.',
-        '..166677666661..',
-        '..114555555411..',
-        '.12121222212121.',
-        '..112922229211..',
-        '..189988889981..',
-        '.18988a11a88981.',
-        '.188aa1bb1aa881.',
-        '..1aa1bbbb1aa1..',
-        '..1aaa1bb1aaa1..',
+        '................',
+        '................',
+        '................',
+        '.......11.......',
+        '......1671.11...',
+        '.....167761771..',
+        '....166776661...',
+        '....14555541....',
+        '...1212222121...',
+        '....12922921....',
+        '...1898888981...',
+        '...18a1bb1a81...',
+        '....1a1bb1a1....',
+        '....1aaaaaa1....',
+        '.....141141.....',
+        '....1ff11ff1....',
+      ],
+      /* Pose 1: Mid-Air Stretch Hop */
+      [
+        '................',
+        '.......11..11...',
+        '......16711771..',
+        '.....16776661...',
+        '.....1667761....',
+        '....14555541....',
+        '....12122121....',
+        '....12922921....',
+        '...1898888981...',
+        '....18a1b1a81...',
+        '....1a1bb1a1....',
+        '.....1aaaa1.....',
+        '.....141141.....',
+        '....1f1..1f1....',
+        '................',
+        '................',
+      ],
+      /* Pose 2: Landing / Takeoff Squash */
+      [
+        '................',
+        '................',
+        '................',
+        '................',
+        '................',
+        '......1111......',
+        '.....16776111...',
+        '....1667766771..',
+        '...11455555411..',
+        '..121222222121..',
+        '...1292222921...',
+        '..1898a11a8981..',
+        '..18aa1bb1aa81..',
         '...1aaaaaaaa1...',
         '...1441111441...',
         '..1fff1..1fff1..',
-      ],
-      /* Pose 1: Mid-Air Stretch Hop (tall playful leap!) */
-      [
-        '......111...11..',
-        '.....16761.1771.',
-        '....16776611761.',
-        '...16677666661..',
-        '...1455555541...',
-        '..1212122212121.',
-        '..112922229211..',
-        '..189988889981..',
-        '.1898aa11aa8981.',
-        '..18aa1bb1aa81..',
-        '..1aa1bbbb1aa1..',
-        '...1aa1bb1aa1...',
-        '...1aaaaaaaa1...',
-        '....14411441....',
-        '...1ff1..1ff1...',
-        '................',
-      ],
-      /* Pose 2: Landing / Takeoff Squash (wide bouncy crouch!) */
-      [
-        '................',
-        '................',
-        '.....11111......',
-        '....1677661.11..',
-        '...166776661771.',
-        '..1666776666661.',
-        '..1145555555411.',
-        '.121212222212121',
-        '..1129222229211.',
-        '.189988888889981',
-        '1898aa1bb1aa8981',
-        '188aa1bbbb1aa881',
-        '.1aaaa1bb1aaaa1.',
-        '..1aaaaaaaaaa1..',
-        '..144411114441..',
-        '.1ffff1..1ffff1.',
       ],
     ];
     for (let f = 0; f < 3; f++) {
@@ -1599,46 +1787,138 @@ export class PixelAtlas {
       register('familiar_lumina', 0, f, c);
     }
 
-    /* 5. NPCS (ELDER WREN, CLARA, GUARD BRAM) — Palette 2 */
-    const buildNpc = (
+    /* 5. TALL 16x24 KEY ADULT NPCS (ELDER WREN, CLARA, GUARD BRAM & CAST) — Palette 2 */
+    const registerTallNpc = (
       id: SpriteId,
-      hairC: string,
-      shirtC: string,
-      accentC: string,
-      spear = false
+      art: string[],
+      palIdx = 2,
+      prop?: 'spear' | 'staff' | 'scroll' | 'mallet'
     ) => {
       for (let f = 0; f < 2; f++) {
-        const c = makeCanvas(18, 22);
+        const c = makeCanvas(16, 24);
         const ctx = c.getContext('2d')!;
-        const pat = [
-          `....11111111....`,
-          `...1${hairC}${hairC}${hairC}${hairC}${hairC}${hairC}${hairC}${hairC}1...`,
-          `..1${hairC}${hairC}222222${hairC}${hairC}1..`,
-          `..1${hairC}21222212${hairC}1..`,
-          `...1222222221...`,
-          `...1${accentC}${accentC}${accentC}${accentC}${accentC}${accentC}${accentC}${accentC}1...`,
-          `..1${shirtC}${shirtC}${shirtC}${accentC}${accentC}${shirtC}${shirtC}${shirtC}1..`,
-          `..1${shirtC}${shirtC}${shirtC}${shirtC}${shirtC}${shirtC}${shirtC}${shirtC}1..`,
-          `..12${shirtC}${shirtC}${shirtC}${shirtC}${shirtC}${shirtC}21..`,
-          `...1111111111...`,
-          `....1b1..1b1....`,
-          `....111..111....`,
-        ];
-        paintPattern(ctx, pat, 2, 1, 5 + f);
-        if (spear) {
+        // Subtle 1px idle breath on upper body while keeping boots firmly planted!
+        const rows = f === 1 ? ['................', ...art.slice(0, 15), ...art.slice(16)] : art;
+        paintPattern(ctx, rows, palIdx, 0, 0);
+        if (prop === 'spear') {
           ctx.fillStyle = PALETTES[2][1];
-          ctx.fillRect(15, 2, 2, 18);
-          ctx.fillStyle = PALETTES[2][12];
-          ctx.fillRect(15, 6, 1, 13);
+          ctx.fillRect(14, 1, 2, 22);
           ctx.fillStyle = PALETTES[2][4];
-          ctx.fillRect(15, 2, 2, 4);
+          ctx.fillRect(14, 2, 2, 4);
+          ctx.fillStyle = PALETTES[2][7];
+          ctx.fillRect(14, 6, 1, 16);
+        } else if (prop === 'staff') {
+          ctx.fillStyle = PALETTES[2][1];
+          ctx.fillRect(14, 5, 2, 18);
+          ctx.fillStyle = PALETTES[2][12];
+          ctx.fillRect(14, 6, 1, 16);
+          ctx.fillStyle = PALETTES[2][7];
+          ctx.fillRect(14, 5, 1, 1);
+        } else if (prop === 'scroll') {
+          ctx.fillStyle = PALETTES[2][1];
+          ctx.fillRect(13, 11 + f, 3, 6);
+          ctx.fillStyle = PALETTES[2][15];
+          ctx.fillRect(14, 12 + f, 1, 4);
+        } else if (prop === 'mallet') {
+          ctx.fillStyle = PALETTES[2][1];
+          ctx.fillRect(13, 9 + f, 3, 9);
+          ctx.fillStyle = PALETTES[2][7];
+          ctx.fillRect(13, 8 + f, 3, 3);
+          ctx.fillStyle = PALETTES[2][12];
+          ctx.fillRect(14, 11 + f, 1, 6);
         }
         register(id, 0, f, c);
       }
     };
-    buildNpc('npc_elder', '4', '6', 'f', false);
-    buildNpc('npc_clara', '7', 'a', '4', false);
-    buildNpc('npc_guard', 'b', '8', '5', true);
+
+    registerTallNpc(
+      'npc_elder',
+      [
+        '....11111111....',
+        '...1444ff4441...',
+        '..145444444541..',
+        '..144222222441..',
+        '..142122221241..',
+        '..142222222241..',
+        '..14444ff44441..',
+        '...1444444441...',
+        '...1144444411...',
+        '..166744447661..',
+        '.16677444477661.',
+        '.16667777776661.',
+        '.16266777766261.',
+        '.16666677666661.',
+        '..166667766661..',
+        '..166667766661..',
+        '..166667766661..',
+        '..166666666661..',
+        '..166666666661..',
+        '..177777777771..',
+        '...1111111111...',
+        '....1b1..1b1....',
+        '...1bb1..1bb1...',
+        '...1111..1111...',
+      ],
+      2,
+      'staff'
+    );
+    registerTallNpc('npc_clara', [
+      '....11111111....',
+      '...1cc7777cc1...',
+      '..1ccc7777ccc1..',
+      '..1cc222222cc1..',
+      '..1c22222222c1..',
+      '..1c21222212c1..',
+      '..1c23222232c1..',
+      '...1c222222c1...',
+      '...11ffffff11...',
+      '..1777ffff7771..',
+      '.1777ffffff7771.',
+      '.1727ffffff7271.',
+      '.1777ffffff7771.',
+      '..177ffffff771..',
+      '..1677ffff7761..',
+      '..1677ffff7761..',
+      '..166777777661..',
+      '..166777777661..',
+      '..166666666661..',
+      '..1ffffffffff1..',
+      '...1111111111...',
+      '....1b1..1b1....',
+      '...1bb1..1bb1...',
+      '...1111..1111...',
+    ]);
+    registerTallNpc(
+      'npc_guard',
+      [
+        '.....11aa11.....',
+        '....1aaaaaa1....',
+        '...1554444551...',
+        '..154444444451..',
+        '..154111111451..',
+        '..154212212451..',
+        '..154222222451..',
+        '...1552222551...',
+        '...1155555511...',
+        '..158887788851..',
+        '.15588877888551.',
+        '.15288877888251.',
+        '.15588888888551.',
+        '..11b777777b11..',
+        '..188887788881..',
+        '..188887788881..',
+        '..188888888881..',
+        '...1555115551...',
+        '...1555115551...',
+        '...1551..1551...',
+        '...1111..1111...',
+        '...1bb1..1bb1...',
+        '..1bbb1..1bbb1..',
+        '..11111..11111..',
+      ],
+      2,
+      'spear'
+    );
 
     /* 6. ENEMIES (GLOOMCAP, THORNLING, DUSK MOTH) & BOSS (BRIAR WARDEN) — Palette 3 */
     // Gloomcap Mushroom Fiend (20x20)
@@ -1910,28 +2190,37 @@ export class PixelAtlas {
       register('npc_pig', 0, f, c);
     }
 
-    // Shadow Grandma (Trauma Vision in Evertale Flashback) — 20x24
+    // Shadow Grandma (Tall 16x24 Trauma Vision in Evertale Flashback — Palette 3)
     for (let f = 0; f < 2; f++) {
-      const c = makeCanvas(20, 24);
+      const c = makeCanvas(16, 24);
       const ctx = c.getContext('2d')!;
       const bob = f === 0 ? 0 : -1;
       const pat = [
-        '.....1111111111.....',
-        '...11222333322211...',
-        '..1223344444433221..',
-        '..1234455555544321..',
-        '..12341b4444b14321..',
-        '..1234444444444321..',
-        '...12233111133221...',
-        '..1222333ff3332221..',
-        '.1222333ffff3332221.',
-        '.12222333ff33322221.',
-        '.122222333333222221.',
-        '..1222222332222221..',
-        '..1221222222221221..',
-        '...11..111111..11...',
+        '....11111111....',
+        '...1225555221...',
+        '..122333333221..',
+        '.12233222233221.',
+        '.12322111122321.',
+        '.12321441441231.',
+        '.12321111111231.',
+        '..123221122321..',
+        '..122333333221..',
+        '.12223344332221.',
+        '.12223344332221.',
+        '.12222333322221.',
+        '.12222333322221.',
+        '.12222233222221.',
+        '.12222233222221.',
+        '.12222233222221.',
+        '.12222222222221.',
+        '.12222222222221.',
+        '.12222222222221.',
+        '.12221222212221.',
+        '..122122221221..',
+        '..121.1221.121..',
+        '...1...11...1...',
       ];
-      paintPattern(ctx, pat, 3, 0, 4 + bob);
+      paintPattern(ctx, pat, 3, 0, Math.max(0, 1 + bob));
       register('npc_shadow_gran', 0, f, c);
     }
 
@@ -1956,8 +2245,33 @@ export class PixelAtlas {
       register('pet_milo', 0, f, c);
     }
 
-    // Alderbrook Townsfolk (Grandma / Villager) — Palette 2
-    buildNpc('npc_townsfolk', 'f', '7', '4', false);
+    // Alderbrook / Sunhill Villager — Tall 16x24
+    registerTallNpc('npc_townsfolk', [
+      '....11111111....',
+      '...1bbccccbb1...',
+      '..1bbccccccbb1..',
+      '..1b22222222b1..',
+      '..1b22222222b1..',
+      '..1b21222212b1..',
+      '...1232222321...',
+      '...11ffffff11...',
+      '..18889ff98881..',
+      '.188999ff999881.',
+      '.18899999999881.',
+      '.18288888888281.',
+      '.18888888888881.',
+      '..11bbbbbbbb11..',
+      '..188888888881..',
+      '..188888888881..',
+      '...1bb1111bb1...',
+      '...1bb1..1bb1...',
+      '...1bb1..1bb1...',
+      '...1bb1..1bb1...',
+      '...1111..1111...',
+      '...1bb1..1bb1...',
+      '..1bbb1..1bbb1..',
+      '..11111..11111..',
+    ]);
 
     /* 9. NEW ENEMIES & BOSSES (RAT, SLIME, BOAR, KING MUCKMAW, LORD IRONFANG) */
     // Gutter Rat (Sewers) — 20x18
@@ -2132,97 +2446,123 @@ export class PixelAtlas {
       register('bobber', 0, f, c);
     }
 
-    /* 11. CHAPTER 1 BESPOKE ALDERBROOK CAST & MOUNTAIN STEAM LOCOMOTIVE */
-    // Grandma Mara — silver bun, rose-burgundy knitted shawl, warm cream hearth apron
-    for (let f = 0; f < 2; f++) {
-      const c = makeCanvas(18, 22);
-      const ctx = c.getContext('2d')!;
-      const pat = [
-        '.....111111.....',
-        '....14444441....',
-        '...1444444441...',
-        '..144222222441..',
-        '..142122221241..',
-        '...1222332221...',
-        '..1aaaaccaaaa1..',
-        '.1aaaaffffaaaa1.',
-        '.1a666ffff666a1.',
-        '..1666ffff6661..',
-        '...1111111111...',
-        '....1b1..1b1....',
-      ];
-      paintPattern(ctx, pat, 2, 1, 5 + f);
-      register('npc_mara', 0, f, c);
-    }
+    /* 11. CHAPTER 1 BESPOKE TALL 16x24 ALDERBROOK CAST & MOUNTAIN STEAM LOCOMOTIVE */
+    // Grandma Mara — Tall 16x24 silver braided bun, rose-burgundy wool shawl, long cream hearth apron
+    registerTallNpc('npc_mara', [
+      '.....111111.....',
+      '....144ff441....',
+      '...1444444441...',
+      '..145444444541..',
+      '..144222222441..',
+      '..142222222241..',
+      '..142122221241..',
+      '...1232222321...',
+      '...1122332211...',
+      '..1aaaaffaaaa1..',
+      '.1aaaddffddaaa1.',
+      '.1aaaffffffaaa1.',
+      '.1a2affffffa2a1.',
+      '.1aaaffffffaaa1.',
+      '..1ddffffffdd1..',
+      '..1ddffffffdd1..',
+      '..1d1ffffff1d1..',
+      '..1d1ffffff1d1..',
+      '..1dddddddddd1..',
+      '..1dddddddddd1..',
+      '...1111111111...',
+      '....1b1..1b1....',
+      '...1bb1..1bb1...',
+      '...1111..1111...',
+    ]);
 
-    // Stationmaster Barnaby — navy peaked rail cap, brass badge, walrus mustache, slate uniform
-    for (let f = 0; f < 2; f++) {
-      const c = makeCanvas(18, 22);
-      const ctx = c.getContext('2d')!;
-      const pat = [
-        '...1111111111...',
-        '..188887788881..',
-        '.11111111111111.',
-        '..122222222221..',
-        '..121222222121..',
-        '..124444444421..',
-        '..188887788881..',
-        '.18888877888881.',
-        '.18888888888881.',
-        '..128888888821..',
-        '...1111111111...',
-        '....111..111....',
-      ];
-      paintPattern(ctx, pat, 2, 1, 5 + f);
-      register('npc_barnaby', 0, f, c);
-    }
+    // Stationmaster Barnaby — Tall 16x24 navy peaked rail cap, brass badge, walrus mustache, slate coat
+    registerTallNpc('npc_barnaby', [
+      '...1111111111...',
+      '..188897798881..',
+      '.11111111111111.',
+      '..188222222881..',
+      '..122222222221..',
+      '..122122221221..',
+      '..124444444421..',
+      '...1444224441...',
+      '...11ffffff11...',
+      '..188897798881..',
+      '.18888877888881.',
+      '.18888877888881.',
+      '.18288877888281.',
+      '.18888877888881.',
+      '..111777777111..',
+      '..188888888881..',
+      '..188888888881..',
+      '...1888118881...',
+      '...1888118881...',
+      '...1881..1881...',
+      '...1111..1111...',
+      '...1bb1..1bb1...',
+      '..1bbb1..1bbb1..',
+      '..11111..11111..',
+    ]);
 
-    // Baker Maple — cream baker's kerchief, auburn hair, flour-dusted apron over rose dress
-    for (let f = 0; f < 2; f++) {
-      const c = makeCanvas(18, 22);
-      const ctx = c.getContext('2d')!;
-      const pat = [
+    // Baker Maple — Tall 16x24 cream baker's kerchief, auburn braids, flour-dusted long apron
+    registerTallNpc('npc_maple', [
+      '....11111111....',
+      '...1ffffffff1...',
+      '..1ff444444ff1..',
+      '..1cc222222cc1..',
+      '..1c22222222c1..',
+      '..1c21222212c1..',
+      '..1c23222232c1..',
+      '...1c222222c1...',
+      '...11ffffff11...',
+      '..1aaaffffaaa1..',
+      '.1aaaaffffaaaa1.',
+      '.1a2aaffffaa2a1.',
+      '.1aaaaffffaaaa1.',
+      '..1aaaffffaaa1..',
+      '..1aaaffffaaa1..',
+      '..1aaaffffaaa1..',
+      '..1aaaffffaaa1..',
+      '..1aaaaaaaaaa1..',
+      '..1aaaaaaaaaa1..',
+      '..1dddddddddd1..',
+      '...1111111111...',
+      '....1b1..1b1....',
+      '...1bb1..1bb1...',
+      '...1111..1111...',
+    ]);
+
+    // Old Woodsman Jasper — Tall 16x24 knit cap, silver beard, weathered timber coat & walking staff
+    registerTallNpc(
+      'npc_jasper',
+      [
         '....11111111....',
-        '...1ffffffff1...',
+        '...1bbccccbb1...',
+        '..1bbccccccbb1..',
         '..1bb222222bb1..',
         '..1b21222212b1..',
-        '...1222222221...',
-        '..1aaaffffaaa1..',
-        '.1aaaaffffaaaa1.',
-        '.1a2aaffffaa2a1.',
-        '..1aaaffffaaa1..',
-        '...1111111111...',
-        '....1b1..1b1....',
-      ];
-      paintPattern(ctx, pat, 2, 1, 6 + f);
-      register('npc_maple', 0, f, c);
-    }
-
-    // Old Woodsman Jasper — pine-green hood, silver beard, weathered timber cloak & axe
-    for (let f = 0; f < 2; f++) {
-      const c = makeCanvas(18, 22);
-      const ctx = c.getContext('2d')!;
-      const pat = [
-        '....11111111....',
-        '...1666666661...',
-        '..166222222661..',
-        '..162122221261..',
-        '..164444444461..',
-        '..166444444661..',
-        '.1666bbbbbb6661.',
-        '.16666666666661.',
-        '..126666666621..',
-        '...1111111111...',
-        '....1b1..1b1....',
-      ];
-      paintPattern(ctx, pat, 2, 1, 6 + f);
-      // Woodcutter's walking staff
-      ctx.fillStyle = PALETTES[2][1];
-      ctx.fillRect(15, 3, 2, 17);
-      ctx.fillStyle = PALETTES[2][11];
-      ctx.fillRect(15, 4, 1, 15);
-      register('npc_jasper', 0, f, c);
-    }
+        '..1b44444444b1..',
+        '..1b444ff444b1..',
+        '...1444444441...',
+        '...11aaaaaaa1...',
+        '..1bbbaaaabbb1..',
+        '.1bbbccccccbbb1.',
+        '.1bbcbbbbbbcbb1.',
+        '.1b2bbbbbbbb2b1.',
+        '.1bbbbbbbbbbbb1.',
+        '..11b777777b11..',
+        '..1bbbbbbbbbb1..',
+        '..1bbbbbbbbbb1..',
+        '...1888118881...',
+        '...1888118881...',
+        '...1881..1881...',
+        '...1111..1111...',
+        '...1bb1..1bb1...',
+        '..1bbb1..1bbb1..',
+        '..11111..11111..',
+      ],
+      2,
+      'staff'
+    );
 
     // Alderbrook Vintage Mountain Steam Locomotive (48x28, 2 animated steam puff frames!)
     for (let f = 0; f < 2; f++) {
@@ -2293,84 +2633,97 @@ export class PixelAtlas {
       register('locomotive', 0, f, c);
     }
 
-    /* 12. MILESTONE 3 SUNHILL MARKET & CASTLE AURELIA CAST */
-    // Baker Tessa (Sunhill Market) — warm chestnut bun, cream kerchief, sunlit apron & terracotta skirt
-    for (let f = 0; f < 2; f++) {
-      const c = makeCanvas(18, 22);
-      const ctx = c.getContext('2d')!;
-      const pat = [
-        '.....111111.....',
-        '....1bbbbbb1....',
-        '...1ffffffff1...',
-        '..1bb222222bb1..',
-        '..1b21222212b1..',
-        '...1222222221...',
-        '..1777ffff7771..',
-        '.17777ffff77771.',
-        '.1a2aaffffaa2a1.',
-        '..1aaaffffaaa1..',
-        '...1111111111...',
-        '....1b1..1b1....',
-      ];
-      paintPattern(ctx, pat, 2, 1, 5 + f);
-      register('npc_tessa', 0, f, c);
-    }
+    /* 12. MILESTONE 3 TALL 16x24 SUNHILL MARKET & CASTLE AURELIA CAST */
+    registerTallNpc('npc_tessa', [
+      '.....111111.....',
+      '....1bbccbb1....',
+      '...1ffffffff1...',
+      '..1bb222222bb1..',
+      '..1b22222222b1..',
+      '..1b21222212b1..',
+      '..1b23222232b1..',
+      '...1222222221...',
+      '...11ffffff11...',
+      '..1777ffff7771..',
+      '.17777ffff77771.',
+      '.17277ffff77271.',
+      '.17777ffff77771.',
+      '..1666ffff6661..',
+      '..1666ffff6661..',
+      '..1666ffff6661..',
+      '..1666ffff6661..',
+      '..166666666661..',
+      '..166666666661..',
+      '..1aaaaaaaaaa1..',
+      '...1111111111...',
+      '....1b1..1b1....',
+      '...1bb1..1bb1...',
+      '...1111..1111...',
+    ]);
 
-    // Archivist Corin (Sunhill Archive) — silver-streaked hair, spectacles glint, azure scholar robe & scroll
-    for (let f = 0; f < 2; f++) {
-      const c = makeCanvas(18, 22);
-      const ctx = c.getContext('2d')!;
-      const pat = [
+    registerTallNpc(
+      'npc_corin',
+      [
         '....11111111....',
-        '...1444444441...',
+        '...1445555441...',
+        '..145444444541..',
         '..144222222441..',
         '..142f1221f241..',
-        '...1222222221...',
+        '..142222222241..',
+        '...1222332221...',
+        '...1122222211...',
         '..188877778881..',
+        '.18899777799881.',
         '.18888777788881.',
+        '.18288877888281.',
         '.18888877888881.',
-        '..128888888821..',
-        '...1888888881...',
+        '..188887788881..',
+        '..188887788881..',
+        '..188887788881..',
+        '..188887788881..',
+        '..188887788881..',
+        '..188888888881..',
+        '..177777777771..',
         '...1111111111...',
         '....1b1..1b1....',
-      ];
-      paintPattern(ctx, pat, 2, 1, 5 + f);
-      // Rolled parchment scroll in right hand
-      ctx.fillStyle = PALETTES[2][1];
-      ctx.fillRect(14, 11 + f, 3, 6);
-      ctx.fillStyle = PALETTES[2][15];
-      ctx.fillRect(15, 12 + f, 1, 4);
-      register('npc_corin', 0, f, c);
-    }
+        '...1bb1..1bb1...',
+        '...1111..1111...',
+      ],
+      2,
+      'scroll'
+    );
 
-    // Aurelia Gate Sentinel (Castle Aurelia) — gleaming silver crested helm, gold plume, azure surcoat & halberd
-    for (let f = 0; f < 2; f++) {
-      const c = makeCanvas(18, 22);
-      const ctx = c.getContext('2d')!;
-      const pat = [
+    registerTallNpc(
+      'npc_sentinel',
+      [
         '.....117711.....',
         '....17777771....',
-        '...1444444441...',
+        '...1444ff4441...',
+        '..144555555441..',
         '..144111111441..',
         '..144212212441..',
+        '..144555555441..',
         '...1444444441...',
-        '..188877778881..',
-        '.14888777788841.',
+        '..148887788841..',
         '.14488877888441.',
-        '..144488884441..',
-        '...1111111111...',
-        '....141..141....',
-      ];
-      paintPattern(ctx, pat, 2, 1, 5 + f);
-      // Royal silver halberd
-      ctx.fillStyle = PALETTES[2][1];
-      ctx.fillRect(15, 1, 2, 19);
-      ctx.fillStyle = PALETTES[2][4];
-      ctx.fillRect(15, 2, 2, 5);
-      ctx.fillStyle = PALETTES[2][7];
-      ctx.fillRect(15, 7, 1, 12);
-      register('npc_sentinel', 0, f, c);
-    }
+        '.14488877888441.',
+        '.14498877889441.',
+        '.14488877888441.',
+        '..114777777411..',
+        '..148887788841..',
+        '..148887788841..',
+        '..144888888441..',
+        '...1444114441...',
+        '...1444114441...',
+        '...1551..1551...',
+        '...1111..1111...',
+        '...1441..1441...',
+        '..14441..14441..',
+        '..11111..11111..',
+      ],
+      2,
+      'spear'
+    );
 
     /* 13. MILESTONE 4: CEDAR RAFT, DESERT ENEMIES, BIOME FAUNA, SHIPWRIGHT ORIN & BABANA STALL */
     // Cedar Raft (24x20 hand-lashed logs + fluttering sunlit canvas pennant)
@@ -2527,30 +2880,38 @@ export class PixelAtlas {
       register('fauna_robot', 0, f, c);
     }
 
-    // Shipwright Orin (Heartland Timber Pier — weathered cedar vest, navy cap, mallet)
-    for (let f = 0; f < 2; f++) {
-      const c = makeCanvas(18, 22);
-      const ctx = c.getContext('2d')!;
-      const pat = [
+    // Shipwright Orin (Heartland Timber Pier — Tall 16x24 weathered cedar vest, navy cap, mallet)
+    registerTallNpc(
+      'npc_shipwright',
+      [
         '....11111111....',
-        '...1888888881...',
-        '..1b22222222b1..',
+        '...1888998881...',
+        '..188888888881..',
+        '..1bb222222bb1..',
         '..1b21222212b1..',
-        '...122bbbb221...',
+        '..1b22bbbb22b1..',
+        '...1bbbbbbbb1...',
+        '...11cccccc11...',
         '..1ccbbbbbbcc1..',
         '.1cccbbbbbbccc1.',
         '.1cc2bbbbbb2cc1.',
-        '..1ccbbbbbbcc1..',
-        '...1111111111...',
-        '....181..181....',
-      ];
-      paintPattern(ctx, pat, 2, 1, 6 + f);
-      ctx.fillStyle = PALETTES[2][1];
-      ctx.fillRect(14, 7 + f, 3, 10);
-      ctx.fillStyle = PALETTES[2][7];
-      ctx.fillRect(14, 6 + f, 4, 3);
-      register('npc_shipwright', 0, f, c);
-    }
+        '.1cccbbbbbbccc1.',
+        '.1cc2bbbbbb2cc1.',
+        '..111777777111..',
+        '..188888888881..',
+        '..188888888881..',
+        '..188888888881..',
+        '...1888118881...',
+        '...1888118881...',
+        '...1881..1881...',
+        '...1111..1111...',
+        '...1bb1..1bb1...',
+        '..1bbb1..1bbb1..',
+        '..11111..11111..',
+      ],
+      2,
+      'mallet'
+    );
 
     // Golden Babana Market Stall (24x22 striped oasis awning & radiant Babana pyramid!)
     for (let f = 0; f < 2; f++) {

@@ -7,8 +7,8 @@ import cgShadowGrandma from '../assets/images/cinema_shadow_grandma_179530926117
 import cgBedroomComfort from '../assets/images/cinema_bedroom_comfort_v2_1795309287400.jpg';
 import cgPipWindow from '../assets/images/cinema_pip_window_1795309260734.jpg';
 import cgAtticKeepsake from '../assets/images/cg_attic_keepsake_1795315522510.jpg';
-import cgPipDreamReturn from '../assets/images/cg_pip_dream_return_1795315522510.jpg';
-import cgHollowOakAwakens from '../assets/images/cg_hollow_oak_awakens_1795315522718.jpg';
+import cgPipDreamReturn from '../assets/images/cg_pip_dream_return_gnome_1795450641504.jpg';
+import cgHollowOakAwakens from '../assets/images/cg_hollow_oak_awakens_gnome_1795450642131.jpg';
 import cgEvertaleWorldVista from '../assets/images/cg_evertale_world_vista_1795319776319.jpg';
 
 const CG_PLATES: readonly { src: string; alt: string; fallbackBg: string }[] = [
