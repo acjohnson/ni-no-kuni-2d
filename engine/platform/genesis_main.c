@@ -15,7 +15,9 @@
 #include <genesis.h>
 #include "hearth_core.h"
 #include "cinema_cg_rom.h"
+#define HEARTH_USE_PREBAKED_ROWAN 1
 #include "hearth_hero24.h"
+#include "rowan_gen_rom.h"
 
 /* Placed statically in Sega Genesis 64KB 68000 Work RAM (zero malloc!) */
 static HearthState g_hearth;
@@ -300,8 +302,16 @@ static void upload_pix16_sprite_to_vram(u16 base_tile) {
 /* Genesis 2x3 (16x24) tall hardware sprites are COLUMN-MAJOR:
  * Tile 0=(0,0), Tile 1=(0,8), Tile 2=(0,16), Tile 3=(8,0), Tile 4=(8,8), Tile 5=(8,16) */
 static u8  g_pix24[384];
-static u32 g_rowan_tiles[48];
 static u8  g_last_rowan_key = 0xFFu;
+
+static u8 gen_rowan_pose_idx(u8 dir, u8 pose) {
+    static const u8 DIR_BASE[4] = { 0u, 7u, 14u, 21u };
+    if (pose >= HERO_POSE_BTL_READY) {
+        u8 bp = (u8)(pose - HERO_POSE_BTL_READY);
+        return (u8)(28u + ((bp < 5u) ? bp : 0u));
+    }
+    return (u8)(DIR_BASE[dir & 3u] + pose);
+}
 
 static void pack_pix16x24_sprite_to_buf(const u8 *src384, u32 dst[48]) {
     static const u8 ox[6] = { 0, 0, 0, 8, 8, 8 };
@@ -1431,9 +1441,7 @@ static void bake_all_sprites(void) {
             SPR_NPC_SHADOW_GRAN, SPR_NPC_SHIPWRIGHT
         };
         u32 tmp_tiles[48];
-        hearth_bake_rowan_16x24(g_pix24, DIR_DOWN, HERO_POSE_IDLE);
-        pack_pix16x24_sprite_to_buf(g_pix24, g_rowan_tiles);
-        VDP_loadTileData(g_rowan_tiles, VRAM_TALL_SPR_BASE, 6, CPU);
+        VDP_loadTileData(ROWAN_GEN_TILES[0], VRAM_TALL_SPR_BASE, 6, CPU);
         g_last_rowan_key = 0u;
 
         for (u8 i = 0; i < 13u; i++) {
@@ -1775,8 +1783,19 @@ static u8 gen_vista_pine_y(u16 px) {
 }
 
 /* Bake full-resolution 256x64px (32x8 tiles) 4bpp Alpine Parallax Vista into VRAM_VISTA_BASE!
- * Uses PAL0 sky/mountain/spruce indices (12,13,14,11,10,9,2,3) -> auto-tints by time of day! */
+ * Precomputes 256-entry skyline LUTs once (128x fewer 68000 divs.w -> ~12ms instead of ~1.0s!). */
 static void bake_genesis_parallax_vista(void) {
+    u8 mtn_y_lut[256];
+    u8 mtn_lit_lut[256];
+    u8 pine_y_lut[256];
+
+    for (u16 px = 0u; px < 256u; px++) {
+        u8 lit = 0u;
+        mtn_y_lut[px]  = gen_vista_mtn_y(px, &lit);
+        mtn_lit_lut[px] = lit;
+        pine_y_lut[px] = gen_vista_pine_y(px);
+    }
+
     /* Shared tiles 0..3: Zenith sky, Mid sky, Dithered sky gradient, Deep spruce valley */
     p8_fill(12u); upload_pix8_to_vram((u16)(VRAM_VISTA_BASE + 0u));
     p8_fill(13u); upload_pix8_to_vram((u16)(VRAM_VISTA_BASE + 1u));
@@ -1791,27 +1810,23 @@ static void bake_genesis_parallax_vista(void) {
 
     u16 next_t = 4u;
     for (u16 ty = 0u; ty < 8u; ty++) {
+        u16 py0 = (u16)(ty << 3);
+        u16 py1 = (u16)(py0 + 7u);
         for (u16 tx = 0u; tx < 32u; tx++) {
+            u16 px0 = (u16)(tx << 3);
             u8 has_mtn = 0u, has_pine = 0u, has_cloud = 0u, all_pine = 1u;
-            for (u16 ly = 0u; ly < 8u; ly++) {
-                u16 py = (u16)((ty << 3) + ly);
-                for (u16 lx = 0u; lx < 8u; lx++) {
-                    u16 px = (u16)((tx << 3) + lx);
-                    u8 lit = 0u;
-                    u8 my = gen_vista_mtn_y(px, &lit);
-                    u8 pine_y = gen_vista_pine_y(px);
-                    if (py >= pine_y) {
-                        has_pine = 1u;
-                    } else {
-                        all_pine = 0u;
-                        if (py >= my) {
-                            has_mtn = 1u;
-                        } else if (py >= 5u && py <= 14u &&
-                                   ((px >= 14u && px <= 46u) || (px >= 166u && px <= 198u))) {
-                            u16 cx = (px < 100u) ? (u16)(px - 14u) : (u16)(px - 166u);
-                            u8 top_c = (cx >= 10u && cx <= 22u) ? 6u : ((cx >= 4u && cx <= 28u) ? 9u : 11u);
-                            if (py >= top_c && py <= 13u) has_cloud = 1u;
-                        }
+            for (u16 lx = 0u; lx < 8u; lx++) {
+                u16 px = (u16)(px0 + lx);
+                u8 my = mtn_y_lut[px];
+                u8 pine_y = pine_y_lut[px];
+                if (py1 >= (u16)pine_y) has_pine = 1u;
+                if (py0 < (u16)pine_y) {
+                    all_pine = 0u;
+                    if (py1 >= (u16)my) has_mtn = 1u;
+                    if (ty <= 1u && ((px >= 14u && px <= 46u) || (px >= 166u && px <= 198u))) {
+                        u16 cx = (px < 100u) ? (u16)(px - 14u) : (u16)(px - 166u);
+                        u8 top_c = (cx >= 10u && cx <= 22u) ? 6u : ((cx >= 4u && cx <= 28u) ? 9u : 11u);
+                        if (py1 >= (u16)top_c && py0 <= 13u && (u16)top_c < (u16)my) has_cloud = 1u;
                     }
                 }
             }
@@ -1823,17 +1838,17 @@ static void bake_genesis_parallax_vista(void) {
                 g_vista_map[ty][tx] = (u16)(VRAM_VISTA_BASE + st);
             } else {
                 for (u16 ly = 0u; ly < 8u; ly++) {
-                    u16 py = (u16)((ty << 3) + ly);
+                    u16 py = (u16)(py0 + ly);
                     for (u16 lx = 0u; lx < 8u; lx++) {
-                        u16 px = (u16)((tx << 3) + lx);
-                        u8 lit = 0u;
-                        u8 my = gen_vista_mtn_y(px, &lit);
-                        u8 pine_y = gen_vista_pine_y(px);
+                        u16 px = (u16)(px0 + lx);
+                        u8 my = mtn_y_lut[px];
+                        u8 lit = mtn_lit_lut[px];
+                        u8 pine_y = pine_y_lut[px];
                         u8 col;
-                        if (py >= pine_y) {
+                        if (py >= (u16)pine_y) {
                             col = (py <= (u16)(pine_y + 2u) && ((px & 7u) <= 3u)) ? 3u : 2u;
-                        } else if (py >= my) {
-                            u8 snow_d = (u8)(py - my);
+                        } else if (py >= (u16)my) {
+                            u8 snow_d = (u8)(py - (u16)my);
                             if (lit) {
                                 u8 snow_lim = (u8)(8u + (((px * 3u) >> 2) & 3u));
                                 if (snow_d < snow_lim) col = 14u;
@@ -1853,7 +1868,7 @@ static void bake_genesis_parallax_vista(void) {
                                 ((px >= 14u && px <= 46u) || (px >= 166u && px <= 198u))) {
                                 u16 cx = (px < 100u) ? (u16)(px - 14u) : (u16)(px - 166u);
                                 u8 top_c = (cx >= 10u && cx <= 22u) ? 6u : ((cx >= 4u && cx <= 28u) ? 9u : 11u);
-                                if (py >= top_c && py <= 13u) col = (py >= 12u) ? 11u : 14u;
+                                if (py >= (u16)top_c && py <= 13u) col = (py >= 12u) ? 11u : 14u;
                             }
                         }
                         g_pix8[ly * 8u + lx] = col;
@@ -1873,22 +1888,25 @@ static void bake_genesis_parallax_vista(void) {
 }
 
 static void draw_genesis_parallax_vista(void) {
+    u16 row_buf[64];
     if (g_vista_vram_dirty) {
         bake_genesis_parallax_vista();
     }
-    /* Stamp seamless 64x32 sweeping 4bpp alpine skyline onto BG_B (priority 0, PAL0) */
-    for (u16 y = 0u; y < 32u; y++) {
-        for (u16 x = 0u; x < 64u; x++) {
-            u16 tid = (y < 8u) ? g_vista_map[y][x & 31u] : (u16)(VRAM_VISTA_BASE + 3u);
-            VDP_setTileMapXY(BG_B, TILE_ATTR_FULL(PAL0, 0, 0, 0, tid), x, y);
+    /* Stamp seamless 64x32 sweeping 4bpp alpine skyline onto BG_B via bulk row bursts (9 calls vs 2,048!) */
+    for (u16 y = 0u; y < 8u; y++) {
+        for (u16 x = 0u; x < 32u; x++) {
+            u16 attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, g_vista_map[y][x]);
+            row_buf[x]       = attr;
+            row_buf[x + 32u] = attr;
         }
+        VDP_setTileMapDataRow(BG_B, row_buf, y, 0, 64, CPU);
     }
+    VDP_fillTileMapRect(BG_B, TILE_ATTR_FULL(PAL0, 0, 0, 0, (u16)(VRAM_VISTA_BASE + 3u)), 0, 8, 64, 24);
 }
 
-static void write_metatile(s16 mx, s16 my) {
-    u16 a_tl, a_tr, a_bl, a_br;
-    u16 b_tl = 0u, b_tr = 0u, b_bl = 0u, b_br = 0u;
-    u8 use_parallax = (!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista) ? 1u : 0u;
+static void resolve_metatile_attrs(s16 mx, s16 my, u8 use_parallax,
+                                   u16 *a_tl, u16 *a_tr, u16 *a_bl, u16 *a_br,
+                                   u16 *b_tl, u16 *b_tr, u16 *b_bl, u16 *b_br) {
     if (g_hearth.is_world_map) {
         u16 wx = (u16)((u16)mx & 255u);
         s16 wy_s = my;
@@ -1898,16 +1916,16 @@ static void write_metatile(s16 mx, s16 my) {
         hearth_globe_cell(wx, (u16)wy_s, &bg1, &bg2, NULL, NULL);
         u8 b1 = (bg1 < 64u) ? bg1 : 0u;
         u8 ov = map_bg2_to_ov_slot(bg2);
-        a_tl = g_bg1_tl[b1]; a_tr = g_bg1_tr[b1]; a_bl = g_bg1_bl[b1]; a_br = g_bg1_br[b1];
-        b_tl = g_ov_tl[ov];  b_tr = g_ov_tr[ov];  b_bl = g_ov_bl[ov];  b_br = g_ov_br[ov];
+        *a_tl = g_bg1_tl[b1]; *a_tr = g_bg1_tr[b1]; *a_bl = g_bg1_bl[b1]; *a_br = g_bg1_br[b1];
+        *b_tl = g_ov_tl[ov];  *b_tr = g_ov_tr[ov];  *b_bl = g_ov_bl[ov];  *b_br = g_ov_br[ov];
     } else {
         s16 mw = (s16)(g_hearth.map_w ? g_hearth.map_w : HEARTH_MAP_W);
         s16 mh = (s16)(g_hearth.map_h ? g_hearth.map_h : HEARTH_MAP_H);
         if (mx < 0 || my < 0 || mx >= mw || my >= mh) {
             u16 edge_t = (use_parallax && my < 4) ? (u16)(VRAM_BG_BASE + GT_EMPTY) : (u16)(VRAM_BG_BASE + GT_BUSH);
             u16 ea = TILE_ATTR_FULL(PAL0, 0, 0, 0, edge_t);
-            a_tl = ea; a_tr = ea; a_bl = ea; a_br = ea;
-            b_tl = g_ov_tl[0]; b_tr = g_ov_tr[0]; b_bl = g_ov_bl[0]; b_br = g_ov_br[0];
+            *a_tl = ea; *a_tr = ea; *a_bl = ea; *a_br = ea;
+            *b_tl = g_ov_tl[0]; *b_tr = g_ov_tr[0]; *b_bl = g_ov_bl[0]; *b_br = g_ov_br[0];
         } else {
             u16 idx = (u16)(my * mw + mx);
             u8 bg1 = g_hearth.map_bg1[idx];
@@ -1918,22 +1936,30 @@ static void write_metatile(s16 mx, s16 my) {
                 /* BG_B holds 60fps sweeping alpine mountains; BG_A renders foreground & canopies */
                 if (bg1 == T_MTN_SKY) {
                     if (ov != 0u) {
-                        a_tl = g_ov_tl[ov]; a_tr = g_ov_tr[ov]; a_bl = g_ov_bl[ov]; a_br = g_ov_br[ov];
+                        *a_tl = g_ov_tl[ov]; *a_tr = g_ov_tr[ov]; *a_bl = g_ov_bl[ov]; *a_br = g_ov_br[ov];
                     } else {
                         u16 emp = TILE_ATTR_FULL(PAL0, 0, 0, 0, (u16)(VRAM_BG_BASE + GT_EMPTY));
-                        a_tl = emp; a_tr = emp; a_bl = emp; a_br = emp;
+                        *a_tl = emp; *a_tr = emp; *a_bl = emp; *a_br = emp;
                     }
                 } else if (ov != 0u) {
-                    a_tl = g_opq_tl[ov]; a_tr = g_opq_tr[ov]; a_bl = g_opq_bl[ov]; a_br = g_opq_br[ov];
+                    *a_tl = g_opq_tl[ov]; *a_tr = g_opq_tr[ov]; *a_bl = g_opq_bl[ov]; *a_br = g_opq_br[ov];
                 } else {
-                    a_tl = g_bg1_tl[b1]; a_tr = g_bg1_tr[b1]; a_bl = g_bg1_bl[b1]; a_br = g_bg1_br[b1];
+                    *a_tl = g_bg1_tl[b1]; *a_tr = g_bg1_tr[b1]; *a_bl = g_bg1_bl[b1]; *a_br = g_bg1_br[b1];
                 }
+                *b_tl = 0u; *b_tr = 0u; *b_bl = 0u; *b_br = 0u;
             } else {
-                a_tl = g_bg1_tl[b1]; a_tr = g_bg1_tr[b1]; a_bl = g_bg1_bl[b1]; a_br = g_bg1_br[b1];
-                b_tl = g_ov_tl[ov];  b_tr = g_ov_tr[ov];  b_bl = g_ov_bl[ov];  b_br = g_ov_br[ov];
+                *a_tl = g_bg1_tl[b1]; *a_tr = g_bg1_tr[b1]; *a_bl = g_bg1_bl[b1]; *a_br = g_bg1_br[b1];
+                *b_tl = g_ov_tl[ov];  *b_tr = g_ov_tr[ov];  *b_bl = g_ov_bl[ov];  *b_br = g_ov_br[ov];
             }
         }
     }
+}
+
+static void write_metatile(s16 mx, s16 my) {
+    u16 a_tl, a_tr, a_bl, a_br;
+    u16 b_tl = 0u, b_tr = 0u, b_bl = 0u, b_br = 0u;
+    u8 use_parallax = (!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista) ? 1u : 0u;
+    resolve_metatile_attrs(mx, my, use_parallax, &a_tl, &a_tr, &a_bl, &a_br, &b_tl, &b_tr, &b_bl, &b_br);
     u16 tx0 = (u16)((mx * 2) & 63);
     u16 tx1 = (u16)((tx0 + 1) & 63);
     u16 ty0 = (u16)((my * 2) & 63);
@@ -1958,15 +1984,44 @@ static u8  g_last_pal_id = 255;
 static u8  g_last_map_rev = 255;
 static u8  g_cinema_pals_active = 0;
 
+static void write_plane_row_wrap(VDPPlane plane, const u16 row64[64], u16 ty, u16 tx_start, u16 count) {
+    u16 first = (u16)(64u - tx_start);
+    if (first >= count) {
+        VDP_setTileMapDataRow(plane, &row64[tx_start], ty, tx_start, count, CPU);
+    } else {
+        VDP_setTileMapDataRow(plane, &row64[tx_start], ty, tx_start, first, CPU);
+        VDP_setTileMapDataRow(plane, &row64[0], ty, 0u, (u16)(count - first), CPU);
+    }
+}
+
 static void draw_full_world_viewport(s16 cam_x, s16 cam_y) {
+    u16 row_a0[64], row_a1[64], row_b0[64], row_b1[64];
     s16 mx0 = (s16)((cam_x >> 4) - 2);
     s16 my0 = (s16)((cam_y >> 4) - 2);
-    if (!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista) {
+    u8 use_parallax = (!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista) ? 1u : 0u;
+    u16 tx_start = (u16)((mx0 * 2) & 63);
+
+    if (use_parallax) {
         draw_genesis_parallax_vista();
     }
+    /* Bulk row-buffered viewport fill (36-72 VDP row bursts instead of 3,456 VDP_setTileMapXY calls!) */
     for (s16 dy = 0; dy < 18; dy++) {
+        s16 my = (s16)(my0 + dy);
+        u16 ty0 = (u16)((my * 2) & 63);
+        u16 ty1 = (u16)((ty0 + 1u) & 63);
         for (s16 dx = 0; dx < 24; dx++) {
-            write_metatile((s16)(mx0 + dx), (s16)(my0 + dy));
+            s16 mx = (s16)(mx0 + dx);
+            u16 tx0 = (u16)((mx * 2) & 63);
+            u16 tx1 = (u16)((tx0 + 1u) & 63);
+            resolve_metatile_attrs(mx, my, use_parallax,
+                &row_a0[tx0], &row_a0[tx1], &row_a1[tx0], &row_a1[tx1],
+                &row_b0[tx0], &row_b0[tx1], &row_b1[tx0], &row_b1[tx1]);
+        }
+        write_plane_row_wrap(BG_A, row_a0, ty0, tx_start, 48u);
+        write_plane_row_wrap(BG_A, row_a1, ty1, tx_start, 48u);
+        if (!use_parallax) {
+            write_plane_row_wrap(BG_B, row_b0, ty0, tx_start, 48u);
+            write_plane_row_wrap(BG_B, row_b1, ty1, tx_start, 48u);
         }
     }
     g_last_cam_mx = (s16)(cam_x >> 4);
@@ -2639,10 +2694,9 @@ static void render_sprites(const HearthPpuPacket *ppu) {
                 u8 pose = (o->frame <= HERO_POSE_BTL_VICTORY) ? o->frame : hearth_compute_hero_pose(&g_hearth);
                 u8 rkey = (u8)(((o->dir & 3u) << 4) | (pose & 0x0Fu));
                 if (rkey != g_last_rowan_key) {
+                    u8 pidx = gen_rowan_pose_idx(o->dir, pose);
                     g_last_rowan_key = rkey;
-                    hearth_bake_rowan_16x24(g_pix24, o->dir, pose);
-                    pack_pix16x24_sprite_to_buf(g_pix24, g_rowan_tiles);
-                    VDP_loadTileData(g_rowan_tiles, VRAM_TALL_SPR_BASE, 6, DMA_QUEUE);
+                    VDP_loadTileData(ROWAN_GEN_TILES[pidx], VRAM_TALL_SPR_BASE, 6, DMA_QUEUE);
                 }
                 flip_x = 0u;
             }

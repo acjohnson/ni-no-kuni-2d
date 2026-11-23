@@ -38,7 +38,9 @@ SDL2_SRC        := $(PLAT_DIR)/sdl2_main.c
 SDL2_CG_HDR     := $(PLAT_DIR)/cinema_cg_sdl2.h
 ROM_CG_HDR      := $(PLAT_DIR)/cinema_cg_rom.h
 HERO24_HDR      := $(PLAT_DIR)/hearth_hero24.h
+ROWAN_GEN_HDR   := $(PLAT_DIR)/rowan_gen_rom.h
 SNES_CG_ASM     := $(PLAT_DIR)/cinema_cg_snes.asm
+SNES_ROWAN_ASM  := $(PLAT_DIR)/rowan_snes_rom.asm
 TEST_SRC        := $(PLAT_DIR)/headless_test.c
 GENESIS_SRC     := $(PLAT_DIR)/genesis_main.c
 SNES_SRC        := $(PLAT_DIR)/snes_main.c
@@ -184,10 +186,10 @@ $(BUILD_DIR)/test/$(APP_NAME)_core_test: $(CORE_SRCS) $(CORE_HDRS) $(TEST_SRC)
 # ------------------------------------------------------------------------------
 # 5. SEGA GENESIS / MEGA DRIVE ROM (Implicit Docker SGDK — Zero Manual Setup!)
 # ------------------------------------------------------------------------------
-genesis-stage: $(CORE_SRCS) $(CORE_HDRS) $(GENESIS_SRC) $(ROM_CG_HDR) $(HERO24_HDR)
+genesis-stage: $(CORE_SRCS) $(CORE_HDRS) $(GENESIS_SRC) $(ROM_CG_HDR) $(HERO24_HDR) $(ROWAN_GEN_HDR)
 	@rm -rf $(BUILD_DIR)/genesis/src $(BUILD_DIR)/genesis/out
 	@mkdir -p $(BUILD_DIR)/genesis/src $(BUILD_DIR)/genesis/res $(BUILD_DIR)/genesis/inc
-	@cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) $(HERO24_HDR) $(BUILD_DIR)/genesis/src/
+	@cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) $(HERO24_HDR) $(ROWAN_GEN_HDR) $(BUILD_DIR)/genesis/src/
 	@cp $(GENESIS_SRC) $(BUILD_DIR)/genesis/src/main.c
 
 genesis: genesis-stage
@@ -213,7 +215,7 @@ genesis: genesis-stage
 # ------------------------------------------------------------------------------
 # 6. SUPER NINTENDO (SNES) ROM (FastROM + SPC700 Audio + Auto-Fetched PVSnesLib)
 # ------------------------------------------------------------------------------
-snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(HERO24_HDR) $(SNES_CG_ASM) $(SNES_AUDIO_GEN)
+snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(HERO24_HDR) $(SNES_CG_ASM) $(SNES_ROWAN_ASM) $(SNES_AUDIO_GEN)
 	$(call PRINT_BUILD_BANNER,snes-fastrom)
 	@set -e; \
 	PV_ROOT=""; \
@@ -253,10 +255,10 @@ snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(HERO24_HDR) $(SNES_C
 	cp $(SNES_SRC) "$(BUILD_DIR)/snes/src/main.c"; \
 	DATA_OBJ="data.obj"; \
 	if grep -qE '^[^#]*(SRC|dir)[^#]*\*\.asm' "$$PV_ROOT/devkitsnes/snes_rules" 2>/dev/null; then \
-		cp $(SNES_CG_ASM) "$(BUILD_DIR)/snes/src/data.asm"; \
+		cat $(SNES_CG_ASM) $(SNES_ROWAN_ASM) > "$(BUILD_DIR)/snes/src/data.asm"; \
 		DATA_OBJ="src/data.obj"; \
 	else \
-		cp $(SNES_CG_ASM) "$(BUILD_DIR)/snes/data.asm"; \
+		cat $(SNES_CG_ASM) $(SNES_ROWAN_ASM) > "$(BUILD_DIR)/snes/data.asm"; \
 	fi; \
 	printf '%s\n' \
 		'export FASTROM := 1' \

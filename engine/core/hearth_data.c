@@ -266,26 +266,44 @@ const int8_t HEARTH_SIN64[64] = {
      -90,  -81,  -71,  -60,  -49,  -37,  -25,  -12
 };
 
+/* Precomputed row offsets (y * 44) — eliminates ~2,000 software multiplies per zone load on 65816! */
+static const uint16_t HEARTH_MAP_ROW_OFF[HEARTH_MAP_H] = {
+       0u,   44u,   88u,  132u,  176u,  220u,  264u,
+     308u,  352u,  396u,  440u,  484u,  528u,  572u,
+     616u,  660u,  704u,  748u,  792u,  836u,  880u,
+     924u,  968u, 1012u, 1056u, 1100u, 1144u, 1188u
+};
+
 /* Internal map helpers */
 static void set_bg1(uint8_t *bg1, uint8_t *col, int x, int y, uint8_t t, uint8_t c) {
-    int idx;
+    uint16_t idx;
     if (x < 0 || y < 0 || x >= HEARTH_MAP_W || y >= HEARTH_MAP_H) return;
-    idx = y * HEARTH_MAP_W + x;
+    idx = (uint16_t)(HEARTH_MAP_ROW_OFF[y] + (uint16_t)x);
     bg1[idx] = t;
     col[idx] = c;
 }
 
 static void set_bg2(uint8_t *bg2, int x, int y, uint8_t t) {
     if (x < 0 || y < 0 || x >= HEARTH_MAP_W || y >= HEARTH_MAP_H) return;
-    bg2[y * HEARTH_MAP_W + x] = t;
+    bg2[HEARTH_MAP_ROW_OFF[y] + (uint16_t)x] = t;
 }
 
 static void fill_rect(uint8_t *bg1, uint8_t *col, int x0, int y0, int w, int h, uint8_t t, uint8_t c) {
-    int x, y;
-    for (y = y0; y < y0 + h; y++) {
-        for (x = x0; x < x0 + w; x++) {
-            set_bg1(bg1, col, x, y, t, c);
-        }
+    int y, x1, y1, sx, len;
+    uint16_t off;
+    if (w <= 0 || h <= 0) return;
+    sx = (x0 < 0) ? 0 : x0;
+    x1 = x0 + w;
+    if (x1 > HEARTH_MAP_W) x1 = HEARTH_MAP_W;
+    if (sx >= x1) return;
+    len = x1 - sx;
+    y = (y0 < 0) ? 0 : y0;
+    y1 = y0 + h;
+    if (y1 > HEARTH_MAP_H) y1 = HEARTH_MAP_H;
+    for (; y < y1; y++) {
+        off = (uint16_t)(HEARTH_MAP_ROW_OFF[y] + (uint16_t)sx);
+        hearth_memset(bg1 + off, t, (uint16_t)len);
+        hearth_memset(col + off, c, (uint16_t)len);
     }
 }
 

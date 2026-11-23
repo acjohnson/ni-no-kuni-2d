@@ -70,6 +70,7 @@ static void h24_rect(uint8_t *dst, uint8_t bw, uint8_t bh,
     }
 }
 
+#ifndef HEARTH_USE_PREBAKED_ROWAN
 /* ============================================================================
  * 1. ROWAN — 16x24 EXPRESSIVE JRPG HERO WITH FLOWING TERRACOTTA SCARF (PAL 1)
  *    dir:  DIR_DOWN(0), DIR_UP(1), DIR_LEFT(2), DIR_RIGHT(3)
@@ -362,6 +363,7 @@ static void hearth_bake_rowan_16x24(uint8_t *dst384, uint8_t dir, uint8_t pose) 
         h24_px(dst384, 16u, 24u, 13, (int16_t)(2 + bob), 10u, flip_x);
     }
 }
+#endif /* !HEARTH_USE_PREBAKED_ROWAN */
 
 /* ============================================================================
  * 2. PETITE BOUNCY GARDEN-GNOME PIP — ~11x13 INSIDE 16x16 (PAL 1, ZERO WINGS!)

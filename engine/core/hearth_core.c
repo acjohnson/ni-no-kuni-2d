@@ -505,7 +505,7 @@ static void clear_zone_entities(HearthState *st) {
 
 static void populate_zone_rowan_home(HearthState *st) {
     st->terrain_pal_id = ZPAL_COTTAGE_INTERIOR;
-    st->bgm_id = (st->time_of_day >= TOD_DUSK) ? (uint8_t)BGM_CINEMA_LULLABY : (uint8_t)BGM_ALDERBROOK;
+    st->bgm_id = (st->time_of_day == TOD_NIGHT) ? (uint8_t)BGM_CINEMA_LULLABY : (uint8_t)BGM_ALDERBROOK;
     st->zone_is_dark = (st->time_of_day == TOD_NIGHT);
     st->pip_visible = false;
 
@@ -4758,7 +4758,7 @@ static void check_explore_triggers(HearthState *st) {
 static bool step_zone_warp(HearthState *st) {
     if (!st->warp_pending) return false;
     if (st->warp_fade < 15u) {
-        st->warp_fade += 2u;
+        st->warp_fade = (uint8_t)(st->warp_fade + 3u);
         if (st->warp_fade >= 15u) {
             uint8_t prev_zone = st->zone_id;
             st->warp_fade = 15u;
@@ -5484,7 +5484,7 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
         build_ppu_packet(st);
         return &HP;
     } else if (HS.warp_fade > 0) {
-        HS.warp_fade = (HS.warp_fade >= 2u) ? (uint8_t)(HS.warp_fade - 2u) : 0u;
+        HS.warp_fade = (HS.warp_fade >= 3u) ? (uint8_t)(HS.warp_fade - 3u) : 0u;
     }
 
     switch (HS.mode) {

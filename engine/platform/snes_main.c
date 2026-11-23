@@ -23,9 +23,11 @@
 #include "hearth_core.h"
 #include "res/soundbank.h"
 #include "cinema_cg_rom.h"
+#define HEARTH_USE_PREBAKED_ROWAN 1
 #include "hearth_hero24.h"
 
 extern char SOUNDBANK__;
+extern char rowan_snes_tiles;
 
 /* ============================================================================
  * 1. STATIC SNES WRAM BUFFERS (Bank $7E — zero malloc, tiny 65816 stacks!)
@@ -219,11 +221,12 @@ static u8  g_atlas_below[64];
 static u8  g_lm_px[HEARTH_GLOBE_LANDMARK_COUNT];
 static u8  g_lm_py[HEARTH_GLOBE_LANDMARK_COUNT];
 
-/* Rowan 16x24 VBlank DMA staging in Bank $7E WRAM (6 tiles = 192 bytes):
- *   [0..1] = top row (0x00, 0x01), [2..3] = mid row (0x10, 0x11), [4..5] = boot strip (0xC4, 0xC5) */
-static u8  g_rowan_dma[6][32];
+/* Rowan 16x24 zero-CPU ROM VBlank DMA state (33 pre-baked 6-tile poses in rowan_snes_tiles):
+ *   +0..+63 = top row (0x00, 0x01), +64..+127 = mid row (0x10, 0x11), +128..+191 = boot strip (0xC4, 0xC5) */
+static u8  g_rowan_pose_idx   = 0u;
 static u8  g_last_rowan_key   = 0xFFu;
 static u8  g_rowan_dma_dirty  = 0u;
+static u8  g_last_bright      = 15u;
 
 static u8  g_bg0_dirty        = 0;
 static u8  g_bg1_dirty_l      = 0;
@@ -353,29 +356,36 @@ static const u8 SNES_FONT_5X7[64][7] = {
 /* ============================================================================
  * 3. SNES 4bpp PLANAR TILE & 16x16 OBJ SHEET BAKER (Called during Force Blank)
  * ============================================================================ */
+static const u8 SNES_BIT_MASK[8] = {
+    0x80u, 0x40u, 0x20u, 0x10u, 0x08u, 0x04u, 0x02u, 0x01u
+};
+
 static void encode_pix8_to_buf(u8 *dst32) {
     u8 y, x, mask, c;
     u8 bp0, bp1, bp2, bp3;
-    u16 row_off;
+    const u8 *rp = g_pix8;
+    u8 *p01 = dst32;
+    u8 *p23 = dst32 + 16u;
 
     for (y = 0; y < 8u; y++) {
         bp0 = 0;
         bp1 = 0;
         bp2 = 0;
         bp3 = 0;
-        row_off = (u16)((u16)y << 3);
         for (x = 0; x < 8u; x++) {
-            mask = (u8)(0x80u >> x);
-            c = g_pix8[row_off + x];
-            if (c & 1u) bp0 |= mask;
-            if (c & 2u) bp1 |= mask;
-            if (c & 4u) bp2 |= mask;
-            if (c & 8u) bp3 |= mask;
+            c = *rp++;
+            if (c != 0u) {
+                mask = SNES_BIT_MASK[x];
+                if (c & 1u) bp0 |= mask;
+                if (c & 2u) bp1 |= mask;
+                if (c & 4u) bp2 |= mask;
+                if (c & 8u) bp3 |= mask;
+            }
         }
-        dst32[(u16)(y * 2u)]       = bp0;
-        dst32[(u16)(y * 2u + 1u)]  = bp1;
-        dst32[(u16)(16u + y * 2u)] = bp2;
-        dst32[(u16)(17u + y * 2u)] = bp3;
+        *p01++ = bp0;
+        *p01++ = bp1;
+        *p23++ = bp2;
+        *p23++ = bp3;
     }
 }
 
@@ -395,16 +405,20 @@ static void upload_bg1_tile(u16 tile_idx) {
 /* Encode 8x8 2bpp tile (color indices 0..3) and upload to BG2 Parallax VRAM */
 static void upload_bg2_tile_2bpp(u16 tile_idx) {
     u8 y, x, p0, p1, c, bit;
+    const u8 *rp = g_pix8;
+    u8 *dp = g_tile32;
     for (y = 0u; y < 8u; y++) {
         p0 = 0u; p1 = 0u;
         for (x = 0u; x < 8u; x++) {
-            c = (u8)(g_pix8[(u16)(y * 8u + x)] & 3u);
-            bit = (u8)(0x80u >> x);
-            if (c & 1u) p0 |= bit;
-            if (c & 2u) p1 |= bit;
+            c = (u8)(*rp++ & 3u);
+            if (c != 0u) {
+                bit = SNES_BIT_MASK[x];
+                if (c & 1u) p0 |= bit;
+                if (c & 2u) p1 |= bit;
+            }
         }
-        g_tile32[(u16)(y * 2u + 0u)] = p0;
-        g_tile32[(u16)(y * 2u + 1u)] = p1;
+        *dp++ = p0;
+        *dp++ = p1;
     }
     dmaCopyVram(g_tile32, (u16)(VRAM_BG2_GFX + (tile_idx << 3)), 16u);
 }
@@ -456,16 +470,24 @@ static void upload_obj_sprite24_fb(u8 slot, u8 boot_tile) {
     copy_sub24_to_pix8(8u, 16u); encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((bt + 1u) << 4)));
 }
 
-/* Encode Rowan's current 16x24 pose into Bank $7E VBlank DMA buffer (192 bytes) */
-static void stage_rowan_16x24_dma(u8 dir, u8 pose) {
-    hearth_bake_rowan_16x24(g_pix24, dir, pose);
-    copy_sub24_to_pix8(0u, 0u);  encode_pix8_to_buf(g_rowan_dma[0]);
-    copy_sub24_to_pix8(8u, 0u);  encode_pix8_to_buf(g_rowan_dma[1]);
-    copy_sub24_to_pix8(0u, 8u);  encode_pix8_to_buf(g_rowan_dma[2]);
-    copy_sub24_to_pix8(8u, 8u);  encode_pix8_to_buf(g_rowan_dma[3]);
-    copy_sub24_to_pix8(0u, 16u); encode_pix8_to_buf(g_rowan_dma[4]);
-    copy_sub24_to_pix8(8u, 16u); encode_pix8_to_buf(g_rowan_dma[5]);
-    g_rowan_dma_dirty = 1u;
+/* Map (dir 0..3, pose 0..11) -> pre-baked ROM index (0..32) in ~5 CPU cycles */
+static u8 snes_rowan_pose_idx(u8 dir, u8 pose) {
+    static const u8 DIR_BASE[4] = { 0u, 7u, 14u, 21u };
+    if (pose >= HERO_POSE_BTL_READY) {
+        u8 bp = (u8)(pose - HERO_POSE_BTL_READY);
+        return (u8)(28u + ((bp < 5u) ? bp : 0u));
+    }
+    return (u8)(DIR_BASE[dir & 3u] + pose);
+}
+
+/* Stream Rowan's pre-baked 16x24 pose directly from FastROM during VBlank (~1.1 scanlines, 0 CPU bake!) */
+static void flush_rowan_vblank_dma(void) {
+    u16 off = (u16)(((u16)g_rowan_pose_idx << 7) + ((u16)g_rowan_pose_idx << 6));
+    u8 *src = ((u8 *)&rowan_snes_tiles) + off;
+    dmaCopyVram(src,               (u16)(VRAM_OBJ_GFX + (0x00u << 4)), 64u);
+    dmaCopyVram((u8 *)(src + 64u), (u16)(VRAM_OBJ_GFX + (0x10u << 4)), 64u);
+    dmaCopyVram((u8 *)(src + 128u),(u16)(VRAM_OBJ_GFX + (0xC4u << 4)), 64u);
+    g_rowan_dma_dirty = 0u;
 }
 
 static void p8_fill(u8 col) {
@@ -1662,11 +1684,10 @@ static void bake_obj_sprites_hero_ext(void) {
     hearth_bake_pip_16x16(g_pix16, 2u);
     upload_obj_sprite16(SPR_PIP_SQUASH_SLOT);
 
-    /* Tall 16x24 Rowan initial pose (upper 16x16 at slot 0 + lower 16x8 boot strip at 0xC4,0xC5) */
-    hearth_bake_rowan_16x24(g_pix24, DIR_DOWN, HERO_POSE_IDLE);
-    upload_obj_sprite24_fb(SPR_HERO, 0xC4u);
+    /* Tall 16x24 Rowan initial pose streamed straight from pre-baked ROM (0 CPU baking!) */
+    g_rowan_pose_idx = 0u;
     g_last_rowan_key = 0u;
-    g_rowan_dma_dirty = 0u;
+    flush_rowan_vblank_dma();
 
     /* Tall 16x24 Adult NPCs: Grandma Mara + 12 key cast (upper 16x16 in own slot, lower 16x8 in boot strip) */
     for (idx = 0u; idx < 13u; idx++) {
@@ -1723,6 +1744,16 @@ static u8 vista_pine_y(u16 px) {
 static void bake_bg2_parallax_vista(void) {
     u16 tx, ty, lx, ly, px, py, next_t, off, half, col, entry, i;
     u8 my, pine_y, lit, c, snow_d, use_pal, has_mtn, has_pine, has_cloud;
+    u8 *mtn_y_lut  = g_world_meta;
+    u8 *mtn_lit_lut = g_world_meta + 256u;
+    u8 *pine_y_lut = g_world_meta + 512u;
+
+    /* Precompute 256-column mountain/pine skyline ONCE (256 divisions instead of 36,864 -> 140x faster boot!) */
+    for (px = 0u; px < 256u; px++) {
+        mtn_y_lut[px]  = vista_mtn_y(px, &lit);
+        mtn_lit_lut[px] = lit;
+        pine_y_lut[px] = vista_pine_y(px);
+    }
 
     /* Shared solid/sky tiles 0..3 */
     p8_fill(1u); upload_bg2_tile_2bpp(0u); /* PAL4: Zenith sky */
@@ -1746,28 +1777,23 @@ static void bake_bg2_parallax_vista(void) {
 
     /* Paint sweeping 32x9 (256x72px) alpine skyline and duplicate seamlessly to 64x32 tilemap */
     for (ty = 0u; ty < 9u; ty++) {
+        u16 py0 = (u16)(ty << 3);
+        u16 py1 = (u16)(py0 + 7u);
         for (tx = 0u; tx < 32u; tx++) {
+            u16 px0 = (u16)(tx << 3);
             has_mtn = 0u;
             has_pine = 0u;
             has_cloud = 0u;
-            for (ly = 0u; ly < 8u; ly++) {
-                py = (u16)((ty << 3) + ly);
-                for (lx = 0u; lx < 8u; lx++) {
-                    px = (u16)((tx << 3) + lx);
-                    my = vista_mtn_y(px, &lit);
-                    pine_y = vista_pine_y(px);
-                    if (py >= pine_y) {
-                        has_pine = 1u;
-                    } else if (py >= my) {
-                        has_mtn = 1u;
-                    } else if (py >= 5u && py <= 14u) {
-                        /* Two soft drifting cumulus clouds in upper sky */
-                        if ((px >= 14u && px <= 46u) || (px >= 166u && px <= 198u)) {
-                            u16 cx = (px < 100u) ? (u16)(px - 14u) : (u16)(px - 166u);
-                            u8 top_c = (cx >= 10u && cx <= 22u) ? 6u : ((cx >= 4u && cx <= 28u) ? 9u : 11u);
-                            if (py >= top_c && py <= 13u) has_cloud = 1u;
-                        }
-                    }
+            for (lx = 0u; lx < 8u; lx++) {
+                px = (u16)(px0 + lx);
+                my = mtn_y_lut[px];
+                pine_y = pine_y_lut[px];
+                if (py1 >= (u16)pine_y) has_pine = 1u;
+                if (py1 >= (u16)my && py0 < (u16)pine_y) has_mtn = 1u;
+                if (ty <= 1u && ((px >= 14u && px <= 46u) || (px >= 166u && px <= 198u))) {
+                    u16 cx = (px < 100u) ? (u16)(px - 14u) : (u16)(px - 166u);
+                    u8 top_c = (cx >= 10u && cx <= 22u) ? 6u : ((cx >= 4u && cx <= 28u) ? 9u : 11u);
+                    if (py1 >= (u16)top_c && py0 <= 13u && (u16)top_c < (u16)my) has_cloud = 1u;
                 }
             }
 
@@ -1779,11 +1805,11 @@ static void bake_bg2_parallax_vista(void) {
                 /* Pine treeline silhouette tile (PAL6: 1=deep spruce, 2=lit spruce, 3=mountain base) */
                 use_pal = 6u;
                 for (ly = 0u; ly < 8u; ly++) {
-                    py = (u16)((ty << 3) + ly);
+                    py = (u16)(py0 + ly);
                     for (lx = 0u; lx < 8u; lx++) {
-                        px = (u16)((tx << 3) + lx);
-                        pine_y = vista_pine_y(px);
-                        if (py < pine_y) {
+                        px = (u16)(px0 + lx);
+                        pine_y = pine_y_lut[px];
+                        if (py < (u16)pine_y) {
                             c = 3u; /* Hazy mountain base behind pine tips */
                         } else if (py <= (u16)(pine_y + 2u) && ((px & 7u) <= 3u)) {
                             c = 2u; /* Sunlit left edge of spruce spire */
@@ -1800,14 +1826,14 @@ static void bake_bg2_parallax_vista(void) {
                 /* Soft cumulus cloud tile (PAL7: 1=zenith sky, 2=cloud shadow, 3=sunlit puff) */
                 use_pal = 7u;
                 for (ly = 0u; ly < 8u; ly++) {
-                    py = (u16)((ty << 3) + ly);
+                    py = (u16)(py0 + ly);
                     for (lx = 0u; lx < 8u; lx++) {
-                        px = (u16)((tx << 3) + lx);
+                        px = (u16)(px0 + lx);
                         c = 1u;
                         if ((px >= 14u && px <= 46u) || (px >= 166u && px <= 198u)) {
                             u16 cx = (px < 100u) ? (u16)(px - 14u) : (u16)(px - 166u);
                             u8 top_c = (cx >= 10u && cx <= 22u) ? 6u : ((cx >= 4u && cx <= 28u) ? 9u : 11u);
-                            if (py >= top_c && py <= 13u) {
+                            if (py >= (u16)top_c && py <= 13u) {
                                 c = (py >= 12u) ? 2u : 3u;
                             }
                         }
@@ -1821,14 +1847,14 @@ static void bake_bg2_parallax_vista(void) {
                 /* Transition row where spruce silhouettes rise over shaded mountain flanks */
                 use_pal = 6u;
                 for (ly = 0u; ly < 8u; ly++) {
-                    py = (u16)((ty << 3) + ly);
+                    py = (u16)(py0 + ly);
                     for (lx = 0u; lx < 8u; lx++) {
-                        px = (u16)((tx << 3) + lx);
-                        my = vista_mtn_y(px, &lit);
-                        pine_y = vista_pine_y(px);
-                        if (py < my) {
+                        px = (u16)(px0 + lx);
+                        my = mtn_y_lut[px];
+                        pine_y = pine_y_lut[px];
+                        if (py < (u16)my) {
                             c = 0u; /* Seamless backdrop mid-sky */
-                        } else if (py < pine_y) {
+                        } else if (py < (u16)pine_y) {
                             c = 3u; /* Shaded granite flank */
                         } else if (py <= (u16)(pine_y + 2u) && ((px & 7u) <= 3u)) {
                             c = 2u; /* Lit pine crest */
@@ -1845,14 +1871,15 @@ static void bake_bg2_parallax_vista(void) {
                 /* Snow-capped alpine granite mountain tile (PAL5: 0=sky backdrop, 1=shadow, 2=lit, 3=snow) */
                 use_pal = 5u;
                 for (ly = 0u; ly < 8u; ly++) {
-                    py = (u16)((ty << 3) + ly);
+                    py = (u16)(py0 + ly);
                     for (lx = 0u; lx < 8u; lx++) {
-                        px = (u16)((tx << 3) + lx);
-                        my = vista_mtn_y(px, &lit);
-                        if (py < my) {
+                        px = (u16)(px0 + lx);
+                        my = mtn_y_lut[px];
+                        lit = mtn_lit_lut[px];
+                        if (py < (u16)my) {
                             c = 0u; /* Transparent -> CGRAM[0] mid-sky seamlessly! */
                         } else {
-                            snow_d = (u8)(py - my);
+                            snow_d = (u8)(py - (u16)my);
                             if (lit) {
                                 /* Sunlit left slope: rich snowcap with organic snow gullies */
                                 u8 snow_lim = (u8)(8u + (((px * 3u) >> 2) & 3u));
@@ -2170,29 +2197,43 @@ static void init_snes_metatiles(void) {
 }
 
 static void bake_world_tile_cache(void) {
-    u16 idx, ov, t;
+    /* Fast 16-entry overlay -> metatile LUT (eliminates 7-branch if/else chain on 65816!) */
+    static const u8 OV_META_LUT[16] = {
+        0u,                /* 0: O_NONE */
+        META_OV_CANOPY,    /* 1: O_CANOPY_TL */
+        META_OV_CANOPY,    /* 2: O_CANOPY_TR */
+        META_OV_CANOPY,    /* 3: O_CANOPY_BL */
+        META_OV_CANOPY,    /* 4: O_CANOPY_BR */
+        META_OV_ROOF_EAVE, /* 5: O_ROOF_EAVE */
+        META_OV_SHRINE,    /* 6: O_SHRINE_ARCH */
+        META_OV_MAPLE,     /* 7: O_MAPLE_TL */
+        META_OV_MAPLE,     /* 8: O_MAPLE_TR */
+        META_OV_PINE,      /* 9: O_PINE_TOP */
+        META_OV_OAK,       /* 10: O_OAK_CROWN */
+        META_OV_CANOPY, META_OV_CANOPY, META_OV_CANOPY, META_OV_CANOPY, META_OV_CANOPY
+    };
+    u16 idx;
+    u8 ov, t, has_vista;
+    const u8 *p1;
+    const u8 *p2;
+    u8 *dst;
+
     if (g_hearth.is_world_map) return;
+    has_vista = g_hearth.has_mountain_vista ? 1u : 0u;
+    p1 = g_hearth.map_bg1;
+    p2 = g_hearth.map_bg2;
+    dst = g_world_meta;
     for (idx = 0u; idx < (u16)HEARTH_MAP_CELLS; idx++) {
-        ov = (u16)g_hearth.map_bg2[idx];
+        ov = *p2++;
+        t  = *p1++;
         if (ov == 0u) {
-            t = (u16)g_hearth.map_bg1[idx];
-            if (g_hearth.has_mountain_vista && t == (u16)T_MTN_SKY) {
-                g_world_meta[idx] = META_EMPTY;
+            if (has_vista && t == (u8)T_MTN_SKY) {
+                *dst++ = META_EMPTY;
             } else {
-                g_world_meta[idx] = (t < 63u) ? (u8)t : (u8)T_GRASS;
+                *dst++ = (t < 63u) ? t : (u8)T_GRASS;
             }
-        } else if (ov == O_ROOF_EAVE) {
-            g_world_meta[idx] = META_OV_ROOF_EAVE;
-        } else if (ov == O_SHRINE_ARCH) {
-            g_world_meta[idx] = META_OV_SHRINE;
-        } else if (ov == O_MAPLE_TL || ov == O_MAPLE_TR) {
-            g_world_meta[idx] = META_OV_MAPLE;
-        } else if (ov == O_PINE_TOP) {
-            g_world_meta[idx] = META_OV_PINE;
-        } else if (ov == O_OAK_CROWN) {
-            g_world_meta[idx] = META_OV_OAK;
         } else {
-            g_world_meta[idx] = META_OV_CANOPY;
+            *dst++ = OV_META_LUT[ov & 15u];
         }
     }
 }
@@ -3246,6 +3287,7 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
     s16 sx, sy, sy_bot, sx_r, shx, shy, min_y, max_y, min_y_tall, max_y_tall;
     u16 prog, rem, rpal;
     u8 boot_tile, hdir, hpose, rkey, hflip, bt_l, bt_r, battr;
+    const HearthOamSprite *o;
     (void)ppu;
 
     count = 0u;
@@ -3263,18 +3305,19 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
         max_y_tall = (g_ui_layout >= 2u) ? 132 : 224;
         n = (u16)g_hearth.ppu.oam_count;
         if (n > 48u) n = 48u;
+        o = g_hearth.ppu.oam;
 
-        for (i = 0u; i < n && count < 118u; i++) {
-            flg = (u16)g_hearth.ppu.oam[i].flags;
-            sid = (u16)g_hearth.ppu.oam[i].sprite_id;
+        for (i = 0u; i < n && count < 118u; i++, o++) {
+            flg = (u16)o->flags;
+            sid = (u16)o->sprite_id;
             if (sid >= 49u) sid = 0u;
             boot_tile = SPR_BOOT_TILE_LUT[sid];
 
             if (boot_tile != 0u) {
                 /* Tall 16x24 JRPG character: 1x 16x16 (OBJ_LARGE) + 2x 8x8 boot tiles (OBJ_SMALL) */
-                sy = (s16)(g_hearth.ppu.oam[i].y - 24 + shy);
+                sy = (s16)(o->y - 24 + shy);
                 if (sy < min_y_tall || sy >= max_y_tall) continue;
-                sx = (s16)(g_hearth.ppu.oam[i].x - 8 + shx);
+                sx = (s16)(o->x - 8 + shx);
                 if (sx < -15 || sx >= 256) continue;
 
                 if (sid == 0u) {
@@ -3283,7 +3326,8 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
                     rkey = (u8)((hdir << 4) | (hpose & 0x0Fu));
                     if (rkey != g_last_rowan_key) {
                         g_last_rowan_key = rkey;
-                        stage_rowan_16x24_dma(hdir, hpose);
+                        g_rowan_pose_idx = snes_rowan_pose_idx(hdir, hpose);
+                        g_rowan_dma_dirty = 1u;
                     }
                     ta = 0x2200u;
                     hflip = 0u;
@@ -3311,9 +3355,9 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
                 }
             } else {
                 /* Standard 16x16 sprite (OBJ_LARGE under OBJ_SIZE8_L16) */
-                sy = (s16)(g_hearth.ppu.oam[i].y - ((flg & OAM_FLAG_LAYER2) ? 8 : 16) + shy);
+                sy = (s16)(o->y - ((flg & OAM_FLAG_LAYER2) ? 8 : 16) + shy);
                 if (sy < min_y || sy >= max_y) continue;
-                sx = (s16)(g_hearth.ppu.oam[i].x - 8 + shx);
+                sx = (s16)(o->x - 8 + shx);
                 if (sx < -15 || sx >= 256) continue;
 
                 if (sid == 1u) {
@@ -3564,14 +3608,6 @@ static void flush_env_vblank_dma(void) {
     g_env_dirty = 0;
 }
 
-static void flush_rowan_vblank_dma(void) {
-    /* 6 tiles (192 bytes total -> ~1.1 scanlines) for tear-free 16x24 Rowan animation */
-    dmaCopyVram(g_rowan_dma[0], (u16)(VRAM_OBJ_GFX + (0x00u << 4)), 64u);
-    dmaCopyVram(g_rowan_dma[2], (u16)(VRAM_OBJ_GFX + (0x10u << 4)), 64u);
-    dmaCopyVram(g_rowan_dma[4], (u16)(VRAM_OBJ_GFX + (0xC4u << 4)), 64u);
-    g_rowan_dma_dirty = 0u;
-}
-
 static void flush_one_vblank_dma(void) {
     /* Stay well under SNES NTSC VBlank DMA budget: max ~2.2 KB per frame! */
     if (g_pal_dirty) {
@@ -3762,6 +3798,7 @@ int main(void) {
         want_mod = resolve_snes_bgm_mod(ppu->bgm_id);
         if (scene_switched) {
             u8 want_bg2 = (scene_kind == 0u && ppu->has_mountain_vista) ? 1u : 0u;
+            u8 want_bright = (ppu->fade_level < 15u) ? (u8)(15u - ppu->fade_level) : 0u;
             setScreenOff();
             if (scene_kind == 2u) {
                 upload_cinema_cg_force_blank(g_hearth.intro.scene);
@@ -3786,7 +3823,6 @@ int main(void) {
                 else bgSetDisable(2);
                 g_bg2_enabled = want_bg2;
             }
-            load_snes_music(want_mod);
             if (g_rowan_dma_dirty) {
                 flush_rowan_vblank_dma();
             }
@@ -3796,27 +3832,46 @@ int main(void) {
             g_bg1_dirty_r = 0;
             g_bg0_dirty   = 0;
             g_env_dirty   = 0;
-            setScreenOn();
+            /* Latch exact hardware scroll BEFORE revealing display -> zero 1-frame scroll jump! */
+            if (scene_kind != 0u) {
+                bgSetScroll(1, (u16)(-ppu->shake_x), (u16)(-ppu->shake_y));
+            } else {
+                bgSetScroll(1, (u16)(ppu->cam_x - ppu->shake_x), (u16)(ppu->cam_y - ppu->shake_y));
+                if (g_bg2_enabled) {
+                    bgSetScroll(2,
+                        (u16)((ppu->cam_x >> 2) - ppu->shake_x),
+                        (u16)((ppu->cam_y >> 3) - ppu->shake_y));
+                }
+            }
+            WaitForVBlank();
+            setBrightness(want_bright);
+            g_last_bright = want_bright;
+            /* Stream SPC700 music only once display is visible (never hang on black screen!) */
+            if (want_bright > 0u && want_mod != g_cur_bgm_mod) {
+                load_snes_music(want_mod);
+            }
         } else {
-            if (want_mod != g_cur_bgm_mod) {
+            u8 want_bright = (ppu->fade_level < 15u) ? (u8)(15u - ppu->fade_level) : 0u;
+            if (ppu->fade_level == 0u && want_mod != g_cur_bgm_mod) {
                 load_snes_music(want_mod);
             }
             spcProcess();
             WaitForVBlank();
             flush_one_vblank_dma();
-        }
-
-        /* Hardware-scroll BG1 world & BG2 2bpp Alpine Mountain Parallax (BG0 locked to 0,0) */
-        if (scene_kind == 2u) {
-            bgSetScroll(1, (u16)(-ppu->shake_x), (u16)(-ppu->shake_y));
-        } else if (scene_kind == 1u) {
-            bgSetScroll(1, (u16)(-ppu->shake_x), (u16)(-ppu->shake_y));
-        } else {
-            bgSetScroll(1, (u16)(ppu->cam_x - ppu->shake_x), (u16)(ppu->cam_y - ppu->shake_y));
-            if (g_bg2_enabled) {
-                bgSetScroll(2,
-                    (u16)((ppu->cam_x >> 2) - ppu->shake_x),
-                    (u16)((ppu->cam_y >> 3) - ppu->shake_y));
+            if (want_bright != g_last_bright) {
+                setBrightness(want_bright);
+                g_last_bright = want_bright;
+            }
+            /* Hardware-scroll BG1 world & BG2 2bpp Alpine Mountain Parallax (BG0 locked to 0,0) */
+            if (scene_kind != 0u) {
+                bgSetScroll(1, (u16)(-ppu->shake_x), (u16)(-ppu->shake_y));
+            } else {
+                bgSetScroll(1, (u16)(ppu->cam_x - ppu->shake_x), (u16)(ppu->cam_y - ppu->shake_y));
+                if (g_bg2_enabled) {
+                    bgSetScroll(2,
+                        (u16)((ppu->cam_x >> 2) - ppu->shake_x),
+                        (u16)((ppu->cam_y >> 3) - ppu->shake_y));
+                }
             }
         }
     }
