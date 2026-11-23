@@ -1019,13 +1019,16 @@ export class SoftwarePpuRenderer {
         Math.round(battle.wizardBackX - rowanImg.width / 2),
         Math.round(battle.wizardBackY - rowanImg.height + 2)
       );
-      // Pip hovering faithfully behind Rowan!
-      const pipImg = atlas.getSprite('pip', 3, (frameCount >> 3) & 1);
-      const pipBob = Math.round(Math.sin(frameCount * 0.14) * 2);
+      // Pip hopping cheerfully on the ground behind Rowan (Mr. Drippy style)!
+      const hopPhase = (frameCount % 44) / 44;
+      const pipHop = hopPhase < 0.36 ? Math.round(Math.sin((hopPhase / 0.36) * Math.PI) * 6) : 0;
+      const pipFrame = hopPhase >= 0.36 && hopPhase < 0.48 ? 2 : pipHop >= 2 ? 1 : 0;
+      const pipImg = atlas.getSprite('pip', 3, pipFrame);
+      this.drawShadow(ctx, battle.wizardBackX - 16, battle.wizardBackY + 1, 10);
       ctx.drawImage(
         pipImg,
-        Math.round(battle.wizardBackX - 18),
-        Math.round(battle.wizardBackY - 26 + pipBob)
+        Math.round(battle.wizardBackX - 24),
+        Math.round(battle.wizardBackY - 14 - pipHop)
       );
     }
 
@@ -1495,7 +1498,17 @@ export class SoftwarePpuRenderer {
             : spr.spriteId === 'pet_milo' || spr.spriteId === 'bobber'
               ? 8
               : 12;
-      this.drawShadow(ctx, spr.x, spr.y, sw);
+      const shadowY = spr.spriteId === 'pip' ? spr.sortY : spr.y;
+      this.drawShadow(ctx, spr.x, shadowY, sw);
+    }
+
+    if (spr.spriteId === 'pip') {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255, 224, 128, 0.22)';
+      ctx.beginPath();
+      ctx.ellipse(spr.x, spr.y - 5, 9, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
 
     if (spr.rotationDeg !== 0) {

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { PortraitId } from '../core/types';
 import portraitRowan from '../assets/images/portrait_rowan_1795315522922.jpg';
 import portraitMara from '../assets/images/portrait_grandma_mara_1795315523861.jpg';
-import portraitPip from '../assets/images/portrait_pip_1795315522510.jpg';
+import portraitPip from '../assets/images/portrait_pip_gnome_1795404214797.jpg';
 import portraitBarnaby from '../assets/images/portrait_barnaby_1795315522478.jpg';
 import portraitMaple from '../assets/images/portrait_maple_1795315522927.jpg';
 import portraitJasper from '../assets/images/portrait_jasper_1795315522636.jpg';

@@ -1967,7 +1967,8 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
               : (o->sprite_id == SPR_BOSS_BRIAR || o->sprite_id == SPR_BOSS_MUCKMAW || o->sprite_id == SPR_BOSS_IRONFANG || o->sprite_id == SPR_ENEMY_SANDWORM) ? 15
               : (o->sprite_id == SPR_HOLLOW_OAK) ? 12
               : (o->sprite_id == SPR_PET_MILO || o->sprite_id == SPR_BOBBER) ? 4 : 6;
-        fill_ellipse_alpha(ox, oy + 1, r, 3, 0xFF10141Au, 115);
+        int sh_y = (o->sprite_id == SPR_PIP) ? ((int)o->sort_y + 1) : (oy + 1);
+        fill_ellipse_alpha(ox, sh_y, r, 3, 0xFF10141Au, 115);
     }
 
     /* Heart-Mending Aura Rings */
@@ -2001,10 +2002,10 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
             break;
         }
         case SPR_PIP: {
-            int fy = -4 + (HEARTH_SIN64[(frame >> 1) & 63u] >> 5);
-            const char *const *pf = ((frame >> 3) & 1u) ? PIP_FRAME1 : PIP_FRAME0;
-            fill_ellipse_alpha(ox, oy + fy - 6, 8, 7, pal_col(1, 10), 42);
-            draw_pixel_art(pf, 12, ox, oy + fy, 8, 12, 1, flip, flash, sx, sy);
+            const char *const *pf = (o->frame == 2u) ? PIP_FRAME2
+                                  : (o->frame == 1u) ? PIP_FRAME1 : PIP_FRAME0;
+            fill_ellipse_alpha(ox, oy - 5, 9, 8, pal_col(1, 10), 46);
+            draw_pixel_art(pf, 16, ox, oy, 8, 16, 1, flip, flash, sx, sy);
             break;
         }
         case SPR_FAMILIAR_BRAMBLE: {
@@ -3084,7 +3085,7 @@ static void render_dialogue_overlay(const HearthState *st) {
                     draw_pixel_art(HERO_HEAD_DOWN, 7, cx, cy, 8, 16, 1, false, false, FP_ONE, FP_ONE);
                     break;
                 case 2:
-                    draw_pixel_art(PIP_FRAME0, 12, cx, cy - 3, 8, 12, 1, false, false, FP_ONE, FP_ONE);
+                    draw_pixel_art(PIP_FRAME0, 16, cx, cy - 1, 8, 16, 1, false, false, FP_ONE, FP_ONE);
                     break;
                 case 3:
                     draw_pixel_art(NPC_ELDER_ART, 12, cx, cy - 2, 8, 12, 2, false, false, FP_ONE, FP_ONE);

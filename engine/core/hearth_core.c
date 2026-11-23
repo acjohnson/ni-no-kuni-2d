@@ -419,6 +419,10 @@ static void reset_trail_to_hero(HearthState *st) {
     st->pip_fx = px;
     st->pip_fy = py;
     st->pip_dir = DIR_RIGHT;
+    st->pip_hop_z_fp = 0;
+    st->pip_hop_vz_fp = 0;
+    st->pip_squash_frames = 0;
+    st->pip_idle_hop_cd = 65;
 }
 
 static void set_field_enemy(
@@ -542,13 +546,15 @@ static void populate_zone_alderbrook(HearthState *st) {
         set_npc(&st->npcs[0], 0, "Mido", SPR_PET_MILO, 36, 13, DIR_RIGHT, AURA_NONE);
     } else {
         set_npc(&st->npcs[0], 0, "Barnaby",     SPR_NPC_BARNABY, 13,  7, DIR_DOWN,  AURA_NONE);
-        set_npc(&st->npcs[1], 1, "Baker Maple", SPR_NPC_MAPLE,   24, 13, DIR_DOWN,  AURA_NONE);
+        set_npc(&st->npcs[1], 1, "Baker Maple", SPR_NPC_MAPLE,   22, 13, DIR_DOWN,  AURA_NONE);
         set_npc(&st->npcs[2], 2, "Jasper",      SPR_NPC_JASPER,  13, 23, DIR_RIGHT, AURA_NONE);
         set_npc(&st->npcs[3], 3, "Mido",        SPR_PET_MILO,    12, 14, DIR_RIGHT, AURA_NONE);
     }
 
     set_portal(&st->portals[0], 11, 13, ZONE_ROWAN_HOME,       20, 19, 0, "Rowan's Cottage");
     set_portal(&st->portals[1], 41,  9, ZONE_WHISPERING_WOODS,  3, 21, 0, "Whispering Woods");
+    set_portal(&st->portals[2],  6,  9, ZONE_ALDER_DEPOT,      20, 19, 0, "Barnaby's Depot");
+    set_portal(&st->portals[3], 24, 13, ZONE_ALDER_BAKERY,     20, 19, 0, "Maple's Bakery");
 }
 
 static void populate_zone_whispering_woods(HearthState *st) {
@@ -720,6 +726,7 @@ static void populate_zone_babana_oasis(HearthState *st) {
 
     set_portal(&st->portals[0], 21, 26, ZONE_EVERTALE_WORLD, 132, 156, 0, "Evertale Globe");
     set_portal(&st->portals[1], 22, 26, ZONE_EVERTALE_WORLD, 132, 156, 0, "Evertale Globe");
+    set_portal(&st->portals[2],  9,  9, ZONE_BABANA_TENT,     20,  19, 0, "Babana Caravanserai");
 }
 
 static void populate_zone_sunhill_market(HearthState *st) {
@@ -737,13 +744,15 @@ static void populate_zone_sunhill_market(HearthState *st) {
     st->chest.chest_bit = 6;
     st->chest.reward_kind = 0;
 
-    set_npc(&st->npcs[0], 0, "Tessa the Baker", SPR_NPC_TESSA,     12, 18, DIR_DOWN, AURA_NONE);
-    set_npc(&st->npcs[1], 1, "Archivist Corin", SPR_NPC_CORIN,     31,  9, DIR_DOWN, AURA_NONE);
+    set_npc(&st->npcs[0], 0, "Tessa the Baker", SPR_NPC_TESSA,     13, 18, DIR_DOWN, AURA_NONE);
+    set_npc(&st->npcs[1], 1, "Archivist Corin", SPR_NPC_CORIN,     29,  9, DIR_DOWN, AURA_NONE);
     set_npc(&st->npcs[2], 2, "Mido",            SPR_PET_MILO,      22, 11, DIR_DOWN, AURA_NONE);
     set_npc(&st->npcs[3], 3, "Market Florist",  SPR_NPC_TOWNSFOLK, 26, 18, DIR_LEFT, AURA_NONE);
 
     set_portal(&st->portals[0], 21, 26, ZONE_EVERTALE_WORLD, 104, 84, 0, "Evertale Globe");
     set_portal(&st->portals[1], 22, 26, ZONE_EVERTALE_WORLD, 104, 84, 0, "Evertale Globe");
+    set_portal(&st->portals[2], 11, 18, ZONE_SUNHILL_BAKERY,  20, 19, 0, "Tessa's Tea House");
+    set_portal(&st->portals[3], 31,  9, ZONE_SUNHILL_ARCHIVE, 20, 19, 0, "Corin's Archive");
 }
 
 static void populate_zone_castle_gate(HearthState *st) {
@@ -839,8 +848,10 @@ static void populate_zone_hamlet(HearthState *st) {
             ? (st->flag_guard_mended ? AURA_MENDED : AURA_HOLLOW_FEAR)
             : AURA_NONE);
 
-    set_portal(&st->portals[0], 2,  13, ZONE_EVERTALE_WORLD, 78, 88, 0, "Evertale Globe");
+    set_portal(&st->portals[0],  2, 13, ZONE_EVERTALE_WORLD, 78, 88, 0, "Evertale Globe");
     set_portal(&st->portals[1], 42, 13, ZONE_WHISKERBURGH,    2, 13, 0, "To Whiskerburgh");
+    set_portal(&st->portals[2],  6,  9, ZONE_HAMLET_MILL,    20, 19, 0, "Old Stone Windmill");
+    set_portal(&st->portals[3], 13,  7, ZONE_ELDER_STUDY,    20, 19, 0, "Elder Wren's Study");
 
     if (st->flag_has_familiar) {
         set_field_enemy(&st->field_enemies[0], "Gloomcap",     SPR_ENEMY_GLOOMCAP,  ENCOUNTER_MEADOW_PACK, BIOME_MEADOW, false, 26, 15, DIR_LEFT, 30);
@@ -874,12 +885,13 @@ static void populate_zone_whiskerburgh(HearthState *st) {
     st->fish_spot.cast_dx = 0;
     st->fish_spot.cast_dy = 2;
 
-    set_npc(&st->npcs[0], 0, "Mayor Brie",   SPR_NPC_MOUSE, 12,  9, DIR_DOWN, AURA_NONE);
+    set_npc(&st->npcs[0], 0, "Mayor Brie",   SPR_NPC_MOUSE, 14,  9, DIR_DOWN, AURA_NONE);
     set_npc(&st->npcs[1], 1, "Barnaby Shop", SPR_NPC_MOUSE, 29,  9, DIR_DOWN, AURA_NONE);
     set_npc(&st->npcs[2], 2, "Angler Pippo", SPR_NPC_MOUSE, 22, 16, DIR_LEFT, AURA_NONE);
 
     set_portal(&st->portals[0],  1, 13, ZONE_EVERTALE_WORLD, 138, 76, 0, "Evertale Globe");
     set_portal(&st->portals[1], 21,  2, ZONE_SEWERS,          21, 24, STORY_SEWER_KEY, "Sunken Sewers");
+    set_portal(&st->portals[2], 12,  8, ZONE_WHISKER_GUILD,   20, 19, 0, "Whisker Guildhall");
 }
 
 static void populate_zone_sewers(HearthState *st) {
@@ -948,6 +960,67 @@ static void populate_zone_boarhold(HearthState *st) {
     if (st->flag_ironfang_defeated) st->field_enemies[3].alive = false;
 }
 
+static void populate_zone_town_interior(HearthState *st, uint8_t zone_id) {
+    uint8_t exit_zone = ZONE_ALDERBROOK;
+    uint8_t ex = 6, ey = 10;
+
+    st->terrain_pal_id = (zone_id == ZONE_BABANA_TENT) ? (uint8_t)ZPAL_DESERT : (uint8_t)ZPAL_COTTAGE_INTERIOR;
+    st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
+
+    if (zone_id == ZONE_ALDER_DEPOT) {
+        st->bgm_id = BGM_ALDERBROOK;
+        exit_zone = ZONE_ALDERBROOK; ex = 6; ey = 10;
+        set_npc(&st->npcs[0], 0, "Tinker Toby",    SPR_NPC_BARNABY,   16, 10, DIR_DOWN,  AURA_NONE);
+        set_npc(&st->npcs[1], 1, "Clerk Pippa",    SPR_NPC_CLARA,     25, 12, DIR_LEFT,  AURA_NONE);
+        set_npc(&st->npcs[2], 2, "Stoker Bram",    SPR_NPC_JASPER,    21, 15, DIR_UP,    AURA_NONE);
+    } else if (zone_id == ZONE_ALDER_BAKERY) {
+        st->bgm_id = BGM_ALDERBROOK;
+        exit_zone = ZONE_ALDERBROOK; ex = 24; ey = 14;
+        set_npc(&st->npcs[0], 0, "Kneader Rosie",  SPR_NPC_MAPLE,     17, 10, DIR_DOWN,  AURA_NONE);
+        set_npc(&st->npcs[1], 1, "Grandpa Cider",  SPR_NPC_ELDER,     25, 15, DIR_LEFT,  AURA_NONE);
+        set_npc(&st->npcs[2], 2, "Carver Finn",    SPR_NPC_TOWNSFOLK, 16, 16, DIR_RIGHT, AURA_NONE);
+    } else if (zone_id == ZONE_HAMLET_MILL) {
+        st->bgm_id = BGM_HAMLET;
+        exit_zone = ZONE_HAMLET; ex = 6; ey = 10;
+        set_npc(&st->npcs[0], 0, "Miller Grain",   SPR_NPC_BARNABY,   21, 10, DIR_DOWN,  AURA_NONE);
+        set_npc(&st->npcs[1], 1, "Apprentice Fern",SPR_NPC_TOWNSFOLK, 16, 13, DIR_RIGHT, AURA_NONE);
+        set_npc(&st->npcs[2], 2, "Scribe Whisker", SPR_NPC_MOUSE,     26, 14, DIR_LEFT,  AURA_NONE);
+    } else if (zone_id == ZONE_ELDER_STUDY) {
+        st->bgm_id = BGM_HAMLET;
+        exit_zone = ZONE_HAMLET; ex = 13; ey = 8;
+        set_npc(&st->npcs[0], 0, "Keeper Nessa",   SPR_NPC_MARA,      19, 11, DIR_DOWN,  AURA_NONE);
+        set_npc(&st->npcs[1], 1, "Scholar Pippen", SPR_NPC_CORIN,     26, 12, DIR_LEFT,  AURA_NONE);
+        set_npc(&st->npcs[2], 2, "Herb-Cat Moss",  SPR_PET_MILO,      16, 15, DIR_RIGHT, AURA_NONE);
+    } else if (zone_id == ZONE_SUNHILL_BAKERY) {
+        st->bgm_id = BGM_HAMLET;
+        exit_zone = ZONE_SUNHILL_MARKET; ex = 11; ey = 19;
+        set_npc(&st->npcs[0], 0, "Pastry Pipkin",  SPR_NPC_TESSA,     18, 10, DIR_DOWN,  AURA_NONE);
+        set_npc(&st->npcs[1], 1, "Brewer Bramble", SPR_NPC_ELDER,     25, 15, DIR_LEFT,  AURA_NONE);
+        set_npc(&st->npcs[2], 2, "Bard Lute",      SPR_NPC_TOWNSFOLK, 16, 16, DIR_RIGHT, AURA_NONE);
+    } else if (zone_id == ZONE_SUNHILL_ARCHIVE) {
+        st->bgm_id = BGM_HAMLET;
+        exit_zone = ZONE_SUNHILL_MARKET; ex = 31; ey = 10;
+        set_npc(&st->npcs[0], 0, "Mapper Lyra",    SPR_NPC_CLARA,     19, 11, DIR_DOWN,  AURA_NONE);
+        set_npc(&st->npcs[1], 1, "Binder Orlo",    SPR_NPC_CORIN,     26, 11, DIR_LEFT,  AURA_NONE);
+        set_npc(&st->npcs[2], 2, "Polisher Fynn",  SPR_NPC_TOWNSFOLK, 22, 15, DIR_UP,    AURA_NONE);
+    } else if (zone_id == ZONE_WHISKER_GUILD) {
+        st->bgm_id = BGM_WHISKERBURGH;
+        exit_zone = ZONE_WHISKERBURGH; ex = 12; ey = 9;
+        set_npc(&st->npcs[0], 0, "Master Gouda",   SPR_NPC_MOUSE,     21, 11, DIR_DOWN,  AURA_NONE);
+        set_npc(&st->npcs[1], 1, "Tinker Nibbles", SPR_NPC_MOUSE,     16, 13, DIR_RIGHT, AURA_NONE);
+        set_npc(&st->npcs[2], 2, "Tailor Velvet",  SPR_NPC_MOUSE,     26, 13, DIR_LEFT,  AURA_NONE);
+    } else {
+        st->bgm_id = BGM_DESERT;
+        exit_zone = ZONE_BABANA_OASIS; ex = 9; ey = 10;
+        set_npc(&st->npcs[0], 0, "Master Tariq",   SPR_NPC_SHIPWRIGHT,21, 10, DIR_DOWN,  AURA_NONE);
+        set_npc(&st->npcs[1], 1, "Weaver Nadia",   SPR_NPC_TESSA,     16, 14, DIR_RIGHT, AURA_NONE);
+        set_npc(&st->npcs[2], 2, "Dune-Bard Sami", SPR_NPC_CORIN,     26, 14, DIR_LEFT,  AURA_NONE);
+    }
+
+    set_portal(&st->portals[0], 20, 20, exit_zone, ex, ey, 0, "Step Outside");
+    set_portal(&st->portals[1], 21, 20, exit_zone, ex, ey, 0, "Step Outside");
+}
+
 void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint16_t tx, uint16_t ty) {
     if (zone_id >= ZONE_COUNT) zone_id = ZONE_EVERTALE_WORLD;
     st->zone_id = zone_id;
@@ -985,6 +1058,8 @@ void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint16_t tx, uint16_t t
     else if (zone_id == ZONE_WHISKERBURGH)     populate_zone_whiskerburgh(st);
     else if (zone_id == ZONE_SEWERS)           populate_zone_sewers(st);
     else if (zone_id == ZONE_BOARHOLD)         populate_zone_boarhold(st);
+    else if (zone_id >= ZONE_ALDER_DEPOT && zone_id <= ZONE_BABANA_TENT)
+                                               populate_zone_town_interior(st, zone_id);
     else                                       populate_zone_hamlet(st);
 
     reset_trail_to_hero(st);
@@ -1811,6 +1886,7 @@ static void step_pip_follower(HearthState *st) {
     int16_t back = (int16_t)(HS.tuning.follow_dist_px >> 1);
     int16_t idx;
     fp16_t dx, dy;
+    bool moving;
     ST_UNUSED(st);
 
     if (!HS.pip_visible) return;
@@ -1819,8 +1895,9 @@ static void step_pip_follower(HearthState *st) {
     idx = (int16_t)((int16_t)HS.trail_head - back);
     if (idx < 0) idx = (int16_t)(idx + HEARTH_TRAIL_LEN);
 
+    /* Wingless grounded garden-gnome Pip follows Rowan's footprints with playful Mr. Drippy hops! */
     dx = HS.trail_x[idx] - HS.pip_fx;
-    dy = (HS.trail_y[idx] - TO_FP(4)) - HS.pip_fy;
+    dy = HS.trail_y[idx] - HS.pip_fy;
     if (HS.is_world_map) {
         if (dx > (GLOBE_FP_W >> 1)) dx -= GLOBE_FP_W;
         else if (dx < -(GLOBE_FP_W >> 1)) dx += GLOBE_FP_W;
@@ -1840,6 +1917,38 @@ static void step_pip_follower(HearthState *st) {
         HS.pip_fy = wrap_globe_fp_y(HS.pip_fy);
     }
     if (dx < -40 || dx > 40) HS.pip_dir = (uint8_t)((dx < 0) ? DIR_LEFT : DIR_RIGHT);
+
+    if (HS.pip_squash_frames > 0u) HS.pip_squash_frames--;
+    moving = (dx < -160 || dx > 160 || dy < -160 || dy > 160);
+
+    if (HS.pip_hop_z_fp > 0 || HS.pip_hop_vz_fp > 0) {
+        HS.pip_hop_z_fp = (int16_t)(HS.pip_hop_z_fp + HS.pip_hop_vz_fp);
+        HS.pip_hop_vz_fp = (int16_t)(HS.pip_hop_vz_fp - 68);
+        if (HS.pip_hop_z_fp <= 0) {
+            HS.pip_hop_z_fp = 0;
+            HS.pip_hop_vz_fp = 0;
+            HS.pip_squash_frames = 7u;
+            /* Playful little dust puff when Pip's stubby boots bounce off the ground */
+            spawn_particle(st, 0, (int16_t)(FP_PX(HS.pip_fx) - 3), (int16_t)(FP_PX(HS.pip_fy) + 4),
+                -60, -45, 11, 2, 0, 8, false);
+            spawn_particle(st, 0, (int16_t)(FP_PX(HS.pip_fx) + 3), (int16_t)(FP_PX(HS.pip_fy) + 4),
+                60, -45, 11, 2, 0, 8, false);
+        }
+    } else if (moving && HS.pip_squash_frames <= 1u) {
+        /* Energetic traveling bounce! */
+        HS.pip_hop_vz_fp = 520;
+        HS.pip_hop_z_fp = 32;
+        HS.pip_idle_hop_cd = 110u;
+    } else {
+        /* Cheerful occasional idle hop when standing beside Rowan */
+        if (HS.pip_idle_hop_cd > 0u) {
+            HS.pip_idle_hop_cd--;
+        } else {
+            HS.pip_hop_vz_fp = 380;
+            HS.pip_hop_z_fp = 24;
+            HS.pip_idle_hop_cd = 140u;
+        }
+    }
 }
 
 /* ============================================================================
@@ -2951,7 +3060,8 @@ void hearth_start_fishing(HearthState *st) {
     f->fish_pos = 50;
     f->fish_vel = 1;
     f->bar_pos = 50;
-    f->bar_half_w = (uint8_t)(15u + st->lure_tier * 4u);
+    f->bar_half_w = (uint8_t)(15u + st->lure_tier * 4u + (st->has_master_lure ? 7u : 0u));
+    if (f->bar_half_w > 30u) f->bar_half_w = 30u;
     f->progress = 26;
     f->tension = 18;
     f->species = roll_fish_species(st);
@@ -3696,6 +3806,27 @@ static int find_ch1_prop_interactable(const HearthState *st, int16_t hx, int16_t
                 return 30 + (int)i;
             }
         }
+    } else if (HS.zone_id == ZONE_ALDERBROOK && HS.side_quests[0] == 1u) {
+        nx = (int16_t)(10 * 16 + 8);
+        ny = (int16_t)(23 * 16 + 8);
+        if (near_point_px(hx, hy, nx, ny, 24)) {
+            *ox = nx; *oy = (int16_t)(ny - 18); *olabel = "Brass Whistle";
+            return 33;
+        }
+    } else if (HS.zone_id == ZONE_WHISKERBURGH && HS.side_quests[3] == 1u) {
+        nx = (int16_t)(35 * 16 + 8);
+        ny = (int16_t)(11 * 16 + 8);
+        if (near_point_px(hx, hy, nx, ny, 24)) {
+            *ox = nx; *oy = (int16_t)(ny - 18); *olabel = "Moon-Brie Wheel";
+            return 34;
+        }
+    } else if (HS.zone_id == ZONE_BABANA_OASIS && HS.side_quests[4] == 1u) {
+        nx = (int16_t)(33 * 16 + 8);
+        ny = (int16_t)(18 * 16 + 8);
+        if (near_point_px(hx, hy, nx, ny, 24)) {
+            *ox = nx; *oy = (int16_t)(ny - 18); *olabel = "Golden Babana";
+            return 35;
+        }
     }
     return -1;
 }
@@ -4059,8 +4190,21 @@ static void interact_npc_chapter2(HearthState *st, int hit) {
         }
     } else if (st->zone_id == ZONE_CASTLE_GATE) {
         if (hit == 0) {
-            open_dialogue(st, "Royal Sentinel", SFX_TEXT_ELDER,
-                "Halt - er, welcome, little lad! Castle Aurelia's inner court requires a Royal Summons, so we can't lower the portcullis today.", 0, NULL);
+            if (st->side_quests[2] == 1u) {
+                st->side_quests[2] = 3u;
+                st->guilders = (uint16_t)(st->guilders + 50u);
+                if (st->star_drops < 99u) st->star_drops++;
+                push_sfx(st, SFX_VICTORY_FANFARE);
+                spawn_ftext(st, FP_PX(st->hero_fx), (int16_t)(FP_PX(st->hero_fy) - 22), "+50G STAR DROP!", 3, 11, true);
+                open_dialogue(st, "Royal Sentinel", SFX_TEXT_ELDER,
+                    "By the Crown - a still-warm cinnamon Royal Tart from Tessa's Tea House! Bless your quick boots, lad! Take 50 Guilders and a Star Drop for the road!", 0, NULL);
+            } else if (st->side_quests[2] == 3u) {
+                open_dialogue(st, "Royal Sentinel", SFX_TEXT_ELDER,
+                    "Mmm, still tasting cinnamon sugar! Best gatehouse duty I've had all season, little courier!", 0, NULL);
+            } else {
+                open_dialogue(st, "Royal Sentinel", SFX_TEXT_ELDER,
+                    "Halt - er, welcome, little lad! Castle Aurelia's inner court requires a Royal Summons, so we can't lower the portcullis today.", 0, NULL);
+            }
         } else {
             open_dialogue(st, "Royal Sentinel", SFX_TEXT_ELDER,
                 "Looking for a lost fox-kit? Try Sunhill Market just down the southern steps! Archivist Corin keeps records of every traveler who walks Evertale - even folks from beyond the mist.", 0, NULL);
@@ -4128,8 +4272,197 @@ static void interact_npc_chapter2(HearthState *st, int hit) {
     }
 }
 
+static void interact_npc_town_interior(HearthState *st, int hit) {
+    if (st->zone_id == ZONE_ALDER_DEPOT) {
+        if (hit == 0) {
+            if (st->side_quests[0] == 0u) {
+                st->side_quests[0] = 1u;
+                push_sfx(st, SFX_EMOTE);
+                open_dialogue(st, "Tinker Toby", SFX_TEXT_PIP,
+                    "Ack, Rowan! I was polishing Barnaby's spare brass steam-whistle down by the southern creek boulders and dropped it in the clover! Fetch it back before Barnaby notices?", 0, NULL);
+            } else if (st->side_quests[0] == 1u) {
+                open_dialogue(st, "Tinker Toby", SFX_TEXT_PIP,
+                    "Check by the mossy boulders south of Alderbrook's western footbridge! That brass whistle gleams like a buttercup!", 0, NULL);
+            } else if (st->side_quests[0] == 2u) {
+                st->side_quests[0] = 3u;
+                st->guilders = (uint16_t)(st->guilders + 35u);
+                if (st->potions < 99u) st->potions++;
+                push_sfx(st, SFX_VICTORY_FANFARE);
+                spawn_ftext(st, FP_PX(st->hero_fx), (int16_t)(FP_PX(st->hero_fy) - 22), "+35G TONIC!", 3, 11, true);
+                open_dialogue(st, "Tinker Toby", SFX_TEXT_PIP,
+                    "TOOT-TOOT! You saved my brass-polishing hide, Rowan! Here's 35 Guilders and a Sun Tonic from my toolbox!", 0, NULL);
+            } else {
+                open_dialogue(st, "Tinker Toby", SFX_TEXT_PIP,
+                    "Every valve sings in B-flat now! Barnaby says a happy engine climbs the mountain ridge twice as smoothly.", 0, NULL);
+            }
+        } else if (hit == 1) {
+            open_dialogue(st, "Clerk Pippa", SFX_TEXT_PIP,
+                "I punch six hundred paper tickets a month and still know every passenger's tea order! The 6:15 Express even carries pine-nut mail for the ridge watchmen.", 0, NULL);
+        } else {
+            open_dialogue(st, "Stoker Bram", SFX_TEXT_ELDER,
+                "Folk think locomotives run on coal alone, lad - nope! Half coal, half cedar kindling, and a pinch of mountain stubbornness!", 0, NULL);
+        }
+    } else if (st->zone_id == ZONE_ALDER_BAKERY) {
+        if (hit == 0) {
+            static const HearthChoice bak_opts[2] = {
+                { "Browse Bakery Counter", ACT_OPEN_SHOP_2 },
+                { "Smell the Cinnamon",    ACT_CLOSE }
+            };
+            open_dialogue(st, "Kneader Rosie", SFX_TEXT_PIP,
+                "Our brick oven hasn't cooled since autumn began! Maple says cinnamon steam keeps frostbite off half of Alderbrook. Care to shop?",
+                2, bak_opts);
+        } else if (hit == 1) {
+            open_dialogue(st, "Grandpa Cider", SFX_TEXT_ELDER,
+                "Heh! I trade one jar of orchard-spiced apple cider for a warm heel of honey-rye every morning. Best barter system on the mountain!", 0, NULL);
+        } else {
+            open_dialogue(st, "Carver Finn", SFX_TEXT_ELDER,
+                "I whittle little wooden trains and mountain foxes while my sourdough rises. Give a block of cedar patience and it tells you what shape it wants to be.", 0, NULL);
+        }
+    } else if (st->zone_id == ZONE_HAMLET_MILL) {
+        if (hit == 0) {
+            if (st->side_quests[1] == 0u) {
+                st->side_quests[1] = 1u;
+                push_sfx(st, SFX_EMOTE);
+                open_dialogue(st, "Miller Grain", SFX_TEXT_ELDER,
+                    "Whoa there, lad - mind the flour snow! My millstones just spun a silky sack of Breeze-Spun Flour. Could you carry it next door to Keeper Nessa in Elder Wren's Study?", 0, NULL);
+            } else if (st->side_quests[1] == 1u) {
+                open_dialogue(st, "Miller Grain", SFX_TEXT_ELDER,
+                    "Keeper Nessa's waiting inside the cozy timber cottage just east of my windmill! Careful not to sneeze in the flour sack!", 0, NULL);
+            } else {
+                open_dialogue(st, "Miller Grain", SFX_TEXT_ELDER,
+                    "Nothing beats the creak of oak sails catching a meadow gust! My grandfather swore fairy breezes make bread rise an inch taller.", 0, NULL);
+            }
+        } else if (hit == 1) {
+            open_dialogue(st, "Apprentice Fern", SFX_TEXT_PIP,
+                "I measure wind speed by counting how many dandelion puffs drift past the shutter! Twelve puffs means perfect pastry flour!", 0, NULL);
+        } else {
+            open_dialogue(st, "Scribe Whisker", SFX_TEXT_PIP,
+                "Squeak! Whiskerburgh buys half its biscuit grain right here! I'm auditing every single kernel - only three fell into my coat pockets, honest!", 0, NULL);
+        }
+    } else if (st->zone_id == ZONE_ELDER_STUDY) {
+        if (hit == 0) {
+            if (st->side_quests[1] == 1u) {
+                st->side_quests[1] = 3u;
+                st->guilders = (uint16_t)(st->guilders + 40u);
+                if (st->snacks < 99u) st->snacks++;
+                push_sfx(st, SFX_VICTORY_FANFARE);
+                spawn_ftext(st, FP_PX(st->hero_fx), (int16_t)(FP_PX(st->hero_fy) - 22), "+40G SNACK!", 3, 11, true);
+                open_dialogue(st, "Keeper Nessa", SFX_TEXT_PIP,
+                    "Oh, bless you! Breeze-Spun Flour straight from Miller Grain's stones! Take 40 Guilders and a warm Courage Snack for your satchel, dear!", 0, NULL);
+            } else {
+                open_dialogue(st, "Keeper Nessa", SFX_TEXT_PIP,
+                    "Elder Wren leaves teacups on top of rare star-charts whenever he gets excited. Keeping this library tidy is an adventure all its own!", 0, NULL);
+            }
+        } else if (hit == 1) {
+            open_dialogue(st, "Scholar Pippen", SFX_TEXT_ELDER,
+                "I'm cataloguing every whimsical saying of Evertale's lantern-gnomes! Did you know they hop instead of fly because they say boots trust the earth better than wings?", 0, NULL);
+        } else {
+            open_dialogue(st, "Herb-Cat Moss", SFX_TEXT_PIP,
+                "Prrr... The sleepy sage-scented studio pet curls happily atop a warm stack of star-almanacs.", 0, NULL);
+        }
+    } else if (st->zone_id == ZONE_SUNHILL_BAKERY) {
+        if (hit == 0) {
+            if (st->side_quests[2] == 0u) {
+                st->side_quests[2] = 1u;
+                push_sfx(st, SFX_EMOTE);
+                open_dialogue(st, "Pastry Pipkin", SFX_TEXT_PIP,
+                    "Phew, Rowan! Tessa baked a special cinnamon Royal Tart for the Royal Sentinel up at Castle Aurelia Gate, and my boots are stuck in frosting! Could you deliver it north?", 0, NULL);
+            } else if (st->side_quests[2] == 1u) {
+                open_dialogue(st, "Pastry Pipkin", SFX_TEXT_PIP,
+                    "Hurry north from Sunhill Market up to Castle Aurelia Gate! Hand the warm Royal Tart to the left-side Royal Sentinel before the glaze sets!", 0, NULL);
+            } else {
+                static const HearthChoice sun_opts[2] = {
+                    { "Open Tea House Shop", ACT_OPEN_SHOP_3 },
+                    { "Sip Honey Tea",       ACT_CLOSE }
+                };
+                open_dialogue(st, "Pastry Pipkin", SFX_TEXT_PIP,
+                    "The Sentinel sent back a glowing thank-you whistle! Want to stock up on honey scones and tonics for your journey?",
+                    2, sun_opts);
+            }
+        } else if (hit == 1) {
+            open_dialogue(st, "Brewer Bramble", SFX_TEXT_ELDER,
+                "Steeping sun-chamomile takes exact patience: three chimes of the fountain bell, never four, or the petals lose their golden wink!", 0, NULL);
+        } else {
+            open_dialogue(st, "Bard Lute", SFX_TEXT_PIP,
+                "I trade ballads for butter-tarts! Last verse I wrote about a bouncy little gnome with a belly-lantern earned me two whole pies!", 0, NULL);
+        }
+    } else if (st->zone_id == ZONE_SUNHILL_ARCHIVE) {
+        if (hit == 0) {
+            open_dialogue(st, "Mapper Lyra", SFX_TEXT_PIP,
+                "Our globe-charts prove Evertale wraps seamlessly east-to-west AND north-to-south! Sail west past Suncrest Paradise and you'll bump right into Cinderpeak's sunrise!", 0, NULL);
+        } else if (hit == 1) {
+            open_dialogue(st, "Binder Orlo", SFX_TEXT_ELDER,
+                "I stitch every chronicle with waxed linen thread so even rainstorms and sewer splashes can't smudge Evertale's history.", 0, NULL);
+        } else {
+            open_dialogue(st, "Polisher Fynn", SFX_TEXT_PIP,
+                "Keeping brass astrolabes gleaming is honest work - tilt one toward the window and you can spot all seven continents dancing on the ceiling!", 0, NULL);
+        }
+    } else if (st->zone_id == ZONE_WHISKER_GUILD) {
+        if (hit == 0) {
+            if (st->side_quests[3] == 0u) {
+                st->side_quests[3] = 1u;
+                push_sfx(st, SFX_EMOTE);
+                open_dialogue(st, "Master Gouda", SFX_TEXT_PIP,
+                    "Squeak-disaster! Our prized Wheel of Moon-Brie rolled right out the guildhall door toward the eastern cottages of Whiskerburgh! Find it and I'll gift you my Master Brass Lure!", 0, NULL);
+            } else if (st->side_quests[3] == 1u) {
+                open_dialogue(st, "Master Gouda", SFX_TEXT_PIP,
+                    "Sniff around the eastern flower beds outside the cheese bakery in Whiskerburgh! Moon-Brie sparkles softly in the cobbles!", 0, NULL);
+            } else if (st->side_quests[3] == 2u) {
+                st->side_quests[3] = 3u;
+                st->has_master_lure = true;
+                st->guilders = (uint16_t)(st->guilders + 60u);
+                push_sfx(st, SFX_VICTORY_FANFARE);
+                spawn_ftext(st, FP_PX(st->hero_fx), (int16_t)(FP_PX(st->hero_fy) - 22), "MASTER LURE! +60G", 3, 11, true);
+                open_dialogue(st, "Master Gouda", SFX_TEXT_PIP,
+                    "Huzzah - not a single nibble missing! You've earned 60 Guilders and the Master Brass Lure! Your fishing reel bar is now super wide at every pier!", 0, NULL);
+            } else {
+                open_dialogue(st, "Master Gouda", SFX_TEXT_PIP,
+                    "Aging fine Moon-Brie takes quiet cellars, gentle lullabies, and zero clumsy mice tripping over barrels!", 0, NULL);
+            }
+        } else if (hit == 1) {
+            open_dialogue(st, "Tinker Nibbles", SFX_TEXT_PIP,
+                "We craft miniature clockwork cheese-slicers and brass fishing reels! Bigger folk laugh at our tiny wrenches until their wagons need fixing!", 0, NULL);
+        } else {
+            open_dialogue(st, "Tailor Velvet", SFX_TEXT_PIP,
+                "Every waistcoat in Whiskerburgh gets an extra crumb-pocket stitched inside the lapel. A mouse without snacks is a mouse unprepared!", 0, NULL);
+        }
+    } else {
+        /* ZONE_BABANA_TENT: Golden Babana Caravanserai */
+        if (hit == 0) {
+            if (st->side_quests[4] == 0u) {
+                st->side_quests[4] = 1u;
+                push_sfx(st, SFX_EMOTE);
+                open_dialogue(st, "Master Tariq", SFX_TEXT_ELDER,
+                    "Welcome to the shade of silk, young traveler! Our caravan leaves at moonrise, yet we lack one Sun-Ripened Oasis Babana from the southeastern palm grove outside. Pluck one for us?", 0, NULL);
+            } else if (st->side_quests[4] == 1u) {
+                open_dialogue(st, "Master Tariq", SFX_TEXT_ELDER,
+                    "Check beneath the tall southeastern oasis palm outside our tent! A ripe Golden Babana shines bright as desert amber!", 0, NULL);
+            } else if (st->side_quests[4] == 2u) {
+                st->side_quests[4] = 3u;
+                st->guilders = (uint16_t)(st->guilders + 75u);
+                st->babanas = (uint8_t)((st->babanas + 2u <= 99u) ? (st->babanas + 2u) : 99u);
+                push_sfx(st, SFX_VICTORY_FANFARE);
+                spawn_ftext(st, FP_PX(st->hero_fx), (int16_t)(FP_PX(st->hero_fy) - 22), "+75G +2 BABANAS!", 3, 11, true);
+                open_dialogue(st, "Master Tariq", SFX_TEXT_ELDER,
+                    "Magnificent - sweet as a starlit mirage! Take 75 Guilders and 2 Golden Babanas for your pack! May cool oasis winds follow your sails!", 0, NULL);
+            } else {
+                open_dialogue(st, "Master Tariq", SFX_TEXT_ELDER,
+                    "Crossing the Sands of Babana teaches respect for shade, laughter, and a well-fed camel. Stop by our carpets anytime!", 0, NULL);
+            }
+        } else if (hit == 1) {
+            open_dialogue(st, "Weaver Nadia", SFX_TEXT_PIP,
+                "I dye desert silk with saffron, oasis-mint, and sunset pomegranate. Hang one rug in a cold mountain cottage and it warms the whole room!", 0, NULL);
+        } else {
+            open_dialogue(st, "Dune-Bard Sami", SFX_TEXT_ELDER,
+                "Listen closely to the night sand, boy - when the wind sweeps the dunes, the whole desert hums like a giant brass harp!", 0, NULL);
+        }
+    }
+}
+
 static void interact_npc_other_zones(HearthState *st, int hit) {
-    if (st->zone_id == ZONE_ROWAN_HOME || st->zone_id == ZONE_ALDERBROOK ||
+    if (st->zone_id >= ZONE_ALDER_DEPOT && st->zone_id <= ZONE_BABANA_TENT) {
+        interact_npc_town_interior(st, hit);
+    } else if (st->zone_id == ZONE_ROWAN_HOME || st->zone_id == ZONE_ALDERBROOK ||
         st->zone_id == ZONE_WHISPERING_WOODS || st->zone_id == ZONE_HOLLOW_GLADE) {
         interact_npc_chapter1(st, hit);
     } else if (st->zone_id == ZONE_SUNHILL_MARKET || st->zone_id == ZONE_CASTLE_GATE ||
@@ -4284,6 +4617,27 @@ static void interact_ch1_prop(HearthState *st, int hit, int16_t ox, int16_t oy) 
             open_dialogue(st, "Rowan", SFX_TEXT_HERO,
                 "Found a dry Sun-Cedar Driftwood Plank! Two more along the beach and Orin can lash our Cedar Raft together.", 0, NULL);
         }
+    } else if (hit == 33) {
+        st->side_quests[0] = 2u;
+        push_sfx(st, SFX_CHEST_OPEN);
+        spawn_burst(st, 3, ox, (int16_t)(oy + 8), 10, 3, 11, false);
+        spawn_ftext(st, ox, oy, "BRASS WHISTLE!", 3, 11, true);
+        open_dialogue(st, "Rowan", SFX_TEXT_HERO,
+            "Found Barnaby's gleaming Brass Whistle nestled in the clover! Let's bring it back to Tinker Toby inside Barnaby's Steam Depot!", 0, NULL);
+    } else if (hit == 34) {
+        st->side_quests[3] = 2u;
+        push_sfx(st, SFX_CHEST_OPEN);
+        spawn_burst(st, 3, ox, (int16_t)(oy + 8), 10, 3, 11, false);
+        spawn_ftext(st, ox, oy, "MOON-BRIE!", 3, 11, true);
+        open_dialogue(st, "Rowan", SFX_TEXT_HERO,
+            "Aha! The prized Wheel of Moon-Brie rolled right into the flowers! Let's return it to Master Gouda inside Whiskerburgh Guildhall!", 0, NULL);
+    } else if (hit == 35) {
+        st->side_quests[4] = 2u;
+        push_sfx(st, SFX_CHEST_OPEN);
+        spawn_burst(st, 3, ox, (int16_t)(oy + 8), 10, 3, 11, false);
+        spawn_ftext(st, ox, oy, "OASIS BABANA!", 3, 11, true);
+        open_dialogue(st, "Rowan", SFX_TEXT_HERO,
+            "Plucked a sweet Sun-Ripened Oasis Babana! Master Tariq inside the Golden Babana Caravanserai will be thrilled!", 0, NULL);
     }
 }
 
@@ -4333,7 +4687,7 @@ static void try_interact(HearthState *st) {
         open_dialogue(st, "Fishing Pier", SFX_TEXT_PIP,
             "Ripples dance on the water! Cast your line and keep the fish inside the reel bar?",
             2, fish_opts);
-    } else if ((hit >= 14 && hit <= 19) || (hit >= 30 && hit <= 32)) {
+    } else if ((hit >= 14 && hit <= 19) || (hit >= 30 && hit <= 35)) {
         interact_ch1_prop(st, hit, ox, oy);
     } else if (hit >= 20 && hit < 20 + HEARTH_MAX_PORTALS) {
         interact_portal(st, hit - 20);
@@ -4695,6 +5049,24 @@ static uint16_t build_explore_ppu_props_and_actors(
         }
     }
 
+    /* 1d. Sparkling Side-Quest Ground Pickups (Whistle / Moon-Brie / Oasis Babana) */
+    if (cnt < HEARTH_MAX_OAM) {
+        int16_t qtx = -1, qty = -1;
+        if (HS.zone_id == ZONE_ALDERBROOK && HS.side_quests[0] == 1u) { qtx = 10; qty = 23; }
+        else if (HS.zone_id == ZONE_WHISKERBURGH && HS.side_quests[3] == 1u) { qtx = 35; qty = 11; }
+        else if (HS.zone_id == ZONE_BABANA_OASIS && HS.side_quests[4] == 1u) { qtx = 33; qty = 18; }
+        if (qtx >= 0) {
+            ny = (int16_t)(qty * 16 + 10);
+            sx = (int16_t)(qtx * 16 + 8 - cx);
+            sy = (int16_t)(ny - cy - (int16_t)(((fc16 >> 3) & 3u) == 1u ? 2 : 0));
+            if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248) {
+                OAM_SET_IDX(p, cnt, sx, sy, SPR_EMOTE_SPARK, npc_f, DIR_DOWN, OAM_FLAG_SHADOW,
+                    FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
+                cnt++;
+            }
+        }
+    }
+
     /* 2. Hollow Oak Gateway Arch Sprite in Hollow Glade, Windmill Hamlet, & Evertale Globe */
     if (HS.zone_id == ZONE_HOLLOW_GLADE || HS.zone_id == ZONE_HAMLET || HS.zone_id == ZONE_EVERTALE_WORLD) {
         if (HS.zone_id == ZONE_HOLLOW_GLADE) {
@@ -4892,15 +5264,28 @@ static void build_explore_ppu_oam(HearthState *st, HearthPpuPacket *p) {
         cnt++;
     }
 
-    /* Pip Hovering Companion (visible once reunited in Evertale) */
+    /* Pip Grounded Bouncy Garden-Gnome Companion (Mr. Drippy squash-and-stretch hops!) */
     psx = world_dx(st, FP_PX(HS.pip_fx), cx);
     psy = world_dy(st, FP_PX(HS.pip_fy), cy);
     if (HS.pip_visible && cnt < HEARTH_MAX_OAM) {
-        bob = (int16_t)((HEARTH_SIN64[(fc16 >> 1) & 63u] * 3) >> 7);
+        int16_t psx_fp = FP_ONE;
+        int16_t psy_fp = FP_ONE;
+        uint8_t pframe = 0u;
+        bob = FROM_FP(HS.pip_hop_z_fp);
+        if (bob < 0) bob = 0;
+        if (HS.pip_squash_frames > 0u) {
+            pframe = 2u;
+            psx_fp = 292;
+            psy_fp = 216;
+        } else if (bob >= 2) {
+            pframe = 1u;
+            psx_fp = 232;
+            psy_fp = 284;
+        }
         pfl = (uint8_t)(OAM_FLAG_SHADOW | ((HS.pip_dir == DIR_LEFT) ? OAM_FLAG_FLIP_X : 0));
-        OAM_SET_IDX(p, cnt, psx, (int16_t)(psy - 4 + bob), SPR_PIP,
-            (uint8_t)((fc16 >> 3) & 1u), HS.pip_dir, pfl,
-            FP_ONE, FP_ONE, AURA_NONE, 1, psy, 0);
+        OAM_SET_IDX(p, cnt, psx, (int16_t)(psy - bob), SPR_PIP,
+            pframe, HS.pip_dir, pfl,
+            psx_fp, psy_fp, AURA_NONE, 1, psy, 0);
         cnt++;
     }
 

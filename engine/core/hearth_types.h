@@ -96,7 +96,7 @@ typedef int32_t fp16_t;
 #define HEARTH_MAX_PARTICLES        64
 #define HEARTH_MAX_FTEXT            16
 #define HEARTH_TRAIL_LEN            48
-#define HEARTH_MAX_NPCS             5
+#define HEARTH_MAX_NPCS             8
 #define HEARTH_MAX_FIELD_ENEMIES    4
 #define HEARTH_MAX_BATTLE_ENEMIES   2
 #define HEARTH_MAX_LOCKS            3
@@ -148,7 +148,16 @@ typedef enum {
     ZONE_TIMBER_PIER      = 13, /* Chapter 2: Heartland Timber Pier — Shipwright Orin's Raft Yard */
     ZONE_CORAL_COVE       = 14, /* Chapter 2: Suncrest Paradise — Tropical Coral Cove & Pirate Dock */
     ZONE_BABANA_OASIS     = 15, /* Chapter 2: Sands of Babana — Golden Babana Oasis & Desert Outpost */
-    ZONE_COUNT            = 16
+    /* Milestone 5: Cozy Enterable Town & Village Interiors (8 Hand-Crafted Rooms) */
+    ZONE_ALDER_DEPOT      = 16, /* Alderbrook: Barnaby's Steam & Brass Depot */
+    ZONE_ALDER_BAKERY     = 17, /* Alderbrook: Maple's Cinnamon & Cider Bakery */
+    ZONE_HAMLET_MILL      = 18, /* Windmill Hamlet: The Old Stone Windmill Interior */
+    ZONE_ELDER_STUDY      = 19, /* Windmill Hamlet: Elder Wren's Library & Study */
+    ZONE_SUNHILL_BAKERY   = 20, /* Sunhill Market: Tessa's Golden Crust Tea House */
+    ZONE_SUNHILL_ARCHIVE  = 21, /* Sunhill Market: Corin's Cartography & Globe Hall */
+    ZONE_WHISKER_GUILD    = 22, /* Whiskerburgh: Cheddar & Whiskers Mouse Guildhall */
+    ZONE_BABANA_TENT      = 23, /* Oasis of Babana: Golden Babana Silk Caravanserai */
+    ZONE_COUNT            = 24
 } HearthZoneId;
 
 /* 7 Seamless Continents on the 256x192 Evertale Toroidal Globe */

@@ -92,6 +92,10 @@ typedef struct {
     uint8_t  pip_emote;
     uint8_t  pip_emote_frames;
     bool     pip_visible;
+    int16_t  pip_hop_z_fp;       /* 16.8 vertical bounce height above floor (0 = grounded) */
+    int16_t  pip_hop_vz_fp;      /* 16.8 vertical bounce velocity */
+    uint8_t  pip_squash_frames;  /* crouched squash frames on takeoff/landing */
+    uint8_t  pip_idle_hop_cd;    /* cheerful Mr. Drippy idle hop countdown */
 
     /* Camera & Screen Juice Registers */
     fp16_t   cam_fx, cam_fy;
@@ -127,6 +131,9 @@ typedef struct {
     bool     flag_captain_mended;
     bool     flag_muckmaw_defeated;
     bool     flag_ironfang_defeated;
+    /* Milestone 5: 5 Side Quests (0=Unstarted, 1=Active, 2=Item Ready, 3=Complete) */
+    uint8_t  side_quests[5];     /* 0=Whistle, 1=Flour, 2=Tart, 3=MoonBrie, 4=Babanas */
+    bool     has_master_lure;    /* Awarded by Whiskerburgh Moon-Brie quest (+7 fishing bar width!) */
 
     /* World Actors */
     HearthNpc        npcs[HEARTH_MAX_NPCS];

@@ -527,7 +527,139 @@ int main(void) {
     hearth_toggle_ppu_mode(&g_st);
     const HearthPpuPacket *pkt = hearth_step_60hz(&g_st, 0);
     CHECK(pkt->width == 256 && pkt->height == 224 && pkt->oam_count > 0, "SNES 256x224 PPU mode valid");
+    hearth_toggle_ppu_mode(&g_st);
     printf("[PASS] Dual-Resolution PPU Packet (Genesis 320x224 / SNES 256x224)\n");
+
+    /* 10. Milestone 5: Grounded Bouncy Pip Physics, 8 Enterable Buildings & 5 Side Quests */
+    {
+        /* 10a. Pip Mr. Drippy Bouncy Hop & Squash-and-Stretch Verification */
+        g_st.mode = MODE_EXPLORE;
+        hearth_enter_zone(&g_st, ZONE_HAMLET, 10, 14);
+        g_st.pip_visible = true;
+        bool saw_hop_air = false;
+        bool saw_hop_pose = false;
+        bool saw_squash_pose = false;
+        for (int f = 0; f < 100; f++) {
+            const HearthPpuPacket *hp = hearth_step_60hz(&g_st, (f < 48) ? PAD_RIGHT : 0);
+            if (g_st.pip_hop_z_fp > 0) saw_hop_air = true;
+            for (int i = 0; i < hp->oam_count; i++) {
+                if (hp->oam[i].sprite_id == SPR_PIP) {
+                    if (hp->oam[i].frame == 1u) saw_hop_pose = true;
+                    if (hp->oam[i].frame == 2u) saw_squash_pose = true;
+                }
+            }
+        }
+        CHECK(saw_hop_air && saw_hop_pose && saw_squash_pose,
+              "Wingless garden-gnome Pip performs grounded parabolic hops with stretch & landing squash");
+
+        /* 10b. Verify all 8 Enterable Town Buildings via exterior portals & interior exits */
+        static const struct {
+            uint8_t parent_zone;
+            uint16_t door_tx, door_ty;
+            uint8_t interior_zone;
+        } BLDGS[8] = {
+            { ZONE_ALDERBROOK,     6,  9, ZONE_ALDER_DEPOT     },
+            { ZONE_ALDERBROOK,    24, 13, ZONE_ALDER_BAKERY    },
+            { ZONE_HAMLET,         6,  9, ZONE_HAMLET_MILL     },
+            { ZONE_HAMLET,        13,  7, ZONE_ELDER_STUDY     },
+            { ZONE_SUNHILL_MARKET,11, 18, ZONE_SUNHILL_BAKERY  },
+            { ZONE_SUNHILL_MARKET,31,  9, ZONE_SUNHILL_ARCHIVE },
+            { ZONE_WHISKERBURGH,  12,  8, ZONE_WHISKER_GUILD   },
+            { ZONE_BABANA_OASIS,   9,  9, ZONE_BABANA_TENT     }
+        };
+        for (int b = 0; b < 8; b++) {
+            hearth_enter_zone(&g_st, BLDGS[b].parent_zone, BLDGS[b].door_tx, (uint16_t)(BLDGS[b].door_ty + 1u));
+            g_st.hero_dir = DIR_UP;
+            for (int f = 0; f < 30 && g_st.zone_id != BLDGS[b].interior_zone; f++) {
+                hearth_step_60hz(&g_st, PAD_UP);
+            }
+            CHECK(g_st.zone_id == BLDGS[b].interior_zone, "Exterior building door enters cozy interior zone");
+            CHECK(g_st.npcs[0].active && g_st.npcs[1].active && g_st.npcs[2].active,
+                  "Interior building populated with 3 whimsical craft NPCs");
+            /* Step south through interior doorway to return to parent town */
+            for (int f = 0; f < 40 && g_st.zone_id != BLDGS[b].parent_zone; f++) {
+                hearth_step_60hz(&g_st, PAD_DOWN);
+            }
+            CHECK(g_st.zone_id == BLDGS[b].parent_zone, "Interior exit portal returns cleanly to parent town");
+        }
+
+        /* Helper lambda-style macro to interact with an NPC or sparkling pickup and close dialogue */
+        #define INTERACT_AND_CLOSE(TX, TY, DIR_VAL) do { \
+            g_st.hero_fx = TO_FP((int)(TX) * 16 + 8); \
+            g_st.hero_fy = TO_FP((int)(TY) * 16 + 8); \
+            g_st.hero_dir = (DIR_VAL); \
+            hearth_step_60hz(&g_st, 0); \
+            hearth_step_60hz(&g_st, PAD_A); \
+            for (int _df = 0; _df < 120 && g_st.dialogue.active; _df++) { \
+                hearth_step_60hz(&g_st, ((_df & 3) == 0) ? PAD_A : 0); \
+            } \
+            hearth_step_60hz(&g_st, 0); \
+        } while (0)
+
+        /* 10c. Side Quest 0: Brass Whistle (Alderbrook Depot -> Alderbrook -> Depot) */
+        hearth_enter_zone(&g_st, ZONE_ALDER_DEPOT, 16, 11);
+        INTERACT_AND_CLOSE(16, 11, DIR_UP);
+        CHECK(g_st.side_quests[0] == 1u, "Tinker Toby starts Side Quest 0 (Brass Whistle)");
+        hearth_enter_zone(&g_st, ZONE_ALDERBROOK, 10, 22);
+        INTERACT_AND_CLOSE(10, 22, DIR_DOWN);
+        CHECK(g_st.side_quests[0] == 2u, "Found Brass Whistle sparkling pickup in Alderbrook");
+        hearth_enter_zone(&g_st, ZONE_ALDER_DEPOT, 16, 11);
+        INTERACT_AND_CLOSE(16, 11, DIR_UP);
+        CHECK(g_st.side_quests[0] == 3u, "Returning Brass Whistle completes Side Quest 0");
+
+        /* 10d. Side Quest 1: Breeze-Spun Flour (Hamlet Mill -> Elder Study) */
+        hearth_enter_zone(&g_st, ZONE_HAMLET_MILL, 21, 11);
+        INTERACT_AND_CLOSE(21, 11, DIR_UP);
+        CHECK(g_st.side_quests[1] == 1u, "Miller Grain starts Side Quest 1 (Breeze-Spun Flour)");
+        hearth_enter_zone(&g_st, ZONE_ELDER_STUDY, 19, 12);
+        INTERACT_AND_CLOSE(19, 12, DIR_UP);
+        CHECK(g_st.side_quests[1] == 3u, "Delivering Flour to Keeper Nessa completes Side Quest 1");
+
+        /* 10e. Side Quest 2: Sunhill Royal Tart (Sunhill Bakery -> Castle Aurelia Gate Sentinel) */
+        hearth_enter_zone(&g_st, ZONE_SUNHILL_BAKERY, 18, 11);
+        INTERACT_AND_CLOSE(18, 11, DIR_UP);
+        CHECK(g_st.side_quests[2] == 1u, "Pastry Pipkin starts Side Quest 2 (Sunhill Royal Tart)");
+        hearth_enter_zone(&g_st, ZONE_CASTLE_GATE, 19, 10);
+        INTERACT_AND_CLOSE(19, 10, DIR_UP);
+        CHECK(g_st.side_quests[2] == 3u, "Delivering Royal Tart to Castle Sentinel completes Side Quest 2");
+
+        /* 10f. Side Quest 3: Moon-Brie Wheel -> Master Brass Lure widens Fishing Reel Bar */
+        hearth_enter_zone(&g_st, ZONE_WHISKERBURGH, 20, 20);
+        hearth_start_fishing(&g_st);
+        uint8_t base_bar_w = g_st.fishing.bar_half_w;
+        hearth_step_60hz(&g_st, 0);
+        hearth_step_60hz(&g_st, PAD_B);
+
+        hearth_enter_zone(&g_st, ZONE_WHISKER_GUILD, 21, 12);
+        INTERACT_AND_CLOSE(21, 12, DIR_UP);
+        CHECK(g_st.side_quests[3] == 1u, "Master Gouda starts Side Quest 3 (Moon-Brie Wheel)");
+        hearth_enter_zone(&g_st, ZONE_WHISKERBURGH, 34, 11);
+        INTERACT_AND_CLOSE(34, 11, DIR_RIGHT);
+        CHECK(g_st.side_quests[3] == 2u, "Found Moon-Brie Wheel sparkling pickup in Whiskerburgh");
+        hearth_enter_zone(&g_st, ZONE_WHISKER_GUILD, 21, 12);
+        INTERACT_AND_CLOSE(21, 12, DIR_UP);
+        CHECK(g_st.side_quests[3] == 3u && g_st.has_master_lure, "Returning Moon-Brie awards Master Brass Lure");
+
+        hearth_enter_zone(&g_st, ZONE_WHISKERBURGH, 20, 20);
+        hearth_start_fishing(&g_st);
+        CHECK(g_st.fishing.bar_half_w > base_bar_w, "Master Brass Lure widens fishing catch zone bar");
+        hearth_step_60hz(&g_st, 0);
+        hearth_step_60hz(&g_st, PAD_B);
+
+        /* 10g. Side Quest 4: Sun-Dried Oasis Babana (Babana Tent -> Oasis -> Tent) */
+        hearth_enter_zone(&g_st, ZONE_BABANA_TENT, 21, 11);
+        INTERACT_AND_CLOSE(21, 11, DIR_UP);
+        CHECK(g_st.side_quests[4] == 1u, "Master Tariq starts Side Quest 4 (Oasis Babana)");
+        hearth_enter_zone(&g_st, ZONE_BABANA_OASIS, 32, 18);
+        INTERACT_AND_CLOSE(32, 18, DIR_RIGHT);
+        CHECK(g_st.side_quests[4] == 2u, "Harvested Sun-Dried Oasis Babana in Babana Oasis");
+        hearth_enter_zone(&g_st, ZONE_BABANA_TENT, 21, 11);
+        INTERACT_AND_CLOSE(21, 11, DIR_UP);
+        CHECK(g_st.side_quests[4] == 3u, "Returning Oasis Babana completes Side Quest 4");
+
+        #undef INTERACT_AND_CLOSE
+        printf("[PASS] Milestone 5: Bouncy Wingless Pip, 8 Enterable Buildings & All 5 Side Quests\n");
+    }
 
     printf("ALL PURE C99 CORE TESTS PASSED!\n");
     return 0;

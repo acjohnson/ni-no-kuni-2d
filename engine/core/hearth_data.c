@@ -208,7 +208,15 @@ const char * const HEARTH_ZONE_NAMES[ZONE_COUNT] = {
     "Sunken Watchtower",
     "Heartland Timber Pier",
     "Suncrest Coral Cove",
-    "Oasis of Babana"
+    "Oasis of Babana",
+    "Barnaby's Steam Depot",
+    "Maple's Cider Bakery",
+    "Old Stone Windmill",
+    "Elder Wren's Study",
+    "Tessa's Tea House",
+    "Corin's Archive Hall",
+    "Whiskerburgh Guildhall",
+    "Babana Caravanserai"
 };
 
 const char * const HEARTH_REGION_NAMES[REGION_COUNT] = {
@@ -448,6 +456,7 @@ static void build_zone_alderbrook(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     set_bg1(bg1, col, 24, 7, T_LANTERN_POST, COL_SOLID);
 
     /* Central Pine Square & Rocky Mountain Lanes */
+    fill_rect(bg1, col, 6, 9,  2, 5, T_ROCKY_PATH, COL_WALKABLE); /* Front walk to Barnaby's Depot */
     fill_rect(bg1, col, 7, 13, 28, 3, T_ROCKY_PATH, COL_WALKABLE);
     fill_rect(bg1, col, 14, 9, 2, 5, T_ROCKY_PATH, COL_WALKABLE);
     fill_rect(bg1, col, 25, 9, 2, 5, T_ROCKY_PATH, COL_WALKABLE);
@@ -1722,6 +1731,100 @@ static void build_zone_sunken_ruins(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     set_bg2(bg2, 12, 12, O_SHRINE_ARCH);
 }
 
+/* ============================================================================
+ * MILESTONE 5: 8 HAND-CRAFTED ENTERABLE BUILDING INTERIORS (ZONES 16..23)
+ * Each room fits snugly centered on the 44x28 canvas (x=12..31, y=7..20) with
+ * warm cedar/stone walls, bespoke furniture, lit windows, and doorway (20..21,20).
+ * ============================================================================ */
+static void build_zone_town_interior(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
+    hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);
+    fill_rect(bg1, col, 0, 0, HEARTH_MAP_W, HEARTH_MAP_H, T_INTERIOR_WALL, COL_SOLID);
+
+    /* Main Room Floor (x=13..30, y=8..19) */
+    if (zone_id == ZONE_HAMLET_MILL) {
+        fill_rect(bg1, col, 13, 8, 18, 12, T_SHRINE_FLOOR, COL_WALKABLE);
+    } else if (zone_id == ZONE_BABANA_TENT) {
+        fill_rect(bg1, col, 13, 8, 18, 12, T_WORLD_SAND, COL_WALKABLE);
+        fill_rect(bg1, col, 15, 9, 14, 9, T_HEARTH_RUG, COL_WALKABLE);
+    } else {
+        fill_rect(bg1, col, 13, 8, 18, 12, T_WOOD_FLOOR, COL_WALKABLE);
+    }
+
+    /* North Wall Lit Windows & Warm Hearth/Stove */
+    set_bg1(bg1, col, 15, 7, T_WALL_WINDOW, COL_SOLID);
+    set_bg1(bg1, col, 28, 7, T_WALL_WINDOW, COL_SOLID);
+
+    if (zone_id == ZONE_ALDER_DEPOT) {
+        /* Barnaby's Steam & Brass Depot: ticket counter, boiler stove, rail blueprints */
+        set_bg1(bg1, col, 20, 7, T_FIREPLACE, COL_SOLID);
+        set_bg1(bg1, col, 21, 7, T_FIREPLACE, COL_SOLID);
+        fill_rect(bg1, col, 14, 11, 5, 1, T_FENCE, COL_SOLID);
+        set_bg1(bg1, col, 14, 9, T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 29, 9, T_ATTIC_CHEST, COL_SOLID);
+        fill_rect(bg1, col, 20, 11, 4, 3, T_HEARTH_RUG, COL_WALKABLE);
+        set_bg1(bg1, col, 24, 10, T_SIGNPOST, COL_SOLID);
+        set_bg1(bg1, col, 14, 17, T_RAIL_TRACK, COL_WALKABLE);
+        set_bg1(bg1, col, 15, 17, T_RAIL_TRACK, COL_WALKABLE);
+    } else if (zone_id == ZONE_ALDER_BAKERY || zone_id == ZONE_SUNHILL_BAKERY) {
+        /* Cinnamon & Cider Bakery / Tessa's Golden Crust Tea House */
+        set_bg1(bg1, col, 18, 7, T_FIREPLACE, COL_SOLID);
+        set_bg1(bg1, col, 19, 7, T_FIREPLACE, COL_SOLID);
+        set_bg1(bg1, col, 24, 7, T_FIREPLACE, COL_SOLID);
+        fill_rect(bg1, col, 14, 12, 8, 1, T_FENCE, COL_SOLID); /* Pastry display counter */
+        fill_rect(bg1, col, 24, 13, 5, 4, T_HEARTH_RUG, COL_WALKABLE);
+        set_bg1(bg1, col, 26, 14, T_FLOWER_BED, COL_SOLID);    /* Centerpiece tea table */
+        set_bg1(bg1, col, 14, 17, T_FLOWER_BED, COL_SOLID);
+        set_bg1(bg1, col, 29, 9,  T_ATTIC_CHEST, COL_SOLID);
+    } else if (zone_id == ZONE_HAMLET_MILL) {
+        /* Old Stone Windmill: central rotating millstone dais, grain sacks & stone pillars */
+        fill_rect(bg1, col, 19, 10, 6, 5, T_COBBLE, COL_WALKABLE);
+        set_bg1(bg1, col, 21, 12, T_SHRINE_RUNE, COL_WALKABLE);
+        set_bg1(bg1, col, 15, 9,  T_SHRINE_PILLAR, COL_SOLID);
+        set_bg1(bg1, col, 28, 9,  T_SHRINE_PILLAR, COL_SOLID);
+        set_bg1(bg1, col, 14, 15, T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 15, 16, T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 28, 15, T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 21, 7,  T_WALL_WINDOW, COL_SOLID);
+    } else if (zone_id == ZONE_ELDER_STUDY || zone_id == ZONE_SUNHILL_ARCHIVE) {
+        /* Elder Wren's Library / Corin's Cartography & Globe Hall */
+        set_bg1(bg1, col, 21, 7, T_FIREPLACE, COL_SOLID);
+        set_bg1(bg1, col, 22, 7, T_FIREPLACE, COL_SOLID);
+        fill_rect(bg1, col, 17, 10, 10, 5, T_HEARTH_RUG, COL_WALKABLE);
+        set_bg1(bg1, col, 14, 9,  T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 14, 11, T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 29, 9,  T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 29, 11, T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 22, 12, T_SIGNPOST, COL_SOLID); /* Globe stand / study lectern */
+        set_bg1(bg1, col, 15, 17, T_FLOWER_BED, COL_SOLID);
+        set_bg1(bg1, col, 28, 17, T_FLOWER_BED, COL_SOLID);
+    } else if (zone_id == ZONE_WHISKER_GUILD) {
+        /* Cheddar & Whiskers Mouse Guildhall: cheese-aging racks, velvet banquet rug & hearth */
+        set_bg1(bg1, col, 20, 7, T_FIREPLACE, COL_SOLID);
+        set_bg1(bg1, col, 21, 7, T_FIREPLACE, COL_SOLID);
+        fill_rect(bg1, col, 16, 10, 12, 6, T_HEARTH_RUG, COL_WALKABLE);
+        set_bg1(bg1, col, 14, 9,  T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 14, 14, T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 29, 9,  T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 29, 14, T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 18, 10, T_FLOWER_BED, COL_SOLID);
+        set_bg1(bg1, col, 25, 10, T_FLOWER_BED, COL_SOLID);
+    } else {
+        /* Golden Babana Caravanserai: desert silk carpets, brass lanterns, palm pots & spice chests */
+        set_bg1(bg1, col, 14, 9,  T_PALM_TREE, COL_SOLID);
+        set_bg1(bg1, col, 29, 9,  T_PALM_TREE, COL_SOLID);
+        set_bg1(bg1, col, 21, 7,  T_FIREPLACE, COL_SOLID);
+        set_bg1(bg1, col, 15, 16, T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 28, 16, T_ATTIC_CHEST, COL_SOLID);
+        set_bg1(bg1, col, 21, 13, T_SHRINE_RUNE, COL_WALKABLE);
+    }
+
+    /* Warm Entry Lanterns & South Doorway Exit (20..21, 20) */
+    set_bg1(bg1, col, 19, 19, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 22, 19, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 20, 20, T_WOOD_FLOOR, COL_WALKABLE);
+    set_bg1(bg1, col, 21, 20, T_WOOD_FLOOR, COL_WALKABLE);
+}
+
 void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t *col, uint8_t *out_w, uint8_t *out_h) {
     if (zone_id == ZONE_EVERTALE_WORLD) {
         /* 256x192 Globe streams directly from ROM via hearth_globe_cell() — zero RAM fill needed! */
@@ -1759,6 +1862,8 @@ void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t 
         build_zone_coral_cove(bg1, bg2, col);
     } else if (zone_id == ZONE_BABANA_OASIS) {
         build_zone_babana_oasis(bg1, bg2, col);
+    } else if (zone_id >= ZONE_ALDER_DEPOT && zone_id <= ZONE_BABANA_TENT) {
+        build_zone_town_interior(zone_id, bg1, bg2, col);
     } else {
         hearth_build_sandbox_map(bg1, bg2, col);
     }
