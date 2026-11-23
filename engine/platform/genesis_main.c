@@ -24,9 +24,13 @@ static HearthState g_hearth;
  * ============================================================================ */
 #define VRAM_BG_BASE    ((u16)(TILE_USER_INDEX))
 #define VRAM_UI_BASE    ((u16)(VRAM_BG_BASE + 64u))
-#define VRAM_SPR_BASE   ((u16)(VRAM_UI_BASE + 16u))
-#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 224u))
-#define VRAM_CG_BASE    ((u16)(VRAM_FONT_BASE + 80u))
+#define VRAM_SPR_BASE   ((u16)(VRAM_UI_BASE + 32u))
+#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 236u))
+#define VRAM_ATLAS_BASE ((u16)(VRAM_FONT_BASE + 64u))
+#define VRAM_CG_BASE    ((u16)(VRAM_ATLAS_BASE + 384u))
+
+#define GEN_ATLAS_TW    24u
+#define GEN_ATLAS_TH    16u
 
 /* BG Tile IDs (offsets from VRAM_BG_BASE — 63 tiles total, < 64) */
 enum {
@@ -98,7 +102,7 @@ enum {
     GT_COUNT
 };
 
-/* UI Box Tile IDs (offsets from VRAM_UI_BASE) */
+/* UI Box & Pixel-Art Minigame/Battle Tile IDs (offsets from VRAM_UI_BASE, 22 < 32) */
 enum {
     GUI_FILL = 0,
     GUI_TOP,
@@ -108,17 +112,33 @@ enum {
     GUI_TL,
     GUI_TR,
     GUI_BL,
-    GUI_BR
+    GUI_BR,
+    GUI_FISH_CAP_L,
+    GUI_FISH_CAP_R,
+    GUI_FISH_WATER,
+    GUI_FISH_ZONE_L,
+    GUI_FISH_ZONE_M,
+    GUI_FISH_ZONE_R,
+    GUI_BAR_BG,
+    GUI_BAR_GRN,
+    GUI_BAR_RED,
+    GUI_LOCK_SWORD,
+    GUI_LOCK_SUN,
+    GUI_LOCK_STAR,
+    GUI_LOCK_BROKEN
 };
 
-/* Sprite VRAM Slots (49 core sprites + 7 host internal slots = 56 x 4 = 224 tiles) */
-#define SPR_TIMED_RING_SLOT  49u
-#define SPR_HERO_DOWN_1      50u
-#define SPR_HERO_UP_0        51u
-#define SPR_HERO_UP_1        52u
-#define SPR_HERO_SIDE_0      53u
-#define SPR_HERO_SIDE_1      54u
-#define SPR_BATTLE_VFX_SLOT  55u
+/* Sprite VRAM Slots (49 core sprites + 10 host internal slots = 59 x 4 = 236 tiles) */
+#define SPR_TIMED_RING_SLOT    49u
+#define SPR_HERO_DOWN_1        50u
+#define SPR_HERO_UP_0          51u
+#define SPR_HERO_UP_1          52u
+#define SPR_HERO_SIDE_0        53u
+#define SPR_HERO_SIDE_1        54u
+#define SPR_BATTLE_VFX_SLOT    55u
+#define SPR_ATLAS_HERO_SLOT    56u
+#define SPR_ATLAS_RETICLE_SLOT 57u
+#define SPR_FISH_ICON_SLOT     58u
 
 /* ============================================================================
  * 1. COMPACT 5x7 UPPERCASE ASCII FONT (ASCII 32..95) -> OPAQUE 4bpp VRAM
@@ -500,7 +520,99 @@ static void bake_bg_and_ui_tiles(void) {
     p8_fill(1); p8_rect(0, 6, 8, 2, 7); p8_rect(6, 0, 2, 8, 7); p8_rect(0, 6, 7, 1, 15); p8_rect(6, 0, 1, 7, 15);
     upload_pix8_to_vram(VRAM_UI_BASE + GUI_BR);
 
-    /* Opaque 8x8 ASCII Font (bg=1 dark slate, fg=15 warm cream in PAL2, or fg=10/11 gold in PAL1) */
+    /* True 4bpp Pixel-Art Fishing Gauge, Progress/Tension Bars & Battle Lock Icons */
+    /* GUI_FISH_CAP_L (PAL2: dark slate 1, bronze 6, gold 7, cream 15, ocean 8) */
+    p8_fill(1);
+    p8_rect(2, 0, 6, 8, 6); p8_rect(3, 1, 5, 6, 7); p8_rect(4, 2, 4, 4, 8);
+    g_pix8[1*8+3] = 15; g_pix8[1*8+4] = 15;
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_FISH_CAP_L);
+
+    /* GUI_FISH_CAP_R (PAL2) */
+    p8_fill(1);
+    p8_rect(0, 0, 6, 8, 6); p8_rect(0, 1, 5, 6, 7); p8_rect(0, 2, 4, 4, 8);
+    g_pix8[1*8+4] = 15; g_pix8[1*8+3] = 15;
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_FISH_CAP_R);
+
+    /* GUI_FISH_WATER (PAL2: framed azure water trough with shimmer highlights) */
+    p8_fill(8);
+    p8_rect(0, 0, 8, 1, 6); p8_rect(0, 7, 8, 1, 6);
+    p8_rect(0, 1, 8, 1, 1); p8_rect(0, 6, 8, 1, 1);
+    p8_rect(1, 2, 3, 1, 9); p8_rect(5, 4, 3, 1, 9);
+    g_pix8[2*8+2] = 15;
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_FISH_WATER);
+
+    /* GUI_FISH_ZONE_L / M / R (PAL3: glowing emerald catch zone with golden rim) */
+    p8_fill(7);
+    p8_rect(0, 0, 8, 1, 11); p8_rect(0, 7, 8, 1, 11);
+    p8_rect(0, 1, 1, 6, 12); p8_rect(1, 1, 7, 1, 8); p8_rect(1, 6, 7, 1, 6);
+    p8_rect(2, 2, 5, 2, 8);
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_FISH_ZONE_L);
+
+    p8_fill(7);
+    p8_rect(0, 0, 8, 1, 11); p8_rect(0, 7, 8, 1, 11);
+    p8_rect(0, 1, 8, 1, 8);  p8_rect(0, 6, 8, 1, 6);
+    p8_rect(1, 2, 6, 2, 8);  p8_rect(3, 3, 2, 1, 12);
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_FISH_ZONE_M);
+
+    p8_fill(7);
+    p8_rect(0, 0, 8, 1, 11); p8_rect(0, 7, 8, 1, 11);
+    p8_rect(7, 1, 1, 6, 12); p8_rect(0, 1, 7, 1, 8); p8_rect(0, 6, 7, 1, 6);
+    p8_rect(1, 2, 5, 2, 8);
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_FISH_ZONE_R);
+
+    /* GUI_BAR_BG (PAL2: recessed dark slate bar track) */
+    p8_fill(1);
+    p8_rect(0, 1, 8, 6, 11); p8_rect(0, 2, 8, 4, 1);
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_BAR_BG);
+
+    /* GUI_BAR_GRN (PAL3: glossy emerald catch progress segment) */
+    p8_fill(1);
+    p8_rect(0, 1, 8, 6, 6); p8_rect(0, 2, 8, 4, 7); p8_rect(0, 2, 7, 1, 8);
+    g_pix8[2*8+1] = 12; g_pix8[2*8+2] = 12;
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_BAR_GRN);
+
+    /* GUI_BAR_RED (PAL3: glossy crimson tension meter segment) */
+    p8_fill(1);
+    p8_rect(0, 1, 8, 6, 9); p8_rect(0, 2, 8, 4, 10); p8_rect(0, 2, 7, 1, 11);
+    g_pix8[2*8+1] = 12; g_pix8[2*8+2] = 12;
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_BAR_RED);
+
+    /* GUI_LOCK_SWORD (PAL2: 8x8 steel blade & golden hilt badge) */
+    p8_fill(1);
+    p8_rect(0, 0, 8, 1, 6); p8_rect(0, 7, 8, 1, 6);
+    p8_rect(0, 0, 1, 8, 6); p8_rect(7, 0, 1, 8, 6);
+    g_pix8[1*8+6] = 15; g_pix8[2*8+5] = 4; g_pix8[3*8+4] = 4; g_pix8[4*8+3] = 5;
+    g_pix8[3*8+2] = 7;  g_pix8[4*8+2] = 7; g_pix8[5*8+3] = 7; g_pix8[5*8+4] = 7;
+    g_pix8[6*8+1] = 7;  g_pix8[5*8+2] = 11;
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_LOCK_SWORD);
+
+    /* GUI_LOCK_SUN (PAL3: 8x8 radiant solar emblem badge) */
+    p8_fill(1);
+    p8_rect(0, 0, 8, 1, 9); p8_rect(0, 7, 8, 1, 9);
+    p8_rect(0, 0, 1, 8, 9); p8_rect(7, 0, 1, 8, 9);
+    p8_rect(3, 3, 2, 2, 12);
+    g_pix8[1*8+3] = 11; g_pix8[1*8+4] = 11; g_pix8[6*8+3] = 11; g_pix8[6*8+4] = 11;
+    g_pix8[3*8+1] = 11; g_pix8[4*8+1] = 11; g_pix8[3*8+6] = 11; g_pix8[4*8+6] = 11;
+    g_pix8[2*8+2] = 10; g_pix8[2*8+5] = 10; g_pix8[5*8+2] = 10; g_pix8[5*8+5] = 10;
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_LOCK_SUN);
+
+    /* GUI_LOCK_STAR (PAL3: 8x8 arcane cyan starlight emblem badge) */
+    p8_fill(1);
+    p8_rect(0, 0, 8, 1, 13); p8_rect(0, 7, 8, 1, 13);
+    p8_rect(0, 0, 1, 8, 13); p8_rect(7, 0, 1, 8, 13);
+    p8_rect(3, 1, 2, 6, 15); p8_rect(1, 3, 6, 2, 15);
+    p8_rect(3, 3, 2, 2, 12);
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_LOCK_STAR);
+
+    /* GUI_LOCK_BROKEN (PAL2: dimmed shattered lock socket) */
+    p8_fill(1);
+    p8_rect(0, 0, 8, 1, 11); p8_rect(0, 7, 8, 1, 11);
+    p8_rect(0, 0, 1, 8, 11); p8_rect(7, 0, 1, 8, 11);
+    g_pix8[2*8+2] = 5; g_pix8[3*8+3] = 5; g_pix8[4*8+4] = 5; g_pix8[5*8+5] = 5;
+    g_pix8[2*8+5] = 5; g_pix8[5*8+2] = 5;
+    upload_pix8_to_vram(VRAM_UI_BASE + GUI_LOCK_BROKEN);
+
+    /* Opaque 8x8 ASCII Font (bg=1 dark slate, fg=15 warm cream in PAL2, or fg=11/12 gold in PAL3) */
     for (u16 ch = 0; ch < 64; ch++) {
         p8_fill(1);
         for (u8 y = 0; y < 7; y++) {
@@ -512,6 +624,97 @@ static void bake_bg_and_ui_tiles(void) {
             }
         }
         upload_pix8_to_vram(VRAM_FONT_BASE + ch);
+    }
+}
+
+/* Dedicated 16-Color Full-Color World Atlas Palette (Loaded into PAL0 while Atlas is open; 0 = VDP transparent) */
+static const uint32_t ATLAS_PAL_RGB[16] = {
+    0x000000u, /* 0: VDP Transparent (unused in Atlas bitmap) */
+    0x161322u, /* 1: Coastline / Pin Dark Shadow */
+    0x1F4C82u, /* 2: Deep Cobalt Ocean (cell 0) */
+    0x3EB4CCu, /* 3: Turquoise Shallows / Raft Channel (cell 1) */
+    0xE87EA8u, /* 4: Coral Reef Shoals (cell 2) */
+    0x5EA84Eu, /* 5: Evertale Heartland (cell 3) */
+    0xE4BC62u, /* 6: Sands of Babana (cell 4) */
+    0x56C49Au, /* 7: Suncrest Paradise (cell 5) */
+    0xE6F0FCu, /* 8: Frostmere North (cell 6) */
+    0x226E3Au, /* 9: Canopy Wilds (cell 7) */
+    0xD44824u, /* 10: Cinderpeak Caldera (cell 8) */
+    0x4898C8u, /* 11: Aetheris Citadel (cell 9) */
+    0xC8963Eu, /* 12: Gilded Bronze Map Frame */
+    0xFFF1A8u, /* 13: Golden Enterable Town/Port Pin */
+    0x74D8F5u, /* 14: Sky Cyan Landmark Vista Pin */
+    0x2B629Cu  /* 15: Subtle Ocean Graticule Line */
+};
+
+/* Pre-bake full-color 24x16 (192x128 px) 4bpp Pixel-Art Evertale World Atlas into VRAM_ATLAS_BASE */
+static void bake_genesis_atlas_bitmap(void) {
+    static u8 row3[3][HEARTH_ATLAS_W];
+    static u8 below[HEARTH_ATLAS_W];
+    u16 tile_idx = 0u;
+
+    for (u16 ty = 0u; ty < GEN_ATLAS_TH; ty++) {
+        u8 ay0 = (u8)(ty * 3u);
+        u8 ay_next = (u8)((ay0 + 3u < HEARTH_ATLAS_H) ? (ay0 + 3u) : (HEARTH_ATLAS_H - 1u));
+        for (u8 ax = 0u; ax < HEARTH_ATLAS_W; ax++) {
+            row3[0][ax] = hearth_globe_atlas_cell(ax, ay0);
+            row3[1][ax] = hearth_globe_atlas_cell(ax, (u8)(ay0 + 1u));
+            row3[2][ax] = hearth_globe_atlas_cell(ax, (u8)(ay0 + 2u));
+            below[ax]   = hearth_globe_atlas_cell(ax, ay_next);
+        }
+
+        for (u16 tx = 0u; tx < GEN_ATLAS_TW; tx++) {
+            for (u8 ly = 0u; ly < 8u; ly++) {
+                u8 py = (u8)((ty << 3) + ly);
+                u8 sub = (ly < 3u) ? 0u : ((ly < 5u) ? 1u : 2u);
+                for (u8 lx = 0u; lx < 8u; lx++) {
+                    u8 px = (u8)((tx << 3) + lx);
+                    u8 ax = (u8)(px / 3u);
+                    if (ax >= HEARTH_ATLAS_W) ax = HEARTH_ATLAS_W - 1u;
+                    u8 cell = row3[sub][ax];
+                    u8 col = (u8)((cell < 10u ? cell : 0u) + 2u);
+
+                    /* Subtle latitude/longitude graticule across deep ocean */
+                    if (cell == 0u && (((px % 24u) == 0u && ((py & 1u) == 0u)) ||
+                                       ((py % 24u) == 0u && ((px & 1u) == 0u)))) {
+                        col = 15u;
+                    }
+                    /* Crisp 1px coastal shadow along south/east continent shoreline */
+                    if (cell < 3u) {
+                        u8 above = (sub > 0u) ? row3[sub - 1u][ax] : cell;
+                        u8 left_c = (ax > 0u) ? row3[sub][ax - 1u] : cell;
+                        if ((ly == 3u || ly == 5u) && above >= 3u) col = 1u;
+                        else if ((px % 3u) == 0u && left_c >= 3u) col = 1u;
+                    } else if (ly == 7u && below[ax] < 3u) {
+                        col = 1u;
+                    }
+
+                    /* Crisp 5x5 framed landmark pins (gold = enterable town/port, cyan = vista) */
+                    for (u8 lm_i = 0u; lm_i < HEARTH_GLOBE_LANDMARK_COUNT; lm_i++) {
+                        const HearthGlobeLandmark *lm = &HEARTH_GLOBE_LANDMARKS[lm_i];
+                        s16 lpx = (s16)(((u16)lm->tx * 3u) >> 2);
+                        s16 lpy = (s16)(((u16)lm->ty * 171u) >> 8);
+                        s16 dx = (s16)px - lpx;
+                        s16 dy = (s16)py - lpy;
+                        if (dx >= -2 && dx <= 2 && dy >= -2 && dy <= 2) {
+                            if (dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1) {
+                                col = lm->enterable ? 13u : 14u;
+                            } else if ((dx != -2 && dx != 2) || (dy != -2 && dy != 2)) {
+                                col = 1u;
+                            }
+                        }
+                    }
+
+                    /* Gilded bronze outer border around the 192x128 World Atlas */
+                    if (px == 0u || px == 191u || py == 0u || py == 127u) {
+                        col = 12u;
+                    }
+                    g_pix8[(u16)ly * 8u + lx] = col;
+                }
+            }
+            upload_pix8_to_vram((u16)(VRAM_ATLAS_BASE + tile_idx));
+            tile_idx++;
+        }
     }
 }
 
@@ -952,7 +1155,7 @@ static void bake_all_sprites(void) {
     p16_rect(4, 13, 3, 3, 4); p16_rect(9, 13, 3, 3, 4);    /* Wide stride boots */
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_HERO_SIDE_1 * 4);
 
-    /* 25: SPR_BATTLE_VFX_SLOT (Star / Solar / Slash Choreography Burst - PAL3) */
+    /* 55: SPR_BATTLE_VFX_SLOT (Star / Solar / Slash Choreography Burst - PAL3) */
     p16_clear();
     p16_rect(7, 0, 2, 16, 11); p16_rect(0, 7, 16, 2, 11);
     p16_rect(3, 3, 10, 10, 15);
@@ -960,6 +1163,41 @@ static void bake_all_sprites(void) {
     p16_rect(2, 2, 2, 2, 10); p16_rect(12, 2, 2, 2, 10);
     p16_rect(2, 12, 2, 2, 10); p16_rect(12, 12, 2, 2, 10);
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_BATTLE_VFX_SLOT * 4);
+
+    /* 56: SPR_ATLAS_HERO_SLOT (Blinking Compass Beacon for Rowan on World Atlas - PAL1/PAL3) */
+    p16_clear();
+    p16_rect(7, 2, 2, 12, 1);  p16_rect(2, 7, 12, 2, 1);
+    p16_rect(4, 4, 8, 8, 1);   p16_rect(5, 5, 6, 6, 9);
+    p16_rect(6, 6, 4, 4, 11);  g_pix16[7*16+7] = 14; g_pix16[7*16+8] = 14;
+    g_pix16[3*16+7] = 11; g_pix16[3*16+8] = 11;
+    g_pix16[12*16+7] = 11; g_pix16[12*16+8] = 11;
+    g_pix16[7*16+3] = 11; g_pix16[8*16+3] = 11;
+    g_pix16[7*16+12] = 11; g_pix16[8*16+12] = 11;
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_ATLAS_HERO_SLOT * 4);
+
+    /* 57: SPR_ATLAS_RETICLE_SLOT (Designer Continent Warp Reticle Corners - PAL3/PAL1) */
+    p16_clear();
+    p16_rect(1, 1, 5, 2, 11);  p16_rect(1, 1, 2, 5, 11);
+    p16_rect(10, 1, 5, 2, 11); p16_rect(13, 1, 2, 5, 11);
+    p16_rect(1, 13, 5, 2, 11); p16_rect(1, 10, 2, 5, 11);
+    p16_rect(10, 13, 5, 2, 11); p16_rect(13, 10, 2, 5, 11);
+    g_pix16[2*16+2] = 15; g_pix16[2*16+13] = 15;
+    g_pix16[13*16+2] = 15; g_pix16[13*16+13] = 15;
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_ATLAS_RETICLE_SLOT * 4);
+
+    /* 58: SPR_FISH_ICON_SLOT (16x16 Storybook Swimming & Trophy Fish facing RIGHT - PAL1) */
+    p16_clear();
+    p16_rect(1, 5, 3, 6, 12);  g_pix16[4*16+1] = 13; g_pix16[11*16+1] = 13; /* Forked tail fin */
+    g_pix16[7*16+1] = 0;       g_pix16[8*16+1] = 0;
+    p16_rect(4, 4, 8, 8, 13);  p16_rect(5, 3, 6, 10, 13);                   /* Shimmering body */
+    p16_rect(6, 2, 4, 2, 12);                                               /* Dorsal fin */
+    p16_rect(12, 5, 3, 6, 13); p16_rect(14, 6, 2, 4, 14);                   /* Nose & snout */
+    p16_rect(6, 5, 6, 2, 14);                                               /* Silver dorsal highlight */
+    p16_rect(5, 9, 7, 3, 10);  p16_rect(6, 10, 5, 2, 11);                   /* Golden belly */
+    p16_rect(7, 12, 3, 2, 9);                                               /* Ventral fin */
+    g_pix16[6*16+12] = 1;      g_pix16[6*16+13] = 14;                       /* Eye & glint */
+    g_pix16[7*16+10] = 12;     g_pix16[8*16+10] = 12;                       /* Gill arc */
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_FISH_ICON_SLOT * 4);
 }
 
 /* Pre-bake 4 animated frames for meadow grass, flowers, water, ford, tall grass,
@@ -1416,50 +1654,37 @@ static void draw_genesis_atlas_footer(void) {
         append_str(line, &pos, sizeof(line), " - ");
         append_str(line, &pos, sizeof(line), VEH_LBL[g_hearth.active_vehicle < 6u ? g_hearth.active_vehicle : 0u]);
         win_text_n(3, 21, PAL3, line, 34u);
-        win_text(3, 23, PAL2, "@:ROWAN  ::RAFT CHANNEL  =:SAND");
+        win_text(3, 23, PAL2, "GOLD:PORT/TOWN  CYAN:LANDMARK");
         win_text(3, 25, PAL3, "START / B : CLOSE ATLAS");
     }
     g_last_atlas_sig = (u16)(((u16)g_hearth.atlas_cursor << 8) | g_hearth.active_vehicle);
 }
 
-static void draw_genesis_atlas_window(void) {
-    u16 htx = (u16)((u16)(FP_PX(g_hearth.hero_fx) >> 4) & 255u);
-    s16 hty_s = (s16)(FP_PX(g_hearth.hero_fy) >> 4);
-    while (hty_s < 0) hty_s = (s16)(hty_s + HEARTH_GLOBE_H);
-    while (hty_s >= HEARTH_GLOBE_H) hty_s = (s16)(hty_s - HEARTH_GLOBE_H);
-    u8 hx = (u8)((htx * 32u) >> 8);
-    u8 hy = (u8)(((u16)hty_s * 16u) / HEARTH_GLOBE_H);
-    if (hx >= 32u) hx = 31u;
-    if (hy >= 16u) hy = 15u;
+static void upload_atlas_pal0_to_cram(TransferMethod tm) {
+    u16 cram[16];
+    for (u16 c = 0; c < 16u; c++) {
+        cram[c] = hearth_rgb_to_genesis_bgr333(ATLAS_PAL_RGB[c]);
+    }
+    PAL_setColors(0, cram, 16, tm);
+    g_last_pal_id = 255u; /* Force zone terrain PAL0 restore immediately when Atlas closes */
+}
 
+static void draw_genesis_atlas_window(void) {
+    u16 tile_idx = 0u;
+
+    upload_atlas_pal0_to_cram(DMA_QUEUE);
     VDP_clearPlane(WINDOW, TRUE);
     VDP_setWindowFullScreen();
     win_fill_box(1, 0, 38, 27);
-    win_text(9, 1, PAL3, "EVERTALE WORLD ATLAS");
+    win_text(10, 1, PAL3, "EVERTALE WORLD ATLAS");
 
-    for (u16 ry = 0; ry < 16u; ry++) {
-        u8 ay = (u8)(ry * 3u + 1u);
-        for (u16 rx = 0; rx < 32u; rx++) {
-            u8 ax = (u8)(rx * 2u);
-            u16 pal = PAL2;
-            char ch;
-            if (rx == hx && ry == hy) {
-                ch = '@';
-                pal = PAL3;
-            } else {
-                u8 cell = hearth_globe_atlas_cell(ax, ay);
-                if (cell == 0u) ch = '.';                       /* Deep Ocean */
-                else if (cell == 1u) { ch = ':'; pal = PAL3; }  /* Shallows (Raft) */
-                else if (cell == 2u) { ch = ';'; pal = PAL3; }  /* Coral Shoals */
-                else if (cell == 3u) ch = 'G';                  /* Heartland */
-                else if (cell == 4u) { ch = '='; pal = PAL3; }  /* Sands of Babana */
-                else if (cell == 5u) { ch = 'P'; pal = PAL3; }  /* Suncrest Paradise */
-                else if (cell == 6u) ch = '*';                  /* Frostmere North */
-                else if (cell == 7u) ch = '#';                  /* Canopy Wilds */
-                else if (cell == 8u) { ch = '!'; pal = PAL3; }  /* Cinderpeak */
-                else { ch = '+'; pal = PAL3; }                  /* Aetheris Citadel */
-            }
-            VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(pal, 1, 0, 0, (u16)(VRAM_FONT_BASE + (u16)(ch - 32))), (u16)(4u + rx), (u16)(3u + ry));
+    /* Stamp pre-baked 24x16 (192x128 px) 4bpp Pixel-Art World Map centered at cols 8..31, rows 3..18 */
+    for (u16 ry = 0u; ry < GEN_ATLAS_TH; ry++) {
+        for (u16 rx = 0u; rx < GEN_ATLAS_TW; rx++) {
+            VDP_setTileMapXY(WINDOW,
+                TILE_ATTR_FULL(PAL0, 1, 0, 0, (u16)(VRAM_ATLAS_BASE + tile_idx)),
+                (u16)(8u + rx), (u16)(3u + ry));
+            tile_idx++;
         }
     }
 
@@ -1520,12 +1745,15 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
         return;
     }
 
-    /* Throttle text redraws to ~15Hz (every 4 frames) for crisp responsiveness & light DMA */
-    if ((g_hud_tick & 3u) != 0u) {
+    /* Throttle text redraws to ~15Hz (30Hz during active fishing reel for smooth emerald catch zone) */
+    {
+        u8 tmask = (want_layout == 6 && g_hearth.fishing.phase == FISH_PHASE_REELING) ? 1u : 3u;
+        if ((g_hud_tick & tmask) != 0u) {
+            g_hud_tick++;
+            return;
+        }
         g_hud_tick++;
-        return;
     }
-    g_hud_tick++;
 
     if (want_layout == 4) {
         /* Illustrated Opening Cinema Narrative Box */
@@ -1654,7 +1882,7 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
         append_int(line, &pos, sizeof(line), pm->mp);
         win_text_n(2, 21, PAL2, line, 36u);
 
-        /* Row 22: Selected Enemy HP, Spell Locks, and Charge Countdown */
+        /* Row 22: Selected Enemy HP & True 4bpp Pixel-Art Spell Lock Badges */
         if (b->selected_enemy < b->enemy_count) {
             const HearthBattleEnemy *e = &b->enemies[b->selected_enemy];
             pos = 0;
@@ -1662,17 +1890,26 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
             append_str(line, &pos, sizeof(line), e->name);
             append_str(line, &pos, sizeof(line), " HP:");
             append_int(line, &pos, sizeof(line), e->hp);
+            win_text_n(2, 22, PAL3, line, 28u);
             if (e->lock_count > 0) {
-                append_str(line, &pos, sizeof(line), " [");
-                for (u8 l = 0; l < e->lock_count; l++) {
-                    if (e->broken_locks[l]) append_str(line, &pos, sizeof(line), ".");
-                    else if (e->locks[l] == LOCK_SWORD) append_str(line, &pos, sizeof(line), "W");
-                    else if (e->locks[l] == LOCK_SUN)   append_str(line, &pos, sizeof(line), "S");
-                    else append_str(line, &pos, sizeof(line), "*");
+                u16 lx = (u16)(3u + pos);
+                if (lx > 33u) lx = 33u;
+                for (u8 l = 0; l < e->lock_count && (u16)(lx + l) < 38u; l++) {
+                    u16 ltile, lpal;
+                    if (e->broken_locks[l]) {
+                        ltile = GUI_LOCK_BROKEN; lpal = PAL2;
+                    } else if (e->locks[l] == LOCK_SWORD) {
+                        ltile = GUI_LOCK_SWORD;  lpal = PAL2;
+                    } else if (e->locks[l] == LOCK_SUN) {
+                        ltile = GUI_LOCK_SUN;    lpal = PAL3;
+                    } else {
+                        ltile = GUI_LOCK_STAR;   lpal = PAL3;
+                    }
+                    VDP_setTileMapXY(WINDOW,
+                        TILE_ATTR_FULL(lpal, 1, 0, 0, (u16)(VRAM_UI_BASE + ltile)),
+                        (u16)(lx + l), 22u);
                 }
-                append_str(line, &pos, sizeof(line), "]");
             }
-            win_text_n(2, 22, PAL3, line, 36u);
         }
 
         /* Rows 24-25: Timed-Hit/Parry Callout, Choreography Banner, or Real Move Menu */
@@ -1763,37 +2000,59 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
             win_text(6, 22, bpal, ">>> BITE! PRESS A TO HOOK! <<<");
             win_text(2, 26, PAL2, "HOLD A TO REEL ONCE HOOKED!");
         } else if (fs->phase == FISH_PHASE_REELING) {
-            char bar[28];
-            u8 fi = (u8)((fs->fish_pos * 24) / 100);
-            u8 bi = (u8)((fs->bar_pos * 24) / 100);
-            u8 bw = (u8)((fs->bar_half_w * 24) / 100);
+            u8 bi = (u8)((fs->bar_pos * 24u) / 100u);
+            u8 bw = (u8)((fs->bar_half_w * 24u) / 100u);
+            u8 lo, hi, pfill, tfill;
             if (bw < 2u) bw = 2u;
-            bar[0] = '[';
-            for (u8 k = 0; k < 24u; k++) {
-                u8 d = (k > bi) ? (u8)(k - bi) : (u8)(bi - k);
-                if (k == fi) bar[1u + k] = 'O';
-                else if (d <= bw) bar[1u + k] = '=';
-                else bar[1u + k] = '-';
-            }
-            bar[25] = ']';
-            bar[26] = '\0';
+            lo = (bi > bw) ? (u8)(bi - bw) : 0u;
+            hi = (u8)(bi + bw);
+            if (hi > 23u) hi = 23u;
+
             win_text(2, 21, PAL3, "REELING! HOLD A TO RAISE ZONE");
-            win_text(6, 23, PAL3, bar);
-            append_str(line, &pos, sizeof(line), "CATCH:");
-            append_int(line, &pos, sizeof(line), (s16)fs->progress);
-            append_str(line, &pos, sizeof(line), "%   TENSION:");
-            append_int(line, &pos, sizeof(line), (s16)fs->tension);
-            append_str(line, &pos, sizeof(line), "%");
-            win_text_n(2, 25, PAL2, line, 36u);
-            win_text(2, 26, PAL2, "KEEP [O] INSIDE [===]  B:RELEASE");
+
+            /* True 4bpp Pixel-Art Water Trough & Glowing Emerald Catch Zone (Row 23, cols 7..32) */
+            VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FISH_CAP_L), 7, 23);
+            for (u8 k = 0; k < 24u; k++) {
+                u16 tile, pal;
+                if (k >= lo && k <= hi) {
+                    tile = (k == lo) ? GUI_FISH_ZONE_L : ((k == hi) ? GUI_FISH_ZONE_R : GUI_FISH_ZONE_M);
+                    pal = PAL3;
+                } else {
+                    tile = GUI_FISH_WATER;
+                    pal = PAL2;
+                }
+                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(pal, 1, 0, 0, (u16)(VRAM_UI_BASE + tile)), (u16)(8u + k), 23);
+            }
+            VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FISH_CAP_R), 32, 23);
+
+            /* True 4bpp Pixel-Art Catch Progress & Line Tension Bars (Row 25) */
+            pfill = (u8)((fs->progress * 10u) / 100u);
+            tfill = (u8)((fs->tension  * 10u) / 100u);
+            if (fs->progress > 0u && pfill == 0u) pfill = 1u;
+            if (fs->tension  > 0u && tfill == 0u) tfill = 1u;
+            win_text(2, 25, PAL2, "CATCH");
+            for (u8 k = 0; k < 10u; k++) {
+                u8 filled = (k < pfill) ? 1u : 0u;
+                VDP_setTileMapXY(WINDOW,
+                    TILE_ATTR_FULL(filled ? PAL3 : PAL2, 1, 0, 0, VRAM_UI_BASE + (filled ? GUI_BAR_GRN : GUI_BAR_BG)),
+                    (u16)(8u + k), 25);
+            }
+            win_text(20, 25, PAL2, "TENS");
+            for (u8 k = 0; k < 10u; k++) {
+                u8 filled = (k < tfill) ? 1u : 0u;
+                VDP_setTileMapXY(WINDOW,
+                    TILE_ATTR_FULL(filled ? PAL3 : PAL2, 1, 0, 0, VRAM_UI_BASE + (filled ? GUI_BAR_RED : GUI_BAR_BG)),
+                    (u16)(25u + k), 25);
+            }
+            win_text(2, 26, PAL2, "KEEP FISH IN GREEN ZONE   B:RELEASE");
         } else if (fs->phase == FISH_PHASE_CAUGHT) {
             append_str(line, &pos, sizeof(line), "CAUGHT: ");
             append_str(line, &pos, sizeof(line), HEARTH_FISH_TABLE[fs->species % HEARTH_FISH_SPECIES].name);
             append_str(line, &pos, sizeof(line), " (");
             append_int(line, &pos, sizeof(line), (s16)fs->weight_oz);
             append_str(line, &pos, sizeof(line), " OZ)");
-            win_text_n(2, 22, PAL3, line, 36u);
-            win_text(2, 25, PAL2, "SELL IT AT WHISKERBURGH MARKET!");
+            win_text_n(6, 22, PAL3, line, 32u);
+            win_text(6, 24, PAL2, "SELL IT AT WHISKERBURGH MARKET!");
             win_text(2, 26, PAL3, "A:CONTINUE");
         } else {
             win_text(6, 22, PAL3, "THE LINE SNAPPED! IT GOT AWAY.");
@@ -1819,9 +2078,42 @@ static u16 sprite_palette(u8 spr_id) {
 static void render_sprites(const HearthPpuPacket *ppu) {
     u16 count = 0;
 
-    if (g_hearth.mode == MODE_TITLE || g_hearth.atlas_open) {
+    if (g_hearth.mode == MODE_TITLE) {
         VDP_setSpriteFull(0, -32, -32, SPRITE_SIZE(2, 2), 0, 0);
         VDP_updateSprites(1, DMA_QUEUE);
+        return;
+    }
+
+    /* 60fps Hardware Sprites floating over the 192x128 Pixel-Art World Atlas (cols 8..31, rows 3..18) */
+    if (g_hearth.atlas_open) {
+        u16 htx = (u16)((u16)(FP_PX(g_hearth.hero_fx) >> 4) & 255u);
+        s16 hty_s = (s16)(FP_PX(g_hearth.hero_fy) >> 4);
+        while (hty_s < 0) hty_s = (s16)(hty_s + HEARTH_GLOBE_H);
+        while (hty_s >= HEARTH_GLOBE_H) hty_s = (s16)(hty_s - HEARTH_GLOBE_H);
+        s16 hx = (s16)(56 + (s16)(((htx * 3u) >> 2)));
+        s16 hy = (s16)(16 + (s16)(((u16)hty_s * 171u) >> 8));
+        u16 hpal = ((g_hearth.frame_count & 8u) != 0u) ? PAL3 : PAL1;
+        VDP_setSpriteFull(count, hx, hy, SPRITE_SIZE(2, 2),
+            TILE_ATTR_FULL(hpal, 1, 0, 0, VRAM_SPR_BASE + SPR_ATLAS_HERO_SLOT * 4u),
+            (u8)(count + 1u));
+        count++;
+
+#if HEARTH_DESIGNER_MODE
+        if (g_hearth.designer_sandbox) {
+            static const u16 WARP_RX[REGION_COUNT] = { 104u, 132u,  52u, 128u, 212u,  32u, 220u };
+            static const u16 WARP_RY[REGION_COUNT] = {  84u, 155u, 147u,  22u, 126u,  62u,  62u };
+            u8 cid = (g_hearth.atlas_cursor < REGION_COUNT) ? g_hearth.atlas_cursor : 0u;
+            s16 wx = (s16)(56 + (s16)((WARP_RX[cid] * 3u) >> 2));
+            s16 wy = (s16)(16 + (s16)((WARP_RY[cid] * 171u) >> 8));
+            u16 wpal = ((g_hearth.frame_count & 8u) != 0u) ? PAL1 : PAL3;
+            VDP_setSpriteFull(count, wx, wy, SPRITE_SIZE(2, 2),
+                TILE_ATTR_FULL(wpal, 1, 0, 0, VRAM_SPR_BASE + SPR_ATLAS_RETICLE_SLOT * 4u),
+                (u8)(count + 1u));
+            count++;
+        }
+#endif
+        VDP_setSpriteFull(count, -32, -32, SPRITE_SIZE(1, 1), 0, 0);
+        VDP_updateSprites((u16)(count + 1u), DMA_QUEUE);
         return;
     }
 
@@ -1889,6 +2181,24 @@ static void render_sprites(const HearthPpuPacket *ppu) {
             TILE_ATTR_FULL(PAL3, 1, 0, 0, VRAM_SPR_BASE + SPR_TIMED_RING_SLOT * 4u),
             (u8)(count + 1u));
         count++;
+    }
+
+    /* 60fps Pixel-Art Swimming / Trophy Fish Hardware Sprite over WINDOW Fishing Gauge */
+    if (g_hearth.mode == MODE_FISHING && count < 63u) {
+        if (g_hearth.fishing.phase == FISH_PHASE_REELING) {
+            s16 fx = (s16)(56 + (s16)(((u16)g_hearth.fishing.fish_pos * 192u) / 100u));
+            u8 fflip = (g_hearth.fishing.fish_vel < 0) ? 1u : 0u;
+            VDP_setSpriteFull(count, fx, 180, SPRITE_SIZE(2, 2),
+                TILE_ATTR_FULL(PAL1, 1, 0, fflip, VRAM_SPR_BASE + SPR_FISH_ICON_SLOT * 4u),
+                (u8)(count + 1u));
+            count++;
+        } else if (g_hearth.fishing.phase == FISH_PHASE_CAUGHT) {
+            s16 fy = (s16)(174 + (((g_hearth.frame_count & 16u) != 0u) ? 1 : 0));
+            VDP_setSpriteFull(count, 20, fy, SPRITE_SIZE(2, 2),
+                TILE_ATTR_FULL(PAL1, 1, 0, 0, VRAM_SPR_BASE + SPR_FISH_ICON_SLOT * 4u),
+                (u8)(count + 1u));
+            count++;
+        }
     }
 
     if (count == 0) {
@@ -2316,6 +2626,7 @@ int main(bool hard_reset) {
     VDP_setBackgroundColor(33); /* PAL2[1] warm slate backdrop */
 
     bake_bg_and_ui_tiles();
+    bake_genesis_atlas_bitmap();
     bake_all_sprites();
     bake_env_anim_frames();
 
@@ -2351,7 +2662,7 @@ int main(bool hard_reset) {
                          g_hearth.mode == MODE_BATTLE_DEFEAT) ? 1u : 0u;
         u8 map_changed = (g_hearth.map_revision != g_last_map_rev) ? 1u : 0u;
 
-        if (scene_mode != 2u && ppu->terrain_pal_id != g_last_pal_id) {
+        if (scene_mode != 2u && !g_hearth.atlas_open && ppu->terrain_pal_id != g_last_pal_id) {
             upload_zone_pal0_to_cram(ppu->terrain_pal_id, DMA_QUEUE);
         }
 
