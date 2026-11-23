@@ -430,21 +430,7 @@ static void hearth_bake_pip_16x16(uint8_t *dst256, uint8_t pose) {
 
 /* ============================================================================
  * 3. TALL 16x24 ADULT NPCS — GRANDMA MARA, ELDER WREN, CLARA, GUARD & CAST
- *    Returns 1 if sprite_id is a tall 16x24 character, 0 otherwise.
  * ============================================================================ */
-static uint8_t hearth_is_tall_sprite(uint8_t sprite_id) {
-    if (sprite_id == SPR_HERO) return 1u;
-    if (sprite_id == SPR_NPC_MARA || sprite_id == SPR_NPC_ELDER ||
-        sprite_id == SPR_NPC_CLARA || sprite_id == SPR_NPC_GUARD ||
-        sprite_id == SPR_NPC_BARNABY || sprite_id == SPR_NPC_MAPLE ||
-        sprite_id == SPR_NPC_JASPER || sprite_id == SPR_NPC_TESSA ||
-        sprite_id == SPR_NPC_CORIN || sprite_id == SPR_NPC_SENTINEL ||
-        sprite_id == SPR_NPC_TOWNSFOLK || sprite_id == SPR_NPC_SHADOW_GRAN ||
-        sprite_id == SPR_NPC_SHIPWRIGHT) {
-        return 1u;
-    }
-    return 0u;
-}
 
 /* Bake any of the 13 tall 16x24 adult NPCs into dst384 (PAL 2, Shadow Grandma PAL 3) */
 static void hearth_bake_npc_16x24(uint8_t *dst384, uint8_t sprite_id, uint8_t frame) {

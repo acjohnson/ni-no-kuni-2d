@@ -19,9 +19,15 @@
     #define HEARTH_DESIGNER_MODE 1
 #endif
 
-/* Unified Build Version String (injected by Makefile from VERSION file) */
+/* Unified Build Version String (injected by Makefile from VERSION file via HEARTH_VERSION_RAW) */
+#define HEARTH_STR_IMPL(x) #x
+#define HEARTH_STR(x)      HEARTH_STR_IMPL(x)
 #ifndef HEARTH_VERSION_STR
-    #define HEARTH_VERSION_STR "v0.6.0"
+    #ifdef HEARTH_VERSION_RAW
+        #define HEARTH_VERSION_STR HEARTH_STR(HEARTH_VERSION_RAW)
+    #else
+        #define HEARTH_VERSION_STR "v0.6.0"
+    #endif
 #endif
 
 #if defined(HEARTH_TARGET_SNES)
