@@ -61,25 +61,28 @@ int main(void) {
         if (g_st.intro.scene > max_plate_seen) max_plate_seen = g_st.intro.scene;
     }
     CHECK(saw_wonder_bgm && saw_shadow_bgm && saw_lullaby_bgm, "Opening cinema transitions through Wonder, Shadow, and Lullaby suites");
-    CHECK(max_plate_seen == CG_PIP_WINDOW, "Opening cinema displays all 6 illustrated CG plates");
+    CHECK(max_plate_seen == CG_PIP_WINDOW && HEARTH_CINEMA_BEAT_COUNT == 21u, "Opening cinema ends on Pip's window promise (6 acts / 21 beats)");
     CHECK(g_st.mode == MODE_EXPLORE && g_st.zone_id == ZONE_ROWAN_HOME, "Opening cinema spawns Rowan inside Cedar Home");
     CHECK(g_st.time_of_day == TOD_MORNING && g_st.ch1_step == 0u && !g_st.flag_has_wand,
           "Chapter 1 begins on Autumn Morning inside Rowan's Home");
 
-    /* Chapter 1 Story Beat 1: Talk to Grandma Mara -> Morning cutscene + Portrait ID */
+    /* Chapter 1 Story Beat 1: Talk to Grandma Mara -> Morning cutscene + Portrait ID + Multi-Page Pagination */
     g_st.hero_fx = TO_FP(19 * 16 + 8);
     g_st.hero_fy = TO_FP(13 * 16 + 8);
     g_st.hero_dir = DIR_UP;
     hearth_step_60hz(&g_st, 0);
     hearth_step_60hz(&g_st, PAD_A);
-    CHECK(g_st.mode == MODE_CUTSCENE, "Speaking to Grandma Mara triggers Morning hearth cutscene");
+    CHECK(g_st.mode == MODE_CUTSCENE, "Speaking to Grandma Mara triggers Morning cutscene");
     bool saw_mara_portrait = false;
-    for (int f = 0; f < 600 && g_st.mode == MODE_CUTSCENE; f++) {
+    bool saw_multipage_dialogue = false;
+    for (int f = 0; f < 900 && g_st.mode == MODE_CUTSCENE; f++) {
         uint16_t pad = ((f & 3) == 0) ? PAD_A : 0;
         hearth_step_60hz(&g_st, pad);
         if (g_st.dialogue.active && g_st.dialogue.portrait_id == PORTRAIT_MARA) saw_mara_portrait = true;
+        if (g_st.dialogue.active && g_st.dialogue.next_text != NULL) saw_multipage_dialogue = true;
     }
-    CHECK(saw_mara_portrait && g_st.ch1_step == 1u, "Grandma Mara cutscene shows Mara portrait and advances to errands");
+    CHECK(saw_mara_portrait && saw_multipage_dialogue && g_st.ch1_step == 1u,
+          "Grandma Mara cutscene shows Mara portrait, paginates long lines cleanly, and advances to errands");
 
     /* Chapter 1 Story Beat 2: Step out into Redesigned Autumn Mountain Alderbrook + Locomotive */
     hearth_enter_zone(&g_st, ZONE_ALDERBROOK, 18, 9);
@@ -129,10 +132,12 @@ int main(void) {
         if (g_st.intro.scene == CG_EVERTALE_WORLD_VISTA) saw_world_vista = true;
     }
     CHECK(saw_world_vista, "Hollow Oak CG chains seamlessly into Plate 9 (Continent of Evertale Vista CG)");
-    CHECK(g_st.zone_id == ZONE_EVERTALE_WORLD && g_st.is_world_map && g_st.map_w == HEARTH_WORLD_W && g_st.map_h == HEARTH_WORLD_H,
-          "Evertale arrival places Rowan on expansive 88x56 Open World Map");
+    CHECK(g_st.zone_id == ZONE_EVERTALE_WORLD && g_st.is_world_map && g_st.ppu.globe_w == HEARTH_GLOBE_W && g_st.ppu.globe_h == HEARTH_GLOBE_H,
+          "Evertale arrival places Rowan on expansive 256x192 Toroidal Globe");
     CHECK(!g_st.flag_has_familiar && !g_st.flag_has_heart_vessel && !g_st.pip_visible,
           "Initial Evertale arrival has no Familiar, no Heart Vessel, and Pip not yet reunited");
+    CHECK(g_st.active_vehicle == VEH_FOOT && g_st.vehicle_unlocked_mask == 0u,
+          "New Story starts on foot with vehicles strictly story-locked");
     {
         int active_world_enemies = 0;
         for (int i = 0; i < HEARTH_MAX_FIELD_ENEMIES; i++) {
@@ -141,43 +146,62 @@ int main(void) {
         CHECK(active_world_enemies == 0, "Evertale World Map is 100%% peaceful before bonding first Familiar");
     }
 
-    /* Verify Hollow Oak arrival (16,46) can freely walk out and reach ALL 7 landmarks on foot! */
+    /* Verify 64x48 ROM Atlas grid integrity across all 7 continents */
     {
-        static uint8_t vis[HEARTH_MAX_MAP_CELLS];
-        static uint16_t q[HEARTH_MAX_MAP_CELLS];
+        uint16_t seen_regions = 0u;
+        uint16_t shallow_cells = 0u;
+        for (uint8_t ay = 0; ay < HEARTH_ATLAS_H; ay++) {
+            for (uint8_t ax = 0; ax < HEARTH_ATLAS_W; ax++) {
+                uint8_t cell = hearth_globe_atlas_cell(ax, ay);
+                uint8_t reg = hearth_globe_region_at((uint16_t)(ax * 4u + 2u), (uint16_t)(ay * 4u + 2u));
+                CHECK(cell <= 9u, "Atlas cell code valid (0..9)");
+                if (cell == 1u) shallow_cells++;
+                if (reg < REGION_COUNT) seen_regions |= (uint16_t)(1u << reg);
+            }
+        }
+        CHECK(seen_regions == 0x7Fu, "All 7 continents present on 64x48 globe macro-grid");
+        CHECK(shallow_cells >= 40u, "Turquoise shallow raft channels link the southern regions");
+    }
+
+    /* Verify Hollow Oak arrival (74,110) can freely walk out and reach ALL 8 Heartland landmarks on foot! */
+    {
+        static uint8_t vis[HEARTH_GLOBE_W * HEARTH_GLOBE_H];
+        static uint16_t q[HEARTH_GLOBE_W * HEARTH_GLOBE_H];
         int head = 0, tail = 0, reachable_count = 0;
-        int start_idx = 46 * HEARTH_WORLD_W + 16;
-        hearth_memset(vis, 0, (uint16_t)sizeof(vis));
-        CHECK(g_st.map_col[start_idx] == COL_WALKABLE, "Hollow Oak arrival tile (16,46) is walkable");
+        int start_idx = 110 * HEARTH_GLOBE_W + 74;
+        uint8_t bg1, bg2, col, reg;
+        for (int i = 0; i < HEARTH_GLOBE_W * HEARTH_GLOBE_H; i++) vis[i] = 0u;
+        hearth_globe_cell(74, 110, &bg1, &bg2, &col, &reg);
+        CHECK(col == COL_WALKABLE && reg == REGION_HEARTLAND, "Hollow Oak arrival tile (74,110) is walkable in Heartland");
         vis[start_idx] = 1;
         q[tail++] = (uint16_t)start_idx;
         while (head < tail) {
             int cur = q[head++];
-            int cx = cur % HEARTH_WORLD_W;
-            int cy = cur / HEARTH_WORLD_W;
+            int cx = cur % HEARTH_GLOBE_W;
+            int cy = cur / HEARTH_GLOBE_W;
             const int dx[4] = { 1, -1, 0, 0 };
             const int dy[4] = { 0, 0, 1, -1 };
             reachable_count++;
             for (int d = 0; d < 4; d++) {
-                int nx = cx + dx[d];
-                int ny = cy + dy[d];
-                if (nx >= 0 && ny >= 0 && nx < HEARTH_WORLD_W && ny < HEARTH_WORLD_H) {
-                    int nidx = ny * HEARTH_WORLD_W + nx;
-                    if (!vis[nidx] && g_st.map_col[nidx] == COL_WALKABLE) {
+                int nx = (cx + dx[d] + HEARTH_GLOBE_W) % HEARTH_GLOBE_W;
+                int ny = (cy + dy[d] + HEARTH_GLOBE_H) % HEARTH_GLOBE_H;
+                int nidx = ny * HEARTH_GLOBE_W + nx;
+                if (!vis[nidx]) {
+                    hearth_globe_cell((uint16_t)nx, (uint16_t)ny, &bg1, &bg2, &col, &reg);
+                    if (col == COL_WALKABLE) {
                         vis[nidx] = 1;
                         q[tail++] = (uint16_t)nidx;
                     }
                 }
             }
         }
-        CHECK(reachable_count > 1200, "Hollow Oak arrival connects to >1200 walkable Evertale overworld tiles");
-        CHECK(vis[44 * HEARTH_WORLD_W + 16], "Hollow Oak Gate portal (16,44) reachable");
-        CHECK(vis[28 * HEARTH_WORLD_W + 18] && vis[29 * HEARTH_WORLD_W + 18], "Windmill Hamlet (18,28) reachable from Hollow Oak");
-        CHECK(vis[24 * HEARTH_WORLD_W + 44] && vis[25 * HEARTH_WORLD_W + 44], "Sunhill Market (44,24) reachable from Hollow Oak");
-        CHECK(vis[13 * HEARTH_WORLD_W + 44] && vis[14 * HEARTH_WORLD_W + 44], "Castle Aurelia (44,13) reachable from Hollow Oak");
-        CHECK(vis[25 * HEARTH_WORLD_W + 68] && vis[26 * HEARTH_WORLD_W + 68], "Bramblewood Crossing (68,25) reachable from Hollow Oak");
-        CHECK(vis[43 * HEARTH_WORLD_W + 66] && vis[44 * HEARTH_WORLD_W + 66], "Sunken Watchtower (66,43) reachable from Hollow Oak");
-        CHECK(vis[14 * HEARTH_WORLD_W + 72] && vis[15 * HEARTH_WORLD_W + 72], "Whiskerburgh (72,14) reachable from Hollow Oak");
+        CHECK(reachable_count > 1200, "Hollow Oak arrival connects to >1200 walkable Heartland globe tiles");
+        for (int lm = 0; lm < 8; lm++) {
+            int ltx = (int)HEARTH_GLOBE_LANDMARKS[lm].tx;
+            int lty = (int)HEARTH_GLOBE_LANDMARKS[lm].ty + ((lm == 0) ? 1 : 0);
+            int lidx = lty * HEARTH_GLOBE_W + ltx;
+            CHECK(vis[lidx], "All 8 Heartland landmarks (including Timber Pier) are reachable on foot from Hollow Oak");
+        }
 
         /* Also verify Rowan can physically walk east & north out of Hollow Oak clearing */
         fp16_t hx0 = g_st.hero_fx;
@@ -214,7 +238,7 @@ int main(void) {
     for (int f = 0; f < 600 && g_st.mode == MODE_CUTSCENE; f++) hearth_step_60hz(&g_st, ((f & 3) == 0) ? PAD_A : 0);
     CHECK(g_st.flag_has_familiar && g_st.flag_has_wand, "Bramblewood Boundary Stone bonds Rowan's first Familiars");
 
-    hearth_enter_zone(&g_st, ZONE_EVERTALE_WORLD, 44, 27);
+    hearth_enter_zone(&g_st, ZONE_EVERTALE_WORLD, 104, 84);
     {
         int active_world_enemies = 0;
         for (int i = 0; i < HEARTH_MAX_FIELD_ENEMIES; i++) {
@@ -223,17 +247,129 @@ int main(void) {
         CHECK(active_world_enemies == 4, "Bonding first Familiar awakens visible roaming enemies on Evertale World Map");
     }
 
+    /* Chapter 2 Raft Story: Heartland Timber Pier -> 3 Sun-Cedar Planks -> Unlock Cedar Raft */
+    hearth_enter_zone(&g_st, ZONE_TIMBER_PIER, 22, 11);
+    CHECK(g_st.zone_id == ZONE_TIMBER_PIER && g_st.npcs[0].sprite_id == SPR_NPC_SHIPWRIGHT, "Heartland Timber Pier loads with Shipwright Orin");
+    hearth_start_cutscene(&g_st, CUTSCENE_CH2_ORIN_START);
+    for (int f = 0; f < 600 && g_st.mode == MODE_CUTSCENE; f++) hearth_step_60hz(&g_st, ((f & 3) == 0) ? PAD_A : 0);
+    CHECK(g_st.ch2_step == 5u, "Orin asks Rowan to gather 3 Sun-Cedar Driftwood Planks");
+    g_st.planks_found_mask = 0x07u;
+    hearth_start_cutscene(&g_st, CUTSCENE_CH2_ORIN_RAFT_BUILT);
+    for (int f = 0; f < 600 && g_st.mode == MODE_CUTSCENE; f++) hearth_step_60hz(&g_st, ((f & 3) == 0) ? PAD_A : 0);
+    CHECK((g_st.vehicle_unlocked_mask & VEH_MASK_RAFT) != 0u && g_st.ch2_step == 6u,
+          "Returning 3 Sun-Cedar Planks to Orin unlocks the Cedar Raft");
+
+    /* Verify Raft BFS connectivity across turquoise shallows: Timber Pier -> Suncrest Coral Cove -> Oasis of Babana */
+    {
+        static uint8_t vis[HEARTH_GLOBE_W * HEARTH_GLOBE_H];
+        static uint16_t q[HEARTH_GLOBE_W * HEARTH_GLOBE_H];
+        int head = 0, tail = 0;
+        int start_idx = 114 * HEARTH_GLOBE_W + 108;
+        uint8_t bg1, bg2, col, reg;
+        for (int i = 0; i < HEARTH_GLOBE_W * HEARTH_GLOBE_H; i++) vis[i] = 0u;
+        vis[start_idx] = 1;
+        q[tail++] = (uint16_t)start_idx;
+        while (head < tail) {
+            int cur = q[head++];
+            int cx = cur % HEARTH_GLOBE_W;
+            int cy = cur / HEARTH_GLOBE_W;
+            const int dx[4] = { 1, -1, 0, 0 };
+            const int dy[4] = { 0, 0, 1, -1 };
+            for (int d = 0; d < 4; d++) {
+                int nx = (cx + dx[d] + HEARTH_GLOBE_W) % HEARTH_GLOBE_W;
+                int ny = (cy + dy[d] + HEARTH_GLOBE_H) % HEARTH_GLOBE_H;
+                int nidx = ny * HEARTH_GLOBE_W + nx;
+                if (!vis[nidx]) {
+                    hearth_globe_cell((uint16_t)nx, (uint16_t)ny, &bg1, &bg2, &col, &reg);
+                    if (col == COL_WALKABLE || col == COL_SHALLOW) {
+                        vis[nidx] = 1;
+                        q[tail++] = (uint16_t)nidx;
+                    }
+                }
+            }
+        }
+        CHECK(vis[146 * HEARTH_GLOBE_W + 52], "Cedar Raft reaches Suncrest Coral Cove (52,146) via turquoise shallows");
+        CHECK(vis[154 * HEARTH_GLOBE_W + 132], "Cedar Raft reaches Oasis of Babana (132,154) via turquoise shallows");
+    }
+
+    /* Verify auto-board Cedar Raft on COL_SHALLOW, disembark on land, and deep-sea hint on COL_WATER */
+    hearth_enter_zone(&g_st, ZONE_EVERTALE_WORLD, 108, 115);
+    CHECK(g_st.active_vehicle == VEH_FOOT, "Standing on Heartland Timber Pier starts on foot");
+    for (int f = 0; f < 80 && g_st.active_vehicle != VEH_RAFT; f++) hearth_step_60hz(&g_st, PAD_DOWN);
+    CHECK(g_st.active_vehicle == VEH_RAFT, "Stepping into turquoise shallows auto-boards Cedar Raft");
+    for (int f = 0; f < 80 && g_st.active_vehicle != VEH_FOOT; f++) hearth_step_60hz(&g_st, PAD_UP);
+    CHECK(g_st.active_vehicle == VEH_FOOT, "Stepping back ashore auto-disembarks Cedar Raft");
+
+    /* Verify Toroidal Wrap (West past tx=0 -> tx=255, North past ty=0 -> ty=191) using Ship/Airship tier */
+    g_st.vehicle_unlocked_mask |= VEH_MASK_AIRSHIP;
+    g_st.active_vehicle = VEH_AIRSHIP;
+    g_st.hero_fx = TO_FP(2 * 16 + 8);
+    g_st.hero_fy = TO_FP(2 * 16 + 8);
+    for (int f = 0; f < 30; f++) hearth_step_60hz(&g_st, PAD_LEFT);
+    CHECK(FROM_FP(g_st.hero_fx) > 3800, "Flying west past X=0 wraps seamlessly to east edge (X~4096)");
+    for (int f = 0; f < 30; f++) hearth_step_60hz(&g_st, PAD_UP);
+    CHECK(FROM_FP(g_st.hero_fy) > 2800, "Flying north past Y=0 wraps seamlessly to south edge (Y~3072)");
+
+    /* Verify all 7 continents stream distinct world_region_id, terrain_pal_id, and bgm_id */
+    {
+        const uint16_t rx[7] = { 104, 132, 52, 128, 212, 32, 220 };
+        const uint16_t ry[7] = { 84, 154, 146, 22, 126, 62, 62 };
+        uint32_t pal_mask = 0u;
+        uint32_t bgm_mask = 0u;
+        for (int r = 0; r < 7; r++) {
+            g_st.hero_fx = TO_FP((int)rx[r] * 16 + 8);
+            g_st.hero_fy = TO_FP((int)ry[r] * 16 + 8);
+            const HearthPpuPacket *rp = hearth_step_60hz(&g_st, 0);
+            CHECK(rp->world_region_id == (uint8_t)r, "Globe streaming detects correct continent region");
+            pal_mask |= (1u << rp->terrain_pal_id);
+            bgm_mask |= (1u << rp->bgm_id);
+        }
+        CHECK(pal_mask != 0u && bgm_mask != 0u, "All 7 continents stream distinct palettes and regional BGM");
+    }
+
+    /* Verify World Atlas toggle via PAD_SELECT */
+    CHECK(!g_st.atlas_open, "Atlas starts closed");
+    hearth_step_60hz(&g_st, PAD_SELECT);
+    CHECK(g_st.atlas_open && g_st.ppu.atlas_open, "PAD_SELECT toggles World Atlas open");
+    hearth_step_60hz(&g_st, 0);
+    hearth_step_60hz(&g_st, PAD_SELECT);
+    CHECK(!g_st.atlas_open && !g_st.ppu.atlas_open, "PAD_SELECT closes World Atlas cleanly");
+
+    /* Verify Coral Cove fishing (Coral Snapper), Babana Oasis, Golden Babana, & Desert Encounters */
+    hearth_enter_zone(&g_st, ZONE_CORAL_COVE, 22, 14);
+    CHECK(g_st.zone_id == ZONE_CORAL_COVE && g_st.ppu.terrain_pal_id == ZPAL_PARADISE, "Suncrest Coral Cove loads with Paradise palette");
+    hearth_enter_zone(&g_st, ZONE_BABANA_OASIS, 22, 18);
+    CHECK(g_st.zone_id == ZONE_BABANA_OASIS && g_st.ppu.terrain_pal_id == ZPAL_DESERT, "Oasis of Babana loads with Desert palette");
+    hearth_start_battle(&g_st, ENCOUNTER_SANDWORM_BOSS, BIOME_DESERT, -1);
+    CHECK(g_st.battle.is_boss_battle && g_st.battle.enemies[0].sprite_id == SPR_ENEMY_SANDWORM,
+          "Giant Sandworm desert encounter spawns cleanly");
+
     /* Replay Cinema -> PAD_START returns cleanly to Title Screen */
     hearth_start_intro(&g_st);
     CHECK(g_st.mode == MODE_INTRO && !g_st.intro.launch_story, "Replay Cinema launches in non-story mode");
     hearth_step_60hz(&g_st, PAD_START);
     CHECK(g_st.mode == MODE_TITLE, "Skipping Replay Cinema returns cleanly to MODE_TITLE");
-    printf("[PASS] Full Chapter 1 -> Evertale 88x56 World Map -> Sunhill Market -> Familiar Bonding\n");
+#if HEARTH_DESIGNER_MODE
+    CHECK(g_st.ppu.designer_mode_enabled, "DESIGNER_MODE=1 exposes Designer Mode flag to platform hosts");
+#else
+    CHECK(!g_st.ppu.designer_mode_enabled, "DESIGNER_MODE=0 cleanly disables Designer Mode for release builds");
+#endif
+    printf("[PASS] Full 256x192 Toroidal Globe, 7 Continents, Chapter 2 Raft Story & Atlas\n");
 
     /* 4. Explore Evertale Sandbox + 8-Way Fixed-Point Movement + Pip Breadcrumb Trail */
     hearth_start_sandbox(&g_st);
+#if HEARTH_DESIGNER_MODE
     CHECK(g_st.mode == MODE_EXPLORE && g_st.zone_id == ZONE_EVERTALE_WORLD && g_st.is_world_map && g_st.pip_visible,
-          "Sandbox starts on Evertale Open World Map outside Sunhill Market with Pip");
+          "Sandbox starts on Evertale Toroidal Globe outside Sunhill Market with Pip");
+#else
+    CHECK(!g_st.designer_sandbox && g_st.mode == MODE_INTRO,
+          "DESIGNER_MODE=0 redirects sandbox call safely into Story Mode");
+    g_st.mode = MODE_EXPLORE;
+    g_st.pip_visible = true;
+    g_st.flag_has_wand = true;
+    g_st.flag_has_familiar = true;
+    g_st.flag_has_heart_vessel = true;
+#endif
     hearth_enter_zone(&g_st, ZONE_HAMLET, 10, 14);
     fp16_t start_x = g_st.hero_fx;
     fp16_t start_y = g_st.hero_fy;

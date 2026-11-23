@@ -65,7 +65,17 @@ enum {
     T_WORLD_CASTLE  = 51, /* Gleaming White-Stone Castle Keep & Towers */
     T_WORLD_TOWN    = 52, /* Terracotta-Roofed Village / Market Cluster */
     T_WORLD_RUINS   = 53, /* Moss-Draped Ancient Stone Watchtower Ruins */
-    T_TILE_COUNT    = 54
+    /* Toroidal Globe 7-Continent Biome Tiles (Milestone 4 — fits <= 63 BG1 tiles!) */
+    T_WORLD_SHALLOW = 54, /* Turquoise Raftable Coastal Shallows & Straits */
+    T_WORLD_SAND    = 55, /* Sun-Baked Golden Desert Dunes */
+    T_WORLD_SNOW    = 56, /* Crisp Frostmere Winter Snowfield & Ice */
+    T_WORLD_LAVA    = 57, /* Glowing Cinderpeak Caldera Molten Magma */
+    T_WORLD_JUNGLE  = 58, /* Lush Canopy Wilds Amazon Floor & Vines */
+    T_WORLD_CORAL   = 59, /* Shimmering Suncrest Coral Reef Shoal */
+    T_WORLD_TECH    = 60, /* Aetheris Citadel Chrome Plating & Cyan Conduit */
+    T_PALM_TREE     = 61, /* Desert Oasis & Tropical Suncrest Palm Tree */
+    T_DOCK_PIER     = 62, /* Weathered Sun-Cedar Timber Pier & Dock Planks */
+    T_TILE_COUNT    = 63
 };
 
 /* BG2 Overhead Canopy / Roof Eave / Archway Tile IDs */
@@ -88,8 +98,9 @@ enum {
     COL_WALKABLE   = 0,
     COL_SOLID      = 1,
     COL_TALL_GRASS = 2,
-    COL_SHALLOW    = 3,
-    COL_WATER      = 4
+    COL_SHALLOW    = 3, /* Raftable turquoise shallows / ford */
+    COL_WATER      = 4, /* Deep cobalt ocean (requires Ship / Airship) */
+    COL_LAVA       = 5  /* Molten magma (requires Balloon / Airship) */
 };
 
 /* Actor Target IDs for Cutscene Bytecode */
@@ -124,7 +135,11 @@ enum {
     FLAG_CH2_TESSA_CLUE     = 15,
     FLAG_CH2_CORIN_HINTS    = 16,
     FLAG_CH2_MIDO_REUNION   = 17,
-    FLAG_CH2_FIRST_FAMILIAR = 18
+    FLAG_CH2_FIRST_FAMILIAR = 18,
+    FLAG_CH2_ORIN_QUEST     = 19,
+    FLAG_CH2_RAFT_BUILT     = 20,
+    FLAG_CH2_CORAL_MET      = 21,
+    FLAG_CH2_BABANA_CLUE    = 22
 };
 
 /* Fish Species Metadata */
@@ -145,29 +160,39 @@ typedef struct {
     uint8_t     item_kind; /* 0=Tonic, 1=StarDrop, 2=Snack, 3=RiverLure, 4=GlowLure */
 } HearthShopItem;
 
+#define HEARTH_SHOP_ITEM_COUNT 6
+
 /* 4 x 16-Color Master Hardware Sub-Palettes (Default PAL0..PAL3, 0xRRGGBB) */
 extern const uint32_t HEARTH_PALETTES_RGB[4][16];
 
-/* 10 x 16-Color Per-Zone & Time-of-Day Terrain Sub-Palettes (Loaded into PAL0) */
+/* 18 x 16-Color Per-Zone, Continent & Time-of-Day Terrain Sub-Palettes (Loaded into PAL0) */
 extern const uint32_t HEARTH_ZONE_PALETTES_RGB[ZPAL_COUNT][16];
 
-/* Zone Display Names & Time-of-Day Labels */
+/* Zone Display Names, Globe Continent Names & Time-of-Day Labels */
 extern const char * const HEARTH_ZONE_NAMES[ZONE_COUNT];
+extern const char * const HEARTH_REGION_NAMES[REGION_COUNT];
 extern const char * const HEARTH_TOD_NAMES[4];
 
 /* Fish & Shop Static Tables */
 extern const HearthFishInfo HEARTH_FISH_TABLE[HEARTH_FISH_SPECIES];
-extern const HearthShopItem HEARTH_SHOP_ITEMS[5];
+extern const HearthShopItem HEARTH_SHOP_ITEMS[HEARTH_SHOP_ITEM_COUNT];
 
 /* Integer Sine Lookup Table (64 steps, range -127..+127) — zero <math.h> needed! */
 extern const int8_t HEARTH_SIN64[64];
 
-/* Procedural Zone Map Builders (write in-place into RAM buffer; returns map_w/map_h) */
+/* Toroidal 256x192 Evertale Globe ROM Streaming API (Zero RAM map allocation!) */
+extern const HearthGlobeLandmark HEARTH_GLOBE_LANDMARKS[HEARTH_GLOBE_LANDMARK_COUNT];
+extern const HearthGlobeFauna    HEARTH_GLOBE_FAUNA[HEARTH_GLOBE_FAUNA_COUNT];
+void    hearth_globe_cell(uint16_t tx, uint16_t ty, uint8_t *out_bg1, uint8_t *out_bg2, uint8_t *out_col, uint8_t *out_region);
+uint8_t hearth_globe_region_at(uint16_t tx, uint16_t ty);
+uint8_t hearth_globe_atlas_cell(uint8_t mx, uint8_t my);
+
+/* Procedural Zone Map Builders (write in-place into 44x28 RAM buffer; returns map_w/map_h) */
 void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t *col, uint8_t *out_w, uint8_t *out_h);
 void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col);
 
-/* 7-Act Illustrated Opening Cinema & Mid-Chapter Story CG Scripts */
-#define HEARTH_CINEMA_BEAT_COUNT   23u
+/* 6-Act Illustrated Opening Cinema & Mid-Chapter Story CG Scripts */
+#define HEARTH_CINEMA_BEAT_COUNT   21u
 #define HEARTH_CG_ATTIC_COUNT       4u
 #define HEARTH_CG_DREAM_COUNT       4u
 #define HEARTH_CG_OAK_COUNT         5u
@@ -196,6 +221,10 @@ extern const HearthCutsceneOp CUTSCENE_CH2_SUNHILL_TESSA[];
 extern const HearthCutsceneOp CUTSCENE_CH2_SUNHILL_CORIN[];
 extern const HearthCutsceneOp CUTSCENE_CH2_SUNHILL_REUNION[];
 extern const HearthCutsceneOp CUTSCENE_CH2_BOND_FAMILIAR[];
+extern const HearthCutsceneOp CUTSCENE_CH2_ORIN_START[];
+extern const HearthCutsceneOp CUTSCENE_CH2_ORIN_RAFT_BUILT[];
+extern const HearthCutsceneOp CUTSCENE_CH2_CORAL_BARNACLE[];
+extern const HearthCutsceneOp CUTSCENE_CH2_BABANA_CLUE[];
 
 /* Hardware Palette Packers for Sega Genesis (BGR333) & SNES (BGR555) */
 HEARTH_INLINE uint16_t hearth_rgb_to_genesis_bgr333(uint32_t rgb) {

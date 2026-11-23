@@ -7,6 +7,8 @@
  */
 
 import {
+  ATLAS_H,
+  ATLAS_W,
   BattleBiome,
   BattleEnemyState,
   BattlePhase,
@@ -25,6 +27,9 @@ import {
   FP_ONE,
   fromFp,
   GameMode,
+  GLOBE_H,
+  GLOBE_W,
+  GlobeLandmark,
   HeartAura,
   LockKind,
   MAP_H,
@@ -44,6 +49,8 @@ import {
   TILE_SIZE,
   TimeOfDay,
   UiSnapshot,
+  VIEW_TILE_H,
+  VIEW_TILE_W,
   WorldMapData,
   ZoneId,
 } from '../core/types';
@@ -55,6 +62,9 @@ interface WasmExports {
   wasm_start_story(): void;
   wasm_start_sandbox(): void;
   wasm_enter_zone(zoneId: number, tx: number, ty: number): void;
+  wasm_toggle_atlas(): void;
+  wasm_designer_cycle_vehicle(): void;
+  wasm_designer_warp_region(regionId: number): void;
   wasm_start_cutscene_demo(): void;
   wasm_start_intro(): void;
   wasm_start_story_cg(scriptId: number): void;
@@ -99,8 +109,19 @@ interface WasmExports {
   wasm_get_bg1_ptr(): number;
   wasm_get_bg2_ptr(): number;
   wasm_get_col_ptr(): number;
+  wasm_get_view_bg1_ptr(): number;
+  wasm_get_view_bg2_ptr(): number;
+  wasm_get_atlas_ptr(): number;
+  wasm_get_landmark_count(): number;
+  wasm_get_landmark_tx(i: number): number;
+  wasm_get_landmark_ty(i: number): number;
+  wasm_get_landmark_region(i: number): number;
+  wasm_get_landmark_enterable(i: number): number;
+  wasm_get_landmark_name(i: number): number;
+  wasm_get_region_name(i: number): number;
   wasm_get_palettes_ptr(): number;
   wasm_get_zone_palettes_ptr(): number;
+  wasm_get_shop_item_count(): number;
   wasm_get_shop_item_name(i: number): number;
   wasm_get_shop_item_desc(i: number): number;
   wasm_get_shop_item_price(i: number): number;
@@ -122,7 +143,14 @@ const MODE_MAP: readonly GameMode[] = [
   'FISHING',
 ];
 
-const BIOME_MAP: readonly BattleBiome[] = ['MEADOW', 'SHRINE', 'SEWER', 'BOARHOLD'];
+const BIOME_MAP: readonly BattleBiome[] = [
+  'MEADOW',
+  'SHRINE',
+  'SEWER',
+  'BOARHOLD',
+  'DESERT',
+  'PARADISE',
+];
 
 const BGM_MAP: readonly BgmTrackId[] = [
   'HAMLET',
@@ -136,6 +164,12 @@ const BGM_MAP: readonly BgmTrackId[] = [
   'VICTORY',
   'CINEMA_WONDER',
   'CINEMA_LULLABY',
+  'DESERT',
+  'PARADISE',
+  'FROST',
+  'JUNGLE',
+  'VOLCANO',
+  'TECH',
 ];
 
 const BVFX_MAP: readonly BattleVfxKind[] = [
@@ -191,6 +225,15 @@ const SPRITE_MAP: readonly SpriteId[] = [
   'npc_tessa',
   'npc_corin',
   'npc_sentinel',
+  'raft',
+  'enemy_scorpion',
+  'enemy_sandworm',
+  'fauna_camel',
+  'fauna_penguin',
+  'fauna_monkey',
+  'fauna_robot',
+  'npc_shipwright',
+  'babana_stall',
 ];
 
 const TOD_NAMES: readonly string[] = ['Morning', 'Afternoon', 'Dusk', 'Moonlit Night'];
@@ -278,6 +321,10 @@ function presetToCode(preset: EncounterPreset): number {
       return 5;
     case 'IRONFANG_BOSS':
       return 6;
+    case 'DESERT_PACK':
+      return 7;
+    case 'SANDWORM_BOSS':
+      return 8;
     default:
       return 0;
   }
@@ -290,6 +337,9 @@ export class WasmHearthEngine {
   public readonly zonePalettes: readonly (readonly string[])[];
   public readonly shopCatalog: readonly ShopItemInfo[];
   public readonly fishCatalog: readonly FishSpeciesInfo[];
+  public readonly atlasCells: Uint8Array;
+  public readonly landmarks: readonly GlobeLandmark[];
+  public readonly regionNames: readonly string[];
   public readonly map: WorldMapData;
 
   private readonly scalarsIdx: number;
@@ -303,6 +353,10 @@ export class WasmHearthEngine {
   private readonly bg1Ptr: number;
   private readonly bg2Ptr: number;
   private readonly colPtr: number;
+  private readonly viewBg1Ptr: number;
+  private readonly viewBg2Ptr: number;
+  private readonly viewBg1Buf = new Uint8Array(VIEW_TILE_W * VIEW_TILE_H);
+  private readonly viewBg2Buf = new Uint8Array(VIEW_TILE_W * VIEW_TILE_H);
   private lastMapRevision = -1;
 
   private constructor(wasm: WasmExports) {
@@ -320,6 +374,8 @@ export class WasmHearthEngine {
     this.bg1Ptr = wasm.wasm_get_bg1_ptr() >>> 0;
     this.bg2Ptr = wasm.wasm_get_bg2_ptr() >>> 0;
     this.colPtr = wasm.wasm_get_col_ptr() >>> 0;
+    this.viewBg1Ptr = wasm.wasm_get_view_bg1_ptr() >>> 0;
+    this.viewBg2Ptr = wasm.wasm_get_view_bg2_ptr() >>> 0;
 
     // Load exact 4 x 16-color palettes directly from C ROM table HEARTH_PALETTES_RGB
     const u32 = new Uint32Array(wasm.memory.buffer);
@@ -335,10 +391,10 @@ export class WasmHearthEngine {
     }
     this.palettes = loadedPalettes;
 
-    // Load 12 x 16-color per-zone terrain palettes from HEARTH_ZONE_PALETTES_RGB
+    // Load all 18 x 16-color per-zone & per-continent terrain palettes from HEARTH_ZONE_PALETTES_RGB
     const zpalBase = (wasm.wasm_get_zone_palettes_ptr() >>> 0) >> 2;
     const loadedZonePals: string[][] = [];
-    for (let z = 0; z < 12; z++) {
+    for (let z = 0; z < 18; z++) {
       const row: string[] = [];
       for (let c = 0; c < 16; c++) {
         const rgb = u32[zpalBase + z * 16 + c] & 0xffffff;
@@ -349,8 +405,9 @@ export class WasmHearthEngine {
     this.zonePalettes = loadedZonePals;
 
     // Load static Shop & Fish catalog metadata from C ROM tables
+    const shopCount = wasm.wasm_get_shop_item_count();
     const shopItems: ShopItemInfo[] = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < shopCount; i++) {
       shopItems.push({
         name: this.readCString(wasm.wasm_get_shop_item_name(i)),
         desc: this.readCString(wasm.wasm_get_shop_item_desc(i)),
@@ -368,7 +425,32 @@ export class WasmHearthEngine {
     }
     this.fishCatalog = fishItems;
 
-    // Allocate tilemap buffers up to 88x56 (Evertale Open World Map) and sync initial zone data
+    // Load 64x48 macro-biome atlas, 14 globe landmarks & 7 continent names from ROM
+    const atlasPtr = wasm.wasm_get_atlas_ptr() >>> 0;
+    const u8 = new Uint8Array(wasm.memory.buffer);
+    this.atlasCells = new Uint8Array(ATLAS_W * ATLAS_H);
+    this.atlasCells.set(u8.subarray(atlasPtr, atlasPtr + ATLAS_W * ATLAS_H));
+
+    const lmCount = wasm.wasm_get_landmark_count();
+    const loadedLandmarks: GlobeLandmark[] = [];
+    for (let i = 0; i < lmCount; i++) {
+      loadedLandmarks.push({
+        tx: wasm.wasm_get_landmark_tx(i),
+        ty: wasm.wasm_get_landmark_ty(i),
+        regionId: wasm.wasm_get_landmark_region(i),
+        enterable: wasm.wasm_get_landmark_enterable(i) !== 0,
+        name: this.readCString(wasm.wasm_get_landmark_name(i)),
+      });
+    }
+    this.landmarks = loadedLandmarks;
+
+    const loadedRegions: string[] = [];
+    for (let r = 0; r < 7; r++) {
+      loadedRegions.push(this.readCString(wasm.wasm_get_region_name(r)) || `Region ${r + 1}`);
+    }
+    this.regionNames = loadedRegions;
+
+    // Allocate tilemap buffers for local interior/town zones (44x28)
     this.map = {
       width: MAP_W,
       height: MAP_H,
@@ -461,6 +543,19 @@ export class WasmHearthEngine {
 
   public enterZone(zoneId: ZoneId, tx: number, ty: number): void {
     this.wasm.wasm_enter_zone(zoneId, tx, ty);
+    this.syncMapIfChanged();
+  }
+
+  public toggleAtlas(): void {
+    this.wasm.wasm_toggle_atlas();
+  }
+
+  public designerCycleVehicle(): void {
+    this.wasm.wasm_designer_cycle_vehicle();
+  }
+
+  public designerWarpRegion(regionId: number): void {
+    this.wasm.wasm_designer_warp_region(regionId);
     this.syncMapIfChanged();
   }
 
@@ -794,6 +889,16 @@ export class WasmHearthEngine {
       weightOz: i32[s + 131],
     });
 
+    const isWorldMap = i32[s + 156] !== 0;
+    const worldRegionId = i32[s + 160];
+    const worldRegionName = this.regionNames[worldRegionId] ?? 'Emerald Heartland';
+    if (isWorldMap) {
+      const u8 = new Uint8Array(this.wasm.memory.buffer);
+      const len = VIEW_TILE_W * VIEW_TILE_H;
+      this.viewBg1Buf.set(u8.subarray(this.viewBg1Ptr, this.viewBg1Ptr + len));
+      this.viewBg2Buf.set(u8.subarray(this.viewBg2Ptr, this.viewBg2Ptr + len));
+    }
+
     return {
       width,
       height,
@@ -802,7 +907,17 @@ export class WasmHearthEngine {
       zoneId: (i32[s + 95] as ZoneId) ?? 1,
       mapW: i32[s + 154] || MAP_W,
       mapH: i32[s + 155] || MAP_H,
-      isWorldMap: i32[s + 156] !== 0,
+      globeW: i32[s + 172] || GLOBE_W,
+      globeH: i32[s + 173] || GLOBE_H,
+      isWorldMap,
+      worldRegionId,
+      worldRegionName,
+      activeVehicle: i32[s + 161],
+      viewOriginX: i32[s + 166],
+      viewOriginY: i32[s + 167],
+      viewBg1: this.viewBg1Buf,
+      viewBg2: this.viewBg2Buf,
+      landmarks: this.landmarks,
       terrainPalId: i32[s + 96],
       bgmId: BGM_MAP[i32[s + 97]] ?? 'HAMLET',
       zoneIsDark: i32[s + 98] !== 0,
@@ -928,6 +1043,19 @@ export class WasmHearthEngine {
     const ch2Step = i32[s + 157];
     const hasFamiliar = i32[s + 158] !== 0;
     const hasHeartVessel = i32[s + 159] !== 0;
+    const worldRegionId = i32[s + 160];
+    const worldRegionName = this.regionNames[worldRegionId] ?? 'Emerald Heartland';
+    const activeVehicle = i32[s + 161];
+    const vehicleUnlockedMask = i32[s + 162];
+    const atlasOpen = i32[s + 163] !== 0;
+    const designerModeEnabled = i32[s + 164] !== 0;
+    const designerSandbox = i32[s + 165] !== 0;
+    const babanas = i32[s + 168];
+    const planksFoundMask = i32[s + 169];
+    const heroTx = i32[s + 170];
+    const heroTy = i32[s + 171];
+    const globeW = i32[s + 172] || GLOBE_W;
+    const globeH = i32[s + 173] || GLOBE_H;
     const coreObjective = this.readCString(i32[s + 149]);
 
     const objectiveLabel =
@@ -985,6 +1113,22 @@ export class WasmHearthEngine {
       ch1Step,
       ch2Step,
       isWorldMap,
+      worldRegionId,
+      worldRegionName,
+      regionNames: this.regionNames,
+      activeVehicle,
+      vehicleUnlockedMask,
+      atlasOpen,
+      designerModeEnabled,
+      designerSandbox,
+      babanas,
+      planksFoundMask,
+      heroTx,
+      heroTy,
+      globeW,
+      globeH,
+      atlasCells: this.atlasCells,
+      landmarks: this.landmarks,
       hasMiloBell,
       hasFamiliar,
       hasHeartVessel,

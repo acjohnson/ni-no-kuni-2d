@@ -6,8 +6,10 @@ import {
   Film,
   Fish,
   Heart,
+  Map as MapIcon,
   Play,
   RotateCcw,
+  Ship,
   ShoppingBag,
   Sliders,
   Volume2,
@@ -19,12 +21,14 @@ import { CinemaTheater } from './components/CinemaTheater';
 import { ControlsModal } from './components/ControlsModal';
 import { EngineWorkbench } from './components/EngineWorkbench';
 import { PortraitFrame } from './components/PortraitFrame';
+import { WorldAtlasModal } from './components/WorldAtlasModal';
 import {
   CutsceneOpExport,
   EncounterPreset,
   EngineTuning,
   FamiliarSlot,
   UiSnapshot,
+  VEHICLE_NAMES,
 } from './core/types';
 import { RetroInputAdapter } from './host/inputAdapter';
 import { PixelAtlas } from './host/pixelAtlas';
@@ -278,8 +282,35 @@ export default function App() {
     syncAfterUiAction();
   };
 
+  const handleToggleAtlas = () => {
+    if (!engineRef.current) return;
+    blurFocus();
+    unlockAudio();
+    engineRef.current.toggleAtlas();
+    syncAfterUiAction();
+  };
+
+  const handleDesignerCycleVehicle = () => {
+    if (!engineRef.current) return;
+    blurFocus();
+    unlockAudio();
+    engineRef.current.designerCycleVehicle();
+    syncAfterUiAction();
+  };
+
+  const handleDesignerWarpRegion = (regionId: number) => {
+    if (!engineRef.current) return;
+    blurFocus();
+    unlockAudio();
+    engineRef.current.designerWarpRegion(regionId);
+    syncAfterUiAction();
+  };
+
   const isSnes = ui?.tuning.ppuMode === 'SNES_256x224';
   const activeMember = ui ? ui.party[ui.activeSlot] : null;
+  const designerAllowed =
+    import.meta.env.VITE_DESIGNER_MODE !== '0' && (ui?.designerModeEnabled ?? true);
+  const vesselLabel = VEHICLE_NAMES[ui?.activeVehicle ?? 0] ?? 'On Foot';
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#11131A] text-[#ECE7DC]">
@@ -307,13 +338,25 @@ export default function App() {
           >
             New Story
           </button>
-          <button
-            type="button"
-            onClick={handleStartSandbox}
-            className="whitespace-nowrap shrink-0 transition-colors hover:text-[#F6F1E6]"
-          >
-            Explore
-          </button>
+          {designerAllowed && (
+            <button
+              type="button"
+              onClick={handleStartSandbox}
+              className="whitespace-nowrap shrink-0 transition-colors hover:text-[#F6F1E6]"
+            >
+              Explore
+            </button>
+          )}
+          {ui?.mode === 'EXPLORE' && (
+            <button
+              type="button"
+              onClick={handleToggleAtlas}
+              className="flex items-center gap-1 whitespace-nowrap shrink-0 transition-colors hover:text-[#F6F1E6]"
+            >
+              <MapIcon className="h-3.5 w-3.5 text-[#F5C45A]" />
+              World Atlas
+            </button>
+          )}
           <button
             type="button"
             onClick={() => handleJumpBattle('SHRINE_BOSS')}
@@ -432,14 +475,16 @@ export default function App() {
                         <Play className="h-3.5 w-3.5 fill-current" />
                         NEW STORY
                       </button>
-                      <button
-                        type="button"
-                        onClick={handleStartSandbox}
-                        className="rpg-slot font-pixel flex items-center gap-1.5 px-3.5 py-2 text-xs text-[#F2E9D4] whitespace-nowrap transition-colors hover:border-[#D4A454]"
-                      >
-                        <Compass className="h-3.5 w-3.5 text-[#F5B841]" />
-                        EXPLORE EVERTALE
-                      </button>
+                      {designerAllowed && (
+                        <button
+                          type="button"
+                          onClick={handleStartSandbox}
+                          className="rpg-slot font-pixel flex items-center gap-1.5 px-3.5 py-2 text-xs text-[#F2E9D4] whitespace-nowrap transition-colors hover:border-[#D4A454]"
+                        >
+                          <Compass className="h-3.5 w-3.5 text-[#F5B841]" />
+                          EXPLORE EVERTALE
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={handleStartIntro}
@@ -587,9 +632,11 @@ export default function App() {
                                     ? ui.snacks
                                     : idx === 3
                                       ? ui.lureTier
-                                      : ui.hasSewerKey
-                                        ? 1
-                                        : 0;
+                                      : idx === 4
+                                        ? ui.hasSewerKey
+                                          ? 1
+                                          : 0
+                                        : ui.babanas;
                             const active = ui.shop.cursor === idx;
                             return (
                               <button
@@ -797,6 +844,27 @@ export default function App() {
                   </div>
                 </div>
               )}
+              {/* TOGGLEABLE TOROIDAL WORLD ATLAS MINIMAP */}
+              {ui && (
+                <WorldAtlasModal
+                  open={ui.atlasOpen}
+                  atlasCells={ui.atlasCells}
+                  landmarks={ui.landmarks}
+                  regionNames={ui.regionNames}
+                  worldRegionId={ui.worldRegionId}
+                  worldRegionName={ui.worldRegionName}
+                  activeVehicle={ui.activeVehicle}
+                  heroTx={ui.heroTx}
+                  heroTy={ui.heroTy}
+                  globeW={ui.globeW}
+                  globeH={ui.globeH}
+                  designerAllowed={designerAllowed}
+                  designerSandbox={ui.designerSandbox}
+                  onClose={handleToggleAtlas}
+                  onCycleVehicle={handleDesignerCycleVehicle}
+                  onWarpRegion={handleDesignerWarpRegion}
+                />
+              )}
             </div>
           </div>
 
@@ -822,9 +890,36 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-3 min-w-0">
                 <span className="flex items-center gap-1.5 font-medium text-[#F6F1E6] whitespace-nowrap">
                   <Compass className="h-3.5 w-3.5 text-[#F5B841]" />
-                  {ui?.zoneLabel ?? 'Alderbrook'}
+                  {ui?.isWorldMap ? ui.worldRegionName : (ui?.zoneLabel ?? 'Alderbrook')}
                 </span>
-                {ui && (
+                {ui?.isWorldMap && (
+                  <>
+                    <span aria-hidden="true" className="text-[#4B546B]">
+                      ·
+                    </span>
+                    <span className="flex items-center gap-1 text-[#6CC8E8] whitespace-nowrap">
+                      <Ship className="h-3.5 w-3.5" />
+                      {vesselLabel}
+                    </span>
+                    {designerAllowed && ui.designerSandbox && (
+                      <button
+                        type="button"
+                        onClick={handleDesignerCycleVehicle}
+                        className="rounded border border-[#31384D] bg-[#1C2130] px-2 py-0.5 text-[10px] font-semibold text-[#F5C45A] whitespace-nowrap hover:border-[#F5C45A]"
+                      >
+                        Cycle Vessel
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleToggleAtlas}
+                      className="rounded border border-[#31384D] bg-[#1C2130] px-2 py-0.5 text-[10px] font-semibold text-[#ECE7DC] whitespace-nowrap hover:border-[#6CC8E8]"
+                    >
+                      Atlas (M)
+                    </button>
+                  </>
+                )}
+                {ui && !ui.isWorldMap && (
                   <>
                     <span aria-hidden="true" className="text-[#4B546B]">
                       ·

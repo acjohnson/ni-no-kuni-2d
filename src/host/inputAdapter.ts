@@ -87,6 +87,7 @@ export class RetroInputAdapter {
       case 'Escape':
         return PAD_START;
       case 'Backspace':
+      case 'KeyM':
         return PAD_SELECT;
       default:
         return 0;

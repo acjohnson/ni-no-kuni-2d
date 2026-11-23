@@ -25,7 +25,7 @@ static HearthState g_hearth;
 #define VRAM_BG_BASE    ((u16)(TILE_USER_INDEX))
 #define VRAM_UI_BASE    ((u16)(VRAM_BG_BASE + 64u))
 #define VRAM_SPR_BASE   ((u16)(VRAM_UI_BASE + 16u))
-#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 196u))
+#define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 224u))
 #define VRAM_CG_BASE    ((u16)(VRAM_FONT_BASE + 80u))
 
 /* BG Tile IDs (offsets from VRAM_BG_BASE — 63 tiles total, < 64) */
@@ -111,14 +111,14 @@ enum {
     GUI_BR
 };
 
-/* Sprite VRAM Slots (40 core sprites + 7 host internal slots = 47 x 4 = 188 tiles) */
-#define SPR_TIMED_RING_SLOT  40u
-#define SPR_HERO_DOWN_1      41u
-#define SPR_HERO_UP_0        42u
-#define SPR_HERO_UP_1        43u
-#define SPR_HERO_SIDE_0      44u
-#define SPR_HERO_SIDE_1      45u
-#define SPR_BATTLE_VFX_SLOT  46u
+/* Sprite VRAM Slots (49 core sprites + 7 host internal slots = 56 x 4 = 224 tiles) */
+#define SPR_TIMED_RING_SLOT  49u
+#define SPR_HERO_DOWN_1      50u
+#define SPR_HERO_UP_0        51u
+#define SPR_HERO_UP_1        52u
+#define SPR_HERO_SIDE_0      53u
+#define SPR_HERO_SIDE_1      54u
+#define SPR_BATTLE_VFX_SLOT  55u
 
 /* ============================================================================
  * 1. COMPACT 5x7 UPPERCASE ASCII FONT (ASCII 32..95) -> OPAQUE 4bpp VRAM
@@ -827,7 +827,75 @@ static void bake_all_sprites(void) {
     p16_rect(5, 14, 2, 2, 4); p16_rect(9, 14, 2, 2, 4);
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_SENTINEL * 4);
 
-    /* 40: Timed-Hit / Parry Ring Marker (PAL3) */
+    /* 40: SPR_RAFT (Cedar Log Raft - PAL1) */
+    p16_clear();
+    p16_rect(1, 3, 14, 10, 4); p16_rect(2, 4, 12, 8, 5);
+    p16_rect(1, 6, 14, 1, 10); p16_rect(1, 10, 14, 1, 10);
+    p16_rect(4, 3, 1, 10, 1);  p16_rect(8, 3, 1, 10, 1); p16_rect(11, 3, 1, 10, 1);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_RAFT * 4);
+
+    /* 41: SPR_ENEMY_SCORPION (Dune Scorpion - PAL3) */
+    p16_clear();
+    p16_rect(3, 7, 10, 6, 10); p16_rect(4, 8, 8, 4, 11);
+    p16_rect(1, 5, 3, 4, 10);  p16_rect(12, 5, 3, 4, 10);
+    p16_rect(6, 2, 4, 5, 10);  p16_rect(8, 1, 3, 2, 12);
+    g_pix16[8*16+6]=1; g_pix16[8*16+9]=1;
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_ENEMY_SCORPION * 4);
+
+    /* 42: SPR_ENEMY_SANDWORM (Giant Sandworm - PAL3) */
+    p16_clear();
+    p16_rect(2, 2, 12, 13, 10); p16_rect(3, 3, 10, 10, 11);
+    p16_rect(4, 4, 8, 5, 1);    p16_rect(5, 5, 2, 2, 12); p16_rect(9, 5, 2, 2, 12);
+    p16_rect(2, 10, 12, 2, 6);  p16_rect(3, 13, 10, 2, 6);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_ENEMY_SANDWORM * 4);
+
+    /* 43: SPR_FAUNA_CAMEL (Desert Camel - PAL2) */
+    p16_clear();
+    p16_rect(4, 4, 8, 6, 11);  p16_rect(6, 2, 4, 3, 12);
+    p16_rect(11, 3, 4, 4, 11); g_pix16[3*16+14]=1;
+    p16_rect(4, 10, 2, 5, 11); p16_rect(10, 10, 2, 5, 11);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_FAUNA_CAMEL * 4);
+
+    /* 44: SPR_FAUNA_PENGUIN (Frostmere Penguin - PAL2) */
+    p16_clear();
+    p16_rect(4, 2, 8, 12, 1);  p16_rect(5, 6, 6, 7, 15);
+    p16_rect(6, 4, 4, 2, 7);   g_pix16[3*16+5]=15; g_pix16[3*16+10]=15;
+    p16_rect(4, 14, 3, 2, 7);  p16_rect(9, 14, 3, 2, 7);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_FAUNA_PENGUIN * 4);
+
+    /* 45: SPR_FAUNA_MONKEY (Canopy Monkey - PAL2) */
+    p16_clear();
+    p16_rect(2, 3, 3, 3, 11);  p16_rect(11, 3, 3, 3, 11);
+    p16_rect(4, 2, 8, 6, 11);  p16_rect(5, 4, 6, 4, 2);
+    g_pix16[4*16+6]=1; g_pix16[4*16+9]=1;
+    p16_rect(4, 8, 8, 6, 11);  p16_rect(12, 7, 3, 4, 11);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_FAUNA_MONKEY * 4);
+
+    /* 46: SPR_FAUNA_ROBOT (Aetheris Automaton - PAL2) */
+    p16_clear();
+    p16_rect(7, 0, 2, 2, 7);   p16_rect(4, 2, 8, 5, 5);
+    p16_rect(5, 4, 6, 2, 9);   g_pix16[4*16+6]=15; g_pix16[4*16+9]=15;
+    p16_rect(3, 7, 10, 6, 4);  p16_rect(5, 8, 6, 4, 9);
+    p16_rect(5, 13, 2, 3, 5);  p16_rect(9, 13, 2, 3, 5);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_FAUNA_ROBOT * 4);
+
+    /* 47: SPR_NPC_SHIPWRIGHT (Shipwright Orin - PAL2) */
+    p16_clear();
+    p16_rect(3, 1, 10, 3, 8);  p16_rect(4, 4, 8, 4, 2);
+    g_pix16[5*16+6]=1; g_pix16[5*16+9]=1;
+    p16_rect(4, 7, 8, 2, 11);
+    p16_rect(3, 9, 10, 5, 9);  p16_rect(5, 9, 6, 5, 11);
+    p16_rect(5, 14, 2, 2, 4);  p16_rect(9, 14, 2, 2, 4);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_SHIPWRIGHT * 4);
+
+    /* 48: SPR_BABANA_STALL (Golden Babana Stall - PAL2) */
+    p16_clear();
+    p16_rect(1, 1, 14, 4, 7);  p16_rect(2, 2, 12, 2, 10);
+    p16_rect(2, 5, 2, 10, 11); p16_rect(12, 5, 2, 10, 11);
+    p16_rect(1, 9, 14, 5, 11); p16_rect(4, 7, 8, 3, 7);
+    upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_BABANA_STALL * 4);
+
+    /* 49: Timed-Hit / Parry Ring Marker (PAL3) */
     p16_clear();
     p16_rect(3, 1, 10, 2, 11); p16_rect(3, 13, 10, 2, 11);
     p16_rect(1, 3, 2, 10, 11); p16_rect(13, 3, 2, 10, 11);
@@ -1096,6 +1164,15 @@ static u16 map_bg1_to_vram_tile(u8 t) {
         case T_WORLD_CASTLE:   return VRAM_BG_BASE + GT_WORLD_CASTLE;
         case T_WORLD_TOWN:     return VRAM_BG_BASE + GT_WORLD_TOWN;
         case T_WORLD_RUINS:    return VRAM_BG_BASE + GT_WORLD_RUINS;
+        case T_WORLD_SHALLOW:  return VRAM_BG_BASE + GT_FORD;
+        case T_WORLD_SAND:     return VRAM_BG_BASE + GT_WORLD_BEACH;
+        case T_WORLD_SNOW:     return VRAM_BG_BASE + GT_WORLD_HILL;
+        case T_WORLD_LAVA:     return VRAM_BG_BASE + GT_RAPIDS;
+        case T_WORLD_JUNGLE:   return VRAM_BG_BASE + GT_WORLD_FOREST;
+        case T_WORLD_CORAL:    return VRAM_BG_BASE + GT_FLOWERS;
+        case T_WORLD_TECH:     return VRAM_BG_BASE + GT_SHRINE_RUNE;
+        case T_PALM_TREE:      return VRAM_BG_BASE + GT_PINE_TRUNK;
+        case T_DOCK_PIER:      return VRAM_BG_BASE + GT_BRIDGE;
         default:               return VRAM_BG_BASE + GT_GRASS;
     }
 }
@@ -1112,19 +1189,30 @@ static u16 map_bg2_to_vram_tile(u8 t) {
 
 static void write_metatile(s16 mx, s16 my) {
     u16 a_attr, b_attr;
-    s16 mw = (s16)(g_hearth.map_w ? g_hearth.map_w : HEARTH_MAP_W);
-    s16 mh = (s16)(g_hearth.map_h ? g_hearth.map_h : HEARTH_MAP_H);
-    if (mx < 0 || my < 0 || mx >= mw || my >= mh) {
-        u16 oob = g_hearth.is_world_map ? (u16)(VRAM_BG_BASE + GT_WORLD_OCEAN)
-                                        : (u16)(VRAM_BG_BASE + GT_BUSH);
-        a_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, oob);
-        b_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_EMPTY);
-    } else {
-        u16 idx = (u16)(my * mw + mx);
-        u16 a_tile = map_bg1_to_vram_tile(g_hearth.map_bg1[idx]);
-        u16 b_tile = map_bg2_to_vram_tile(g_hearth.map_bg2[idx]);
+    if (g_hearth.is_world_map) {
+        u16 wx = (u16)((u16)mx & 255u);
+        s16 wy_s = my;
+        u8 bg1, bg2;
+        while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
+        while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
+        hearth_globe_cell(wx, (u16)wy_s, &bg1, &bg2, NULL, NULL);
+        u16 a_tile = map_bg1_to_vram_tile(bg1);
+        u16 b_tile = map_bg2_to_vram_tile(bg2);
         a_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, a_tile);
         b_attr = TILE_ATTR_FULL(PAL0, (b_tile != VRAM_BG_BASE + GT_EMPTY) ? 1 : 0, 0, 0, b_tile);
+    } else {
+        s16 mw = (s16)(g_hearth.map_w ? g_hearth.map_w : HEARTH_MAP_W);
+        s16 mh = (s16)(g_hearth.map_h ? g_hearth.map_h : HEARTH_MAP_H);
+        if (mx < 0 || my < 0 || mx >= mw || my >= mh) {
+            a_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, (u16)(VRAM_BG_BASE + GT_BUSH));
+            b_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_EMPTY);
+        } else {
+            u16 idx = (u16)(my * mw + mx);
+            u16 a_tile = map_bg1_to_vram_tile(g_hearth.map_bg1[idx]);
+            u16 b_tile = map_bg2_to_vram_tile(g_hearth.map_bg2[idx]);
+            a_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, a_tile);
+            b_attr = TILE_ATTR_FULL(PAL0, (b_tile != VRAM_BG_BASE + GT_EMPTY) ? 1 : 0, 0, 0, b_tile);
+        }
     }
     u16 tx0 = (u16)((mx * 2) & 63);
     u16 tx1 = (u16)((tx0 + 1) & 63);
@@ -1280,12 +1368,21 @@ static u16 g_hud_tick = 0;
 static u8  g_last_title_cursor = 255;
 
 static void draw_genesis_title_cursor(void) {
+#if HEARTH_DESIGNER_MODE
     static const char *opts[3] = {
-        "NEW STORY (AGE 5->10) ",
+        "NEW STORY             ",
         "EXPLORE EVERTALE      ",
         "REPLAY OPENING CINEMA "
     };
-    for (u8 i = 0; i < 3u; i++) {
+    u8 cnt = 3u;
+#else
+    static const char *opts[2] = {
+        "NEW STORY             ",
+        "REPLAY OPENING CINEMA "
+    };
+    u8 cnt = 2u;
+#endif
+    for (u8 i = 0; i < cnt; i++) {
         u16 pal = (i == g_hearth.title_cursor) ? PAL3 : PAL2;
         u16 y = (u16)(16u + i * 2u);
         win_text(7, y, pal, (i == g_hearth.title_cursor) ? ">" : " ");
@@ -1294,9 +1391,59 @@ static void draw_genesis_title_cursor(void) {
     g_last_title_cursor = g_hearth.title_cursor;
 }
 
+static void draw_genesis_atlas_window(void) {
+    static const char *VEH_LBL[6] = { "FOOT", "RAFT", "SHIP", "BALLOON", "AIRSHIP", "STARSHIP" };
+    char line[40];
+    u16 pos;
+    u8 hx = (u8)((g_hearth.ppu.hero_tx * 32u) >> 8);
+    u8 hy = (u8)((g_hearth.ppu.hero_ty * 16u) / HEARTH_GLOBE_H);
+    if (hx >= 32u) hx = 31u;
+    if (hy >= 16u) hy = 15u;
+
+    VDP_clearPlane(WINDOW, TRUE);
+    VDP_setWindowFullScreen();
+    win_fill_box(1, 0, 38, 27);
+    win_text(9, 1, PAL3, "EVERTALE WORLD ATLAS");
+
+    for (u16 ry = 0; ry < 16u; ry++) {
+        u8 ay = (u8)(ry * 3u + 1u);
+        for (u16 rx = 0; rx < 32u; rx++) {
+            u8 ax = (u8)(rx * 2u);
+            u16 pal = PAL2;
+            char ch;
+            if (rx == hx && ry == hy) {
+                ch = '@';
+                pal = PAL3;
+            } else {
+                u8 cell = hearth_globe_atlas_cell(ax, ay);
+                if (cell == 0u) ch = '.';                       /* Deep Ocean */
+                else if (cell == 1u) { ch = ':'; pal = PAL3; }  /* Shallows (Raft) */
+                else if (cell == 2u) { ch = '~'; pal = PAL3; }  /* Coral Shoals */
+                else if (cell == 3u) ch = 'G';                  /* Heartland */
+                else if (cell == 4u) { ch = '='; pal = PAL3; }  /* Sands of Babana */
+                else if (cell == 5u) { ch = 'P'; pal = PAL3; }  /* Suncrest Paradise */
+                else if (cell == 6u) ch = '*';                  /* Frostmere North */
+                else if (cell == 7u) ch = '#';                  /* Canopy Wilds */
+                else if (cell == 8u) { ch = '!'; pal = PAL3; }  /* Cinderpeak */
+                else { ch = '+'; pal = PAL3; }                  /* Aetheris Citadel */
+            }
+            VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(pal, 1, 0, 0, (u16)(VRAM_FONT_BASE + (u16)(ch - 32))), (u16)(4u + rx), (u16)(3u + ry));
+        }
+    }
+
+    pos = 0;
+    append_str(line, &pos, sizeof(line), HEARTH_REGION_NAMES[g_hearth.world_region_id % REGION_COUNT]);
+    append_str(line, &pos, sizeof(line), " - ");
+    append_str(line, &pos, sizeof(line), VEH_LBL[g_hearth.active_vehicle < 6u ? g_hearth.active_vehicle : 0u]);
+    win_text_n(3, 21, PAL3, line, 34u);
+    win_text(3, 23, PAL2, "@:ROWAN  ::RAFT CHANNEL  =:SAND");
+    win_text(3, 25, PAL3, "MODE / B : CLOSE ATLAS");
+}
+
 static void update_window_ui(const HearthPpuPacket *ppu) {
     u8 want_layout = 0;
-    if (g_hearth.mode == MODE_INTRO) want_layout = 4;
+    if (g_hearth.atlas_open) want_layout = 7;
+    else if (g_hearth.mode == MODE_INTRO) want_layout = 4;
     else if (g_hearth.mode == MODE_TITLE) want_layout = 1;
     else if (g_hearth.mode == MODE_SHOP) want_layout = 5;
     else if (g_hearth.mode == MODE_FISHING) want_layout = 6;
@@ -1307,7 +1454,10 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
     if (want_layout != g_win_layout) {
         g_win_layout = want_layout;
         g_last_title_cursor = 255;
-        if (want_layout == 1) {
+        if (want_layout == 7) {
+            draw_genesis_atlas_window();
+            return;
+        } else if (want_layout == 1) {
             VDP_clearPlane(WINDOW, TRUE);
             VDP_setWindowFullScreen();
             win_fill_box(2, 2, 36, 24);
@@ -1329,6 +1479,9 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
         g_hud_tick = 0;
     }
 
+    if (want_layout == 7) {
+        return;
+    }
     if (want_layout == 1) {
         if (g_hearth.title_cursor != g_last_title_cursor) {
             draw_genesis_title_cursor();
@@ -1406,24 +1559,38 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
         win_text(1, 0, PAL2, line);
     } else if (want_layout == 2) {
         const HearthDialogue *d = &g_hearth.dialogue;
+        bool show_choices = (d->finished && d->next_text == NULL && d->choice_count > 0);
         VDP_fillTileMapRect(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FILL), 1, 21, 38, 6);
         win_text(2, 21, PAL3, d->speaker ? d->speaker : "...");
         if (d->full_text) {
             u16 vis = d->visible_chars;
-            win_text_n(2, 22, PAL2, d->full_text, (vis < 36u) ? vis : 36u);
-            if (vis > 36u) win_text_n(2, 23, PAL2, d->full_text + 36, (u16)((vis - 36u < 36u) ? (vis - 36u) : 36u));
-            if (vis > 72u && d->choice_count == 0) {
-                win_text_n(2, 24, PAL2, d->full_text + 72, (u16)((vis - 72u < 36u) ? (vis - 72u) : 36u));
+            u16 start = 0u;
+            u16 max_row = show_choices ? 23u : 25u;
+            for (u16 row = 22u; row <= max_row && start < vis; row++) {
+                while (start < vis && d->full_text[start] == ' ') start++;
+                if (start >= vis) break;
+                u16 take = 0u;
+                u16 last_sp = 0u;
+                while ((u16)(start + take) < vis && take < 36u && d->full_text[start + take] != '\0') {
+                    if (d->full_text[start + take] == ' ') last_sp = take;
+                    take++;
+                }
+                if (take == 36u && (u16)(start + take) < vis &&
+                    d->full_text[start + take] != ' ' && d->full_text[start + take] != '\0' && last_sp > 0u) {
+                    take = last_sp;
+                }
+                win_text_n(2, row, PAL2, d->full_text + start, take);
+                start = (u16)(start + take);
             }
         }
-        if (d->finished && d->choice_count > 0) {
+        if (show_choices) {
             for (u8 c = 0; c < d->choice_count && c < 3u; c++) {
                 win_text(2, (u16)(24 + c), (c == d->selected_choice) ? PAL3 : PAL2,
                     (c == d->selected_choice) ? ">" : " ");
                 win_text(4, (u16)(24 + c), (c == d->selected_choice) ? PAL3 : PAL2, d->choices[c].label);
             }
         } else if (d->finished) {
-            win_text(28, 26, PAL3, "[A] NEXT");
+            win_text(28, 26, PAL3, (d->next_text != NULL) ? "[A] MORE" : "[A] NEXT");
         }
     } else if (want_layout == 3) {
         const HearthBattleState *b = &g_hearth.battle;
@@ -1515,7 +1682,7 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
         const HearthShopState *sh = &g_hearth.shop;
         char line[40];
         u16 pos = 0;
-        u8 count = (sh->tab == 0u) ? 5u : (u8)HEARTH_FISH_SPECIES;
+        u8 count = (sh->tab == 0u) ? (u8)HEARTH_SHOP_ITEM_COUNT : (u8)HEARTH_FISH_SPECIES;
         u8 start = (sh->cursor >= 3u) ? (u8)(sh->cursor - 2u) : 0u;
 
         VDP_fillTileMapRect(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FILL), 1, 21, 38, 6);
@@ -1608,18 +1775,20 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
  * 5. HARDWARE SPRITE TABLE (SAT) UPLOAD
  * ============================================================================ */
 static u16 sprite_palette(u8 spr_id) {
-    if (spr_id <= SPR_FAMILIAR_LUMINA || spr_id == SPR_PET_MILO || spr_id == SPR_BOBBER) return PAL1;
+    if (spr_id <= SPR_FAMILIAR_LUMINA || spr_id == SPR_PET_MILO ||
+        spr_id == SPR_BOBBER || spr_id == SPR_RAFT) return PAL1;
     if (spr_id <= SPR_NPC_GUARD || spr_id == SPR_WINDMILL_BLADES || spr_id == SPR_WAYSTONE ||
         spr_id == SPR_CHEST || spr_id == SPR_CHEST_OPEN || spr_id == SPR_NPC_MOUSE ||
         spr_id == SPR_NPC_PIG || spr_id == SPR_HOLLOW_OAK || spr_id == SPR_NPC_TOWNSFOLK ||
-        (spr_id >= SPR_NPC_MARA && spr_id <= SPR_NPC_SENTINEL)) return PAL2;
+        (spr_id >= SPR_NPC_MARA && spr_id <= SPR_NPC_SENTINEL) ||
+        (spr_id >= SPR_FAUNA_CAMEL && spr_id <= SPR_BABANA_STALL)) return PAL2;
     return PAL3;
 }
 
 static void render_sprites(const HearthPpuPacket *ppu) {
     u16 count = 0;
 
-    if (g_hearth.mode == MODE_TITLE) {
+    if (g_hearth.mode == MODE_TITLE || g_hearth.atlas_open) {
         VDP_setSpriteFull(0, -32, -32, SPRITE_SIZE(2, 2), 0, 0);
         VDP_updateSprites(1, DMA_QUEUE);
         return;
@@ -1811,6 +1980,55 @@ static const u16 PSG_BATTLE_BASS[16] = {
     220, 220, 262, 220, 196, 196, 220, 196,
     262, 262, 294, 262, 165, 196, 220, 247
 };
+/* Milestone 4 Regional Continent PSG Themes */
+static const u16 PSG_DESERT_LEAD[16] = {
+    587, 622, 740, 784, 740, 622, 587, 440,
+    466, 587, 622, 740, 622, 587, 466, 440
+};
+static const u16 PSG_DESERT_BASS[16] = {
+    147, 220, 147, 220, 156, 220, 147, 220,
+    147, 220, 156, 220, 147, 220, 147, 147
+};
+static const u16 PSG_PARADISE_LEAD[16] = {
+    523, 659, 784, 659, 880, 784, 659, 587,
+    659, 784, 880, 1047, 880, 784, 659, 523
+};
+static const u16 PSG_PARADISE_BASS[16] = {
+    262, 196, 262, 196, 175, 220, 196, 247,
+    262, 196, 220, 165, 175, 196, 262, 196
+};
+static const u16 PSG_FROST_LEAD[16] = {
+    659, 659, 659, 0,   659, 659, 659, 0,
+    659, 784, 523, 587, 659, 0,   784, 587
+};
+static const u16 PSG_FROST_BASS[16] = {
+    262, 196, 262, 196, 262, 196, 262, 196,
+    262, 196, 175, 196, 262, 196, 196, 147
+};
+static const u16 PSG_JUNGLE_LEAD[16] = {
+    440, 523, 587, 659, 587, 523, 440, 392,
+    440, 587, 659, 784, 659, 587, 523, 440
+};
+static const u16 PSG_JUNGLE_BASS[16] = {
+    147, 147, 220, 147, 175, 175, 220, 175,
+    147, 147, 220, 147, 196, 196, 220, 147
+};
+static const u16 PSG_VOLCANO_LEAD[16] = {
+    294, 311, 294, 0,   349, 330, 311, 294,
+    440, 466, 440, 392, 349, 330, 294, 0
+};
+static const u16 PSG_VOLCANO_BASS[16] = {
+    147, 147, 156, 147, 147, 147, 175, 147,
+    147, 156, 147, 131, 147, 147, 147, 131
+};
+static const u16 PSG_TECH_LEAD[16] = {
+    523, 784, 659, 988, 523, 784, 659, 1047,
+    587, 880, 740, 1175, 659, 988, 784, 1047
+};
+static const u16 PSG_TECH_BASS[16] = {
+    131, 262, 131, 262, 147, 294, 147, 294,
+    165, 330, 165, 330, 196, 392, 196, 262
+};
 
 static void psg_trigger_tone(u8 ch, u16 hz, u8 start_env, u8 decay_frames) {
     if (hz < 110u) return;
@@ -1969,6 +2187,36 @@ static void psg_tick_60hz(u8 bgm_id) {
         psg_trigger_tone(0, PSG_BOAR_LEAD[idx], 8, 3);
         psg_trigger_tone(1, PSG_BOAR_BASS[idx], 10, 4);
         g_bgm_timer = 13;
+    } else if (bgm_id == BGM_DESERT) {
+        u8 idx = (u8)(g_bgm_step & 15u);
+        psg_trigger_tone(0, PSG_DESERT_LEAD[idx], 8, 4);
+        psg_trigger_tone(1, PSG_DESERT_BASS[idx], 10, 4);
+        g_bgm_timer = 13;
+    } else if (bgm_id == BGM_PARADISE) {
+        u8 idx = (u8)(g_bgm_step & 15u);
+        psg_trigger_tone(0, PSG_PARADISE_LEAD[idx], 8, 4);
+        psg_trigger_tone(1, PSG_PARADISE_BASS[idx], 10, 4);
+        g_bgm_timer = 12;
+    } else if (bgm_id == BGM_FROST) {
+        u8 idx = (u8)(g_bgm_step & 15u);
+        if (PSG_FROST_LEAD[idx] > 0) psg_trigger_tone(0, PSG_FROST_LEAD[idx], 8, 5);
+        psg_trigger_tone(1, PSG_FROST_BASS[idx], 11, 5);
+        g_bgm_timer = 14;
+    } else if (bgm_id == BGM_JUNGLE) {
+        u8 idx = (u8)(g_bgm_step & 15u);
+        psg_trigger_tone(0, PSG_JUNGLE_LEAD[idx], 8, 3);
+        psg_trigger_tone(1, PSG_JUNGLE_BASS[idx], 10, 3);
+        g_bgm_timer = 11;
+    } else if (bgm_id == BGM_VOLCANO) {
+        u8 idx = (u8)(g_bgm_step & 15u);
+        if (PSG_VOLCANO_LEAD[idx] > 0) psg_trigger_tone(0, PSG_VOLCANO_LEAD[idx], 8, 4);
+        psg_trigger_tone(1, PSG_VOLCANO_BASS[idx], 10, 4);
+        g_bgm_timer = 12;
+    } else if (bgm_id == BGM_TECH) {
+        u8 idx = (u8)(g_bgm_step & 15u);
+        psg_trigger_tone(0, PSG_TECH_LEAD[idx], 8, 3);
+        psg_trigger_tone(1, PSG_TECH_BASS[idx], 10, 3);
+        g_bgm_timer = 10;
     } else {
         u8 idx = (u8)(g_bgm_step % 24u);
         if (PSG_HAMLET_LEAD[idx] > 0) psg_trigger_tone(0, PSG_HAMLET_LEAD[idx], 9, 4);

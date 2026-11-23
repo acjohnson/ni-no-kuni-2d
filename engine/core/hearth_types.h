@@ -14,6 +14,11 @@
 #ifndef HEARTH_TYPES_H
 #define HEARTH_TYPES_H
 
+/* Compile-time Designer / Explore Evertale mode (override via -DHEARTH_DESIGNER_MODE=0 for release builds) */
+#ifndef HEARTH_DESIGNER_MODE
+    #define HEARTH_DESIGNER_MODE 1
+#endif
+
 #if defined(HEARTH_TARGET_SNES)
     #include <snes.h>
     typedef s8  int8_t;
@@ -71,26 +76,32 @@ typedef int32_t fp16_t;
 #define PAD_START       (1u << 10)
 #define PAD_SELECT      (1u << 11)
 
-/* Virtual Hardware Budgets */
-#define HEARTH_TILE_SIZE          16
-#define HEARTH_MAP_W              44
-#define HEARTH_MAP_H              28
-#define HEARTH_MAP_CELLS          (HEARTH_MAP_W * HEARTH_MAP_H)
-#define HEARTH_WORLD_W            88
-#define HEARTH_WORLD_H            56
-#define HEARTH_MAX_MAP_W          HEARTH_WORLD_W
-#define HEARTH_MAX_MAP_H          HEARTH_WORLD_H
-#define HEARTH_MAX_MAP_CELLS      (HEARTH_MAX_MAP_W * HEARTH_MAX_MAP_H)
-#define HEARTH_MAX_OAM            64
-#define HEARTH_MAX_PARTICLES      64
-#define HEARTH_MAX_FTEXT          16
-#define HEARTH_TRAIL_LEN          48
-#define HEARTH_MAX_NPCS           5
-#define HEARTH_MAX_FIELD_ENEMIES  4
-#define HEARTH_MAX_BATTLE_ENEMIES 2
-#define HEARTH_MAX_LOCKS          3
-#define HEARTH_MAX_PORTALS        8
-#define HEARTH_FISH_SPECIES       6
+/* Virtual Hardware Budgets
+ * Local zones (towns, cottages, dungeons) use compact 44x28 RAM arrays (1,232 cells).
+ * The 256x192 Evertale Toroidal Globe streams on-the-fly from ROM with ZERO RAM map overhead! */
+#define HEARTH_TILE_SIZE            16
+#define HEARTH_MAP_W                44
+#define HEARTH_MAP_H                28
+#define HEARTH_MAP_CELLS            (HEARTH_MAP_W * HEARTH_MAP_H)
+#define HEARTH_MAX_MAP_W            HEARTH_MAP_W
+#define HEARTH_MAX_MAP_H            HEARTH_MAP_H
+#define HEARTH_MAX_MAP_CELLS        HEARTH_MAP_CELLS
+#define HEARTH_GLOBE_W              256
+#define HEARTH_GLOBE_H              192
+#define HEARTH_ATLAS_W              64
+#define HEARTH_ATLAS_H              48
+#define HEARTH_GLOBE_LANDMARK_COUNT 14
+#define HEARTH_GLOBE_FAUNA_COUNT    24
+#define HEARTH_MAX_OAM              64
+#define HEARTH_MAX_PARTICLES        64
+#define HEARTH_MAX_FTEXT            16
+#define HEARTH_TRAIL_LEN            48
+#define HEARTH_MAX_NPCS             5
+#define HEARTH_MAX_FIELD_ENEMIES    4
+#define HEARTH_MAX_BATTLE_ENEMIES   2
+#define HEARTH_MAX_LOCKS            3
+#define HEARTH_MAX_PORTALS          8
+#define HEARTH_FISH_SPECIES         6
 
 /* Directions */
 typedef enum {
@@ -119,9 +130,9 @@ typedef enum {
     MODE_FISHING        = 8
 } HearthMode;
 
-/* 13 Connected World Regions (4 Real-World Mountain Maps + Evertale Continent & Landmarks) */
+/* 16 Connected World Regions (4 Real-World Mountain Maps + Evertale Globe & Landmarks) */
 typedef enum {
-    ZONE_ALDERBROOK       = 0,  /* Redesigned Autumn Mountain Rail Town (Big Town) */
+    ZONE_ALDERBROOK       = 0,  /* Autumn Mountain Rail Town */
     ZONE_HAMLET           = 1,  /* Evertale: Lakeside Windmill Hamlet */
     ZONE_WHISKERBURGH     = 2,  /* Evertale: Anthropomorphic Mouse Market Town */
     ZONE_SEWERS           = 3,  /* Evertale: Dark Lantern-Lit Sunken Sewers */
@@ -129,13 +140,44 @@ typedef enum {
     ZONE_ROWAN_HOME       = 5,  /* Chapter 1: Rowan & Grandma Mara's Cedar Cottage Interior + Attic */
     ZONE_WHISPERING_WOODS = 6,  /* Chapter 1: Rocky Autumn Mountain Forest, Rapids & Lantern Trail */
     ZONE_HOLLOW_GLADE     = 7,  /* Chapter 1: High-Ridge Mountain Sanctuary & Hollow Oak Gate */
-    ZONE_EVERTALE_WORLD   = 8,  /* Chapter 2: Seamless 88x56 Evertale Continent Open World Map */
+    ZONE_EVERTALE_WORLD   = 8,  /* Chapter 2: Seamless 256x192 Full-Toroidal Evertale Globe */
     ZONE_SUNHILL_MARKET   = 9,  /* Chapter 2: Sunlit Hilltop Market Town beneath Castle Aurelia */
     ZONE_CASTLE_GATE      = 10, /* Chapter 2: Enterable Castle Aurelia Drawbridge & Gatehouse */
     ZONE_BRAMBLE_EDGE     = 11, /* Chapter 2: Enterable Bramblewood Crossing Forest Border */
     ZONE_SUNKEN_RUINS     = 12, /* Chapter 2: Enterable Sunken Watchtower Coastal Ruins */
-    ZONE_COUNT            = 13
+    ZONE_TIMBER_PIER      = 13, /* Chapter 2: Heartland Timber Pier — Shipwright Orin's Raft Yard */
+    ZONE_CORAL_COVE       = 14, /* Chapter 2: Suncrest Paradise — Tropical Coral Cove & Pirate Dock */
+    ZONE_BABANA_OASIS     = 15, /* Chapter 2: Sands of Babana — Golden Babana Oasis & Desert Outpost */
+    ZONE_COUNT            = 16
 } HearthZoneId;
+
+/* 7 Seamless Continents on the 256x192 Evertale Toroidal Globe */
+typedef enum {
+    REGION_HEARTLAND = 0, /* Emerald Heartland (Starting Realm) */
+    REGION_DESERT    = 1, /* Sands of Babana (Hot Dunes, Camels, Scorpions, Sandworm) */
+    REGION_PARADISE  = 2, /* Suncrest Paradise (Beaches, Coral Reef, Pirates) */
+    REGION_FROSTMERE = 3, /* Frostmere North (Perpetual Festive Winter Wonderland, Penguins) */
+    REGION_CANOPY    = 4, /* Canopy Wilds (Amazon Rainforest, Treetop Platforms, Monkeys) */
+    REGION_VOLCANO   = 5, /* Cinderpeak Caldera (Death-Mountain Fiery Volcano, Lava Rivers) */
+    REGION_AETHERIS  = 6, /* Aetheris Citadel (High-Tech Magitek Endgame Civilization, Robots) */
+    REGION_COUNT     = 7
+} HearthGlobeRegion;
+
+/* Multi-Tier World Travel Ladder (Strictly Story-Unlocked in New Story) */
+typedef enum {
+    VEH_FOOT      = 0,
+    VEH_RAFT      = 1, /* Chapter 2: Cedar Raft across turquoise shallows & straits */
+    VEH_SHIP      = 2, /* Future: Open-ocean Sailing Ship */
+    VEH_BALLOON   = 3, /* Future: Hot Air Balloon over cliffs & canyons */
+    VEH_AIRSHIP   = 4, /* Future: Sky Airship across all 7 continents */
+    VEH_SPACESHIP = 5  /* Endgame: Starbound Vessel */
+} HearthVehicle;
+
+#define VEH_MASK_RAFT      (1u << 1)
+#define VEH_MASK_SHIP      (1u << 2)
+#define VEH_MASK_BALLOON   (1u << 3)
+#define VEH_MASK_AIRSHIP   (1u << 4)
+#define VEH_MASK_SPACESHIP (1u << 5)
 
 /* Story-Driven Time of Day (Chapter 1: Morning -> Afternoon -> Dusk -> Moonlit Night) */
 typedef enum {
@@ -145,21 +187,27 @@ typedef enum {
     TOD_NIGHT     = 3
 } HearthTimeOfDay;
 
-/* Per-Zone & Time-of-Day Terrain Sub-Palette IDs (Swapped Dynamically into PAL0 on all 4 hosts) */
+/* Per-Zone, Continent & Time-of-Day Terrain Sub-Palette IDs (Swapped into PAL0 on all 4 hosts) */
 typedef enum {
     ZPAL_HAMLET           = 0,
-    ZPAL_ALDERBROOK       = 1, /* Autumn Mountain Afternoon */
+    ZPAL_ALDERBROOK       = 1,  /* Autumn Mountain Afternoon */
     ZPAL_WHISKERBURGH     = 2,
     ZPAL_SEWERS           = 3,
     ZPAL_BOARHOLD         = 4,
     ZPAL_SHADOW           = 5,
-    ZPAL_AUTUMN_MORNING   = 6, /* Autumn Mountain Dawn Rose-Gold */
-    ZPAL_AUTUMN_DUSK      = 7, /* Autumn Mountain Copper-Amber Sunset */
-    ZPAL_AUTUMN_NIGHT     = 8, /* Autumn Mountain Moonlit Indigo & Silver */
-    ZPAL_COTTAGE_INTERIOR = 9, /* Cozy Honey Cedar & Hearthstone Interior */
-    ZPAL_EVERTALE_WORLD   = 10,/* Storybook Sunlit Emerald, Cerulean Sea, Limestone & Terracotta */
-    ZPAL_SUNHILL_MARKET   = 11,/* Warm Hilltop Limestone, Terracotta Roofs & Golden Sunlight */
-    ZPAL_COUNT            = 12
+    ZPAL_AUTUMN_MORNING   = 6,  /* Autumn Mountain Dawn Rose-Gold */
+    ZPAL_AUTUMN_DUSK      = 7,  /* Autumn Mountain Copper-Amber Sunset */
+    ZPAL_AUTUMN_NIGHT     = 8,  /* Autumn Mountain Moonlit Indigo & Silver */
+    ZPAL_COTTAGE_INTERIOR = 9,  /* Cozy Honey Cedar & Hearthstone Interior */
+    ZPAL_EVERTALE_WORLD   = 10, /* Emerald Heartland Storybook Meadow & Sea */
+    ZPAL_SUNHILL_MARKET   = 11, /* Warm Hilltop Limestone, Terracotta Roofs & Gold Sun */
+    ZPAL_DESERT           = 12, /* Sands of Babana: Warm Amber Sand, Sandstone & Oasis Jade */
+    ZPAL_PARADISE         = 13, /* Suncrest Paradise: Turquoise Shallows, Coral Pink & Palm Green */
+    ZPAL_FROST            = 14, /* Frostmere North: Crisp Snow White, Ice Cyan & Festive Evergreen */
+    ZPAL_JUNGLE           = 15, /* Canopy Wilds: Deep Emerald Rainforest, Jade River & Cedar Bridges */
+    ZPAL_VOLCANO          = 16, /* Cinderpeak Caldera: Basalt Charcoal, Crimson Magma & Ash */
+    ZPAL_TECH             = 17, /* Aetheris Citadel: Ivory Alloy, Cobalt Steel & Electric Cyan */
+    ZPAL_COUNT            = 18
 } HearthZonePalId;
 
 /* Music Track IDs (Consumed by Web Audio, SDL2 Synth, Genesis PSG, SNES SPC700) */
@@ -175,7 +223,13 @@ typedef enum {
     BGM_VICTORY        = 8,
     BGM_CINEMA_WONDER  = 9,
     BGM_CINEMA_LULLABY = 10,
-    BGM_COUNT          = 11
+    BGM_DESERT         = 11,
+    BGM_PARADISE       = 12,
+    BGM_FROST          = 13,
+    BGM_JUNGLE         = 14,
+    BGM_VOLCANO        = 15,
+    BGM_TECH           = 16,
+    BGM_COUNT          = 17
 } HearthBgmId;
 
 /* Opening Cinema & Mid-Chapter Story CG Plates, Camera Motions & Atmospheric Moods */
@@ -240,7 +294,9 @@ typedef enum {
     BIOME_MEADOW   = 0,
     BIOME_SHRINE   = 1,
     BIOME_SEWER    = 2,
-    BIOME_BOARHOLD = 3
+    BIOME_BOARHOLD = 3,
+    BIOME_DESERT   = 4,
+    BIOME_PARADISE = 5
 } HearthBiome;
 
 typedef enum {
@@ -251,13 +307,15 @@ typedef enum {
 } HearthLockKind;
 
 typedef enum {
-    ENCOUNTER_MEADOW_PACK   = 0,
-    ENCOUNTER_GLADE_DUO     = 1,
-    ENCOUNTER_SHRINE_BOSS   = 2,
-    ENCOUNTER_SEWER_PACK    = 3,
-    ENCOUNTER_SEWER_BOSS    = 4,
-    ENCOUNTER_BOAR_GUARD    = 5,
-    ENCOUNTER_IRONFANG_BOSS = 6
+    ENCOUNTER_MEADOW_PACK     = 0,
+    ENCOUNTER_GLADE_DUO       = 1,
+    ENCOUNTER_SHRINE_BOSS     = 2,
+    ENCOUNTER_SEWER_PACK      = 3,
+    ENCOUNTER_SEWER_BOSS      = 4,
+    ENCOUNTER_BOAR_GUARD      = 5,
+    ENCOUNTER_IRONFANG_BOSS   = 6,
+    ENCOUNTER_DESERT_SCORPION = 7,
+    ENCOUNTER_SANDWORM_BOSS   = 8
 } HearthEncounterPreset;
 
 /* Heart-Mending Aura States */
@@ -310,7 +368,16 @@ typedef enum {
     SPR_NPC_TESSA        = 37,
     SPR_NPC_CORIN        = 38,
     SPR_NPC_SENTINEL     = 39,
-    SPR_COUNT            = 40
+    SPR_RAFT             = 40,
+    SPR_ENEMY_SCORPION   = 41,
+    SPR_ENEMY_SANDWORM   = 42,
+    SPR_FAUNA_CAMEL      = 43,
+    SPR_FAUNA_PENGUIN    = 44,
+    SPR_FAUNA_MONKEY     = 45,
+    SPR_FAUNA_ROBOT      = 46,
+    SPR_NPC_SHIPWRIGHT   = 47,
+    SPR_BABANA_STALL     = 48,
+    SPR_COUNT            = 49
 } HearthSpriteId;
 
 /* Abstract Sound Driver Command IDs (SDL2 Synth / Genesis PSG / SNES SPC700 / Web Audio) */
@@ -633,6 +700,7 @@ typedef struct {
     bool         active;
     const char  *speaker;
     const char  *full_text;
+    const char  *next_text;
     uint16_t     full_len;
     uint16_t     visible_chars;
     bool         finished;
@@ -732,6 +800,27 @@ typedef struct {
     uint8_t reward_kind; /* 0=Tonics+G, 1=StarDrop+G, 2=Snack+G, 3=BigGuilders */
 } HearthChestProp;
 
+/* ROM-Resident Globe Landmark & Biome Fauna Descriptors (Zero RAM overhead) */
+typedef struct {
+    uint16_t    tx;
+    uint16_t    ty;
+    uint8_t     region_id;
+    uint8_t     dst_zone;    /* 255 = preview landmark (dialog reaction on globe) */
+    uint8_t     dst_tx;
+    uint8_t     dst_ty;
+    uint8_t     kind;        /* 0=Oak, 1=Town, 2=Castle, 3=Forest, 4=Ruins, 5=Pier, 6=Cove, 7=Oasis, 8=Noel, 9=Canopy, 10=Volcano, 11=Citadel */
+    uint8_t     enterable;
+    const char *name;
+} HearthGlobeLandmark;
+
+typedef struct {
+    uint16_t tx;
+    uint16_t ty;
+    uint8_t  sprite_id;
+    uint8_t  region_id;
+    uint8_t  phase;
+} HearthGlobeFauna;
+
 /* Complete PPU Output Packet Consumed by Any Platform Host (SDL2 / Genesis / SNES / Web) */
 typedef struct {
     uint16_t width;
@@ -741,6 +830,13 @@ typedef struct {
     uint8_t  zone_id;
     uint8_t  map_w;
     uint8_t  map_h;
+    uint16_t globe_w;
+    uint16_t globe_h;
+    uint8_t  world_region_id;
+    uint8_t  active_vehicle;
+    uint8_t  vehicle_unlocked_mask;
+    bool     atlas_open;
+    bool     designer_mode_enabled;
     uint8_t  terrain_pal_id;
     uint8_t  bgm_id;
     uint8_t  time_of_day;

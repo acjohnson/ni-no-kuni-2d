@@ -57,7 +57,7 @@ export type GameMode =
   | 'SHOP'
   | 'FISHING';
 
-export type ZoneId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+export type ZoneId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
 export type TimeOfDay = 0 | 1 | 2 | 3; // 0=Morning, 1=Afternoon, 2=Dusk, 3=Night
 
 export type BgmTrackId =
@@ -71,9 +71,15 @@ export type BgmTrackId =
   | 'BOSS'
   | 'VICTORY'
   | 'CINEMA_WONDER'
-  | 'CINEMA_LULLABY';
+  | 'CINEMA_LULLABY'
+  | 'DESERT'
+  | 'PARADISE'
+  | 'FROST'
+  | 'JUNGLE'
+  | 'VOLCANO'
+  | 'TECH';
 
-export type BattleBiome = 'MEADOW' | 'SHRINE' | 'SEWER' | 'BOARHOLD';
+export type BattleBiome = 'MEADOW' | 'SHRINE' | 'SEWER' | 'BOARHOLD' | 'DESERT' | 'PARADISE';
 
 export type EncounterPreset =
   | 'MEADOW_PACK'
@@ -82,7 +88,9 @@ export type EncounterPreset =
   | 'SEWER_PACK'
   | 'SEWER_BOSS'
   | 'BOAR_GUARD'
-  | 'IRONFANG_BOSS';
+  | 'IRONFANG_BOSS'
+  | 'DESERT_PACK'
+  | 'SANDWORM_BOSS';
 
 export type LockKind = 'SWORD' | 'SUN' | 'STAR';
 
@@ -94,6 +102,31 @@ export const MAP_H = 28;
 export const WORLD_W = 88;
 export const WORLD_H = 56;
 export const MAX_MAP_CELLS = WORLD_W * WORLD_H;
+
+/* Milestone 4: 256x192 Full-Toroidal Evertale Globe + 64x48 Macro Atlas + 24x18 Live Stream Window */
+export const GLOBE_W = 256;
+export const GLOBE_H = 192;
+export const ATLAS_W = 64;
+export const ATLAS_H = 48;
+export const VIEW_TILE_W = 24;
+export const VIEW_TILE_H = 18;
+
+export const VEHICLE_NAMES: readonly string[] = [
+  'On Foot',
+  'Cedar Raft',
+  'Sloop Ship',
+  'Hot Air Balloon',
+  'Sky Airship',
+  'Star Vessel',
+];
+
+export interface GlobeLandmark {
+  tx: number;
+  ty: number;
+  regionId: number;
+  enterable: boolean;
+  name: string;
+}
 
 export const T_GRASS = 0;
 export const T_GRASS_ALT = 1;
@@ -149,6 +182,15 @@ export const T_WORLD_HILL = 50;
 export const T_WORLD_CASTLE = 51;
 export const T_WORLD_TOWN = 52;
 export const T_WORLD_RUINS = 53;
+export const T_WORLD_SHALLOW = 54;
+export const T_WORLD_SAND = 55;
+export const T_WORLD_SNOW = 56;
+export const T_WORLD_LAVA = 57;
+export const T_WORLD_JUNGLE = 58;
+export const T_WORLD_CORAL = 59;
+export const T_WORLD_TECH = 60;
+export const T_PALM_TREE = 61;
+export const T_DOCK_PIER = 62;
 
 export const O_NONE = 0;
 export const O_CANOPY_TL = 1;
@@ -167,6 +209,7 @@ export const COL_SOLID = 1;
 export const COL_TALL_GRASS = 2;
 export const COL_SHALLOW = 3;
 export const COL_WATER = 4;
+export const COL_LAVA = 5;
 
 export interface WorldMapData {
   width: number;
@@ -262,7 +305,16 @@ export type SpriteId =
   | 'locomotive'
   | 'npc_tessa'
   | 'npc_corin'
-  | 'npc_sentinel';
+  | 'npc_sentinel'
+  | 'raft'
+  | 'enemy_scorpion'
+  | 'enemy_sandworm'
+  | 'fauna_camel'
+  | 'fauna_penguin'
+  | 'fauna_monkey'
+  | 'fauna_robot'
+  | 'npc_shipwright'
+  | 'babana_stall';
 
 export type PortraitId =
   | 'hero'
@@ -593,7 +645,17 @@ export interface PpuFramePacket {
   zoneId: ZoneId;
   mapW: number;
   mapH: number;
+  globeW: number;
+  globeH: number;
   isWorldMap: boolean;
+  worldRegionId: number;
+  worldRegionName: string;
+  activeVehicle: number;
+  viewOriginX: number;
+  viewOriginY: number;
+  viewBg1: Uint8Array;
+  viewBg2: Uint8Array;
+  landmarks: readonly GlobeLandmark[];
   terrainPalId: number;
   bgmId: BgmTrackId;
   zoneIsDark: boolean;
@@ -633,6 +695,22 @@ export interface UiSnapshot {
   ch1Step: number;
   ch2Step: number;
   isWorldMap: boolean;
+  worldRegionId: number;
+  worldRegionName: string;
+  regionNames: readonly string[];
+  activeVehicle: number;
+  vehicleUnlockedMask: number;
+  atlasOpen: boolean;
+  designerModeEnabled: boolean;
+  designerSandbox: boolean;
+  babanas: number;
+  planksFoundMask: number;
+  heroTx: number;
+  heroTy: number;
+  globeW: number;
+  globeH: number;
+  atlasCells: Uint8Array;
+  landmarks: readonly GlobeLandmark[];
   hasMiloBell: boolean;
   hasFamiliar: boolean;
   hasHeartVessel: boolean;

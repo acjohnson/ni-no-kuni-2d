@@ -147,6 +147,48 @@ const uint32_t HEARTH_ZONE_PALETTES_RGB[ZPAL_COUNT][16] = {
         0x82BE68u, 0xBEE088u, 0x825438u, 0xC48A54u,
         0xF4D68Eu, 0x626068u, 0xACA8A4u, 0xEFEAE0u,
         0x2B72A8u, 0x54A4DCu, 0xB8E6FAu, 0xCC503Au
+    },
+    /* ZPAL_DESERT (12): Sands of Babana — Sun-Baked Amber Dunes, Sandstone & Oasis Jade */
+    {
+        0x000000u, 0x2A1A14u, 0x3A6838u, 0x5C984Au,
+        0x98C464u, 0xE6C668u, 0x9A582Au, 0xD89644u,
+        0xFAD882u, 0x7A563Cu, 0xB88A5Cu, 0xF4E2B8u,
+        0x1D6888u, 0x38A8B8u, 0xA8E8E8u, 0xD45232u
+    },
+    /* ZPAL_PARADISE (13): Suncrest Paradise — Turquoise Shallows, Coral Pink & Palm Green */
+    {
+        0x000000u, 0x16262Cu, 0x226846u, 0x3AA05Cu,
+        0x6ED478u, 0xC2F092u, 0x8E603Au, 0xD8A868u,
+        0xFCE8B2u, 0x4E6876u, 0x98B8C4u, 0xF4F6F0u,
+        0x16789Eu, 0x2CC2D4u, 0x9AF4F6u, 0xF06A78u
+    },
+    /* ZPAL_FROST (14): Frostmere North — Crisp Snowfields, Ice Cyan & Festive Evergreen */
+    {
+        0x000000u, 0x182032u, 0x224E42u, 0x387860u,
+        0x72A898u, 0xD8EEF8u, 0x6C4838u, 0xA47658u,
+        0xF4DC9Au, 0x4A6284u, 0x94B8D8u, 0xF6FBFFu,
+        0x225288u, 0x4C8EC8u, 0xB8E8FFu, 0xD43844u
+    },
+    /* ZPAL_JUNGLE (15): Canopy Wilds — Deep Rainforest Emerald, Jade River & Cedar Platforms */
+    {
+        0x000000u, 0x12221Cu, 0x1A4E32u, 0x2E7A44u,
+        0x52AA58u, 0x92D66Cu, 0x684228u, 0xA86E3Eu,
+        0xE4BA72u, 0x3C524Eu, 0x708C82u, 0xC8DCCAu,
+        0x18666Au, 0x2EA096u, 0x8CE4CCu, 0xDC6238u
+    },
+    /* ZPAL_VOLCANO (16): Cinderpeak Caldera — Basalt Charcoal, Crimson Magma & Embers */
+    {
+        0x000000u, 0x181014u, 0x362426u, 0x563834u,
+        0x825444u, 0xC67E4Au, 0x4A2622u, 0x883C2Au,
+        0xF8B844u, 0x2E2A32u, 0x5C545Cu, 0xA89C9Cu,
+        0x8A1E1Cu, 0xE04624u, 0xFFCC44u, 0xFF6828u
+    },
+    /* ZPAL_TECH (17): Aetheris Citadel — Ivory Alloy, Cobalt Steel & Electric Cyan */
+    {
+        0x000000u, 0x121828u, 0x223858u, 0x3A5A84u,
+        0x5E88B8u, 0xA8D4F4u, 0x48526Cu, 0x7C8CA8u,
+        0xDCE6F4u, 0x2A3248u, 0x627494u, 0xF2F7FFu,
+        0x16568Au, 0x24B4DCu, 0x8EF6FFu, 0xD858E0u
     }
 };
 
@@ -159,11 +201,24 @@ const char * const HEARTH_ZONE_NAMES[ZONE_COUNT] = {
     "Rowan's Cottage",
     "Whispering Woods",
     "Hollow Glade",
-    "Evertale",
+    "Evertale Globe",
     "Sunhill Market",
     "Castle Aurelia Gate",
     "Bramblewood Crossing",
-    "Sunken Watchtower"
+    "Sunken Watchtower",
+    "Heartland Timber Pier",
+    "Suncrest Coral Cove",
+    "Oasis of Babana"
+};
+
+const char * const HEARTH_REGION_NAMES[REGION_COUNT] = {
+    "Emerald Heartland",
+    "Sands of Babana",
+    "Suncrest Paradise",
+    "Frostmere North",
+    "Canopy Wilds",
+    "Cinderpeak Caldera",
+    "Aetheris Citadel"
 };
 
 const char * const HEARTH_TOD_NAMES[4] = {
@@ -176,18 +231,19 @@ const char * const HEARTH_TOD_NAMES[4] = {
 const HearthFishInfo HEARTH_FISH_TABLE[HEARTH_FISH_SPECIES] = {
     { "Sun Carp",       18u, 22u, 0u, ZONE_HAMLET,       1u },
     { "Meadow Trout",   26u, 32u, 0u, ZONE_ALDERBROOK,   2u },
-    { "Whisker Perch",  36u, 38u, 0u, ZONE_WHISKERBURGH, 2u },
+    { "Coral Snapper",  44u, 42u, 0u, ZONE_CORAL_COVE,   2u },
     { "Sewer Glow-Eel", 55u, 48u, 0u, ZONE_SEWERS,       3u },
     { "Golden Koi",     90u, 65u, 1u, 255u,              4u },
     { "Sunken Boot",     6u,  0u, 0u, 255u,              1u }
 };
 
-const HearthShopItem HEARTH_SHOP_ITEMS[5] = {
-    { "Sun Tonic",     "Heal +45 HP in battle",    20u, 0u },
-    { "Star Drop",     "Restore +15 MP to party",  28u, 1u },
-    { "Courage Snack", "Full HP & MP feast",       55u, 2u },
-    { "River Lure",    "Wider reel bar + rare Koi",60u, 3u },
-    { "Glow Lure",     "Master lure for all piers",120u,4u }
+const HearthShopItem HEARTH_SHOP_ITEMS[HEARTH_SHOP_ITEM_COUNT] = {
+    { "Sun Tonic",     "Heal +45 HP in battle",     20u, 0u },
+    { "Star Drop",     "Restore +15 MP to party",   28u, 1u },
+    { "Courage Snack", "Full HP & MP feast",        55u, 2u },
+    { "River Lure",    "Wider reel bar + rare Koi", 60u, 3u },
+    { "Glow Lure",     "Master lure for all piers", 120u,4u },
+    { "Golden Babana", "Sweet desert heal +65 HP",  32u, 5u }
 };
 
 /* 64-Step Signed Integer Sine Lookup Table (-127..+127) */
@@ -940,206 +996,485 @@ static void build_zone_boarhold(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
 }
 
 /* ============================================================================
- * ZONE 8: EVERTALE CONTINENT OPEN WORLD MAP (88x56 Seamless Storybook Overworld!)
- *   - Southwest (16,44): Hollow Oak Gate (Arrival from Alderbrook)
- *   - West      (18,28): Windmill Hamlet (Lakeside Mill Cluster)
- *   - Center    (44,24): Sunhill Market (Terraced Hilltop Market Town)
- *   - North     (44,11): Castle Aurelia (Grand White-Stone Royal Citadel)
- *   - East      (68,25): Bramblewood Crossing (Dense Giant Emerald Forest)
- *   - Southeast (66,43): Sunken Watchtower (Coastal Cliffside Ruins)
- *   - Northeast (72,13): Whiskerburgh (Mouse Borough across East River Bridge)
+ * 256x192 FULL-TOROIDAL EVERTALE GLOBE (Zero-RAM Pure-ROM Streaming!)
+ *
+ * Backed by a 64x48 ROM macro-biome grid (each cell = 4x4 tiles, 3,072 bytes in ROM,
+ * 0 bytes in RAM!). Every platform streams cells on demand via hearth_globe_cell().
+ *
+ * 7 Seamless Continents across the Toroidal Globe (X mod 256, Y mod 192):
+ *  0: Emerald Heartland (Center-West)  — 8 Landmarks (Hollow Oak .. Timber Pier)
+ *  1: Sands of Babana   (South-East)   — Hot dunes, camels, scorpions, sandworm, Oasis
+ *  2: Suncrest Paradise (South-West)   — Beaches, turquoise reefs, pirates, Coral Cove
+ *  3: Frostmere North   (Far North)    — Perpetual festive winter wonderland, penguins
+ *  4: Canopy Wilds      (East)         — Amazon rainforest, treetop platforms, monkeys
+ *  5: Cinderpeak Caldera(North-West)   — Fiery Death-Mountain volcano, obsidian & lava
+ *  6: Aetheris Citadel  (North-East)   — High-tech magitek civilization, chrome & robots
  * ============================================================================ */
-static void wset_bg1(uint8_t *bg1, uint8_t *col, int x, int y, uint8_t t, uint8_t c) {
-    int idx;
-    if (x < 0 || y < 0 || x >= HEARTH_WORLD_W || y >= HEARTH_WORLD_H) return;
-    idx = y * HEARTH_WORLD_W + x;
-    bg1[idx] = t;
-    col[idx] = c;
-}
+static const char GLOBE_MACRO_ROWS[HEARTH_ATLAS_H][HEARTH_ATLAS_W + 1] = {
+/* 00 */ "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+/* 01 */ "~~~~~~~~~~~~~~~~~~~~~iiiiiiIIiiiiiiiiIIiiiii~~~~~~~~~~~~~~~~~~~~",
+/* 02 */ "~~~~~~~~~~~~~~~~~~iiiiiIIiiiiiiiiiiiiiiiiIIiiii~~~~~~~~~~~~~~~~~",
+/* 03 */ "~~~~~~~~~~~~~~~~iiiiiiiiiIIiiiiiiiIIiiiiiiiiiiiii~~~~~~~~~~~~~~~",
+/* 04 */ "~~~~~~~~~~~~~~~iiiiiIIiiiiiiiiiiiiiiiiiiiiIIiiiiii~~~~~~~~~~~~~~",
+/* 05 */ "~~~~~~~~~~~~~~~iiiiiiiiiIiiiiiiiiiiiiiiiiiiiIiiiii~~~~~~~~~~~~~~",
+/* 06 */ "~~~~~~~~~~~~~~~~iiiiiiiiiiiIIiiiiiiiiIIiiiiiiiiii~~~~~~~~~~~~~~~",
+/* 07 */ "~~~~~~~~~~~~~~~~~~iiiiiiiiiiiiiiiiiiiiiiiiiiiii~~~~~~~~~~~~~~~~~",
+/* 08 */ "~~~~~~~~~~~~~~~~~~~~~iiiiiiiiiiiiiiiiiiiiiii~~~~~~~~~~~~~~~~~~~~",
+/* 09 */ "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+/* 10 */ "~~~~~~VVVVVV~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TTTTTT~~~",
+/* 11 */ "~~~~VVvvvvVVV~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TTttttttTT~",
+/* 12 */ "~~~VVvvlvvvvVV~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TTttttttttT~",
+/* 13 */ "~~VVvvvlvvVVvvV~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TTttTTttttttT",
+/* 14 */ "~~VvvvlllvvvvvV~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TTttttttttttTT",
+/* 15 */ "~~VvvvllvvvVVvV~~~~~~mmmmmmmmmmmmmmmmmm~~~~~~~~~~~TttttttttttttT",
+/* 16 */ "~~VVvvllvvvvvvV~~~~mggggggggggggggggggggm~~~~~~~~~TttttTTttttttT",
+/* 17 */ "~~~VvvllvvvvvVV~~~bggggggghhhhhhhggggggggb~~~~~~~~TTttttttttttTT",
+/* 18 */ "~~~VVvvlvvvvVV~~~bggggggggghhhhhggggggggggb~~~~~~~~TTttttttttTT~",
+/* 19 */ "~~~~VVvvvvVVV~~~bgggggfffggggggggggfgggggggb~~~~~~~~~TTttttTT~~~",
+/* 20 */ "~~~~~VVVVVV~~~~~bggggggggghhhhhhhggggggggggb~~~~~~~~~~~TTTT~~~~~",
+/* 21 */ "~~~~~~~~~~~~~~~~bggggggggghhhhhhhggggfffgggb~~~~~~~~~~~~~~~~~~~~",
+/* 22 */ "~~~~~~~~~~~~~~~~bgggggggggggggggggggffffgggb~~~~~~~~~~~~~~~~~~~~",
+/* 23 */ "~~~~~~~~~~~~~~~~bgggggggggggggggggggffffgggb~~~~~~~~~~~~~~~~~~~~",
+/* 24 */ "~~~~~~~~~~~~~~~~bggggggggggggggggggggggggggb~~~~~~~~~~~~~~~~~~~~",
+/* 25 */ "~~~~~~~~~~~~~~~~bggggggggggggfffgggggggggggb~~~~~~~~JJJJJJJJ~~~~",
+/* 26 */ "~~~~~~~~~~~~~~~~bggggggggggggfffgggggggggggb~~~~~~JJjjjjjjjjJJ~~",
+/* 27 */ "~~~~~~~~~~~~~~~~bfgggggggggggggggggggggggggb~~~~~JjjjjJJjjjjjjJ~",
+/* 28 */ "~~~~~~~~~~~~~~~~~bbbbbbbbbbbbbbbbbbbbbbbbbb~~~~~JJjjjjjjjjJJjjJ~",
+/* 29 */ "~~~~~~~~~~~~~~~~~~~~ssssssssssssssss~~~~~~~~~~~~JjjjJJjjjjjjjjJ~",
+/* 30 */ "~~~~~~~~~~~~~~~~~ssssssssssssssssssss~~~~~~~~~~~JjjjjjjjjjjjjjJ~",
+/* 31 */ "~~~~~~~~~~~~~~sssssssssssssssssssssssss~~~~~~~~~JjjjjjjJJjjjjjJ~",
+/* 32 */ "~~~~~~~~~~~sssssspppppppsssssssbbbbbbsss~~~~~~~~JjjjjjjjjjjjjjJ~",
+/* 33 */ "~~~~~~~~pppppprrrpppppppprssssbddddddbbb~~~~~~~~JjjjJJjjjjjjjjJ~",
+/* 34 */ "~~~~~~ppppppppprpppppppppprssbddddddddddb~~~~~~~JJjjjjjjjjJJjjJ~",
+/* 35 */ "~~~~~ppppppppppppppppppppprrbddddddddddddb~~~~~~~JjjjjjjjjjjjjJ~",
+/* 36 */ "~~~~pppppppppppppppppppppprrdddddddddddddd~~~~~~~JJjjjJJjjjjjJJ~",
+/* 37 */ "~~~~pppppppppppppppppppprrrrdddddddddddddd~~~~~~~~~JJjjjjjjjJJ~~",
+/* 38 */ "~~~~ppppppppppppppppppprrrrbdddddooooddddd~~~~~~~~~~~JJJJJJJ~~~~",
+/* 39 */ "~~~~~pppppppppppppppppprsssbdddddooooddddd~~~~~~~~~~~~~~~~~~~~~~",
+/* 40 */ "~~~~~~pppppppppppppppppr~~~bdddddddddddddb~~~~~~~~~~~~~~~~~~~~~~",
+/* 41 */ "~~~~~~~~pppppppppppppp~~~~~~bdddddddddddb~~~~~~~~~~~~~~~~~~~~~~~",
+/* 42 */ "~~~~~~~~~~pppppppppp~~~~~~~~~bdddddddddb~~~~~~~~~~~~~~~~~~~~~~~~",
+/* 43 */ "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~bbbbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~",
+/* 44 */ "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+/* 45 */ "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+/* 46 */ "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+/* 47 */ "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+};
 
-static void wset_bg2(uint8_t *bg2, int x, int y, uint8_t t) {
-    if (x < 0 || y < 0 || x >= HEARTH_WORLD_W || y >= HEARTH_WORLD_H) return;
-    bg2[y * HEARTH_WORLD_W + x] = t;
-}
+/* 14 Major Globe Landmarks Across All 7 Continents */
+const HearthGlobeLandmark HEARTH_GLOBE_LANDMARKS[HEARTH_GLOBE_LANDMARK_COUNT] = {
+    /* Emerald Heartland (0..7) */
+    {  74u, 108u, REGION_HEARTLAND, ZONE_HOLLOW_GLADE,   22u, 14u,  0u, 1u, "Hollow Oak Gate" },
+    {  78u,  86u, REGION_HEARTLAND, ZONE_HAMLET,         10u, 16u,  1u, 1u, "Windmill Hamlet" },
+    { 104u,  82u, REGION_HEARTLAND, ZONE_SUNHILL_MARKET, 22u, 24u,  1u, 1u, "Sunhill Market" },
+    { 104u,  68u, REGION_HEARTLAND, ZONE_CASTLE_GATE,    22u, 24u,  2u, 1u, "Castle Aurelia" },
+    { 132u,  86u, REGION_HEARTLAND, ZONE_BRAMBLE_EDGE,    5u, 14u,  3u, 1u, "Bramblewood Crossing" },
+    { 130u, 106u, REGION_HEARTLAND, ZONE_SUNKEN_RUINS,    6u, 13u,  4u, 1u, "Sunken Watchtower" },
+    { 138u,  74u, REGION_HEARTLAND, ZONE_WHISKERBURGH,    4u, 14u,  1u, 1u, "Whiskerburgh" },
+    { 108u, 113u, REGION_HEARTLAND, ZONE_TIMBER_PIER,    22u,  6u,  5u, 1u, "Heartland Timber Pier" },
+    /* Suncrest Paradise (8) */
+    {  52u, 146u, REGION_PARADISE,  ZONE_CORAL_COVE,     22u,  8u,  6u, 1u, "Suncrest Coral Cove" },
+    /* Sands of Babana (9) */
+    { 132u, 154u, REGION_DESERT,    ZONE_BABANA_OASIS,   22u, 24u,  7u, 1u, "Oasis of Babana" },
+    /* Outer 4 Continents — Preview Landmarks (10..13) */
+    { 128u,  22u, REGION_FROSTMERE, 255u,                 0u,  0u,  8u, 0u, "Frostmere Noel Village" },
+    { 212u, 126u, REGION_CANOPY,    255u,                 0u,  0u,  9u, 0u, "Canopy Treetop Village" },
+    {  32u,  62u, REGION_VOLCANO,   255u,                 0u,  0u, 10u, 0u, "Cinderpeak Caldera Gate" },
+    { 220u,  62u, REGION_AETHERIS,  255u,                 0u,  0u, 11u, 0u, "Aetheris Citadel Spire" }
+};
 
-static void wfill_rect(uint8_t *bg1, uint8_t *col, int x0, int y0, int w, int h, uint8_t t, uint8_t c) {
-    int x, y;
-    for (y = y0; y < y0 + h; y++) {
-        for (x = x0; x < x0 + w; x++) {
-            wset_bg1(bg1, col, x, y, t, c);
-        }
+/* 24 Ambient Biome Fauna Sprites Streamed by Proximity on the Toroidal Globe */
+const HearthGlobeFauna HEARTH_GLOBE_FAUNA[HEARTH_GLOBE_FAUNA_COUNT] = {
+    /* Sands of Babana — Camels */
+    { 120u, 144u, SPR_FAUNA_CAMEL,   REGION_DESERT,    0u },
+    { 144u, 150u, SPR_FAUNA_CAMEL,   REGION_DESERT,   12u },
+    { 118u, 160u, SPR_FAUNA_CAMEL,   REGION_DESERT,   24u },
+    { 152u, 142u, SPR_FAUNA_CAMEL,   REGION_DESERT,   36u },
+    /* Suncrest Paradise — Tropical Monkeys & Camels/Pirates */
+    {  36u, 144u, SPR_FAUNA_MONKEY,  REGION_PARADISE,  4u },
+    {  64u, 154u, SPR_FAUNA_MONKEY,  REGION_PARADISE, 18u },
+    {  46u, 136u, SPR_FAUNA_MONKEY,  REGION_PARADISE, 30u },
+    {  62u, 138u, SPR_FAUNA_MONKEY,  REGION_PARADISE, 42u },
+    /* Frostmere North — Penguins */
+    { 100u,  18u, SPR_FAUNA_PENGUIN, REGION_FROSTMERE, 2u },
+    { 116u,  24u, SPR_FAUNA_PENGUIN, REGION_FROSTMERE,14u },
+    { 140u,  20u, SPR_FAUNA_PENGUIN, REGION_FROSTMERE,26u },
+    { 156u,  26u, SPR_FAUNA_PENGUIN, REGION_FROSTMERE,38u },
+    {  84u,  22u, SPR_FAUNA_PENGUIN, REGION_FROSTMERE,50u },
+    { 170u,  18u, SPR_FAUNA_PENGUIN, REGION_FROSTMERE, 8u },
+    /* Canopy Wilds — Jungle Monkeys */
+    { 200u, 118u, SPR_FAUNA_MONKEY,  REGION_CANOPY,    6u },
+    { 224u, 122u, SPR_FAUNA_MONKEY,  REGION_CANOPY,   20u },
+    { 204u, 136u, SPR_FAUNA_MONKEY,  REGION_CANOPY,   34u },
+    { 228u, 138u, SPR_FAUNA_MONKEY,  REGION_CANOPY,   48u },
+    /* Aetheris Citadel — Hovering Magitek Robots */
+    { 208u,  54u, SPR_FAUNA_ROBOT,   REGION_AETHERIS,  0u },
+    { 232u,  56u, SPR_FAUNA_ROBOT,   REGION_AETHERIS, 16u },
+    { 212u,  70u, SPR_FAUNA_ROBOT,   REGION_AETHERIS, 32u },
+    { 230u,  68u, SPR_FAUNA_ROBOT,   REGION_AETHERIS, 44u },
+    /* Cinderpeak Caldera — Obsidian Scouts */
+    {  24u,  54u, SPR_FAUNA_ROBOT,   REGION_VOLCANO,  10u },
+    {  40u,  70u, SPR_FAUNA_ROBOT,   REGION_VOLCANO,  28u }
+};
+
+static uint8_t macro_char_to_region(char c, uint8_t mx, uint8_t my) {
+    if (c == 'i' || c == 'I') return REGION_FROSTMERE;
+    if (c == 'v' || c == 'V' || c == 'l') return REGION_VOLCANO;
+    if (c == 't' || c == 'T') return REGION_AETHERIS;
+    if (c == 'j' || c == 'J') return REGION_CANOPY;
+    if (c == 'd' || c == 'o') return REGION_DESERT;
+    if (c == 'p' || c == 'r') return REGION_PARADISE;
+    if (c == 'g' || c == 'h' || c == 'f' || c == 'm') return REGION_HEARTLAND;
+    if (c == 'b') {
+        if (my >= 32u) return (mx < 22u) ? REGION_PARADISE : REGION_DESERT;
+        return REGION_HEARTLAND;
     }
+    /* Ocean / Shallows infer nearest continent band cleanly for seamless audio/palette transitions */
+    if (my <= 9u) return REGION_FROSTMERE;
+    if (my <= 22u) {
+        if (mx < 15u) return REGION_VOLCANO;
+        if (mx >= 46u) return REGION_AETHERIS;
+        return REGION_HEARTLAND;
+    }
+    if (my <= 30u) {
+        if (mx >= 44u) return REGION_CANOPY;
+        return REGION_HEARTLAND;
+    }
+    if (mx >= 44u && my <= 40u) return REGION_CANOPY;
+    if (mx < 22u) return REGION_PARADISE;
+    if (mx < 44u) return REGION_DESERT;
+    return REGION_HEARTLAND;
 }
 
-static void build_zone_evertale_world(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
-    int x, y, hash, rx;
+uint8_t hearth_globe_atlas_cell(uint8_t mx, uint8_t my) {
+    char c;
+    mx = (uint8_t)(mx & 63u);
+    my = (uint8_t)(my % HEARTH_ATLAS_H);
+    c = GLOBE_MACRO_ROWS[my][mx];
+    if (c == '~') return 0u; /* Deep Cobalt Ocean */
+    if (c == 's') return 1u; /* Turquoise Shallows (Raftable) */
+    if (c == 'r') return 2u; /* Coral Reef Shoals (Raftable) */
+    if (c == 'g' || c == 'h' || c == 'f' || c == 'm') return 3u; /* Emerald Heartland */
+    if (c == 'b') return (my >= 32u) ? ((mx < 22u) ? 5u : 4u) : 3u;
+    if (c == 'd' || c == 'o') return 4u; /* Sands of Babana */
+    if (c == 'p') return 5u; /* Suncrest Paradise */
+    if (c == 'i' || c == 'I') return 6u; /* Frostmere North */
+    if (c == 'j' || c == 'J') return 7u; /* Canopy Wilds */
+    if (c == 'v' || c == 'V' || c == 'l') return 8u; /* Cinderpeak Caldera */
+    if (c == 't' || c == 'T') return 9u; /* Aetheris Citadel */
+    return 0u;
+}
 
-    hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAX_MAP_CELLS);
+uint8_t hearth_globe_region_at(uint16_t tx, uint16_t ty) {
+    uint8_t mx = (uint8_t)((tx & 255u) >> 2);
+    uint8_t my = (uint8_t)((ty % HEARTH_GLOBE_H) >> 2);
+    return macro_char_to_region(GLOBE_MACRO_ROWS[my][mx], mx, my);
+}
 
-    /* 1. Fill surrounding storybook ocean first */
-    wfill_rect(bg1, col, 0, 0, HEARTH_WORLD_W, HEARTH_WORLD_H, T_WORLD_OCEAN, COL_WATER);
+void hearth_globe_cell(uint16_t tx, uint16_t ty, uint8_t *out_bg1, uint8_t *out_bg2, uint8_t *out_col, uint8_t *out_region) {
+    uint16_t x = (uint16_t)(tx & 255u);
+    uint16_t y = (uint16_t)(ty % HEARTH_GLOBE_H);
+    uint8_t  mx = (uint8_t)(x >> 2);
+    uint8_t  my = (uint8_t)(y >> 2);
+    uint8_t  lx = (uint8_t)(x & 3u);
+    uint8_t  ly = (uint8_t)(y & 3u);
+    uint8_t  hash = (uint8_t)((x * 37u + y * 53u) & 15u);
+    char     c = GLOBE_MACRO_ROWS[my][mx];
+    uint8_t  bg1 = T_WORLD_OCEAN;
+    uint8_t  bg2 = O_NONE;
+    uint8_t  col = COL_WATER;
+    uint8_t  reg = macro_char_to_region(c, mx, my);
 
-    /* 2. Sculpt main Evertale continent coastline with sandy beaches & emerald plains */
-    for (y = 4; y < HEARTH_WORLD_H - 4; y++) {
-        for (x = 5; x < HEARTH_WORLD_W - 5; x++) {
-            int dx = x - 44;
-            int dy = y - 28;
-            int edge = (dx * dx) / 36 + (dy * dy) / 15;
-            int wobble = ((x * 13 + y * 29) & 7) - 3;
-            int sw_dx = x - 18;
-            int sw_dy = y - 43;
-            int sw_edge = (sw_dx * sw_dx) / 4 + (sw_dy * sw_dy);
-            int in_continent = (edge + wobble < 42) || (sw_edge + (wobble / 2) < 42);
-            if (in_continent) {
-                int is_beach = ((edge + wobble >= 37) && (sw_edge + (wobble / 2) >= 34));
-                if (is_beach) {
-                    wset_bg1(bg1, col, x, y, T_WORLD_BEACH, COL_WALKABLE);
-                } else {
-                    hash = (x * 37 + y * 53) & 15;
-                    if (hash == 2 || hash == 10)      wset_bg1(bg1, col, x, y, T_GRASS_ALT, COL_WALKABLE);
-                    else if (hash == 7)               wset_bg1(bg1, col, x, y, T_FLOWERS,   COL_WALKABLE);
-                    else if (hash == 13 && y < 34)    wset_bg1(bg1, col, x, y, T_WORLD_HILL, COL_WALKABLE);
-                    else                              wset_bg1(bg1, col, x, y, T_GRASS,     COL_WALKABLE);
-                }
+    /* 1. Base macro-biome decode (0 bytes RAM, O(1)) */
+    if (c == '~') {
+        bg1 = T_WORLD_OCEAN;   col = COL_WATER;
+    } else if (c == 's') {
+        bg1 = T_WORLD_SHALLOW; col = COL_SHALLOW;
+    } else if (c == 'r') {
+        bg1 = ((hash & 3u) == 0u) ? T_WORLD_CORAL : T_WORLD_SHALLOW;
+        col = COL_SHALLOW;
+    } else if (c == 'b') {
+        bg1 = T_WORLD_BEACH;   col = COL_WALKABLE;
+    } else if (c == 'g') {
+        if (hash == 2u || hash == 10u) bg1 = T_GRASS_ALT;
+        else if (hash == 7u)           bg1 = T_FLOWERS;
+        else                           bg1 = T_GRASS;
+        col = COL_WALKABLE;
+    } else if (c == 'h') {
+        bg1 = ((hash & 3u) == 0u) ? T_GRASS : T_WORLD_HILL;
+        col = COL_WALKABLE;
+    } else if (c == 'f') {
+        bg1 = T_WORLD_FOREST;  col = COL_SOLID;
+    } else if (c == 'm') {
+        bg1 = T_WORLD_PEAK;    col = COL_SOLID;
+    } else if (c == 'd') {
+        bg1 = (hash == 5u) ? T_WORLD_BEACH : T_WORLD_SAND;
+        col = COL_WALKABLE;
+    } else if (c == 'o') {
+        if (hash == 1u && (lx == 0u || lx == 3u)) {
+            bg1 = T_PALM_TREE; col = COL_SOLID;
+        } else {
+            bg1 = (hash == 4u) ? T_FLOWERS : T_GRASS;
+            col = COL_WALKABLE;
+        }
+    } else if (c == 'p') {
+        if (hash == 3u && ly == 0u && lx == 2u) {
+            bg1 = T_PALM_TREE; col = COL_SOLID;
+        } else if (hash == 9u) {
+            bg1 = T_GRASS;     col = COL_WALKABLE;
+        } else {
+            bg1 = T_WORLD_BEACH; col = COL_WALKABLE;
+        }
+    } else if (c == 'i') {
+        bg1 = (hash == 6u) ? T_WORLD_HILL : T_WORLD_SNOW;
+        col = COL_WALKABLE;
+    } else if (c == 'I') {
+        bg1 = T_WORLD_PEAK;    col = COL_SOLID;
+    } else if (c == 'j') {
+        bg1 = (hash == 4u) ? T_FLOWERS : T_WORLD_JUNGLE;
+        col = COL_WALKABLE;
+    } else if (c == 'J') {
+        bg1 = T_WORLD_FOREST;  col = COL_SOLID;
+    } else if (c == 'v') {
+        bg1 = (hash == 2u) ? T_BOULDER : T_ROCKY_PATH;
+        col = (hash == 2u) ? COL_SOLID : COL_WALKABLE;
+    } else if (c == 'V') {
+        bg1 = T_WORLD_PEAK;    col = COL_SOLID;
+    } else if (c == 'l') {
+        bg1 = T_WORLD_LAVA;    col = COL_LAVA;
+    } else if (c == 't') {
+        bg1 = (hash == 5u) ? T_COBBLE : T_WORLD_TECH;
+        col = COL_WALKABLE;
+    } else if (c == 'T') {
+        bg1 = T_WORLD_CASTLE;  col = COL_SOLID;
+    }
+
+    /* 2. Emerald Heartland Roads & Landmark Clearings (guaranteed open on-foot paths!) */
+    if (x >= 68u && x <= 148u && y >= 64u && y <= 118u) {
+        /* Hollow Oak Clearing (72..82, 106..113) + North Road to Windmill Hamlet (77..79, 86..111) */
+        if (x >= 72u && x <= 82u && y >= 106u && y <= 113u) {
+            bg1 = (y >= 110u && y <= 111u) ? T_DIRT : T_GRASS; col = COL_WALKABLE;
+        }
+        if (x >= 77u && x <= 79u && y >= 86u && y <= 111u) {
+            bg1 = T_DIRT; col = COL_WALKABLE;
+        }
+        /* Main West-East Highway: Windmill Hamlet (78,87) -> Sunhill (104,87) -> Bramblewood (132,87) */
+        if (x >= 77u && x <= 135u && y >= 86u && y <= 88u) {
+            bg1 = T_DIRT; col = COL_WALKABLE;
+        }
+        /* Central Royal Cobble Avenue: Castle Aurelia (104,69) -> Sunhill (104,82) -> Timber Pier (108,114) */
+        if (x >= 103u && x <= 105u && y >= 69u && y <= 104u) {
+            bg1 = T_COBBLE; col = COL_WALKABLE;
+        }
+        if (x >= 104u && x <= 110u && y >= 102u && y <= 104u) {
+            bg1 = T_DIRT; col = COL_WALKABLE;
+        }
+        if (x >= 107u && x <= 109u && y >= 102u && y <= 114u) {
+            bg1 = T_DIRT; col = COL_WALKABLE;
+        }
+        /* Southern Meadow Connector: Hollow Oak (78,110) -> Timber Pier (108,110) -> Watchtower (130,108) */
+        if (x >= 74u && x <= 132u && y >= 109u && y <= 111u) {
+            bg1 = T_DIRT; col = COL_WALKABLE;
+        }
+        /* East Bank Highway: Watchtower (130,108) -> Bramblewood (132,86) -> Whiskerburgh (138,75) */
+        if (x >= 130u && x <= 132u && y >= 75u && y <= 109u) {
+            bg1 = T_DIRT; col = COL_WALKABLE;
+        }
+        if (x >= 131u && x <= 140u && y >= 74u && y <= 76u) {
+            bg1 = T_DIRT; col = COL_WALKABLE;
+        }
+        /* Heartland Timber Pier Wooden Jetty into Turquoise Bay (107..109, 114..116) */
+        if (x >= 107u && x <= 109u && y >= 114u && y <= 116u) {
+            bg1 = T_DOCK_PIER; col = COL_WALKABLE;
+        }
+        /* Hollow Oak Gate Landmark (74, 108) */
+        if (x == 74u && y == 108u) { bg1 = T_HOLLOW_OAK; col = COL_SOLID; }
+        if (y == 107u && x >= 73u && x <= 75u) { bg2 = O_OAK_CROWN; }
+        if (x == 74u && y == 109u) { bg1 = T_SHRINE_RUNE; col = COL_WALKABLE; }
+        /* Windmill Hamlet (77..79, 84..85) */
+        if (x >= 77u && x <= 79u && y >= 84u && y <= 85u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
+        /* Sunhill Market (102..106, 80..81) with walkable bypasses */
+        if (x >= 102u && x <= 106u && y >= 80u && y <= 81u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
+        if ((x == 101u || x == 107u) && y >= 79u && y <= 83u) { bg1 = T_COBBLE; col = COL_WALKABLE; }
+        /* Castle Aurelia (101..107, 65..67) */
+        if (x >= 101u && x <= 107u && y >= 65u && y <= 67u) { bg1 = T_WORLD_CASTLE; col = COL_SOLID; }
+        /* Bramblewood Crossing (132, 85) */
+        if (x == 132u && y == 85u) { bg1 = T_SHRINE_PILLAR; col = COL_SOLID; }
+        if (x == 132u && y == 86u) { bg1 = T_SHRINE_RUNE;   col = COL_WALKABLE; }
+        /* Sunken Watchtower (129..131, 104..105) */
+        if (x >= 129u && x <= 131u && y >= 104u && y <= 105u) { bg1 = T_WORLD_RUINS; col = COL_SOLID; }
+        /* Whiskerburgh (136..140, 72..73) */
+        if (x >= 136u && x <= 140u && y >= 72u && y <= 73u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
+    }
+
+    /* 3. Suncrest Coral Cove (52, 146) & Oasis of Babana (132, 154) Clearings & Docks */
+    if (x >= 49u && x <= 55u && y >= 143u && y <= 149u) {
+        bg1 = T_WORLD_BEACH; col = COL_WALKABLE;
+        if (x >= 51u && x <= 53u && y >= 144u && y <= 145u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
+        if (x == 52u && y == 147u) { bg1 = T_DOCK_PIER; col = COL_WALKABLE; }
+    }
+    if (x >= 129u && x <= 135u && y >= 151u && y <= 157u) {
+        bg1 = T_GRASS; col = COL_WALKABLE;
+        if (x >= 131u && x <= 133u && y >= 152u && y <= 153u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
+        if ((x == 129u || x == 135u) && y == 153u) { bg1 = T_PALM_TREE; col = COL_SOLID; }
+    }
+
+    /* 4. Outer 4 Continents Preview Landmark Plazas (Frostmere, Canopy, Cinderpeak, Aetheris) */
+    if (x >= 126u && x <= 130u && y >= 20u && y <= 24u) {
+        bg1 = T_WORLD_SNOW; col = COL_WALKABLE;
+        if (x >= 127u && x <= 129u && y == 21u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
+    }
+    if (x >= 210u && x <= 214u && y >= 124u && y <= 128u) {
+        bg1 = T_WORLD_JUNGLE; col = COL_WALKABLE;
+        if (x >= 211u && x <= 213u && y == 125u) { bg1 = T_DOCK_PIER; col = COL_SOLID; }
+    }
+    if (x >= 30u && x <= 34u && y >= 60u && y <= 64u) {
+        bg1 = T_ROCKY_PATH; col = COL_WALKABLE;
+        if (x >= 31u && x <= 33u && y == 61u) { bg1 = T_WORLD_RUINS; col = COL_SOLID; }
+    }
+    if (x >= 218u && x <= 222u && y >= 60u && y <= 64u) {
+        bg1 = T_WORLD_TECH; col = COL_WALKABLE;
+        if (x >= 219u && x <= 221u && y == 61u) { bg1 = T_WORLD_CASTLE; col = COL_SOLID; }
+    }
+
+    if (out_bg1)    *out_bg1 = bg1;
+    if (out_bg2)    *out_bg2 = bg2;
+    if (out_col)    *out_col = col;
+    if (out_region) *out_region = reg;
+}
+
+/* ============================================================================
+ * ZONE 13: HEARTLAND TIMBER PIER (Shipwright Orin's Coastal Raft Yard)
+ * ============================================================================ */
+static void build_zone_timber_pier(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
+    int x, y, hash;
+    hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);
+    for (y = 0; y < HEARTH_MAP_H; y++) {
+        for (x = 0; x < HEARTH_MAP_W; x++) {
+            hash = (x * 29 + y * 43) & 15;
+            if (y < 10) {
+                set_bg1(bg1, col, x, y, (hash == 4) ? T_FLOWERS : T_GRASS, COL_WALKABLE);
+            } else if (y < 17) {
+                set_bg1(bg1, col, x, y, T_WORLD_BEACH, COL_WALKABLE);
+            } else {
+                set_bg1(bg1, col, x, y, T_WORLD_SHALLOW, COL_SHALLOW);
             }
         }
     }
+    /* North & Side Timber Borders with North Highway Exit to Evertale Globe */
+    for (x = 0; x < HEARTH_MAP_W; x++) {
+        if (x < 19 || x > 24) {
+            set_bg1(bg1, col, x, 0, T_WORLD_FOREST, COL_SOLID);
+            set_bg1(bg1, col, x, 1, T_WORLD_FOREST, COL_SOLID);
+        }
+    }
+    for (y = 0; y < 17; y++) {
+        set_bg1(bg1, col, 0, y, T_BOULDER, COL_SOLID);
+        set_bg1(bg1, col, 1, y, T_BOULDER, COL_SOLID);
+        set_bg1(bg1, col, HEARTH_MAP_W - 1, y, T_BOULDER, COL_SOLID);
+        set_bg1(bg1, col, HEARTH_MAP_W - 2, y, T_BOULDER, COL_SOLID);
+    }
+    /* North Road -> Shipwright Orin's Cottage -> Sun-Cedar Timber Pier! */
+    fill_rect(bg1, col, 20, 0, 4, 14, T_DIRT, COL_WALKABLE);
+    place_cottage(bg1, bg2, col, 10, 4);
+    fill_rect(bg1, col, 19, 14, 6, 10, T_DOCK_PIER, COL_WALKABLE);
+    fill_rect(bg1, col, 16, 21, 12, 3, T_DOCK_PIER, COL_WALKABLE);
+    set_bg1(bg1, col, 18, 13, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 25, 13, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 18, 8,  T_SIGNPOST,     COL_SOLID);
+    /* Decorative Coastal Boulders & Palms */
+    set_bg1(bg1, col, 6,  14, T_BOULDER,   COL_SOLID);
+    set_bg1(bg1, col, 36, 14, T_BOULDER,   COL_SOLID);
+    set_bg1(bg1, col, 33, 7,  T_PALM_TREE, COL_SOLID);
+    set_bg1(bg1, col, 37, 9,  T_PALM_TREE, COL_SOLID);
+}
 
-    /* 3. Northern Alpine Crown Mountains framing Castle Aurelia */
-    for (x = 12; x <= 74; x++) {
-        int ridge_h = (x >= 36 && x <= 52) ? 7 : ((x < 24 || x > 62) ? 9 : 8);
-        for (y = 4; y <= ridge_h; y++) {
-            if (bg1[y * HEARTH_WORLD_W + x] != T_WORLD_OCEAN) {
-                wset_bg1(bg1, col, x, y, T_WORLD_PEAK, COL_SOLID);
+/* ============================================================================
+ * ZONE 14: SUNCREST CORAL COVE (Tropical Paradise Beach, Coral Reef & Pirate Pier)
+ * ============================================================================ */
+static void build_zone_coral_cove(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
+    int x, y, hash;
+    hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);
+    for (y = 0; y < HEARTH_MAP_H; y++) {
+        for (x = 0; x < HEARTH_MAP_W; x++) {
+            hash = (x * 19 + y * 53) & 15;
+            if (y < 7) {
+                set_bg1(bg1, col, x, y, (hash == 3) ? T_WORLD_CORAL : T_WORLD_SHALLOW, COL_SHALLOW);
+            } else if (y < 19) {
+                set_bg1(bg1, col, x, y, T_WORLD_BEACH, COL_WALKABLE);
+            } else {
+                set_bg1(bg1, col, x, y, (hash == 7) ? T_FLOWERS : T_GRASS, COL_WALKABLE);
             }
         }
     }
-    /* Western & Southern Scenic Mountain Spurs */
-    wfill_rect(bg1, col, 8,  34, 4, 5, T_WORLD_PEAK, COL_SOLID);
-    wfill_rect(bg1, col, 28, 44, 6, 3, T_WORLD_PEAK, COL_SOLID);
-    wfill_rect(bg1, col, 55, 16, 4, 3, T_WORLD_PEAK, COL_SOLID);
-
-    /* 4. Western Mirror Lake (beside Windmill Hamlet) & Smooth Winding Sapphire River */
-    wfill_rect(bg1, col, 10, 21, 7, 5, T_WATER, COL_WATER);
-    wfill_rect(bg1, col, 11, 20, 5, 1, T_WORLD_BEACH, COL_WALKABLE);
-    for (y = 9; y <= 50; y++) {
-        if (y < 22)      rx = 54;
-        else if (y < 28) rx = 56;
-        else if (y < 36) rx = 57;
-        else             rx = 58;
-        wset_bg1(bg1, col, rx,     y, T_WATER, COL_WATER);
-        wset_bg1(bg1, col, rx + 1, y, T_WATER, COL_WATER);
+    /* North Entry Pier from Turquoise Lagoon */
+    fill_rect(bg1, col, 20, 0, 4, 10, T_DOCK_PIER, COL_WALKABLE);
+    /* Coral Lagoon Cove on East Side for Tropical Fishing! */
+    fill_rect(bg1, col, 31, 10, 11, 8, T_WORLD_SHALLOW, COL_WATER);
+    fill_rect(bg1, col, 34, 12, 5,  4, T_WORLD_CORAL,   COL_WATER);
+    fill_rect(bg1, col, 27, 13, 5,  2, T_DOCK_PIER,     COL_WALKABLE);
+    /* Beachside Cabanas & Palm Grove */
+    place_cottage(bg1, bg2, col, 7,  11);
+    place_cottage(bg1, bg2, col, 16, 19);
+    set_bg1(bg1, col, 5,  18, T_PALM_TREE, COL_SOLID);
+    set_bg1(bg1, col, 12, 22, T_PALM_TREE, COL_SOLID);
+    set_bg1(bg1, col, 29, 21, T_PALM_TREE, COL_SOLID);
+    set_bg1(bg1, col, 36, 22, T_PALM_TREE, COL_SOLID);
+    set_bg1(bg1, col, 19, 11, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 24, 11, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 15, 16, T_SIGNPOST,     COL_SOLID);
+    /* Perimeter edges */
+    for (y = 7; y < HEARTH_MAP_H; y++) {
+        set_bg1(bg1, col, 0, y, T_PALM_TREE, COL_SOLID);
+        set_bg1(bg1, col, HEARTH_MAP_W - 1, y, T_PALM_TREE, COL_SOLID);
     }
-    /* Tributary creek from Mirror Lake flowing south-east */
-    for (x = 17; x <= 32; x++) {
-        int cy = 24 + (x - 17) / 4;
-        wset_bg1(bg1, col, x, cy, T_WATER, COL_WATER);
+    for (x = 0; x < HEARTH_MAP_W; x++) {
+        set_bg1(bg1, col, x, HEARTH_MAP_H - 1, T_WORLD_FOREST, COL_SOLID);
+        set_bg1(bg1, col, x, HEARTH_MAP_H - 2, T_WORLD_FOREST, COL_SOLID);
     }
-    for (y = 28; y <= 41; y++) {
-        wset_bg1(bg1, col, 32, y, T_WATER, COL_WATER);
+}
+
+/* ============================================================================
+ * ZONE 15: OASIS OF BABANA (Sands of Babana Desert Outpost & Golden Babana Stall)
+ * ============================================================================ */
+static void build_zone_babana_oasis(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
+    int x, y, hash;
+    hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);
+    for (y = 0; y < HEARTH_MAP_H; y++) {
+        for (x = 0; x < HEARTH_MAP_W; x++) {
+            hash = (x * 31 + y * 47) & 15;
+            set_bg1(bg1, col, x, y, (hash == 6) ? T_WORLD_BEACH : T_WORLD_SAND, COL_WALKABLE);
+        }
     }
-
-    /* 5. Lush Storybook Forest Belts (Emerald Overworld Canopy Clusters!) */
-    /* Southwest Hollow Oak Grove: scenic trees frame the WEST & NORTHWEST only,
-     * opening wide eastward & northward onto sunlit roads so Rowan walks right out! */
-    wfill_rect(bg1, col, 10, 41, 4, 6, T_WORLD_FOREST, COL_SOLID);
-    wfill_rect(bg1, col, 13, 40, 5, 2, T_WORLD_FOREST, COL_SOLID);
-    wfill_rect(bg1, col, 14, 42, 9, 6, T_GRASS, COL_WALKABLE); /* Wide sunlit glade around Hollow Oak */
-    wset_bg1(bg1, col, 19, 43, T_FLOWERS, COL_WALKABLE);
-    wset_bg1(bg1, col, 21, 44, T_FLOWERS, COL_WALKABLE);
-    /* Central Emerald Wood between Hamlet & Sunhill */
-    wfill_rect(bg1, col, 26, 17, 7, 5, T_WORLD_FOREST, COL_SOLID);
-    /* Deep Bramblewood Forest (Eastern Continent!) */
-    wfill_rect(bg1, col, 63, 21, 13, 9, T_WORLD_FOREST, COL_SOLID);
-    wfill_rect(bg1, col, 66, 25, 4, 5, T_GRASS, COL_WALKABLE); /* Bramblewood Entrance Clearing (open south too) */
-    /* Southern Pine & Oak Groves */
-    wfill_rect(bg1, col, 37, 36, 8, 5, T_WORLD_FOREST, COL_SOLID);
-    wfill_rect(bg1, col, 48, 41, 6, 4, T_WORLD_FOREST, COL_SOLID);
-
-    /* 6. Rolling Highland Hills cradling Sunhill Market & Castle Aurelia */
-    wfill_rect(bg1, col, 38, 19, 13, 7, T_WORLD_HILL, COL_WALKABLE);
-    wfill_rect(bg1, col, 39, 9,  11, 6, T_WORLD_HILL, COL_WALKABLE);
-
-    /* 7. Winding Golden Dirt & Cobble Roads + Stone Bridges (inviting open discovery!) */
-    /* Hollow Oak (16,45..46) -> East out of the grove -> North Crossroads (22,35) & Windmill Hamlet (18,28) */
-    wfill_rect(bg1, col, 16, 45, 9, 2, T_DIRT, COL_WALKABLE); /* Wide golden path leading east from Rowan's arrival */
-    wfill_rect(bg1, col, 22, 34, 3, 12, T_DIRT, COL_WALKABLE); /* Main northbound avenue out of Hollow Oak Grove */
-    wfill_rect(bg1, col, 18, 36, 2, 10, T_DIRT, COL_WALKABLE); /* Scenic woodland trail north from Hollow Oak */
-    wfill_rect(bg1, col, 17, 36, 8, 2, T_DIRT, COL_WALKABLE);  /* Crossroads connector */
-    wfill_rect(bg1, col, 17, 28, 2, 10, T_DIRT, COL_WALKABLE); /* Road up to Windmill Hamlet */
-    /* Crossroads (24,34) -> East across Creek Bridge (32,34) -> Central Meadow (44,34) */
-    wfill_rect(bg1, col, 24, 34, 22, 2, T_DIRT, COL_WALKABLE);
-    wset_bg1(bg1, col, 32, 34, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 32, 35, T_BRIDGE, COL_WALKABLE);
-    /* Windmill Hamlet (19,27) -> Northern Creek Bridge (29..32,27) -> Sunhill Market (44,27) */
-    wfill_rect(bg1, col, 19, 27, 26, 2, T_DIRT, COL_WALKABLE);
-    wset_bg1(bg1, col, 29, 27, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 30, 27, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 31, 27, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 32, 27, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 32, 28, T_BRIDGE, COL_WALKABLE);
-    /* Central Avenue: South Meadow -> Sunhill Market (44,24) -> Cobble Terrace -> Castle Aurelia (44,13) */
-    wfill_rect(bg1, col, 43, 14, 3, 21, T_COBBLE, COL_WALKABLE);
-    wfill_rect(bg1, col, 41, 20, 1, 5,  T_COBBLE, COL_WALKABLE); /* West Sunhill bypass to Castle Aurelia */
-    wfill_rect(bg1, col, 47, 20, 1, 5,  T_COBBLE, COL_WALKABLE); /* East Sunhill bypass to Castle Aurelia */
-    wfill_rect(bg1, col, 41, 20, 7, 1,  T_COBBLE, COL_WALKABLE); /* North Sunhill terrace linking to royal avenue */
-    /* Eastern Road: Sunhill (46,25) -> Sapphire River Bridge (55..58,25..26) -> Bramblewood (68,26) */
-    wfill_rect(bg1, col, 46, 25, 22, 2, T_DIRT, COL_WALKABLE);
-    wset_bg1(bg1, col, 55, 25, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 56, 25, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 57, 25, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 58, 25, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 55, 26, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 56, 26, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 57, 26, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 58, 26, T_BRIDGE, COL_WALKABLE);
-    /* Northeast Road: East Bank (61,25) -> North -> Whiskerburgh (72,15) */
-    wfill_rect(bg1, col, 61, 15, 2, 11, T_DIRT, COL_WALKABLE);
-    wfill_rect(bg1, col, 61, 15, 12, 2, T_DIRT, COL_WALKABLE);
-    /* Southeast Coastal Road: South Bridge (56..59,34..35) -> Sunken Watchtower (66,44) */
-    wfill_rect(bg1, col, 45, 34, 16, 2, T_DIRT, COL_WALKABLE);
-    wfill_rect(bg1, col, 59, 34, 2, 11, T_DIRT, COL_WALKABLE);
-    wfill_rect(bg1, col, 59, 44, 8, 2, T_DIRT, COL_WALKABLE);
-    wset_bg1(bg1, col, 56, 34, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 57, 34, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 58, 34, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 59, 34, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 56, 35, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 57, 35, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 58, 35, T_BRIDGE, COL_WALKABLE);
-    wset_bg1(bg1, col, 59, 35, T_BRIDGE, COL_WALKABLE);
-
-    /* 8. IMPRESSIVE MULTI-TILE STORYBOOK LANDMARKS (Tile Clusters + High-Detail Overlays!) */
-    /* A. Hollow Oak Gate (Southwest Grove: 15..17, 43..44) */
-    wset_bg1(bg1, col, 16, 43, T_HOLLOW_OAK, COL_SOLID);
-    wset_bg2(bg2, 15, 42, O_OAK_CROWN);
-    wset_bg2(bg2, 16, 42, O_OAK_CROWN);
-    wset_bg2(bg2, 17, 42, O_OAK_CROWN);
-    wset_bg1(bg1, col, 16, 44, T_SHRINE_RUNE, COL_WALKABLE);
-
-    /* B. Windmill Hamlet (Western Lakeside Cluster: 17..19, 26..28) */
-    wfill_rect(bg1, col, 17, 26, 3, 2, T_WORLD_TOWN, COL_SOLID);
-    wset_bg1(bg1, col, 18, 28, T_COBBLE, COL_WALKABLE);
-
-    /* C. Sunhill Market (Central-North Terraced Hilltop Market Town: 42..46, 21..23) */
-    wfill_rect(bg1, col, 42, 21, 5, 3, T_WORLD_TOWN, COL_SOLID);
-    wset_bg1(bg1, col, 44, 24, T_COBBLE, COL_WALKABLE);
-
-    /* D. Castle Aurelia (Northern Grand Multi-Spire Royal Citadel: 41..47, 9..12) */
-    wfill_rect(bg1, col, 41, 9,  7, 4, T_WORLD_CASTLE, COL_SOLID);
-    wset_bg1(bg1, col, 44, 13, T_COBBLE, COL_WALKABLE);
-
-    /* E. Bramblewood Crossing (Eastern Dense Woodland Archway: 67..69, 23..25) */
-    wset_bg1(bg1, col, 68, 24, T_SHRINE_PILLAR, COL_SOLID);
-    wset_bg1(bg1, col, 68, 25, T_SHRINE_RUNE,   COL_WALKABLE);
-
-    /* F. Sunken Watchtower (Southeast Coastal Cliffside Ruins: 65..68, 41..43) */
-    wfill_rect(bg1, col, 65, 41, 4, 2, T_WORLD_RUINS, COL_SOLID);
-    wset_bg1(bg1, col, 66, 43, T_SHRINE_FLOOR, COL_WALKABLE);
-
-    /* G. Whiskerburgh Mouse Borough (Northeast Riverbank Town: 70..74, 11..13) */
-    wfill_rect(bg1, col, 70, 11, 5, 3, T_WORLD_TOWN, COL_SOLID);
-    wset_bg1(bg1, col, 72, 14, T_COBBLE, COL_WALKABLE);
+    /* Sandstone Canyon Rim */
+    for (x = 0; x < HEARTH_MAP_W; x++) {
+        set_bg1(bg1, col, x, 0, T_CLIFF_WALL, COL_SOLID);
+        set_bg1(bg1, col, x, 1, T_CLIFF_LEDGE, COL_SOLID);
+        if (x < 19 || x > 24) {
+            set_bg1(bg1, col, x, HEARTH_MAP_H - 1, T_CLIFF_WALL, COL_SOLID);
+            set_bg1(bg1, col, x, HEARTH_MAP_H - 2, T_CLIFF_WALL, COL_SOLID);
+        }
+    }
+    for (y = 0; y < HEARTH_MAP_H; y++) {
+        set_bg1(bg1, col, 0, y, T_CLIFF_WALL, COL_SOLID);
+        set_bg1(bg1, col, 1, y, T_CLIFF_WALL, COL_SOLID);
+        set_bg1(bg1, col, HEARTH_MAP_W - 1, y, T_CLIFF_WALL, COL_SOLID);
+        set_bg1(bg1, col, HEARTH_MAP_W - 2, y, T_CLIFF_WALL, COL_SOLID);
+    }
+    /* Lush Emerald Oasis Ring & Shimmering Spring */
+    fill_rect(bg1, col, 11, 6,  22, 13, T_GRASS, COL_WALKABLE);
+    fill_rect(bg1, col, 17, 9,  10, 5,  T_WORLD_SHALLOW, COL_WATER);
+    fill_rect(bg1, col, 20, 18, 4,  10, T_COBBLE, COL_WALKABLE);
+    /* Desert Pavilion & Babana Market */
+    place_cottage(bg1, bg2, col, 7,  6);
+    place_cottage(bg1, bg2, col, 30, 6);
+    set_bg1(bg1, col, 13, 8,  T_PALM_TREE, COL_SOLID);
+    set_bg1(bg1, col, 29, 14, T_PALM_TREE, COL_SOLID);
+    set_bg1(bg1, col, 12, 16, T_PALM_TREE, COL_SOLID);
+    set_bg1(bg1, col, 32, 19, T_PALM_TREE, COL_SOLID);
+    set_bg1(bg1, col, 18, 17, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 25, 17, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 18, 22, T_SIGNPOST,     COL_SOLID);
 }
 
 /* ============================================================================
@@ -1348,9 +1683,9 @@ static void build_zone_sunken_ruins(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
 
 void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t *col, uint8_t *out_w, uint8_t *out_h) {
     if (zone_id == ZONE_EVERTALE_WORLD) {
-        if (out_w) *out_w = (uint8_t)HEARTH_WORLD_W;
-        if (out_h) *out_h = (uint8_t)HEARTH_WORLD_H;
-        build_zone_evertale_world(bg1, bg2, col);
+        /* 256x192 Globe streams directly from ROM via hearth_globe_cell() — zero RAM fill needed! */
+        if (out_w) *out_w = (uint8_t)HEARTH_MAP_W;
+        if (out_h) *out_h = (uint8_t)HEARTH_MAP_H;
         return;
     }
     if (out_w) *out_w = (uint8_t)HEARTH_MAP_W;
@@ -1377,16 +1712,22 @@ void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t 
         build_zone_bramble_edge(bg1, bg2, col);
     } else if (zone_id == ZONE_SUNKEN_RUINS) {
         build_zone_sunken_ruins(bg1, bg2, col);
+    } else if (zone_id == ZONE_TIMBER_PIER) {
+        build_zone_timber_pier(bg1, bg2, col);
+    } else if (zone_id == ZONE_CORAL_COVE) {
+        build_zone_coral_cove(bg1, bg2, col);
+    } else if (zone_id == ZONE_BABANA_OASIS) {
+        build_zone_babana_oasis(bg1, bg2, col);
     } else {
         hearth_build_sandbox_map(bg1, bg2, col);
     }
 }
 
 /* ============================================================================
- * 7-ACT ILLUSTRATED OPENING CINEMA SCRIPT (23 Unhurried Story Beats)
+ * 6-ACT ILLUSTRATED OPENING CINEMA SCRIPT (21 Story Beats — Ends on Pip's Promise)
  * ============================================================================ */
 const HearthCinemaBeat HEARTH_CINEMA_SCRIPT[HEARTH_CINEMA_BEAT_COUNT] = {
-    /* ACT I: Alderbrook Station at Dusk (Age 5) */
+    /* ACT I: Alderbrook Station at Dusk */
     { 1u, CG_ALDERBROOK_DUSK, BGM_ALDERBROOK, CIN_CAM_PAN_RIGHT, CIN_FX_STEAM_DUSK, SFX_TEXT_ELDER,
       "ACT I - ALDERBROOK STATION", "",
       "High in the timberline pines sits Alderbrook,",
@@ -1394,13 +1735,13 @@ const HearthCinemaBeat HEARTH_CINEMA_SCRIPT[HEARTH_CINEMA_BEAT_COUNT] = {
     { 1u, CG_ALDERBROOK_DUSK, BGM_ALDERBROOK, CIN_CAM_PAN_RIGHT, CIN_FX_STEAM_DUSK, SFX_TEXT_ELDER,
       "ACT I - ALDERBROOK STATION", "",
       "Ever since Rowan's parents vanished in the mist,",
-      "Grandma Mara's hearth has been his whole world." },
+      "Grandma Mara's hillside cottage has been his home." },
     { 1u, CG_ALDERBROOK_DUSK, BGM_ALDERBROOK, CIN_CAM_PAN_RIGHT, CIN_FX_STEAM_DUSK, SFX_TEXT_ELDER,
       "ACT I - ALDERBROOK STATION", "GRANDMA MARA",
-      "Hear that whistle, sparrow? The 6:15 express!",
+      "Hear that whistle, Rowan? The 6:15 express!",
       "Come inside before the ridge fog rolls in." },
     { 1u, CG_ALDERBROOK_DUSK, BGM_ALDERBROOK, CIN_CAM_PAN_RIGHT, CIN_FX_STEAM_DUSK, SFX_TEXT_HERO,
-      "ACT I - ALDERBROOK STATION", "ROWAN (AGE 5)",
+      "ACT I - ALDERBROOK STATION", "YOUNG ROWAN",
       "One more minute, Grandma! Mido spotted a",
       "golden firefly by the cedar fence - wait, Mido!" },
 
@@ -1410,7 +1751,7 @@ const HearthCinemaBeat HEARTH_CINEMA_SCRIPT[HEARTH_CINEMA_BEAT_COUNT] = {
       "With a joyful yip, the amber fox-kit bolted",
       "past the rail trestle into Whispering Woods." },
     { 2u, CG_HOLLOW_OAK_CHASE, BGM_ALDERBROOK, CIN_CAM_ZOOM_IN, CIN_FX_FOREST_POLLEN, SFX_TEXT_HERO,
-      "ACT II - WHISPERING WOODS", "ROWAN (AGE 5)",
+      "ACT II - WHISPERING WOODS", "YOUNG ROWAN",
       "Mido! Slow down, your red scarf is slipping!",
       "Whoa... what is that light inside the big oak?" },
     { 2u, CG_HOLLOW_OAK_CHASE, BGM_ALDERBROOK, CIN_CAM_ZOOM_IN, CIN_FX_FOREST_POLLEN, SFX_TEXT_ELDER,
@@ -1425,10 +1766,10 @@ const HearthCinemaBeat HEARTH_CINEMA_SCRIPT[HEARTH_CINEMA_BEAT_COUNT] = {
       "pines melted into a valley of golden clouds." },
     { 3u, CG_EVERTALE_VISTA, BGM_CINEMA_WONDER, CIN_CAM_PAN_RIGHT, CIN_FX_EVERTALE_LANTERNS, SFX_TEXT_ELDER,
       "ACT III - EVERTALE", "",
-      "Towering windmills turned under cerulean skies",
-      "while paper lanterns drifted over blue creeks." },
+      "Towering windmills turned under bright blue skies",
+      "while paper lanterns drifted over clear creeks." },
     { 3u, CG_EVERTALE_VISTA, BGM_CINEMA_WONDER, CIN_CAM_PAN_RIGHT, CIN_FX_EVERTALE_LANTERNS, SFX_TEXT_HERO,
-      "ACT III - EVERTALE", "ROWAN (AGE 5)",
+      "ACT III - EVERTALE", "YOUNG ROWAN",
       "It's real... just like Grandma's storybooks!",
       "Look, Mido! Even the lanterns are floating!" },
 
@@ -1446,7 +1787,7 @@ const HearthCinemaBeat HEARTH_CINEMA_SCRIPT[HEARTH_CINEMA_BEAT_COUNT] = {
       "So small... so fragile... Give me your spark,",
       "child. Hearts only break when left unguarded." },
     { 4u, CG_SHADOW_GRANDMA, BGM_SHADOW, CIN_CAM_SHAKE_FLASH, CIN_FX_VIOLET_STORM, SFX_TEXT_HERO,
-      "ACT IV - THE VIOLET ECLIPSE", "ROWAN (AGE 5)",
+      "ACT IV - THE VIOLET ECLIPSE", "YOUNG ROWAN",
       "G-Grandma?! Stop - you aren't her! Stay back!",
       "Grandma would NEVER look at me like that!" },
     { 4u, CG_SHADOW_GRANDMA, BGM_SHADOW, CIN_CAM_SHAKE_FLASH, CIN_FX_VIOLET_STORM, SFX_TEXT_ELDER,
@@ -1480,17 +1821,7 @@ const HearthCinemaBeat HEARTH_CINEMA_SCRIPT[HEARTH_CINEMA_BEAT_COUNT] = {
     { 6u, CG_PIP_WINDOW, BGM_CINEMA_LULLABY, CIN_CAM_PAN_LEFT, CIN_FX_MOON_FIREFLIES, SFX_TEXT_PIP,
       "ACT VI - A WHISPER AT THE WINDOW", "PIP",
       "Sleep safely now. When you're brave enough to",
-      "remember, knock on the oak again. I'll wait." },
-
-    /* ACT VII: Five Years Later - Dawn Over Alderbrook (Age 10) */
-    { 7u, CG_ALDERBROOK_DUSK, BGM_ALDERBROOK, CIN_CAM_STILL_DAWN, CIN_FX_FOREST_POLLEN, SFX_TEXT_ELDER,
-      "ACT VII - FIVE YEARS LATER", "",
-      "Five quiet winters passed beneath the mountain",
-      "pines. Rowan turned ten, and forgot the oak." },
-    { 7u, CG_ALDERBROOK_DUSK, BGM_ALDERBROOK, CIN_CAM_STILL_DAWN, CIN_FX_FOREST_POLLEN, SFX_TEXT_ELDER,
-      "ACT VII - FIVE YEARS LATER", "",
-      "Until one crisp autumn dawn, when the 7:00",
-      "train whistle woke a forgotten ember inside..." }
+      "remember, knock on the oak again. I'll wait." }
 };
 
 /* ============================================================================
@@ -1522,8 +1853,8 @@ const HearthCinemaBeat HEARTH_CG_DREAM_SCRIPT[HEARTH_CG_DREAM_COUNT] = {
       "drifted beneath a silver autumn moon..." },
     { 1u, CG_PIP_DREAM_RETURN, BGM_CINEMA_LULLABY, CIN_CAM_PAN_LEFT, CIN_FX_MOON_FIREFLIES, SFX_TEXT_PIP,
       "CHAPTER I - THE DREAM RETURNS", "PIP",
-      "Five whole autumns, Rowan! You finally found the",
-      "oak leaf I slipped inside your coat pocket!" },
+      "Look how much you've grown, Rowan! You finally",
+      "found the oak leaf I slipped into your coat!" },
     { 1u, CG_PIP_DREAM_RETURN, BGM_CINEMA_LULLABY, CIN_CAM_PAN_LEFT, CIN_FX_MOON_FIREFLIES, SFX_TEXT_PIP,
       "CHAPTER I - THE DREAM RETURNS", "PIP",
       "Evertale wasn't a nightmare, lad - a shadow",
@@ -1545,7 +1876,7 @@ const HearthCinemaBeat HEARTH_CG_OAK_SCRIPT[HEARTH_CG_OAK_COUNT] = {
       "parting the night into sunlit clouds beyond." },
     { 1u, CG_HOLLOW_OAK_AWAKENS, BGM_CINEMA_WONDER, CIN_CAM_ZOOM_IN, CIN_FX_EVERTALE_LANTERNS, SFX_TEXT_HERO,
       "CHAPTER I FINALE - THE HOLLOW OAK", "ROWAN",
-      "It's opening, Mido! Just like when I was five -",
+      "It's opening, Mido! Just like when I was little -",
       "only this time, I'm not running away." },
     { 1u, CG_HOLLOW_OAK_AWAKENS, BGM_CINEMA_WONDER, CIN_CAM_ZOOM_IN, CIN_FX_EVERTALE_LANTERNS, SFX_TEXT_ELDER,
       "CHAPTER I FINALE - THE HOLLOW OAK", "",
@@ -1580,12 +1911,12 @@ const HearthCinemaBeat HEARTH_CG_WORLD_ARRIVAL_SCRIPT[HEARTH_CG_WORLD_ARRIVAL_CN
  * BYTECODE CUTSCENE ROM TABLES (Alderbrook & Evertale Storyline!)
  * ============================================================================ */
 
-/* Age-5 Evertale Flashback Climax: Sunlit Wonder -> Shadow Grandmother Trauma -> Pip's Dream -> Age 10 Alderbrook! */
+/* Childhood Evertale Flashback Climax */
 const HearthCutsceneOp CUTSCENE_SHADOW_GRANDMA[] = {
     { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
     { OP_EMOTE, ACTOR_HERO, SPR_EMOTE_SPARK, 28, NULL, NULL },
-    { OP_SAY, SFX_TEXT_HERO, 0, 0, "Little Rowan",
-      "Milo! Look at this sunlit meadow... wait, why is the sky turning purple?!" },
+    { OP_SAY, SFX_TEXT_HERO, 0, 0, "Young Rowan",
+      "Mido! Look at this sunlit meadow... wait, why is the sky turning purple?!" },
     { OP_SFX, SFX_BATTLE_SWOOP, 0, 0, NULL, NULL },
     { OP_SHAKE, 3, 18, 0, NULL, NULL },
     { OP_SET_PAL, ZPAL_SHADOW, BGM_SHADOW, 0, NULL, NULL },
@@ -1598,27 +1929,27 @@ const HearthCutsceneOp CUTSCENE_SHADOW_GRANDMA[] = {
     { OP_SHAKE, 4, 16, 0, NULL, NULL },
     { OP_CAM_FOLLOW, 20, 0, 0, NULL, NULL },
     { OP_EMOTE, ACTOR_HERO, SPR_EMOTE_BANG, 36, NULL, NULL },
-    { OP_SAY, SFX_TEXT_HERO, 0, 0, "Little Rowan",
+    { OP_SAY, SFX_TEXT_HERO, 0, 0, "Young Rowan",
       "N-no!! Grandma was kind and warm! You aren't her! Stay away!!" },
     { OP_SFX, SFX_PORTAL, 0, 0, NULL, NULL },
     { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Memory",
-      "Terrified, five-year-old Rowan scrambled back through the Hollow Oak into Alderbrook..." },
+      "Terrified, young Rowan scrambled back through the Hollow Oak into Alderbrook..." },
     { OP_SAY, SFX_TEXT_PIP, 0, 0, "Pip (A Dream?)",
-      "Psst, lad! At your window! That shadow wasn't your Grandma! Milo's safe—check the oak again!" },
-    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Four Years Later",
-      "It hurt too much to believe such a cruel reflection could be real. Rowan called it a nightmare and forgot... until today, age ten." },
+      "Psst, lad! At your window! That shadow wasn't your Grandma! Mido's safe - check the oak again!" },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Seasons Later",
+      "It hurt too much to believe such a cruel reflection could be real. Rowan called it a nightmare and tucked it away as he grew up." },
     { OP_SET_FLAG, FLAG_FLASHBACK_DONE, 0, 0, NULL, NULL },
     { OP_WARP_ZONE, ZONE_ALDERBROOK, 9, 13, NULL, NULL },
     { OP_END, 0, 0, 0, NULL, NULL }
 };
 
-/* Age-10 Reunion in Windmill Hamlet: Pip is REAL & grants Rowan the Hearthwood Wand! */
+/* Reunion in Windmill Hamlet: Pip is REAL & grants Rowan the Hearthwood Wand! */
 const HearthCutsceneOp CUTSCENE_PIP_REUNION[] = {
     { OP_FACE_ACTOR, ACTOR_HERO, DIR_RIGHT, 0, NULL, NULL },
     { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
     { OP_EMOTE, ACTOR_PIP, SPR_EMOTE_SPARK, 36, NULL, NULL },
     { OP_SAY, SFX_TEXT_PIP, 0, 0, "Pip",
-      "Well, butter my lantern! Four whole years, Rowan! You finally checked the Hollow Oak again!" },
+      "Well, butter my lantern! Look how tall you've gotten, Rowan! You finally checked the Hollow Oak again!" },
     { OP_EMOTE, ACTOR_HERO, SPR_EMOTE_QUESTION, 28, NULL, NULL },
     { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
       "Pip?! You... you weren't a dream at all! And Evertale is really here! Where's Mido?!" },
@@ -1746,7 +2077,7 @@ const HearthCutsceneOp CUTSCENE_CH1_MORNING_MARA[] = {
     { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
     { OP_EMOTE, ACTOR_NPC0, SPR_EMOTE_HEART, 28, NULL, NULL },
     { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Grandma Mara",
-      "Good morning, sparrow! The 7:00 steam express just rolled in, and the maples along the ridge are bright as copper." },
+      "Good morning, Rowan! Goodness, your jacket sleeves are already getting short on you. The 7:00 steam express just rolled in, and the maples along the ridge are bright as copper." },
     { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
       "Morning, Grandma! I had the strangest feeling when I heard the train whistle... like I almost remembered an old dream." },
     { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Grandma Mara",
@@ -1762,7 +2093,7 @@ const HearthCutsceneOp CUTSCENE_CH1_MAPLE_LOAF[] = {
     { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
     { OP_EMOTE, ACTOR_NPC1, SPR_EMOTE_SPARK, 28, NULL, NULL },
     { OP_SAY, SFX_TEXT_PIP, 0, 0, "Baker Maple",
-      "Well hello, Rowan! You caught the oven right on time - here's Grandma Mara's warm honey-rye loaf, plus a pocket biscuit for Mido!" },
+      "Well hello, Rowan! You've shot up like a mountain pine since last harvest - here's Grandma Mara's warm honey-rye loaf, plus a pocket biscuit for Mido!" },
     { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
       "Thanks, Maple! It smells amazing. Have you noticed the stream running extra bright down by the boulders today?" },
     { OP_SAY, SFX_TEXT_PIP, 0, 0, "Baker Maple",
@@ -1776,7 +2107,7 @@ const HearthCutsceneOp CUTSCENE_CH1_BARNABY_THERMOS[] = {
     { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
     { OP_EMOTE, ACTOR_NPC0, SPR_EMOTE_HEART, 28, NULL, NULL },
     { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Barnaby",
-      "Bless Mara's heart - hot ginger tea right as the morning frost lifts off the iron rails! Come admire the Old No. 7 locomotive, lad." },
+      "Bless Mara's heart - hot ginger tea right as the morning frost lifts off the iron rails! Look how tall you've gotten, Rowan - almost eye-level with Old No. 7's brass wheels!" },
     { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Barnaby",
       "Funny thing: Old Woodsman Jasper swore he saw golden fireflies drifting up in Whispering Woods last night - way too late in autumn for bugs." },
     { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
@@ -1794,9 +2125,9 @@ const HearthCutsceneOp CUTSCENE_CH1_DUSK_TEA[] = {
     { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
       "Grandma, where did I get this golden leaf? The moment I touched it, I heard windmills turning in the wind." },
     { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Grandma Mara",
-      "You wandered into Whispering Woods when you were five and came home terribly frightened. Whatever you saw, you're safe and strong now." },
+      "You wandered into Whispering Woods when you were still knee-high and came home terribly frightened. Seasons have come and gone since then, and look how tall and steady you've grown." },
     { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Grandma Mara",
-      "The evening chill is settling over the valley, sparrow. Climb into your patchwork bed and rest - keep Mido's bell close if it comforts you." },
+      "The evening chill is settling over the valley, Rowan. Climb into your patchwork bed and rest - keep Mido's bell close if it comforts you." },
     { OP_SFX, SFX_HEAL, 0, 0, NULL, NULL },
     { OP_SET_FLAG, FLAG_CH1_DUSK_TEA, 0, 0, NULL, NULL },
     { OP_END, 0, 0, 0, NULL, NULL }
@@ -1809,7 +2140,7 @@ const HearthCutsceneOp CUTSCENE_CH2_SUNHILL_TESSA[] = {
     { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
     { OP_EMOTE, ACTOR_NPC0, SPR_EMOTE_HEART, 28, NULL, NULL },
     { OP_SAY, SFX_TEXT_PIP, 0, 0, "Tessa the Baker",
-      "Oh! Welcome to Sunhill Market, little traveler! Looking for a bright-eyed amber fox-kit wearing a red scarf?" },
+      "Oh! Welcome to Sunhill Market, young traveler! Looking for a bright-eyed amber fox-kit wearing a red scarf?" },
     { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
       "Yes! His name is Mido - he bolted right out of the trees after we arrived! Did you really see him?!" },
     { OP_SAY, SFX_TEXT_PIP, 0, 0, "Tessa the Baker",
@@ -1831,11 +2162,11 @@ const HearthCutsceneOp CUTSCENE_CH2_SUNHILL_CORIN[] = {
     { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
       "Is something wrong, sir? It's just Mido's old bell from Alderbrook..." },
     { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Archivist Corin",
-      "Nothing wrong at all, child. Only... ten winters ago, a kind mapmaker and his wife arrived in Sunhill carrying a charm wrought from that very same mountain brass." },
+      "Nothing wrong at all, child. Only... many seasons ago, back when you would have been just a baby, a kind mapmaker and his wife arrived in Sunhill carrying a charm wrought from that very same mountain brass." },
     { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Archivist Corin",
       "They spoke softly of a home beyond the mist, and left north toward the high passes before anyone knew where their road ended. Forgive an old man's ramblings - go greet your fox!" },
     { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
-      "(Ten years ago...? Everyone back home says Mom and Dad are gone forever... Still... could they really have walked these same cobblestones?)" },
+      "(Back when I was just a baby...? Everyone back home says Mom and Dad are gone forever... Still... could they really have walked these same cobblestones?)" },
     { OP_SFX, SFX_CONFIRM, 0, 0, NULL, NULL },
     { OP_SET_FLAG, FLAG_CH2_CORIN_HINTS, 0, 0, NULL, NULL },
     { OP_END, 0, 0, 0, NULL, NULL }
@@ -1851,11 +2182,11 @@ const HearthCutsceneOp CUTSCENE_CH2_SUNHILL_REUNION[] = {
     { OP_SFX, SFX_HEART_GIVE, 0, 0, NULL, NULL },
     { OP_EMOTE, ACTOR_HERO, SPR_EMOTE_SPARK, 32, NULL, NULL },
     { OP_SAY, SFX_TEXT_PIP, 0, 0, "Pip",
-      "Ha! Found you two at last! You actually made it to Sunhill Market all on your own, Rowan - and without a single scratch!" },
+      "Ha! Found you two at last! Look how brave and tall you've grown, Rowan - you made it to Sunhill Market all on your own without a scratch!" },
     { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
-      "Pip! You really ARE real! Listen - Grandma Mara's heart has been heavy ever since Mom and Dad vanished. And Corin just said two travelers from my world passed through here years ago..." },
+      "Pip! You really ARE real! Listen - Grandma Mara's heart has been heavy ever since Mom and Dad vanished. And Corin just said two travelers from my world passed through here long ago..." },
     { OP_SAY, SFX_TEXT_PIP, 0, 0, "Pip",
-      "Easy there, brave sparrow. Your heart is huge - and tales tell of an ancient Hearthglass Pendant hidden deep in Evertale that can heal even the deepest sorrow." },
+      "Easy there, Rowan. Your heart is huge - and tales tell of an ancient Hearthglass Pendant hidden deep in Evertale that can heal even the deepest sorrow." },
     { OP_SAY, SFX_TEXT_PIP, 0, 0, "Pip",
       "We'll search for answers together! First, though, wild creatures lurk beyond the safe roads. Visit Bramblewood Crossing east of Sunhill when you're ready to bond your first Familiar!" },
     { OP_SET_FLAG, FLAG_CH2_MIDO_REUNION, 0, 0, NULL, NULL },
@@ -1869,9 +2200,72 @@ const HearthCutsceneOp CUTSCENE_CH2_BOND_FAMILIAR[] = {
     { OP_SAY, SFX_TEXT_PIP, 0, 0, "Pip",
       "Look at the ancient boundary stones glowing! Your steady courage just called forth your very first Familiars - Bramblekit and Lumina!" },
     { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
-      "Whoa... they feel warm, like standing beside Grandma's hearth! I won't let anyone down." },
+      "Whoa... they feel warm, like standing beside Grandma's fireplace! I won't let anyone down." },
     { OP_SAY, SFX_TEXT_PIP, 0, 0, "Pip",
-      "Now you can hold your own in the wilds! Careful out on the Evertale World Map from now on - wild sprites have begun stirring across the open plains and forest trails!" },
+      "Now you can hold your own in the wilds! Next, head south to Heartland Timber Pier - Shipwright Orin builds Cedar Rafts for crossing the turquoise straits to Suncrest Paradise and the Sands of Babana!" },
     { OP_SET_FLAG, FLAG_CH2_FIRST_FAMILIAR, 0, 0, NULL, NULL },
+    { OP_END, 0, 0, 0, NULL, NULL }
+};
+
+/* ============================================================================
+ * CHAPTER 2 EXPANSION: CEDAR RAFT, SUNCREST PARADISE & SANDS OF BABANA
+ * ============================================================================ */
+const HearthCutsceneOp CUTSCENE_CH2_ORIN_START[] = {
+    { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
+    { OP_EMOTE, ACTOR_NPC0, SPR_EMOTE_SPARK, 28, NULL, NULL },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Shipwright Orin",
+      "Ahoy there, lad! Look at those bright Familiars trailing behind you. Aiming to cross the turquoise straits to Suncrest Paradise or the Sands of Babana?" },
+    { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
+      "Yes, sir! Archivist Corin said travelers from my world journeyed far across Evertale, and we need a way across the bay." },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Shipwright Orin",
+      "A sturdy Sun-Cedar Raft will glide right over those turquoise shallows! Tell you what - last night's tide washed 3 Sun-Cedar Driftwood Planks onto this beach." },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Shipwright Orin",
+      "Gather all 3 planks along the sandy shore here at Timber Pier and bring them back to me. I'll lash you a fine raft in no time!" },
+    { OP_SFX, SFX_CONFIRM, 0, 0, NULL, NULL },
+    { OP_SET_FLAG, FLAG_CH2_ORIN_QUEST, 0, 0, NULL, NULL },
+    { OP_END, 0, 0, 0, NULL, NULL }
+};
+
+const HearthCutsceneOp CUTSCENE_CH2_ORIN_RAFT_BUILT[] = {
+    { OP_SFX, SFX_CHEST_OPEN, 0, 0, NULL, NULL },
+    { OP_SHAKE, 2, 12, 0, NULL, NULL },
+    { OP_EMOTE, ACTOR_HERO, SPR_EMOTE_HEART, 36, NULL, NULL },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Shipwright Orin",
+      "Fine timber! Lash the crossbeams... cinch the hemp rope... and there she floats! One genuine Sun-Cedar Raft, all yours!" },
+    { OP_SAY, SFX_TEXT_PIP, 0, 0, "Pip",
+      "Woohoo! Out on the Evertale Globe, just walk straight into the turquoise shallows to launch the Cedar Raft! Press M (or SELECT) anytime to open your World Atlas!" },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Shipwright Orin",
+      "Mind the deep cobalt ocean swells, though - a raft hugs the turquoise straits. Sail southwest to Suncrest Coral Cove or southeast to the Sands of Babana!" },
+    { OP_SET_FLAG, FLAG_CH2_RAFT_BUILT, 0, 0, NULL, NULL },
+    { OP_END, 0, 0, 0, NULL, NULL }
+};
+
+const HearthCutsceneOp CUTSCENE_CH2_CORAL_BARNACLE[] = {
+    { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
+    { OP_EMOTE, ACTOR_NPC0, SPR_EMOTE_SPARK, 30, NULL, NULL },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Capt. Barnacle",
+      "Har-har! A young navigator arriving by Cedar Raft! Welcome to Suncrest Coral Cove - warmest sand, brightest coral reef, and best fishing pier in Evertale!" },
+    { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
+      "Whoa, this place is amazing! Have you seen any ships that can sail across the deep cobalt ocean to the northern snows or the eastern jungle?" },
+    { OP_SAY, SFX_TEXT_ELDER, 0, 0, "Capt. Barnacle",
+      "Aye, my old galleon could brave the deep swells once we mend her sun-sail! Follow the turquoise reef strait east to the Oasis of Babana - the desert merchants hold rumors of ancient star-charts and a giant Sandworm!" },
+    { OP_SFX, SFX_CONFIRM, 0, 0, NULL, NULL },
+    { OP_SET_FLAG, FLAG_CH2_CORAL_MET, 0, 0, NULL, NULL },
+    { OP_END, 0, 0, 0, NULL, NULL }
+};
+
+const HearthCutsceneOp CUTSCENE_CH2_BABANA_CLUE[] = {
+    { OP_SFX, SFX_EMOTE, 0, 0, NULL, NULL },
+    { OP_EMOTE, ACTOR_NPC0, SPR_EMOTE_HEART, 30, NULL, NULL },
+    { OP_SAY, SFX_TEXT_PIP, 0, 0, "Merchant Zari",
+      "Welcome to the Oasis of Babana, traveler! Care for a sweet Golden Babana? Grown right beside our spring - nothing restores a weary adventurer faster!" },
+    { OP_SAY, SFX_TEXT_HERO, 0, 0, "Rowan",
+      "Golden Babanas! And we saw camels and huge scorpions out in the dunes! Did two travelers from beyond the mist ever trade here?" },
+    { OP_SAY, SFX_TEXT_PIP, 0, 0, "Merchant Zari",
+      "Indeed they did! Years ago, a mapmaker traded a brass compass for desert provisions - sketching seven great lands across the globe, from Frostmere North all the way to the shining Aetheris Citadel!" },
+    { OP_SAY, SFX_TEXT_PIP, 0, 0, "Pip",
+      "Seven whole lands wrapped round the globe, Rowan! Once we earn an ocean-going ship - and maybe someday a balloon or airship - we'll chart every single one of them!" },
+    { OP_SFX, SFX_CONFIRM, 0, 0, NULL, NULL },
+    { OP_SET_FLAG, FLAG_CH2_BABANA_CLUE, 0, 0, NULL, NULL },
     { OP_END, 0, 0, 0, NULL, NULL }
 };

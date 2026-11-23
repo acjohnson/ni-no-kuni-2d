@@ -557,6 +557,186 @@ const BGM_TRACKS: Record<BgmTrackId, BgmTrackData> = {
       3, 1, 2, 1, 3, 1, 2, 1,  3, 1, 2, 2, 3, 1, 2, 1,
     ],
   },
+
+  /* ==========================================================================
+   * "CARAVAN OF BABANA" — Sands of Babana Desert (D Hijaz / Phrygian Dominant)
+   * ========================================================================== */
+  DESERT: {
+    stepMs: 215,
+    style: 'FLUTE',
+    lead: [
+      N.D5, HOLD, N.Eb5, N.Fs5, N.G5, HOLD, N.Fs5, N.Eb5,
+      N.D5, HOLD, N.A4, HOLD, N.Bb4, N.A4, N.G4, N.Fs4,
+      N.D5, HOLD, N.Fs5, N.A5, N.Bb5, HOLD, N.A5, N.G5,
+      N.Fs5, HOLD, N.Eb5, N.D5, N.D5, HOLD, REST, REST,
+    ],
+    arp: [
+      N.D4, N.A4, N.Fs4, N.A4, N.D4, N.A4, N.Eb4, N.G4,
+      N.D4, N.A4, N.Fs4, N.A4, N.G3, N.Bb3, N.D4, N.Fs4,
+      N.D4, N.A4, N.Fs4, N.D5, N.G4, N.Bb4, N.D5, N.G4,
+      N.A3, N.Eb4, N.Fs4, N.A4, N.D4, N.A4, N.D4, REST,
+    ],
+    bass: [
+      N.D2, REST, N.A2, N.D2, N.D2, REST, N.G2, REST,
+      N.D2, REST, N.A2, REST, N.G2, REST, N.A2, REST,
+      N.D2, REST, N.A2, N.D2, N.G2, REST, N.Bb2, REST,
+      N.A2, REST, N.A2, REST, N.D2, HOLD, N.A2, REST,
+    ],
+    drum: [
+      3, 1, 2, 1, 3, 2, 1, 2,  3, 1, 2, 1, 3, 2, 2, 1,
+      3, 1, 2, 1, 3, 2, 1, 2,  3, 1, 2, 1, 3, 1, 2, 1,
+    ],
+  },
+
+  /* ==========================================================================
+   * "CORAL TIDE BREEZE" — Suncrest Paradise Archipelago (C Lydian Tropical)
+   * ========================================================================== */
+  PARADISE: {
+    stepMs: 205,
+    style: 'CELESTA',
+    lead: [
+      N.E5, HOLD, N.G5, N.A5, N.G5, HOLD, N.E5, N.D5,
+      N.C5, HOLD, N.E5, N.G5, N.Fs5, HOLD, N.D5, REST,
+      N.E5, HOLD, N.G5, N.B5, N.A5, HOLD, N.G5, N.E5,
+      N.D5, N.E5, N.G5, N.E5, N.C5, HOLD, REST, REST,
+    ],
+    arp: [
+      N.C4, N.G4, N.E4, N.B4, N.C4, N.G4, N.E4, N.G4,
+      N.A3, N.E4, N.C4, N.E4, N.D4, N.Fs4, N.A4, N.Fs4,
+      N.C4, N.G4, N.E4, N.B4, N.F4, N.A4, N.C5, N.A4,
+      N.G3, N.D4, N.B4, N.G4, N.C4, N.E4, N.G4, N.C5,
+    ],
+    bass: [
+      N.C3, REST, N.G2, N.C3, N.C3, REST, N.G2, REST,
+      N.A2, REST, N.E3, REST, N.D3, REST, N.A2, REST,
+      N.C3, REST, N.G2, N.C3, N.F2, REST, N.C3, REST,
+      N.G2, REST, N.D3, REST, N.C3, HOLD, N.G2, REST,
+    ],
+    drum: [
+      3, 1, 1, 2, 1, 3, 2, 1,  3, 1, 1, 2, 1, 3, 2, 1,
+      3, 1, 1, 2, 1, 3, 2, 1,  3, 1, 2, 1, 3, 1, 2, 1,
+    ],
+  },
+
+  /* ==========================================================================
+   * "NOEL OF FROSTMERE" — Frostmere North Winter Wonderland (G Major Music Box)
+   * ========================================================================== */
+  FROST: {
+    stepMs: 240,
+    style: 'LULLABY',
+    lead: [
+      N.D5, HOLD, N.G5, N.Fs5, N.E5, HOLD, N.D5, REST,
+      N.B4, HOLD, N.C5, N.D5, N.E5, HOLD, N.D5, REST,
+      N.G5, HOLD, N.A5, N.B5, N.A5, HOLD, N.G5, N.Fs5,
+      N.E5, HOLD, N.Fs5, N.A5, N.G5, HOLD, REST, REST,
+    ],
+    arp: [
+      N.G4, N.B4, N.D5, N.B4, N.C4, N.E4, N.G4, N.E4,
+      N.G4, N.B4, N.D5, N.B4, N.D4, N.Fs4, N.A4, N.Fs4,
+      N.E4, N.G4, N.B4, N.G4, N.C4, N.E4, N.G4, N.E4,
+      N.D4, N.Fs4, N.A4, N.C5, N.G4, N.B4, N.D5, N.G5,
+    ],
+    bass: [
+      N.G2, HOLD, N.D3, REST, N.C3, HOLD, N.G2, REST,
+      N.G2, HOLD, N.D3, REST, N.D2, HOLD, N.A2, REST,
+      N.E2, HOLD, N.B2, REST, N.C3, HOLD, N.G2, REST,
+      N.D2, HOLD, N.A2, REST, N.G2, HOLD, N.D3, REST,
+    ],
+    drum: [
+      1, 0, 1, 0, 1, 0, 1, 0,  1, 0, 1, 0, 1, 0, 1, 0,
+      1, 0, 1, 0, 1, 0, 1, 0,  1, 0, 1, 0, 1, 0, 1, 0,
+    ],
+  },
+
+  /* ==========================================================================
+   * "CANOPY DRUMS" — Canopy Wilds Amazon Rainforest (E Dorian Syncopated)
+   * ========================================================================== */
+  JUNGLE: {
+    stepMs: 190,
+    style: 'FLUTE',
+    lead: [
+      N.E5, REST, N.G5, N.A5, N.B5, HOLD, N.A5, N.G5,
+      N.Fs5, REST, N.E5, N.D5, N.E5, HOLD, REST, N.B4,
+      N.E5, REST, N.G5, N.B5, N.Cs5, HOLD, N.B5, N.A5,
+      N.G5, N.Fs5, N.E5, N.D5, N.E5, HOLD, REST, REST,
+    ],
+    arp: [
+      N.E4, N.B4, N.G4, N.D5, N.E4, N.B4, N.G4, N.B4,
+      N.A3, N.E4, N.Cs4, N.E4, N.D4, N.A4, N.Fs4, N.A4,
+      N.E4, N.B4, N.G4, N.D5, N.A4, N.Cs5, N.E5, N.Cs5,
+      N.D4, N.A4, N.Fs4, N.D4, N.E4, N.G4, N.B4, N.E5,
+    ],
+    bass: [
+      N.E2, REST, N.B2, N.E2, N.E2, REST, N.D2, REST,
+      N.A2, REST, N.E2, REST, N.D2, REST, N.A2, REST,
+      N.E2, REST, N.B2, N.E2, N.A2, REST, N.E3, REST,
+      N.D2, REST, N.A2, REST, N.E2, HOLD, N.B2, REST,
+    ],
+    drum: [
+      3, 2, 1, 3, 2, 1, 3, 2,  3, 1, 2, 3, 1, 2, 2, 1,
+      3, 2, 1, 3, 2, 1, 3, 2,  3, 1, 2, 2, 3, 2, 1, 2,
+    ],
+  },
+
+  /* ==========================================================================
+   * "FORGE OF CINDERPEAK" — Cinderpeak Caldera Volcano (C Minor Driving Brass)
+   * ========================================================================== */
+  VOLCANO: {
+    stepMs: 175,
+    style: 'ACTION',
+    lead: [
+      N.C5, HOLD, N.G4, N.Gs4, N.G4, HOLD, N.F4, N.Eb4,
+      N.D4, HOLD, N.G4, N.B4, N.C5, HOLD, REST, REST,
+      N.Eb5, HOLD, N.D5, N.C5, N.B4, HOLD, N.G4, N.F4,
+      N.Eb4, N.D4, N.C4, N.B3, N.C4, HOLD, REST, REST,
+    ],
+    arp: [
+      N.C4, N.Eb4, N.G4, N.C5, N.Gs3, N.C4, N.Eb4, N.Gs4,
+      N.G3, N.B3, N.D4, N.G4, N.C4, N.Eb4, N.G4, N.Eb4,
+      N.F3, N.Gs3, N.C4, N.F4, N.G3, N.B3, N.D4, N.G4,
+      N.Gs3, N.C4, N.Eb4, N.G3, N.C4, N.G3, N.Eb4, N.C4,
+    ],
+    bass: [
+      N.C2, N.C2, N.G2, N.C2, N.Gs2, N.Gs2, N.Eb2, N.Gs2,
+      N.G2, N.G2, N.D2, N.G2, N.C2, N.C2, N.G2, N.C2,
+      N.F2, N.F2, N.C2, N.F2, N.G2, N.G2, N.D2, N.G2,
+      N.Gs2, N.G2, N.F2, N.G2, N.C2, HOLD, N.G2, N.C2,
+    ],
+    drum: [
+      3, 1, 3, 2, 3, 1, 2, 2,  3, 1, 3, 2, 3, 2, 2, 1,
+      3, 1, 3, 2, 3, 1, 2, 2,  3, 2, 3, 2, 3, 1, 2, 2,
+    ],
+  },
+
+  /* ==========================================================================
+   * "AETHERIS SPIRE" — Aetheris Citadel High-Tech Realm (A Minor Synthwave)
+   * ========================================================================== */
+  TECH: {
+    stepMs: 160,
+    style: 'EERIE_BELL',
+    lead: [
+      N.A5, REST, N.E5, N.C5, N.B5, REST, N.G5, N.E5,
+      N.F5, REST, N.C5, N.A4, N.E5, HOLD, REST, REST,
+      N.A5, N.G5, N.E5, N.C5, N.D5, N.F5, N.A5, N.G5,
+      N.E5, REST, N.B4, N.Gs4, N.A4, HOLD, REST, REST,
+    ],
+    arp: [
+      N.A4, N.C5, N.E5, N.A5, N.G4, N.B4, N.D5, N.G5,
+      N.F4, N.A4, N.C5, N.F5, N.E4, N.Gs4, N.B4, N.E5,
+      N.A4, N.C5, N.E5, N.A5, N.D4, N.F4, N.A4, N.D5,
+      N.E4, N.Gs4, N.B4, N.E5, N.A4, N.E5, N.C5, N.A4,
+    ],
+    bass: [
+      N.A2, N.A2, N.E3, N.A2, N.G2, N.G2, N.D3, N.G2,
+      N.F2, N.F2, N.C3, N.F2, N.E2, N.E2, N.B2, N.E2,
+      N.A2, N.A2, N.E3, N.A2, N.D2, N.D2, N.A2, N.D2,
+      N.E2, N.E2, N.B2, N.E2, N.A2, HOLD, N.E2, N.A2,
+    ],
+    drum: [
+      3, 1, 2, 1, 3, 1, 2, 1,  3, 1, 2, 1, 3, 1, 2, 2,
+      3, 1, 2, 1, 3, 1, 2, 1,  3, 1, 2, 2, 3, 1, 2, 1,
+    ],
+  },
 };
 
 function midiToHz(midi: number): number {

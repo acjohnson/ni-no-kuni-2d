@@ -287,6 +287,30 @@ static void draw_text_scaled_centered(int cx, int y, const char *s, uint32_t col
     }
 }
 
+static int count_wrapped_lines(int max_w, const char *s, size_t max_chars) {
+    if (!s || max_chars == 0) return 1;
+    int max_cols = max_w / 6;
+    if (max_cols < 8) max_cols = 8;
+    size_t pos = 0;
+    int lines = 0;
+    while (pos < max_chars && s[pos] != '\0' && lines < 6) {
+        while (pos < max_chars && s[pos] == ' ') pos++;
+        if (pos >= max_chars || s[pos] == '\0') break;
+        size_t take = 0;
+        size_t last_space = 0;
+        while (pos + take < max_chars && s[pos + take] != '\0' && (int)take < max_cols) {
+            if (s[pos + take] == ' ') last_space = take;
+            take++;
+        }
+        if ((int)take == max_cols && pos + take < max_chars && s[pos + take] != ' ' && s[pos + take] != '\0' && last_space > 0) {
+            take = last_space;
+        }
+        pos += take;
+        lines++;
+    }
+    return (lines < 1) ? 1 : lines;
+}
+
 static void draw_text_wrapped(int x, int y, int max_w, const char *s, size_t visible_chars, uint32_t col) {
     if (!s) return;
     int max_cols = max_w / 6;
@@ -294,7 +318,7 @@ static void draw_text_wrapped(int x, int y, int max_w, const char *s, size_t vis
     size_t pos = 0;
     int cy = y;
     int line_num = 0;
-    while (pos < visible_chars && s[pos] != '\0' && line_num < 3) {
+    while (pos < visible_chars && s[pos] != '\0' && line_num < 6) {
         while (pos < visible_chars && s[pos] == ' ') pos++;
         if (pos >= visible_chars || s[pos] == '\0') break;
         size_t take = 0;
@@ -747,18 +771,168 @@ static const uint8_t LULLABY_DRUM[64] = {
     3, 0, 1, 0, 0, 0, 1, 0,  0, 0, 0, 0, 0, 0, 0, 0
 };
 
+/* 11: BGM_DESERT — Sands of Babana (D Phrygian caravan sway, 32 steps) */
+static const uint8_t DESERT_LEAD[32] = {
+    N_D4, N_E4, N_F4, BGM_HOLD, N_A4, N_G4, N_F4, N_E4,
+    N_D4, BGM_HOLD, N_C4, N_D4, N_E4, BGM_HOLD, BGM_REST, N_E4,
+    N_F4, N_G4, N_A4, BGM_HOLD, N_Bb4, N_A4, N_G4, N_F4,
+    N_E4, N_F4, N_E4, N_D4, N_D4, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t DESERT_ARP[32] = {
+    N_D3, N_A3, N_F3, N_A3, N_D3, N_A3, N_F3, N_A3,
+    N_D3, N_A3, N_E3, N_A3, N_C4, N_A3, N_E3, N_A3,
+    N_F3, N_C4, N_A3, N_C4, N_Bb3, N_F4, N_D4, N_F4,
+    N_A3, N_E4, N_C4, N_E4, N_D3, N_A3, N_F3, N_A3
+};
+static const uint8_t DESERT_BASS[32] = {
+    N_D2, BGM_HOLD, N_A2, BGM_REST, N_D2, BGM_HOLD, N_A2, BGM_REST,
+    N_D2, BGM_HOLD, N_A2, BGM_REST, N_C3, BGM_HOLD, N_A2, BGM_REST,
+    N_F2, BGM_HOLD, N_C3, BGM_REST, N_Bb2, BGM_HOLD, N_F2, BGM_REST,
+    N_A2, BGM_HOLD, N_E2, BGM_REST, N_D2, BGM_HOLD, N_A2, BGM_REST
+};
+static const uint8_t DESERT_DRUM[32] = {
+    3, 0, 1, 2, 3, 0, 1, 0,  3, 0, 1, 2, 3, 1, 2, 1,
+    3, 0, 1, 2, 3, 0, 1, 0,  3, 1, 2, 1, 3, 0, 1, 0
+};
+
+/* 12: BGM_PARADISE — Suncrest Coral Reefs (breezy C major island calypso, 32 steps) */
+static const uint8_t PARADISE_LEAD[32] = {
+    N_E4, N_G4, N_C5, BGM_HOLD, N_B4, N_A4, N_G4, BGM_REST,
+    N_F4, N_A4, N_D5, BGM_HOLD, N_C5, N_B4, N_A4, N_G4,
+    N_E4, N_G4, N_C5, N_D5, N_E5, BGM_HOLD, N_D5, N_C5,
+    N_A4, N_B4, N_C5, BGM_HOLD, N_G4, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t PARADISE_ARP[32] = {
+    N_C4, N_E4, N_G4, N_E4, N_C4, N_E4, N_G4, N_E4,
+    N_F3, N_A3, N_C4, N_A3, N_G3, N_B3, N_D4, N_B3,
+    N_C4, N_E4, N_G4, N_E4, N_A3, N_C4, N_E4, N_C4,
+    N_F3, N_A3, N_G3, N_B3, N_C4, N_E4, N_G4, N_E4
+};
+static const uint8_t PARADISE_BASS[32] = {
+    N_C3, BGM_REST, N_G2, BGM_HOLD, N_C3, BGM_REST, N_G2, BGM_HOLD,
+    N_F2, BGM_REST, N_C3, BGM_HOLD, N_G2, BGM_REST, N_D3, BGM_HOLD,
+    N_C3, BGM_REST, N_G2, BGM_HOLD, N_A2, BGM_REST, N_E3, BGM_HOLD,
+    N_F2, BGM_REST, N_G2, BGM_HOLD, N_C3, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t PARADISE_DRUM[32] = {
+    3, 0, 1, 0, 2, 0, 1, 1,  3, 0, 1, 0, 2, 0, 1, 0,
+    3, 0, 1, 0, 2, 0, 1, 1,  3, 0, 2, 1, 3, 0, 1, 0
+};
+
+/* 13: BGM_FROST — Frostmere North (festive sparkling winter chimes, 32 steps) */
+static const uint8_t FROST_LEAD[32] = {
+    N_G4, BGM_HOLD, N_C5, N_B4, N_A4, BGM_HOLD, N_G4, BGM_REST,
+    N_F4, N_G4, N_A4, N_C5, N_B4, BGM_HOLD, N_G4, BGM_REST,
+    N_E5, BGM_HOLD, N_D5, N_C5, N_A4, BGM_HOLD, N_F4, N_A4,
+    N_G4, N_C5, N_B4, N_D5, N_C5, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t FROST_ARP[32] = {
+    N_C4, N_G4, N_E4, N_G4, N_A3, N_E4, N_C4, N_E4,
+    N_F3, N_C4, N_A3, N_C4, N_G3, N_D4, N_B3, N_D4,
+    N_C4, N_G4, N_E4, N_G4, N_F3, N_C4, N_A3, N_C4,
+    N_G3, N_D4, N_G3, N_B3, N_C4, N_E4, N_G4, N_C5
+};
+static const uint8_t FROST_BASS[32] = {
+    N_C3, BGM_HOLD, BGM_HOLD, BGM_REST, N_A2, BGM_HOLD, BGM_HOLD, BGM_REST,
+    N_F2, BGM_HOLD, BGM_HOLD, BGM_REST, N_G2, BGM_HOLD, BGM_HOLD, BGM_REST,
+    N_C3, BGM_HOLD, BGM_HOLD, BGM_REST, N_F2, BGM_HOLD, BGM_HOLD, BGM_REST,
+    N_G2, BGM_HOLD, N_G2, BGM_HOLD, N_C3, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t FROST_DRUM[32] = {
+    0, 0, 1, 0, 0, 0, 1, 0,  0, 0, 1, 0, 0, 0, 1, 0,
+    3, 0, 1, 0, 0, 0, 1, 0,  3, 0, 1, 0, 1, 0, 0, 0
+};
+
+/* 14: BGM_JUNGLE — Canopy Wilds (bouncy pentatonic rainforest groove, 32 steps) */
+static const uint8_t JUNGLE_LEAD[32] = {
+    N_A4, N_C5, N_D5, BGM_REST, N_E5, N_D5, N_C5, N_A4,
+    N_G4, N_A4, N_C5, BGM_HOLD, N_A4, BGM_REST, N_G4, N_E4,
+    N_A4, N_C5, N_D5, N_E5, N_G5, BGM_HOLD, N_E5, N_D5,
+    N_C5, N_D5, N_C5, N_A4, N_A4, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t JUNGLE_ARP[32] = {
+    N_A3, N_E4, N_C4, N_E4, N_D4, N_A3, N_C4, N_E4,
+    N_G3, N_D4, N_B3, N_D4, N_A3, N_E4, N_C4, N_A3,
+    N_A3, N_E4, N_C4, N_E4, N_C4, N_G4, N_E4, N_G4,
+    N_G3, N_D4, N_E3, N_B3, N_A3, N_C4, N_E4, N_A3
+};
+static const uint8_t JUNGLE_BASS[32] = {
+    N_A2, BGM_REST, N_E2, N_A2, N_D2, BGM_REST, N_A2, N_D2,
+    N_G2, BGM_REST, N_D2, N_G2, N_A2, BGM_REST, N_E2, N_G2,
+    N_A2, BGM_REST, N_E2, N_A2, N_C3, BGM_REST, N_G2, N_C3,
+    N_G2, BGM_REST, N_E2, N_G2, N_A2, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t JUNGLE_DRUM[32] = {
+    3, 1, 2, 1, 3, 2, 1, 1,  3, 1, 2, 3, 3, 1, 2, 1,
+    3, 1, 2, 1, 3, 2, 1, 1,  3, 2, 2, 1, 3, 1, 2, 0
+};
+
+/* 15: BGM_VOLCANO — Cinderpeak Caldera (heavy volcanic march, 32 steps) */
+static const uint8_t VOLCANO_LEAD[32] = {
+    N_D4, BGM_HOLD, N_F4, N_E4, N_D4, BGM_HOLD, N_A3, BGM_REST,
+    N_Bb3, BGM_HOLD, N_C4, N_D4, N_E4, BGM_HOLD, BGM_REST, BGM_REST,
+    N_F4, BGM_HOLD, N_G4, N_F4, N_E4, BGM_HOLD, N_D4, N_C4,
+    N_D4, N_E4, N_F4, N_E4, N_D4, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t VOLCANO_ARP[32] = {
+    N_D3, N_A3, N_D3, N_A3, N_D3, N_F3, N_A3, N_F3,
+    N_Bb2, N_F3, N_Bb2, N_F3, N_A2, N_E3, N_A2, N_E3,
+    N_D3, N_A3, N_F3, N_A3, N_C3, N_G3, N_E3, N_G3,
+    N_Bb2, N_F3, N_A2, N_E3, N_D3, N_A3, N_D3, BGM_REST
+};
+static const uint8_t VOLCANO_BASS[32] = {
+    N_D2, N_D2, N_A2, N_D2, N_D2, N_D2, N_F2, N_D2,
+    N_Bb2, N_Bb2, N_F2, N_Bb2, N_A2, N_A2, N_E2, N_A2,
+    N_D2, N_D2, N_F2, N_D2, N_C3, N_C3, N_G2, N_C3,
+    N_Bb2, N_Bb2, N_A2, N_A2, N_D2, BGM_HOLD, N_A2, N_D2
+};
+static const uint8_t VOLCANO_DRUM[32] = {
+    3, 0, 2, 3, 3, 0, 2, 1,  3, 0, 2, 3, 3, 2, 2, 1,
+    3, 0, 2, 3, 3, 0, 2, 1,  3, 2, 3, 2, 3, 0, 2, 2
+};
+
+/* 16: BGM_TECH — Aetheris Citadel (crystalline sci-fi synth pulse, 32 steps) */
+static const uint8_t TECH_LEAD[32] = {
+    N_E5, BGM_REST, N_B4, N_E5, N_G5, BGM_HOLD, N_F5, N_E5,
+    N_D5, BGM_REST, N_A4, N_D5, N_E5, BGM_HOLD, BGM_REST, BGM_REST,
+    N_C5, N_E5, N_G5, N_A5, N_G5, BGM_HOLD, N_E5, N_D5,
+    N_E5, N_G5, N_F5, N_D5, N_E5, BGM_HOLD, BGM_REST, BGM_REST
+};
+static const uint8_t TECH_ARP[32] = {
+    N_E4, N_B4, N_E4, N_G4, N_E4, N_B4, N_G4, N_B4,
+    N_D4, N_A4, N_D4, N_F4, N_E4, N_B4, N_G4, N_B4,
+    N_C4, N_G4, N_E4, N_G4, N_D4, N_A4, N_F4, N_A4,
+    N_E4, N_B4, N_D4, N_A4, N_E4, N_G4, N_B4, N_E5
+};
+static const uint8_t TECH_BASS[32] = {
+    N_E2, N_E3, N_E2, N_E3, N_E2, N_E3, N_G2, N_E2,
+    N_D2, N_D3, N_D2, N_D3, N_E2, N_E3, N_B2, N_E2,
+    N_C3, N_C3, N_G2, N_C3, N_D2, N_D3, N_A2, N_D2,
+    N_E2, N_E3, N_D2, N_D3, N_E2, BGM_HOLD, N_B2, N_E2
+};
+static const uint8_t TECH_DRUM[32] = {
+    3, 1, 1, 2, 3, 1, 1, 2,  3, 1, 1, 2, 3, 1, 2, 1,
+    3, 1, 1, 2, 3, 1, 1, 2,  3, 1, 2, 1, 3, 1, 2, 1
+};
+
 static const BgmTrack BGM_TRACKS[BGM_COUNT] = {
-    /* 0: BGM_HAMLET         */ { 48, 240, HAMLET_LEAD,  HAMLET_ARP,  HAMLET_BASS,  HAMLET_DRUM  },
-    /* 1: BGM_ALDERBROOK     */ { 96, 245, ALDER_LEAD,   ALDER_ARP,   ALDER_BASS,   ALDER_DRUM   },
-    /* 2: BGM_WHISKERBURGH   */ { 32, 185, WHISK_LEAD,   WHISK_ARP,   WHISK_BASS,   WHISK_DRUM   },
-    /* 3: BGM_SEWERS         */ { 32, 235, SEWER_LEAD,   SEWER_ARP,   SEWER_BASS,   SEWER_DRUM   },
-    /* 4: BGM_BOARHOLD       */ { 32, 175, BOAR_LEAD,    BOAR_ARP,    BOAR_BASS,    BOAR_DRUM    },
-    /* 5: BGM_SHADOW         */ { 64, 265, SHADOW_LEAD,  SHADOW_ARP,  SHADOW_BASS,  SHADOW_DRUM  },
-    /* 6: BGM_BATTLE         */ { 64, 155, BATTLE_LEAD,  BATTLE_ARP,  BATTLE_BASS,  BATTLE_DRUM  },
-    /* 7: BGM_BOSS           */ { 64, 140, BOSS_LEAD,    BOSS_ARP,    BOSS_BASS,    BOSS_DRUM    },
-    /* 8: BGM_VICTORY        */ { 32, 165, VICTORY_LEAD, VICTORY_ARP, VICTORY_BASS, VICTORY_DRUM },
-    /* 9: BGM_CINEMA_WONDER  */ { 64, 215, WONDER_LEAD,  WONDER_ARP,  WONDER_BASS,  WONDER_DRUM  },
-    /* 10: BGM_CINEMA_LULLABY*/ { 64, 270, LULLABY_LEAD, LULLABY_ARP, LULLABY_BASS, LULLABY_DRUM }
+    /* 0: BGM_HAMLET         */ { 48, 240, HAMLET_LEAD,   HAMLET_ARP,   HAMLET_BASS,   HAMLET_DRUM   },
+    /* 1: BGM_ALDERBROOK     */ { 96, 245, ALDER_LEAD,    ALDER_ARP,    ALDER_BASS,    ALDER_DRUM    },
+    /* 2: BGM_WHISKERBURGH   */ { 32, 185, WHISK_LEAD,    WHISK_ARP,    WHISK_BASS,    WHISK_DRUM    },
+    /* 3: BGM_SEWERS         */ { 32, 235, SEWER_LEAD,    SEWER_ARP,    SEWER_BASS,    SEWER_DRUM    },
+    /* 4: BGM_BOARHOLD       */ { 32, 175, BOAR_LEAD,     BOAR_ARP,     BOAR_BASS,     BOAR_DRUM     },
+    /* 5: BGM_SHADOW         */ { 64, 265, SHADOW_LEAD,   SHADOW_ARP,   SHADOW_BASS,   SHADOW_DRUM   },
+    /* 6: BGM_BATTLE         */ { 64, 155, BATTLE_LEAD,   BATTLE_ARP,   BATTLE_BASS,   BATTLE_DRUM   },
+    /* 7: BGM_BOSS           */ { 64, 140, BOSS_LEAD,     BOSS_ARP,     BOSS_BASS,     BOSS_DRUM     },
+    /* 8: BGM_VICTORY        */ { 32, 165, VICTORY_LEAD,  VICTORY_ARP,  VICTORY_BASS,  VICTORY_DRUM  },
+    /* 9: BGM_CINEMA_WONDER  */ { 64, 215, WONDER_LEAD,   WONDER_ARP,   WONDER_BASS,   WONDER_DRUM   },
+    /* 10: BGM_CINEMA_LULLABY*/ { 64, 270, LULLABY_LEAD,  LULLABY_ARP,  LULLABY_BASS,  LULLABY_DRUM  },
+    /* 11: BGM_DESERT        */ { 32, 195, DESERT_LEAD,   DESERT_ARP,   DESERT_BASS,   DESERT_DRUM   },
+    /* 12: BGM_PARADISE      */ { 32, 185, PARADISE_LEAD, PARADISE_ARP, PARADISE_BASS, PARADISE_DRUM },
+    /* 13: BGM_FROST         */ { 32, 225, FROST_LEAD,    FROST_ARP,    FROST_BASS,    FROST_DRUM    },
+    /* 14: BGM_JUNGLE        */ { 32, 170, JUNGLE_LEAD,   JUNGLE_ARP,   JUNGLE_BASS,   JUNGLE_DRUM   },
+    /* 15: BGM_VOLCANO       */ { 32, 180, VOLCANO_LEAD,  VOLCANO_ARP,  VOLCANO_BASS,  VOLCANO_DRUM  },
+    /* 16: BGM_TECH          */ { 32, 160, TECH_LEAD,     TECH_ARP,     TECH_BASS,     TECH_DRUM     }
 };
 
 typedef struct {
@@ -812,17 +986,18 @@ static void bgm_set_track(uint8_t track_id) {
     }
     /* Tailor timbres to track mood */
     if (track_id == BGM_HAMLET || track_id == BGM_ALDERBROOK ||
-        track_id == BGM_CINEMA_WONDER || track_id == BGM_CINEMA_LULLABY) {
-        g_bgm.ch[0].wave = WAVE_TRIANGLE;  /* Warm pastoral flute / lullaby */
+        track_id == BGM_CINEMA_WONDER || track_id == BGM_CINEMA_LULLABY ||
+        track_id == BGM_FROST || track_id == BGM_PARADISE) {
+        g_bgm.ch[0].wave = WAVE_TRIANGLE;  /* Warm pastoral flute / winter chime */
         g_bgm.ch[1].wave = WAVE_SQUARE25;  /* Plucked harp / celesta arpeggio */
     } else if (track_id == BGM_SEWERS || track_id == BGM_SHADOW) {
         g_bgm.ch[0].wave = WAVE_TRIANGLE;  /* Haunting hollow chime */
         g_bgm.ch[1].wave = WAVE_SQUARE25;
-    } else if (track_id == BGM_BOSS || track_id == BGM_BOARHOLD) {
+    } else if (track_id == BGM_BOSS || track_id == BGM_BOARHOLD || track_id == BGM_VOLCANO) {
         g_bgm.ch[0].wave = WAVE_SQUARE50;  /* Bold dramatic brass/lead */
         g_bgm.ch[1].wave = WAVE_SQUARE25;
     } else {
-        g_bgm.ch[0].wave = WAVE_SQUARE25;  /* Bright heroic/jaunty lead */
+        g_bgm.ch[0].wave = WAVE_SQUARE25;  /* Bright heroic/caravan/tech lead */
         g_bgm.ch[1].wave = WAVE_SQUARE50;
     }
     g_bgm.ch[2].wave = WAVE_TRIANGLE;
@@ -835,7 +1010,8 @@ static void bgm_trigger_step(void) {
     uint8_t s = g_bgm.step_idx;
     bool pastoral = (g_bgm.track_id == BGM_HAMLET || g_bgm.track_id == BGM_ALDERBROOK ||
                      g_bgm.track_id == BGM_SHADOW || g_bgm.track_id == BGM_CINEMA_WONDER ||
-                     g_bgm.track_id == BGM_CINEMA_LULLABY);
+                     g_bgm.track_id == BGM_CINEMA_LULLABY || g_bgm.track_id == BGM_FROST ||
+                     g_bgm.track_id == BGM_PARADISE);
 
     /* Lead */
     uint8_t n0 = tr->lead[s];
@@ -1582,6 +1758,76 @@ static void draw_bg1_tile(int sx, int sy, uint8_t tile, uint32_t frame) {
             fill_rect_px(sx + 2, sy + 3, 12, 2, 0xFFB0B4C2u);
             fill_rect_px(sx + 6, sy + 9, 3, 3, 0xFF426A3Eu);
             break;
+        case T_WORLD_SHALLOW: {
+            int wave = (int)((frame >> 4) & 3u);
+            fill_rect_px(sx, sy, 16, 16, 0xFF3EAEC4u);
+            fill_rect_px(sx + ((wave * 3) & 11), sy + 4, 5, 1, 0xFF7ADCF0u);
+            fill_rect_px(sx + ((wave * 2 + 5) & 11), sy + 11, 6, 1, 0xFFB8F4FCu);
+            put_px(sx + ((wave * 3 + 2) & 15), sy + 8, 0xFFE8FCFFu);
+            break;
+        }
+        case T_WORLD_SAND:
+            fill_rect_px(sx, sy, 16, 16, 0xFFE8C26Eu);
+            fill_rect_px(sx + 1, sy + 3, 12, 2, 0xFFF4D688u);
+            fill_rect_px(sx + 3, sy + 10, 11, 2, 0xFFD4A654u);
+            put_px(sx + 4, sy + 7, 0xFFC29242u);
+            put_px(sx + 12, sy + 13, 0xFFC29242u);
+            break;
+        case T_WORLD_SNOW:
+            fill_rect_px(sx, sy, 16, 16, 0xFFE6F0FAu);
+            fill_rect_px(sx + 2, sy + 4, 9, 2, 0xFFFFFFFFu);
+            fill_rect_px(sx + 5, sy + 11, 8, 2, 0xFFC8DCF0u);
+            put_px(sx + 13, sy + 3, 0xFF9AC4E8u);
+            put_px(sx + 3, sy + 13, 0xFF9AC4E8u);
+            break;
+        case T_WORLD_LAVA: {
+            int glow = (int)((frame >> 3) & 3u);
+            fill_rect_px(sx, sy, 16, 16, 0xFF9E2418u);
+            fill_rect_px(sx + 1, sy + ((glow * 3) & 11), 13, 3, 0xFFE85224u);
+            fill_rect_px(sx + 3, sy + ((glow * 3 + 7) & 11), 9, 2, 0xFFFFB838u);
+            put_px(sx + 6 + glow, sy + 5, 0xFFFFF4A8u);
+            break;
+        }
+        case T_WORLD_JUNGLE:
+            fill_rect_px(sx, sy, 16, 16, 0xFF1F542Cu);
+            fill_rect_px(sx + 1, sy + 2, 8, 7, 0xFF2E783Cu);
+            fill_rect_px(sx + 7, sy + 7, 8, 7, 0xFF3E9448u);
+            fill_rect_px(sx + 2, sy + 3, 4, 2, 0xFF70BA5Au);
+            put_px(sx + 11, sy + 9, 0xFFE86878u);
+            break;
+        case T_WORLD_CORAL: {
+            int wave = (int)((frame >> 4) & 3u);
+            fill_rect_px(sx, sy, 16, 16, 0xFF3CAEC6u);
+            fill_rect_px(sx + ((wave * 2) & 9), sy + 2, 5, 1, 0xFF9CECF8u);
+            fill_rect_px(sx + 3, sy + 5, 4, 4, 0xFFF27084u);
+            fill_rect_px(sx + 9, sy + 8, 5, 4, 0xFFF4A45Au);
+            fill_rect_px(sx + 5, sy + 11, 3, 3, 0xFF7AD6A8u);
+            break;
+        }
+        case T_WORLD_TECH:
+            fill_rect_px(sx, sy, 16, 16, 0xFF283448u);
+            fill_rect_px(sx + 1, sy + 1, 14, 14, 0xFF364862u);
+            fill_rect_px(sx + 0, sy + 7, 16, 2, 0xFF42D6F4u);
+            fill_rect_px(sx + 7, sy + 0, 2, 16, 0xFF42D6F4u);
+            fill_rect_px(sx + 6, sy + 6, 4, 4, 0xFFB8F6FFu);
+            break;
+        case T_PALM_TREE:
+            fill_rect_px(sx, sy, 16, 16, 0xFFE8C26Eu);
+            fill_rect_px(sx + 6, sy + 7, 4, 8, 0xFF8C5832u);
+            fill_rect_px(sx + 7, sy + 7, 2, 8, 0xFFB07446u);
+            fill_rect_px(sx + 1, sy + 2, 14, 5, 0xFF2E7E42u);
+            fill_rect_px(sx + 3, sy + 1, 10, 4, 0xFF52A858u);
+            fill_rect_px(sx + 6, sy + 5, 4, 2, 0xFFE8C84Au);
+            break;
+        case T_DOCK_PIER:
+            fill_rect_px(sx, sy, 16, 16, 0xFF3EAEC4u);
+            fill_rect_px(sx + 1, sy + 1, 14, 14, 0xFF7C4E2Cu);
+            fill_rect_px(sx + 2, sy + 2, 12, 3, 0xFFA66E42u);
+            fill_rect_px(sx + 2, sy + 6, 12, 3, 0xFFA66E42u);
+            fill_rect_px(sx + 2, sy + 10, 12, 3, 0xFFA66E42u);
+            fill_rect_px(sx + 2, sy + 2, 2, 2, 0xFF52321Au);
+            fill_rect_px(sx + 12, sy + 11, 2, 2, 0xFF52321Au);
+            break;
         default:
             fill_rect_px(sx, sy, 16, 16, c_g2);
             break;
@@ -1716,9 +1962,9 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
     int16_t sx = o->scale_x_fp ? o->scale_x_fp : FP_ONE;
     int16_t sy = o->scale_y_fp ? o->scale_y_fp : FP_ONE;
 
-    if (o->flags & OAM_FLAG_SHADOW) {
+    if ((o->flags & OAM_FLAG_SHADOW) && o->sprite_id != SPR_RAFT) {
         int r = (o->sprite_id == SPR_LOCOMOTIVE) ? 22
-              : (o->sprite_id == SPR_BOSS_BRIAR || o->sprite_id == SPR_BOSS_MUCKMAW || o->sprite_id == SPR_BOSS_IRONFANG) ? 15
+              : (o->sprite_id == SPR_BOSS_BRIAR || o->sprite_id == SPR_BOSS_MUCKMAW || o->sprite_id == SPR_BOSS_IRONFANG || o->sprite_id == SPR_ENEMY_SANDWORM) ? 15
               : (o->sprite_id == SPR_HOLLOW_OAK) ? 12
               : (o->sprite_id == SPR_PET_MILO || o->sprite_id == SPR_BOBBER) ? 4 : 6;
         fill_ellipse_alpha(ox, oy + 1, r, 3, 0xFF10141Au, 115);
@@ -2162,6 +2408,109 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
             spr_box(ox, oy,  1,  -1,  3, 2, 0xFF3A3E4Au, flip, flash, sx, sy);
             break;
         }
+        case SPR_RAFT: {
+            /* Sun-Cedar Raft + Animated Turquoise Water Wake */
+            int wake = (int)((frame >> 3) & 3u);
+            draw_circle_outline(ox, oy - 1, 9 + wake, 0xFFA8F2FCu);
+            spr_box(ox, oy, -9, -6, 18, 9, 0xFF5C361Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -8, -5, 16, 2, 0xFFB07242u, flip, flash, sx, sy);
+            spr_box(ox, oy, -8, -2, 16, 2, 0xFFA06436u, flip, flash, sx, sy);
+            spr_box(ox, oy, -8,  1, 16, 2, 0xFFB07242u, flip, flash, sx, sy);
+            spr_box(ox, oy, -5, -6,  2, 9, 0xFFE6C88Au, flip, flash, sx, sy);
+            spr_box(ox, oy,  3, -6,  2, 9, 0xFFE6C88Au, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_ENEMY_SCORPION: {
+            /* Dune Scorpion — Crimson Carapace, Pincers & Raised Stinger */
+            spr_box(ox, oy + bob, -6,  -7, 12, 6, 0xFF9E2C28u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -4,  -8,  8, 3, 0xFFD44E38u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -10, -9,  4, 4, 0xFFC43A30u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob,   6, -9,  4, 4, 0xFFC43A30u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob,   3,-14,  3, 7, 0xFF9E2C28u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob,   1,-16,  4, 3, 0xFFFFE066u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_ENEMY_SANDWORM: {
+            /* Giant Desert Sandworm — Segmented Coiling Ochre Titan */
+            int sw = ((frame >> 3) & 1u) ? -1 : 0;
+            spr_box(ox, oy + sw, -12, -24, 24, 22, 0xFFB8783Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + sw, -10, -22, 20,  5, 0xFFD89A54u, flip, flash, sx, sy);
+            spr_box(ox, oy + sw, -10, -14, 20,  5, 0xFFD89A54u, flip, flash, sx, sy);
+            spr_box(ox, oy + sw,  -8, -28, 16,  8, 0xFF42181Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + sw,  -6, -27,  2,  3, 0xFFFFF4DCu, flip, flash, sx, sy);
+            spr_box(ox, oy + sw,   4, -27,  2,  3, 0xFFFFF4DCu, flip, flash, sx, sy);
+            spr_box(ox, oy + sw,  -1, -28,  2,  3, 0xFFFFF4DCu, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_FAUNA_CAMEL: {
+            /* Sands of Babana Caravan Camel */
+            spr_box(ox, oy + bob, -6, -10, 12, 6, 0xFFD8A662u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -3, -14,  6, 4, 0xFFC48E4Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + bob,  5, -15,  4, 7, 0xFFD8A662u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob,  6, -15,  4, 3, 0xFFE6BC7Au, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -4, -10,  7, 3, 0xFFC43A3Cu, flip, flash, sx, sy);
+            spr_box(ox, oy,       -5,  -4,  2, 4, 0xFFA8783Cu, flip, flash, sx, sy);
+            spr_box(ox, oy,        3,  -4,  2, 4, 0xFFA8783Cu, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_FAUNA_PENGUIN: {
+            /* Frostmere North Festive Penguin with Red Scarf */
+            spr_box(ox, oy + bob, -4, -12,  8, 10, 0xFF202A3Au, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -3,  -9,  6,  7, 0xFFF4F8FCu, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -4, -10,  8,  2, 0xFFD83844u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -1, -11,  3,  2, 0xFFF5A838u, flip, flash, sx, sy);
+            spr_box(ox, oy,       -3,  -2,  2,  2, 0xFFF5A838u, flip, flash, sx, sy);
+            spr_box(ox, oy,        1,  -2,  2,  2, 0xFFF5A838u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_FAUNA_MONKEY: {
+            /* Canopy Wilds Golden-Tailed Monkey */
+            spr_box(ox, oy + bob, -4,  -9,  8, 6, 0xFF8C5430u, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -3, -14,  6, 5, 0xFFA6683Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -2, -12,  4, 3, 0xFFEEC69Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + bob, -7, -11,  3, 4, 0xFF8C5430u, flip, flash, sx, sy);
+            spr_box(ox, oy,       -3,  -3,  2, 3, 0xFF6E4024u, flip, flash, sx, sy);
+            spr_box(ox, oy,        1,  -3,  2, 3, 0xFF6E4024u, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_FAUNA_ROBOT: {
+            /* Aetheris Citadel Hover-Automaton with Glowing Cyan Visor */
+            int hv = ((frame >> 3) & 1u) ? -2 : -1;
+            spr_box(ox, oy + hv, -5, -14, 10, 10, 0xFFAEC0D8u, flip, flash, sx, sy);
+            spr_box(ox, oy + hv, -4, -13,  8,  4, 0xFF202C3Cu, flip, flash, sx, sy);
+            spr_box(ox, oy + hv, -3, -12,  6,  2, 0xFF4AF2FFu, flip, flash, sx, sy);
+            spr_box(ox, oy + hv, -1, -17,  2,  3, 0xFF4AF2FFu, flip, flash, sx, sy);
+            fill_ellipse_alpha(ox, oy - 2, 5, 2, 0xFF4AF2FFu, 150);
+            break;
+        }
+        case SPR_NPC_SHIPWRIGHT: {
+            /* Shipwright Orin — Sun-Tanned Beard, Canvas Vest & Cedar Mallet */
+            spr_box(ox, oy, -5, -17, 10, 3, 0xFF8C5832u, flip, flash, sx, sy);
+            spr_box(ox, oy, -4, -14,  8, 6, 0xFFE8B892u, flip, flash, sx, sy);
+            spr_box(ox, oy, -2, -12,  1, 2, 0xFF1C1822u, flip, flash, sx, sy);
+            spr_box(ox, oy,  1, -12,  1, 2, 0xFF1C1822u, flip, flash, sx, sy);
+            spr_box(ox, oy, -4,  -9,  8, 3, 0xFF724424u, flip, flash, sx, sy);
+            spr_box(ox, oy, -6,  -7, 12, 6, 0xFF3E688Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -3,  -6,  6, 5, 0xFFE6D4AEu, flip, flash, sx, sy);
+            spr_box(ox, oy,  6, -11,  2, 7, 0xFF6E4424u, flip, flash, sx, sy);
+            spr_box(ox, oy,  5, -13,  4, 3, 0xFF9CA4B4u, flip, flash, sx, sy);
+            spr_box(ox, oy, -4,  -1,  3, 2, 0xFF4A2E1Cu, flip, flash, sx, sy);
+            spr_box(ox, oy,  1,  -1,  3, 2, 0xFF4A2E1Cu, flip, flash, sx, sy);
+            break;
+        }
+        case SPR_BABANA_STALL: {
+            /* Golden Babana Desert Market Stall with Striped Canopy */
+            spr_box(ox, oy, -11, -16, 22,  5, 0xFFE4503Cu, flip, flash, sx, sy);
+            spr_box(ox, oy,  -7, -16,  4,  5, 0xFFFFF0C4u, flip, flash, sx, sy);
+            spr_box(ox, oy,   3, -16,  4,  5, 0xFFFFF0C4u, flip, flash, sx, sy);
+            spr_box(ox, oy, -10, -11,  2, 11, 0xFF7C4E2Cu, flip, flash, sx, sy);
+            spr_box(ox, oy,   8, -11,  2, 11, 0xFF7C4E2Cu, flip, flash, sx, sy);
+            spr_box(ox, oy, -10,  -6, 20,  6, 0xFF9C663Au, flip, flash, sx, sy);
+            /* Pyramid of bright golden Babanas! */
+            spr_box(ox, oy,  -6,  -9, 12,  3, 0xFFFFD838u, flip, flash, sx, sy);
+            spr_box(ox, oy,  -3, -11,  6,  2, 0xFFFFF07Cu, flip, flash, sx, sy);
+            break;
+        }
         default:
             break;
     }
@@ -2424,11 +2773,13 @@ static void render_battle_scene(const HearthState *st, const HearthPpuPacket *pp
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
     uint8_t biome = st->battle.biome;
-    bool shrine = (biome == BIOME_SHRINE);
-    bool sewer  = (biome == BIOME_SEWER);
-    bool boar   = (biome == BIOME_BOARHOLD);
+    bool shrine   = (biome == BIOME_SHRINE);
+    bool sewer    = (biome == BIOME_SEWER);
+    bool boar     = (biome == BIOME_BOARHOLD);
+    bool desert   = (biome == BIOME_DESERT);
+    bool paradise = (biome == BIOME_PARADISE);
 
-    /* Sky / Cavern / Citadel gradient */
+    /* Sky / Cavern / Citadel / Desert / Paradise gradient */
     for (int y = 0; y < 96; y++) {
         uint32_t col;
         if (sewer) {
@@ -2437,22 +2788,29 @@ static void render_battle_scene(const HearthState *st, const HearthPpuPacket *pp
             col = (y < 32) ? 0xFF28121Cu : (y < 64) ? 0xFF48202Cu : 0xFF723438u;
         } else if (shrine) {
             col = (y < 32) ? 0xFF1B1932u : (y < 64) ? 0xFF28264Bu : 0xFF3A3562u;
+        } else if (desert) {
+            col = (y < 32) ? 0xFFE08C3Au : (y < 64) ? 0xFFF2B85Cu : 0xFFFFE29Cu;
+        } else if (paradise) {
+            col = (y < 32) ? 0xFF2896D8u : (y < 64) ? 0xFF56C6E8u : 0xFFA8F0F8u;
         } else {
             col = (y < 32) ? 0xFF4D9CD0u : (y < 64) ? 0xFF77BBE6u : 0xFFBEE7F8u;
         }
         fill_rect_px(0, y, w, 1, col);
     }
 
-    /* Distant rolling hills / arches silhouette */
+    /* Distant rolling hills / dunes / coral horizon */
     for (int x = 0; x < w; x++) {
         int hill = 82 + (HEARTH_SIN64[(x >> 2) & 63] >> 4);
-        uint32_t hcol = sewer ? 0xFF102022u : boar ? 0xFF321820u : shrine ? 0xFF232538u : 0xFF4A884Eu;
+        uint32_t hcol = sewer ? 0xFF102022u : boar ? 0xFF321820u : shrine ? 0xFF232538u
+                      : desert ? 0xFFD29A48u : paradise ? 0xFF3AAEC4u : 0xFF4A884Eu;
         fill_rect_px(x, hill, 1, 96 - hill, hcol);
     }
 
     /* Battleground stage floor */
-    uint32_t floor_col = sewer ? 0xFF2A3E42u : boar ? 0xFF5A4C52u : shrine ? 0xFF4C5868u : 0xFF74B461u;
-    uint32_t trim_col  = sewer ? 0xFF44B888u : boar ? 0xFFE07A48u : shrine ? 0xFF8591A0u : 0xFFA8D678u;
+    uint32_t floor_col = sewer ? 0xFF2A3E42u : boar ? 0xFF5A4C52u : shrine ? 0xFF4C5868u
+                       : desert ? 0xFFE8C26Eu : paradise ? 0xFFF2DDA6u : 0xFF74B461u;
+    uint32_t trim_col  = sewer ? 0xFF44B888u : boar ? 0xFFE07A48u : shrine ? 0xFF8591A0u
+                       : desert ? 0xFFF8DF98u : paradise ? 0xFF7ADCF0u : 0xFFA8D678u;
     fill_rect_px(0, 96, w, h - 96, floor_col);
     fill_rect_px(0, 96, w, 3, trim_col);
     if (sewer) {
@@ -2462,6 +2820,10 @@ static void render_battle_scene(const HearthState *st, const HearthPpuPacket *pp
     } else if (shrine) {
         draw_circle_outline(w / 2, 134, 44, pal_col(3, 15));
         draw_circle_outline(w / 2, 134, 30, pal_col(0, 11));
+    } else if (desert) {
+        fill_ellipse_alpha(w / 2, 136, 95, 20, 0xFFD4A04Cu, 110);
+    } else if (paradise) {
+        fill_ellipse_alpha(w / 2, 136, 95, 20, 0xFF52C4D8u, 85);
     } else {
         fill_ellipse_alpha(w / 2, 136, 95, 22, pal_col(0, 3), 90);
     }
@@ -2655,11 +3017,17 @@ static void render_dialogue_overlay(const HearthState *st) {
     if (!st->dialogue.active) return;
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
-    int choice_rows = (st->dialogue.finished && st->dialogue.choice_count > 0)
-                    ? (int)st->dialogue.choice_count : 0;
-    int bh = 48 + choice_rows * 13;
+    bool show_choices = (st->dialogue.finished && st->dialogue.next_text == NULL && st->dialogue.choice_count > 0);
+    int choice_rows = show_choices ? (int)st->dialogue.choice_count : 0;
+    int bx = 8, bw = w - 16;
+    int est_text_w = (st->dialogue.portrait_id >= 1 && st->dialogue.portrait_id <= CINEMA_SDL_PORTRAIT_COUNT)
+                   ? (bw - 54) : (bw - 43);
+    int text_lines = count_wrapped_lines(est_text_w, st->dialogue.full_text, st->dialogue.full_len);
+    int text_h = 18 + text_lines * 10;
+    if (text_h < 48) text_h = 48;
+    int bh = text_h + choice_rows * 13;
     if (bh > h - 26) bh = h - 26;
-    int bx = 8, by = h - bh - 6, bw = w - 16;
+    int by = h - bh - 6;
 
     fill_rect_alpha(bx, by, bw, bh, 0xFF171423u, 240);
     draw_rect_outline(bx, by, bw, bh, 0xFFE8B852u);
@@ -2738,7 +3106,7 @@ static void render_dialogue_overlay(const HearthState *st) {
     draw_text_wrapped(text_x, by + 7, text_w, st->dialogue.full_text, st->dialogue.visible_chars, 0xFFF4EEDCu);
 
     if (st->dialogue.finished) {
-        if (st->dialogue.choice_count > 0) {
+        if (show_choices) {
             /* Stack choices vertically (full-width rows) so long labels NEVER overlap! */
             int cy = by + bh - choice_rows * 13 - 4;
             for (uint8_t i = 0; i < st->dialogue.choice_count; i++) {
@@ -2752,7 +3120,9 @@ static void render_dialogue_overlay(const HearthState *st) {
                 draw_text(bx + 18, row_y, st->dialogue.choices[i].label, sel ? 0xFFFFF1A8u : 0xFFB8B2C4u, true);
             }
         } else if ((st->frame_count >> 4) & 1u) {
-            draw_text(bx + bw - 26, by + bh - 11, "[A]", 0xFFF5B841u, true);
+            const char *cue = (st->dialogue.next_text != NULL) ? "[A] MORE" : "[A]";
+            int cw = (int)strlen(cue) * 6 + 6;
+            draw_text(bx + bw - cw, by + bh - 11, cue, 0xFFF5B841u, true);
         }
     }
 }
@@ -2782,36 +3152,36 @@ static void render_shop_overlay(const HearthState *st) {
     draw_rect_outline(bx + 12 + tw, by + 19, tw, 12, st->shop.tab == 1 ? 0xFFFFF1A8u : 0xFF4A4262u);
     draw_text_centered(bx + 12 + tw + tw / 2, by + 22, "SELL FISH", st->shop.tab == 1 ? 0xFFFFF1A8u : 0xFFB0AAB8u, false);
 
-    int rows = (st->shop.tab == 0) ? 5 : HEARTH_FISH_SPECIES;
+    int rows = (st->shop.tab == 0) ? HEARTH_SHOP_ITEM_COUNT : HEARTH_FISH_SPECIES;
     for (int i = 0; i < rows; i++) {
-        int ry = by + 37 + i * 18;
+        int ry = by + 36 + i * 16;
         bool sel = (st->shop.cursor == (uint8_t)i);
         if (sel) {
-            fill_rect_px(bx + 8, ry - 2, bw - 16, 15, 0xFF2D2548u);
-            draw_rect_outline(bx + 8, ry - 2, bw - 16, 15, 0xFFF5B841u);
-            draw_text(bx + 11, ry + 2, ">", 0xFFFFF1A8u, false);
+            fill_rect_px(bx + 8, ry - 2, bw - 16, 14, 0xFF2D2548u);
+            draw_rect_outline(bx + 8, ry - 2, bw - 16, 14, 0xFFF5B841u);
+            draw_text(bx + 11, ry + 1, ">", 0xFFFFF1A8u, false);
         }
         if (st->shop.tab == 0) {
             const HearthShopItem *it = &HEARTH_SHOP_ITEMS[i];
-            draw_text(bx + 20, ry + 2, it->name, sel ? 0xFFFFF1A8u : 0xFFE6E0D4u, false);
+            draw_text(bx + 20, ry + 1, it->name, sel ? 0xFFFFF1A8u : 0xFFE6E0D4u, false);
             snprintf(buf, sizeof(buf), "%uG", (unsigned)it->price);
-            draw_text(bx + bw - (int)strlen(buf) * 6 - 12, ry + 2, buf, 0xFFF5B841u, false);
+            draw_text(bx + bw - (int)strlen(buf) * 6 - 12, ry + 1, buf, 0xFFF5B841u, false);
         } else {
             const HearthFishInfo *fi = &HEARTH_FISH_TABLE[i];
             uint8_t qty = st->fish_bag[i];
             snprintf(buf, sizeof(buf), "%.14s X%u", fi->name, (unsigned)qty);
-            draw_text(bx + 20, ry + 2, buf, qty > 0 ? (sel ? 0xFFFFF1A8u : 0xFFA8D678u) : 0xFF706B7Cu, false);
+            draw_text(bx + 20, ry + 1, buf, qty > 0 ? (sel ? 0xFFFFF1A8u : 0xFFA8D678u) : 0xFF706B7Cu, false);
             snprintf(buf, sizeof(buf), "+%uG", (unsigned)fi->sell_price);
-            draw_text(bx + bw - (int)strlen(buf) * 6 - 12, ry + 2, buf, qty > 0 ? 0xFFF5B841u : 0xFF605B6Cu, false);
+            draw_text(bx + bw - (int)strlen(buf) * 6 - 12, ry + 1, buf, qty > 0 ? 0xFFF5B841u : 0xFF605B6Cu, false);
         }
     }
 
     /* Footer feedback / item description */
-    int fy = by + bh - 34;
+    int fy = by + bh - 32;
     fill_rect_px(bx + 8, fy, bw - 16, 14, 0xFF221D34u);
     if (st->shop.msg_timer > 0 && st->shop.msg[0] != '\0') {
         draw_text_centered(w / 2, fy + 4, st->shop.msg, 0xFFA8D678u, false);
-    } else if (st->shop.tab == 0 && st->shop.cursor < 5) {
+    } else if (st->shop.tab == 0 && st->shop.cursor < HEARTH_SHOP_ITEM_COUNT) {
         draw_text_centered(w / 2, fy + 4, HEARTH_SHOP_ITEMS[st->shop.cursor].desc, 0xFF9AD8F4u, false);
     } else {
         draw_text_centered(w / 2, fy + 4, "SELL CAUGHT FISH FOR GUILDERS", 0xFF9AD8F4u, false);
@@ -2982,127 +3352,281 @@ static void render_mountain_vista(const HearthState *st, const HearthPpuPacket *
     }
 }
 
-/* Grand Multi-Tile Storybook Landmarks for the 88x56 Evertale Open World Map */
+/* Signed shortest toroidal delta across a wrapped world axis */
+static int wrap_delta(int a, int b, int period) {
+    int d = a - b;
+    int half = period / 2;
+    while (d >  half) d -= period;
+    while (d < -half) d += period;
+    return d;
+}
+
+/* Grand Multi-Tile Storybook Landmarks across all 7 Continents of the 256x192 Evertale Globe */
 static void render_sdl_world_landmarks(int cam_x, int cam_y, uint32_t frame) {
-    int sx, sy;
+    int w = (int)g_ppu_w;
+    int h = (int)g_ppu_h;
+    int gw_px = HEARTH_GLOBE_W * HEARTH_TILE_SIZE;
+    int gh_px = HEARTH_GLOBE_H * HEARTH_TILE_SIZE;
     int flutter = ((frame >> 4) & 1u) ? 1 : 0;
 
-    /* 1. Hollow Oak Gate (tx=16, ty=43) */
-    sx = 16 * 16 + 8 - cam_x; sy = 43 * 16 + 8 - cam_y;
-    fill_ellipse_alpha(sx, sy + 6, 22, 7, 0xFF142214u, 90);
-    fill_rect_px(sx - 9, sy - 14, 18, 22, 0xFF6B4228u);
-    fill_rect_px(sx - 6, sy - 12, 12, 18, 0xFF825434u);
-    fill_ellipse_alpha(sx, sy - 2, 6, 8, 0xFF5AD2F4u, 150);
-    fill_ellipse_alpha(sx, sy - 2, 4, 6, 0xFFFFF1A8u, 235);
-    fill_ellipse_alpha(sx, sy - 20, 22, 11, 0xFF2E6B38u, 255);
-    fill_ellipse_alpha(sx - 8, sy - 24, 14, 8, 0xFF4E924Au, 255);
-    fill_ellipse_alpha(sx + 8, sy - 23, 13, 8, 0xFF6AB258u, 255);
+    for (uint8_t idx = 0; idx < HEARTH_GLOBE_LANDMARK_COUNT; idx++) {
+        const HearthGlobeLandmark *lm = &HEARTH_GLOBE_LANDMARKS[idx];
+        int sx = w / 2 + wrap_delta((int)lm->tx * 16 + 8, cam_x + w / 2, gw_px);
+        int sy = h / 2 + wrap_delta((int)lm->ty * 16 + 8, cam_y + h / 2, gh_px);
+        if (sx < -56 || sx > w + 56 || sy < -56 || sy > h + 56) continue;
 
-    /* 2. Windmill Hamlet (tx=18, ty=27) */
-    sx = 18 * 16 + 8 - cam_x; sy = 27 * 16 + 8 - cam_y;
-    fill_ellipse_alpha(sx, sy + 8, 26, 8, 0xFF142214u, 85);
-    fill_rect_px(sx - 20, sy - 4, 14, 12, 0xFFF2E6CCu);
-    fill_rect_px(sx - 22, sy - 10, 18, 6, 0xFFC24C3Cu);
-    fill_rect_px(sx + 6, sy - 2, 14, 10, 0xFFF2E6CCu);
-    fill_rect_px(sx + 4, sy - 8, 18, 6, 0xFFC24C3Cu);
-    fill_rect_px(sx - 5, sy - 20, 12, 26, 0xFFECE2CEu);
-    fill_rect_px(sx - 7, sy - 26, 16, 7, 0xFF9E3A32u);
-    fill_rect_px(sx - 1, sy - 3, 4, 9, 0xFF5A3824u);
-    /* Spinning miniature sails */
-    int ang = (int)((frame >> 1) & 63u);
-    for (int arm = 0; arm < 4; arm++) {
-        int a = (ang + arm * 16) & 63;
-        int ex = sx + 1 + (HEARTH_SIN64[(a + 16) & 63] * 14) / 127;
-        int ey = sy - 18 + (HEARTH_SIN64[a] * 14) / 127;
-        draw_line_px(sx + 1, sy - 18, ex, ey, 0xFFFFF6E0u);
+        switch (idx) {
+            case 0: /* Hollow Oak Gate */
+                fill_ellipse_alpha(sx, sy + 6, 22, 7, 0xFF142214u, 90);
+                fill_rect_px(sx - 9, sy - 14, 18, 22, 0xFF6B4228u);
+                fill_rect_px(sx - 6, sy - 12, 12, 18, 0xFF825434u);
+                fill_ellipse_alpha(sx, sy - 2, 6, 8, 0xFF5AD2F4u, 150);
+                fill_ellipse_alpha(sx, sy - 2, 4, 6, 0xFFFFF1A8u, 235);
+                fill_ellipse_alpha(sx, sy - 20, 22, 11, 0xFF2E6B38u, 255);
+                fill_ellipse_alpha(sx - 8, sy - 24, 14, 8, 0xFF4E924Au, 255);
+                fill_ellipse_alpha(sx + 8, sy - 23, 13, 8, 0xFF6AB258u, 255);
+                break;
+            case 1: { /* Windmill Hamlet */
+                fill_ellipse_alpha(sx, sy + 8, 26, 8, 0xFF142214u, 85);
+                fill_rect_px(sx - 20, sy - 4, 14, 12, 0xFFF2E6CCu);
+                fill_rect_px(sx - 22, sy - 10, 18, 6, 0xFFC24C3Cu);
+                fill_rect_px(sx + 6, sy - 2, 14, 10, 0xFFF2E6CCu);
+                fill_rect_px(sx + 4, sy - 8, 18, 6, 0xFFC24C3Cu);
+                fill_rect_px(sx - 5, sy - 20, 12, 26, 0xFFECE2CEu);
+                fill_rect_px(sx - 7, sy - 26, 16, 7, 0xFF9E3A32u);
+                fill_rect_px(sx - 1, sy - 3, 4, 9, 0xFF5A3824u);
+                int ang = (int)((frame >> 1) & 63u);
+                for (int arm = 0; arm < 4; arm++) {
+                    int a = (ang + arm * 16) & 63;
+                    int ex = sx + 1 + (HEARTH_SIN64[(a + 16) & 63] * 14) / 127;
+                    int ey = sy - 18 + (HEARTH_SIN64[a] * 14) / 127;
+                    draw_line_px(sx + 1, sy - 18, ex, ey, 0xFFFFF6E0u);
+                }
+                break;
+            }
+            case 2: /* Sunhill Market */
+                fill_ellipse_alpha(sx, sy + 10, 34, 10, 0xFF182218u, 95);
+                fill_rect_px(sx - 30, sy - 2, 60, 12, 0xFFC8BCA4u);
+                fill_rect_px(sx - 26, sy - 14, 14, 14, 0xFFF6ECD8u);
+                fill_rect_px(sx - 28, sy - 20, 18, 6, 0xFFD25A3Cu);
+                fill_rect_px(sx + 12, sy - 14, 14, 14, 0xFFF6ECD8u);
+                fill_rect_px(sx + 10, sy - 20, 18, 6, 0xFFD25A3Cu);
+                fill_rect_px(sx - 10, sy - 20, 20, 20, 0xFFFAF2E0u);
+                fill_rect_px(sx - 12, sy - 28, 24, 8, 0xFFE29C38u);
+                fill_rect_px(sx - 3, sy - 8, 6, 8, 0xFF5A3824u);
+                fill_rect_px(sx - 20, sy + 1, 10, 5, 0xFFE05248u);
+                fill_rect_px(sx + 10, sy + 1, 10, 5, 0xFF3E84B8u);
+                break;
+            case 3: /* Castle Aurelia */
+                fill_ellipse_alpha(sx, sy + 12, 42, 11, 0xFF141824u, 105);
+                fill_rect_px(sx - 36, sy - 10, 72, 22, 0xFFE2DAC8u);
+                fill_rect_px(sx - 38, sy - 28, 14, 40, 0xFFEEE8D8u);
+                fill_rect_px(sx + 24, sy - 28, 14, 40, 0xFFEEE8D8u);
+                fill_rect_px(sx - 14, sy - 38, 28, 50, 0xFFF8F4E8u);
+                fill_rect_px(sx - 40, sy - 36, 18, 8, 0xFF3462A4u);
+                fill_rect_px(sx + 22, sy - 36, 18, 8, 0xFF3462A4u);
+                fill_rect_px(sx - 16, sy - 48, 32, 10, 0xFF285292u);
+                fill_rect_px(sx - 6, sy - 2, 12, 14, 0xFF3A2820u);
+                fill_rect_px(sx - 1, sy - 56, 2, 8, 0xFFF5B841u);
+                fill_rect_px(sx + 1, sy - 55 + flutter, 8, 4, 0xFFE04448u);
+                break;
+            case 4: /* Bramblewood Crossing */
+                fill_ellipse_alpha(sx, sy + 8, 28, 8, 0xFF102014u, 95);
+                for (int k = -1; k <= 1; k++) {
+                    int btx = sx + k * 14;
+                    int bty = sy + ((k == 0) ? -4 : 2);
+                    fill_rect_px(btx - 3, bty - 4, 6, 12, 0xFF5C3A24u);
+                    fill_ellipse_alpha(btx, bty - 14, 13, 11, 0xFF245830u, 255);
+                    fill_ellipse_alpha(btx - 2, bty - 17, 9, 7, 0xFF428444u, 255);
+                }
+                break;
+            case 5: /* Sunken Watchtower */
+                fill_ellipse_alpha(sx, sy + 8, 24, 7, 0xFF141820u, 90);
+                fill_rect_px(sx - 18, sy - 10, 8, 18, 0xFF8C90A0u);
+                fill_rect_px(sx + 10, sy - 14, 8, 22, 0xFF7C8090u);
+                fill_rect_px(sx - 8, sy - 26, 16, 34, 0xFF9EA2B2u);
+                fill_rect_px(sx - 6, sy - 24, 12, 4, 0xFF4C7C46u);
+                fill_rect_px(sx - 3, sy - 8, 6, 10, 0xFF282438u);
+                fill_ellipse_alpha(sx, sy - 16, 4, 4, 0xFF5AD2F4u, 150);
+                break;
+            case 6: /* Whiskerburgh */
+                fill_ellipse_alpha(sx, sy + 8, 28, 8, 0xFF14222Au, 95);
+                fill_rect_px(sx - 24, sy - 6, 16, 14, 0xFFF2E6D0u);
+                fill_rect_px(sx - 26, sy - 12, 20, 6, 0xFF3E689Au);
+                fill_rect_px(sx - 6, sy - 14, 18, 22, 0xFFF8EED8u);
+                fill_rect_px(sx - 8, sy - 20, 22, 6, 0xFFB8443Eu);
+                fill_rect_px(sx + 14, sy - 18, 8, 26, 0xFFEAE4D8u);
+                fill_rect_px(sx + 15, sy - 22, 6, 4, 0xFFFFE478u);
+                break;
+            case 7: /* Heartland Timber Pier */
+                fill_rect_px(sx - 22, sy - 2, 44, 12, 0xFF7C4E2Cu);
+                fill_rect_px(sx - 20, sy, 40, 8, 0xFFA66E42u);
+                fill_rect_px(sx - 16, sy - 18, 16, 16, 0xFFE8D8B8u);
+                fill_rect_px(sx - 18, sy - 23, 20, 6, 0xFF3E6E9Cu);
+                fill_rect_px(sx + 8, sy - 12, 12, 10, 0xFFB07242u);
+                fill_rect_px(sx + 13, sy - 24, 2, 14, 0xFF6E4424u);
+                fill_rect_px(sx + 15, sy - 23 + flutter, 7, 4, 0xFFF5C45Au);
+                break;
+            case 8: /* Suncrest Coral Cove */
+                fill_ellipse_alpha(sx, sy + 6, 26, 8, 0xFF287C98u, 110);
+                fill_rect_px(sx - 20, sy - 8, 16, 12, 0xFFF6E6C4u);
+                fill_rect_px(sx - 22, sy - 15, 20, 7, 0xFFE89C44u);
+                fill_rect_px(sx + 4, sy - 10, 16, 14, 0xFFF6E6C4u);
+                fill_rect_px(sx + 2, sy - 17, 20, 7, 0xFF42B8A8u);
+                fill_rect_px(sx - 3, sy - 26, 4, 18, 0xFF8C5832u);
+                fill_ellipse_alpha(sx - 1, sy - 28, 12, 5, 0xFF3E9C52u, 255);
+                fill_rect_px(sx + 10, sy - 24 + flutter, 7, 4, 0xFF20222Cu);
+                break;
+            case 9: /* Oasis of Babana */
+                fill_ellipse_alpha(sx, sy + 6, 30, 9, 0xFF9C7238u, 90);
+                fill_ellipse_alpha(sx, sy + 2, 18, 7, 0xFF44BCD4u, 235);
+                fill_rect_px(sx - 22, sy - 14, 16, 16, 0xFFF2DFB4u);
+                fill_rect_px(sx - 20, sy - 22, 12, 8, 0xFFE8B43Cu);
+                fill_rect_px(sx + 6, sy - 12, 16, 14, 0xFFEED4A2u);
+                fill_rect_px(sx + 4, sy - 17, 20, 5, 0xFFE4503Cu);
+                fill_rect_px(sx + 10, sy - 10, 8, 3, 0xFFFFD838u); /* Golden Babana pyramid! */
+                break;
+            case 10: /* Frostmere Noel Village */
+                fill_ellipse_alpha(sx, sy + 8, 28, 8, 0xFF80A4C8u, 95);
+                fill_rect_px(sx - 22, sy - 8, 16, 14, 0xFF7C4E34u);
+                fill_rect_px(sx - 24, sy - 15, 20, 7, 0xFFF4F8FFu);
+                fill_rect_px(sx + 6, sy - 8, 16, 14, 0xFF7C4E34u);
+                fill_rect_px(sx + 4, sy - 15, 20, 7, 0xFFF4F8FFu);
+                /* Festive Evergreen Tree with Star */
+                fill_rect_px(sx - 2, sy - 4, 4, 10, 0xFF5C3A24u);
+                fill_rect_px(sx - 9, sy - 12, 18, 8, 0xFF266E44u);
+                fill_rect_px(sx - 6, sy - 20, 12, 8, 0xFF348854u);
+                fill_rect_px(sx - 3, sy - 26, 6, 6, 0xFF48A464u);
+                fill_rect_px(sx - 2, sy - 30, 4, 4, 0xFFFFE460u);
+                put_px(sx - 4, sy - 10, 0xFFE84048u);
+                put_px(sx + 4, sy - 16, 0xFF5AD2F4u);
+                break;
+            case 11: /* Canopy Treetop Village */
+                fill_ellipse_alpha(sx, sy + 8, 30, 8, 0xFF102818u, 110);
+                fill_rect_px(sx - 18, sy - 18, 8, 24, 0xFF6E4424u);
+                fill_rect_px(sx + 10, sy - 18, 8, 24, 0xFF6E4424u);
+                fill_rect_px(sx - 22, sy - 18, 44, 6, 0xFFA67242u); /* Elevated wooden platform */
+                fill_rect_px(sx - 16, sy - 28, 14, 10, 0xFFE6D4A8u);
+                fill_rect_px(sx + 2, sy - 28, 14, 10, 0xFFE6D4A8u);
+                fill_ellipse_alpha(sx, sy - 32, 26, 8, 0xFF2E8442u, 255);
+                break;
+            case 12: /* Cinderpeak Caldera Gate */
+                fill_ellipse_alpha(sx, sy + 8, 32, 9, 0xFF281010u, 115);
+                fill_rect_px(sx - 26, sy - 10, 52, 18, 0xFF44363Au);
+                fill_rect_px(sx - 18, sy - 24, 36, 16, 0xFF5A4448u);
+                fill_rect_px(sx - 10, sy - 34, 20, 12, 0xFF6E4E52u);
+                fill_rect_px(sx - 6, sy - 34, 12, 5, 0xFFFF7828u);
+                fill_rect_px(sx - 3, sy - 32 + flutter, 6, 4, 0xFFFFE058u);
+                fill_rect_px(sx - 6, sy - 4, 12, 12, 0xFF201014u);
+                break;
+            case 13: /* Aetheris Citadel Spire */
+                fill_ellipse_alpha(sx, sy + 10, 32, 9, 0xFF101C2Cu, 120);
+                fill_rect_px(sx - 24, sy - 12, 48, 22, 0xFF344864u);
+                fill_rect_px(sx - 14, sy - 32, 28, 42, 0xFF6482A8u);
+                fill_rect_px(sx - 6, sy - 48, 12, 56, 0xFF9CB8D8u);
+                fill_rect_px(sx - 2, sy - 46, 4, 44, 0xFF4AF2FFu);
+                fill_ellipse_alpha(sx, sy - 50, 7 + flutter, 7 + flutter, 0xFF4AF2FFu, 150);
+                fill_rect_px(sx - 2, sy - 52, 4, 4, 0xFFFFFFFFu);
+                break;
+            default:
+                break;
+        }
     }
-
-    /* 3. Sunhill Market (tx=44, ty=22) — Hilltop Market Town */
-    sx = 44 * 16 + 8 - cam_x; sy = 22 * 16 + 8 - cam_y;
-    fill_ellipse_alpha(sx, sy + 10, 34, 10, 0xFF182218u, 95);
-    fill_rect_px(sx - 30, sy - 2, 60, 12, 0xFFC8BCA4u);
-    fill_rect_px(sx - 26, sy - 14, 14, 14, 0xFFF6ECD8u);
-    fill_rect_px(sx - 28, sy - 20, 18, 6, 0xFFD25A3Cu);
-    fill_rect_px(sx + 12, sy - 14, 14, 14, 0xFFF6ECD8u);
-    fill_rect_px(sx + 10, sy - 20, 18, 6, 0xFFD25A3Cu);
-    fill_rect_px(sx - 10, sy - 20, 20, 20, 0xFFFAF2E0u);
-    fill_rect_px(sx - 12, sy - 28, 24, 8, 0xFFE29C38u);
-    fill_rect_px(sx - 3, sy - 8, 6, 8, 0xFF5A3824u);
-    fill_rect_px(sx - 20, sy + 1, 10, 5, 0xFFE05248u);
-    fill_rect_px(sx + 10, sy + 1, 10, 5, 0xFF3E84B8u);
-
-    /* 4. Castle Aurelia (tx=44, ty=11) — Grand White-Marble Kingdom */
-    sx = 44 * 16 + 8 - cam_x; sy = 11 * 16 + 8 - cam_y;
-    fill_ellipse_alpha(sx, sy + 12, 42, 11, 0xFF141824u, 105);
-    fill_rect_px(sx - 36, sy - 10, 72, 22, 0xFFE2DAC8u);
-    fill_rect_px(sx - 38, sy - 28, 14, 40, 0xFFEEE8D8u);
-    fill_rect_px(sx + 24, sy - 28, 14, 40, 0xFFEEE8D8u);
-    fill_rect_px(sx - 14, sy - 38, 28, 50, 0xFFF8F4E8u);
-    fill_rect_px(sx - 40, sy - 36, 18, 8, 0xFF3462A4u);
-    fill_rect_px(sx + 22, sy - 36, 18, 8, 0xFF3462A4u);
-    fill_rect_px(sx - 16, sy - 48, 32, 10, 0xFF285292u);
-    fill_rect_px(sx - 6, sy - 2, 12, 14, 0xFF3A2820u);
-    fill_rect_px(sx - 1, sy - 56, 2, 8, 0xFFF5B841u);
-    fill_rect_px(sx + 1, sy - 55 + flutter, 8, 4, 0xFFE04448u);
-
-    /* 5. Bramblewood Crossing (tx=68, ty=24) — Towering Whispering Timberland */
-    sx = 68 * 16 + 8 - cam_x; sy = 24 * 16 + 8 - cam_y;
-    fill_ellipse_alpha(sx, sy + 8, 28, 8, 0xFF102014u, 95);
-    for (int i = -1; i <= 1; i++) {
-        int tx = sx + i * 14;
-        int ty = sy + ((i == 0) ? -4 : 2);
-        fill_rect_px(tx - 3, ty - 4, 6, 12, 0xFF5C3A24u);
-        fill_ellipse_alpha(tx, ty - 14, 13, 11, 0xFF245830u, 255);
-        fill_ellipse_alpha(tx - 2, ty - 17, 9, 7, 0xFF428444u, 255);
-    }
-
-    /* 6. Sunken Watchtower (tx=66, ty=42) — Weathered Ancient Ruins */
-    sx = 66 * 16 + 8 - cam_x; sy = 42 * 16 + 8 - cam_y;
-    fill_ellipse_alpha(sx, sy + 8, 24, 7, 0xFF141820u, 90);
-    fill_rect_px(sx - 18, sy - 10, 8, 18, 0xFF8C90A0u);
-    fill_rect_px(sx + 10, sy - 14, 8, 22, 0xFF7C8090u);
-    fill_rect_px(sx - 8, sy - 26, 16, 34, 0xFF9EA2B2u);
-    fill_rect_px(sx - 6, sy - 24, 12, 4, 0xFF4C7C46u);
-    fill_rect_px(sx - 3, sy - 8, 6, 10, 0xFF282438u);
-    fill_ellipse_alpha(sx, sy - 16, 4, 4, 0xFF5AD2F4u, 150);
-
-    /* 7. Whiskerburgh (tx=72, ty=12) — Mouse-Folk Riverbank Borough */
-    sx = 72 * 16 + 8 - cam_x; sy = 12 * 16 + 8 - cam_y;
-    fill_ellipse_alpha(sx, sy + 8, 28, 8, 0xFF14222Au, 95);
-    fill_rect_px(sx - 24, sy - 6, 16, 14, 0xFFF2E6D0u);
-    fill_rect_px(sx - 26, sy - 12, 20, 6, 0xFF3E689Au);
-    fill_rect_px(sx - 6, sy - 14, 18, 22, 0xFFF8EED8u);
-    fill_rect_px(sx - 8, sy - 20, 22, 6, 0xFFB8443Eu);
-    fill_rect_px(sx + 14, sy - 18, 8, 26, 0xFFEAE4D8u);
-    fill_rect_px(sx + 15, sy - 22, 6, 4, 0xFFFFE478u);
 }
 
 static void render_sdl_world_banners(const HearthState *st, int cam_x, int cam_y) {
-    static const struct { int tx; int ty; const char *name; } LM[7] = {
-        { 16, 43, "HOLLOW OAK GATE" },
-        { 18, 27, "WINDMILL HAMLET" },
-        { 44, 22, "SUNHILL MARKET" },
-        { 44, 11, "CASTLE AURELIA" },
-        { 68, 24, "BRAMBLEWOOD" },
-        { 66, 42, "SUNKEN WATCHTOWER" },
-        { 72, 12, "WHISKERBURGH" }
-    };
+    int w = (int)g_ppu_w;
+    int h = (int)g_ppu_h;
+    int gw_px = HEARTH_GLOBE_W * HEARTH_TILE_SIZE;
+    int gh_px = HEARTH_GLOBE_H * HEARTH_TILE_SIZE;
     int hx = FROM_FP(st->hero_fx);
     int hy = FROM_FP(st->hero_fy);
-    for (int i = 0; i < 7; i++) {
-        int lx = LM[i].tx * 16 + 8;
-        int ly = LM[i].ty * 16 + 8;
-        int dx = hx - lx;
-        int dy = hy - ly;
-        if (dx * dx + dy * dy < 88 * 88) {
-            int sx = lx - cam_x;
-            int sy = ly - 32 - cam_y;
-            int bw = (int)strlen(LM[i].name) * 6 + 10;
+    for (uint8_t i = 0; i < HEARTH_GLOBE_LANDMARK_COUNT; i++) {
+        const HearthGlobeLandmark *lm = &HEARTH_GLOBE_LANDMARKS[i];
+        int lx = (int)lm->tx * 16 + 8;
+        int ly = (int)lm->ty * 16 + 8;
+        int dx = wrap_delta(hx, lx, gw_px);
+        int dy = wrap_delta(hy, ly, gh_px);
+        if (dx * dx + dy * dy < 92 * 92) {
+            int sx = w / 2 + wrap_delta(lx, cam_x + w / 2, gw_px);
+            int sy = h / 2 + wrap_delta(ly, cam_y + h / 2, gh_px) - 34;
+            int bw = (int)strlen(lm->name) * 6 + 10;
             fill_rect_alpha(sx - bw / 2, sy - 5, bw, 11, 0xFF141120u, 215);
             draw_rect_outline(sx - bw / 2, sy - 5, bw, 11, 0xFFE8B852u);
-            draw_text_centered(sx, sy - 3, LM[i].name, 0xFFFFF1A8u, false);
+            draw_text_centered(sx, sy - 3, lm->name, 0xFFFFF1A8u, false);
         }
     }
+}
+
+/* World Atlas Minimap Overlay (64x48 Toroidal Macro-Biome Map + 14 Landmark Pins) */
+static void render_world_atlas_overlay(const HearthState *st) {
+    static const uint32_t ATLAS_COLORS[10] = {
+        0xFF1F4C82u, /* 0: Deep Ocean */
+        0xFF3EB4CCu, /* 1: Turquoise Shallows (Raftable) */
+        0xFFE87EA8u, /* 2: Coral Reef Shoals (Raftable) */
+        0xFF5EA84Eu, /* 3: Emerald Heartland */
+        0xFFE4BC62u, /* 4: Sands of Babana */
+        0xFF56C49Au, /* 5: Suncrest Paradise */
+        0xFFE6F0FCu, /* 6: Frostmere North */
+        0xFF226E3Au, /* 7: Canopy Wilds */
+        0xFFD44824u, /* 8: Cinderpeak Caldera */
+        0xFF4898C8u  /* 9: Aetheris Citadel */
+    };
+    static const char *VEH_LABELS[6] = {
+        "ON FOOT", "CEDAR RAFT", "SHIP", "BALLOON", "AIRSHIP", "SPACESHIP"
+    };
+    int w = (int)g_ppu_w;
+    int h = (int)g_ppu_h;
+    int scale = (w >= 300) ? 3 : 2;
+    int map_w = HEARTH_ATLAS_W * scale;
+    int map_h = HEARTH_ATLAS_H * scale;
+    int bx = (w - (map_w + 24)) / 2;
+    int by = (h - (map_h + 44)) / 2;
+    int bw = map_w + 24;
+    int bh = map_h + 44;
+    int mx0 = bx + 12;
+    int my0 = by + 20;
+
+    fill_rect_alpha(0, 0, w, h, 0xFF0A0C16u, 185);
+    fill_rect_alpha(bx, by, bw, bh, 0xFF161322u, 245);
+    draw_rect_outline(bx, by, bw, bh, 0xFFE8B852u);
+    draw_rect_outline(bx + 1, by + 1, bw - 2, bh - 2, 0xFF5C4A28u);
+
+    draw_text(bx + 8, by + 6, "EVERTALE WORLD ATLAS", 0xFFFFF1A8u, true);
+    const char *reg = (st->world_region_id < REGION_COUNT) ? HEARTH_REGION_NAMES[st->world_region_id] : "EVERTALE";
+    draw_text(bx + bw - (int)strlen(reg) * 6 - 8, by + 6, reg, 0xFF9AD8F4u, false);
+
+    /* 64x48 ROM Biome Grid */
+    for (uint8_t ay = 0; ay < HEARTH_ATLAS_H; ay++) {
+        for (uint8_t ax = 0; ax < HEARTH_ATLAS_W; ax++) {
+            uint8_t cell = hearth_globe_atlas_cell(ax, ay);
+            uint32_t c = ATLAS_COLORS[(cell < 10u) ? cell : 0u];
+            fill_rect_px(mx0 + (int)ax * scale, my0 + (int)ay * scale, scale, scale, c);
+        }
+    }
+    draw_rect_outline(mx0 - 1, my0 - 1, map_w + 2, map_h + 2, 0xFF9E8248u);
+
+    /* 14 Landmark Pins */
+    for (uint8_t i = 0; i < HEARTH_GLOBE_LANDMARK_COUNT; i++) {
+        const HearthGlobeLandmark *lm = &HEARTH_GLOBE_LANDMARKS[i];
+        int lx = mx0 + ((int)(lm->tx / 4u)) * scale;
+        int ly = my0 + ((int)(lm->ty / 4u)) * scale;
+        fill_rect_px(lx, ly, scale, scale, lm->enterable ? 0xFFFFF1A8u : 0xFFE8A048u);
+    }
+
+    /* Blinking Live Hero Marker */
+    int htx = ((FROM_FP(st->hero_fx) / HEARTH_TILE_SIZE) % HEARTH_GLOBE_W + HEARTH_GLOBE_W) % HEARTH_GLOBE_W;
+    int hty = ((FROM_FP(st->hero_fy) / HEARTH_TILE_SIZE) % HEARTH_GLOBE_H + HEARTH_GLOBE_H) % HEARTH_GLOBE_H;
+    int px = mx0 + (htx / 4) * scale;
+    int py = my0 + (hty / 4) * scale;
+    uint32_t hc = ((st->frame_count >> 3) & 1u) ? 0xFFFFFFFFu : 0xFFFF4A4Au;
+    fill_rect_px(px - 1, py - 1, scale + 2, scale + 2, 0xFF14101Cu);
+    fill_rect_px(px, py, scale, scale, hc);
+
+    char foot[64];
+    const char *vname = (st->active_vehicle < 6u) ? VEH_LABELS[st->active_vehicle] : "ON FOOT";
+    snprintf(foot, sizeof(foot), "TRAVEL: %s   [M / TAB] CLOSE", vname);
+    draw_text_centered(w / 2, by + bh - 14, foot, 0xFFD8D0C0u, false);
 }
 
 static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
@@ -3130,25 +3654,34 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
             render_mountain_vista(st, ppu, cam_x);
         }
 
-        int tx0 = cam_x / HEARTH_TILE_SIZE - 1;
-        int ty0 = cam_y / HEARTH_TILE_SIZE - 1;
-        int tx1 = (cam_x + w) / HEARTH_TILE_SIZE + 1;
-        int ty1 = (cam_y + h) / HEARTH_TILE_SIZE + 1;
-        if (tx0 < 0) tx0 = 0;
-        if (ty0 < 0) ty0 = 0;
-        if (tx1 >= mw) tx1 = mw - 1;
-        if (ty1 >= mh) ty1 = mh - 1;
+        int tx0 = ((cam_x >= 0) ? (cam_x / HEARTH_TILE_SIZE) : ((cam_x - 15) / HEARTH_TILE_SIZE)) - 1;
+        int ty0 = ((cam_y >= 0) ? (cam_y / HEARTH_TILE_SIZE) : ((cam_y - 15) / HEARTH_TILE_SIZE)) - 1;
+        int tx1 = ((cam_x + w) >= 0 ? ((cam_x + w) / HEARTH_TILE_SIZE) : (((cam_x + w) - 15) / HEARTH_TILE_SIZE)) + 1;
+        int ty1 = ((cam_y + h) >= 0 ? ((cam_y + h) / HEARTH_TILE_SIZE) : (((cam_y + h) - 15) / HEARTH_TILE_SIZE)) + 1;
+        if (!st->is_world_map) {
+            if (tx0 < 0) tx0 = 0;
+            if (ty0 < 0) ty0 = 0;
+            if (tx1 >= mw) tx1 = mw - 1;
+            if (ty1 >= mh) ty1 = mh - 1;
+        }
 
-        /* Layer 1: BG1 Ground & Architecture (skip T_MTN_SKY so alpine vista shines through) */
+        /* Layer 1: BG1 Ground & Architecture (Real-time Toroidal Globe Streaming vs Zone Buffer) */
         for (int ty = ty0; ty <= ty1; ty++) {
             for (int tx = tx0; tx <= tx1; tx++) {
-                uint8_t tile = st->map_bg1[ty * mw + tx];
-                if (tile == T_MTN_SKY && ppu->has_mountain_vista) continue;
+                uint8_t tile;
+                if (st->is_world_map) {
+                    uint16_t wx = (uint16_t)(tx & (HEARTH_GLOBE_W - 1));
+                    uint16_t wy = (uint16_t)(((ty % HEARTH_GLOBE_H) + HEARTH_GLOBE_H) % HEARTH_GLOBE_H);
+                    hearth_globe_cell(wx, wy, &tile, NULL, NULL, NULL);
+                } else {
+                    tile = st->map_bg1[ty * mw + tx];
+                    if (tile == T_MTN_SKY && ppu->has_mountain_vista) continue;
+                }
                 draw_bg1_tile(tx * HEARTH_TILE_SIZE - cam_x, ty * HEARTH_TILE_SIZE - cam_y, tile, ppu->frame_count);
             }
         }
 
-        /* World Map Large Multi-Tile Storybook Landmarks */
+        /* World Map Large Multi-Tile Storybook Landmarks across all 7 Continents */
         if (st->is_world_map) {
             render_sdl_world_landmarks(cam_x, cam_y, ppu->frame_count);
         }
@@ -3164,7 +3697,14 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
         /* Layer 3: BG2 Overhead Tree Canopies & Roof Eaves */
         for (int ty = ty0; ty <= ty1; ty++) {
             for (int tx = tx0; tx <= tx1; tx++) {
-                uint8_t ov = st->map_bg2[ty * mw + tx];
+                uint8_t ov;
+                if (st->is_world_map) {
+                    uint16_t wx = (uint16_t)(tx & (HEARTH_GLOBE_W - 1));
+                    uint16_t wy = (uint16_t)(((ty % HEARTH_GLOBE_H) + HEARTH_GLOBE_H) % HEARTH_GLOBE_H);
+                    hearth_globe_cell(wx, wy, NULL, &ov, NULL, NULL);
+                } else {
+                    ov = st->map_bg2[ty * mw + tx];
+                }
                 if (ov != O_NONE) {
                     draw_bg2_tile(tx * HEARTH_TILE_SIZE - cam_x, ty * HEARTH_TILE_SIZE - cam_y, ov);
                 }
@@ -3191,7 +3731,7 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
         }
 
         /* Lantern Lighting Mask (Deep Sewer Darkness vs Soft Moonlit Mountain Night) */
-        if (ppu->zone_is_dark && (st->mode == MODE_EXPLORE || st->mode == MODE_CUTSCENE || st->mode == MODE_FISHING)) {
+        if (ppu->zone_is_dark && !st->is_world_map && (st->mode == MODE_EXPLORE || st->mode == MODE_CUTSCENE || st->mode == MODE_FISHING)) {
             int lhx = FROM_FP(st->hero_fx) - cam_x;
             int lhy = FROM_FP(st->hero_fy) - cam_y - 6;
             int min_scale = ppu->has_mountain_vista ? 116 : 56;
@@ -3242,11 +3782,18 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
             draw_text_centered(ix, iy - 3, ppu->interact_label, 0xFFFFF6CCu, false);
         }
 
-        /* Minimal Overworld Top Status Ribbon (Story Whisper in Ch.1 or HP/MP/G + Zone) */
+        /* Minimal Overworld Top Status Ribbon */
         if (st->mode == MODE_EXPLORE) {
             fill_rect_alpha(4, 4, w - 8, 12, 0xFF14111Du, 195);
             char hud[64];
-            if (ppu->objective_text && ppu->objective_text[0] != '\0' &&
+            if (st->is_world_map) {
+                const char *vtag = (st->active_vehicle == VEH_RAFT) ? "RAFT"
+                                 : (st->active_vehicle == VEH_SHIP) ? "SHIP"
+                                 : (st->active_vehicle == VEH_BALLOON) ? "BALLOON"
+                                 : (st->active_vehicle == VEH_AIRSHIP) ? "AIRSHIP"
+                                 : (st->active_vehicle == VEH_SPACESHIP) ? "STARSHIP" : "FOOT";
+                snprintf(hud, sizeof(hud), "%s  %uG  [M] ATLAS", vtag, (unsigned)st->guilders);
+            } else if (ppu->objective_text && ppu->objective_text[0] != '\0' &&
                 (st->zone_id == ZONE_ROWAN_HOME || st->zone_id == ZONE_ALDERBROOK ||
                  st->zone_id == ZONE_WHISPERING_WOODS || st->zone_id == ZONE_HOLLOW_GLADE)) {
                 const char *tod_lbl = HEARTH_TOD_NAMES[ppu->time_of_day & 3u];
@@ -3257,12 +3804,14 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
                          st->party[0].mp, (unsigned)st->guilders);
             }
             draw_text(8, 7, hud, 0xFFF4EEDCu, false);
-            const char *zn = ppu->zone_name ? ppu->zone_name : "EVERTALE";
+            const char *zn = (st->is_world_map && st->world_region_id < REGION_COUNT)
+                           ? HEARTH_REGION_NAMES[st->world_region_id]
+                           : (ppu->zone_name ? ppu->zone_name : "EVERTALE");
             int zw = (int)strlen(zn) * 6;
             draw_text(w - zw - 8, 7, zn, 0xFFFFF1A8u, false);
         }
 
-        /* Zone Arrival Title Ribbon */
+        /* Zone / Continent Arrival Title Ribbon */
         if (ppu->zone_banner_frames > 0 && ppu->zone_name && st->mode == MODE_EXPLORE) {
             int bw2 = (int)strlen(ppu->zone_name) * 6 + 24;
             fill_rect_alpha(w / 2 - bw2 / 2, 22, bw2, 16, 0xFF14111Du, 224);
@@ -3275,6 +3824,11 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
     render_shop_overlay(st);
     render_fishing_overlay(st, ppu);
 
+    /* World Atlas Minimap Overlay */
+    if (st->atlas_open && st->mode == MODE_EXPLORE) {
+        render_world_atlas_overlay(st);
+    }
+
     /* Dialogue Box */
     render_dialogue_overlay(st);
 
@@ -3284,15 +3838,25 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
         draw_text_scaled_centered(w / 2, 32, "PROJECT HEARTH", 0xFFFFF1A8u, 2);
         draw_text_centered(w / 2, 54, "ALDERBROOK & EVERTALE", 0xFF9AD8F4u, true);
 
+#if HEARTH_DESIGNER_MODE
         static const char *OPTS[3] = {
-            "NEW STORY (AGE 5->10)",
+            "NEW STORY",
             "EXPLORE EVERTALE",
             "REPLAY OPENING INTRO"
         };
+        const int opt_cnt = 3;
+#else
+        static const char *OPTS[2] = {
+            "NEW STORY",
+            "REPLAY OPENING INTRO"
+        };
+        const int opt_cnt = 2;
+#endif
         int my = 92;
-        fill_rect_alpha(w / 2 - 84, my - 8, 168, 60, 0xFF161322u, 228);
-        draw_rect_outline(w / 2 - 84, my - 8, 168, 60, 0xFFE8B852u);
-        for (int i = 0; i < 3; i++) {
+        int box_h = opt_cnt * 16 + 12;
+        fill_rect_alpha(w / 2 - 84, my - 8, 168, box_h, 0xFF161322u, 228);
+        draw_rect_outline(w / 2 - 84, my - 8, 168, box_h, 0xFFE8B852u);
+        for (int i = 0; i < opt_cnt; i++) {
             bool sel = (st->title_cursor == (uint8_t)i);
             if (sel) {
                 fill_rect_px(w / 2 - 78, my + i * 16 - 2, 156, 12, 0xFF342A4Eu);
@@ -3300,8 +3864,8 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
             }
             draw_text_centered(w / 2 + 4, my + i * 16, OPTS[i], sel ? 0xFFFFF1A8u : 0xFFD4CFC4u, true);
         }
-        draw_text_centered(w / 2, h - 34, "WASD/ARROWS MOVE  SPACE/Z ACT  Q/E SWAP FAMILIAR", 0xFFC8D2DCu, true);
-        draw_text_centered(w / 2, h - 20, "F1 PPU  F2 CRT  F3 BOSS  F4 INTRO  M MUTE", 0xFF9AD8F4u, true);
+        draw_text_centered(w / 2, h - 34, "WASD/ARROWS MOVE  SPACE/Z ACT  M ATLAS  Q/E SWAP", 0xFFC8D2DCu, true);
+        draw_text_centered(w / 2, h - 20, "F1 PPU  F2 CRT  F3 BOSS  F4 INTRO  F7 MUTE", 0xFF9AD8F4u, true);
     }
 
     /* Battle Victory / Defeat Banners */
@@ -3365,7 +3929,7 @@ static uint16_t poll_pad_bits(SDL_GameController *pad) {
     if (k[SDL_SCANCODE_Q] || k[SDL_SCANCODE_LEFTBRACKET])  b |= PAD_L;
     if (k[SDL_SCANCODE_E] || k[SDL_SCANCODE_RIGHTBRACKET]) b |= PAD_R;
     if (k[SDL_SCANCODE_ESCAPE]) b |= PAD_START;
-    if (k[SDL_SCANCODE_TAB])    b |= PAD_SELECT;
+    if (k[SDL_SCANCODE_TAB] || k[SDL_SCANCODE_M]) b |= PAD_SELECT;
 
     if (pad && SDL_GameControllerGetAttached(pad)) {
         if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_UP))    b |= PAD_UP;
@@ -3460,8 +4024,8 @@ int main(int argc, char **argv) {
 
     printf("Project Hearth (Native C99/SDL2) — Core RAM Footprint: %lu bytes\n",
            (unsigned long)sizeof(HearthState));
-    printf("Controls: WASD/Arrows Move | Space/Z Act/Timed Hit | Shift Dash | Q/E Hot-Swap Familiar\n");
-    printf("Hotkeys:  F1 PPU (320x224/256x224) | F2 CRT Scanlines | F3 Shrine Boss | F4 Cutscene | F5 Heal | M Mute | F11 Fullscreen\n");
+    printf("Controls: WASD/Arrows Move | Space/Z Act/Timed Hit | Shift Dash | M World Atlas | Q/E Hot-Swap Familiar\n");
+    printf("Hotkeys:  F1 PPU (320x224/256x224) | F2 CRT Scanlines | F3 Shrine Boss | F4 Intro | F5 Heal | F7 Mute | F11 Fullscreen\n");
 
     const uint64_t freq = SDL_GetPerformanceFrequency();
     const uint64_t step_ticks = (freq >= 60u) ? (freq / 60u) : 1u;
@@ -3506,7 +4070,7 @@ int main(int argc, char **argv) {
                     case SDLK_F6:
                         g_state.tuning.show_hitboxes = !g_state.tuning.show_hitboxes;
                         break;
-                    case SDLK_m:
+                    case SDLK_F7:
                         g_muted = !g_muted;
                         break;
                     case SDLK_F11:

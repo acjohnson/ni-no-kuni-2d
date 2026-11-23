@@ -42,10 +42,14 @@ WASM_OUT        := public/hearth_core.wasm
 ZIG_VER         := 0.14.0
 ZIG_CACHE       := $(TOOLCHAIN_DIR)/zig
 
+# Optional compile-time Designer / Explore Evertale mode (1=enabled for dev, 0=release story-only)
+DESIGNER_MODE   ?= 1
+CFLAGS_DESIGNER := -DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE)
+
 # Strict portable compiler flags
-CFLAGS_COMMON   := -std=c99 -O2 -Wall -Wextra -Wshadow -Wconversion -Wno-sign-conversion -I$(CORE_DIR)
-CFLAGS_STRICT   := -std=c99 -O2 -Wall -Wextra -Werror -pedantic -I$(CORE_DIR)
-CFLAGS_C89      := -std=c89 -O2 -Wall -Wextra -Werror -pedantic -I$(CORE_DIR)
+CFLAGS_COMMON   := -std=c99 -O2 -Wall -Wextra -Wshadow -Wconversion -Wno-sign-conversion $(CFLAGS_DESIGNER) -I$(CORE_DIR)
+CFLAGS_STRICT   := -std=c99 -O2 -Wall -Wextra -Werror -pedantic $(CFLAGS_DESIGNER) -I$(CORE_DIR)
+CFLAGS_C89      := -std=c89 -O2 -Wall -Wextra -Werror -pedantic $(CFLAGS_DESIGNER) -I$(CORE_DIR)
 
 # Detect Host OS
 UNAME_S         := $(shell uname -s 2>/dev/null || echo Unknown)
@@ -171,7 +175,7 @@ genesis-stage: $(CORE_SRCS) $(CORE_HDRS) $(GENESIS_SRC) $(ROM_CG_HDR)
 genesis: genesis-stage
 	@if [ -n "$(GDK)" ] && [ -f "$(GDK)/makefile.gen" ]; then \
 		echo "Building Sega Genesis ROM using local SGDK at $(GDK)..."; \
-		GDK="$(GDK)" $(MAKE) -C $(BUILD_DIR)/genesis -f "$(GDK)/makefile.gen"; \
+		GDK="$(GDK)" $(MAKE) -C $(BUILD_DIR)/genesis -f "$(GDK)/makefile.gen" EXTRA_FLAGS="-DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE)"; \
 	else \
 		command -v docker >/dev/null 2>&1 || { \
 			echo "ERROR: Docker is required for automatic SGDK builds (or set GDK=/path/to/sgdk)."; \
@@ -180,6 +184,7 @@ genesis: genesis-stage
 		}; \
 		echo "Building Sega Genesis ROM via Docker SGDK ($(SGDK_IMAGE))..."; \
 		docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp \
+			-e EXTRA_FLAGS="-DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE)" \
 			-v "$(CURDIR)/$(BUILD_DIR)/genesis:/m68k" \
 			$(SGDK_IMAGE); \
 	fi
@@ -244,7 +249,7 @@ snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(SNES_CG_ASM) $(SNES_
 		'AUDIOFILES := res/hearth_sfx.it res/hearth_alderbrook.it res/hearth_wonder.it res/hearth_shadow.it res/hearth_lullaby.it res/hearth_hamlet.it res/hearth_battle.it res/hearth_boss.it' \
 		'export SOUNDBANK := res/soundbank' \
 		'SRC := src' \
-		'CFLAGS += -DHEARTH_TARGET_SNES -Isrc -I.' \
+		'CFLAGS += -DHEARTH_TARGET_SNES -DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE) -Isrc -I.' \
 		"include $${PV_ROOT}/devkitsnes/snes_rules" \
 		'SMCONVFLAGS := -s -o $$(SOUNDBANK) -V -b 15 -f' \
 		'musics: $$(SOUNDBANK).obj' \
@@ -333,6 +338,7 @@ root = tf.getmembers()[0].name.split("/")[0]; \
 	fi; \
 	mkdir -p public; \
 	"$$ZIG_BIN" cc -target wasm32-freestanding -O2 -Wall -Wextra -Werror -Wno-sign-conversion \
+		-DHEARTH_DESIGNER_MODE=$(DESIGNER_MODE) \
 		-nostdlib -Wl,--no-entry,--strip-all \
 		-I$(CORE_DIR) $(CORE_SRCS) $(WASM_SRC) -o $@; \
 	echo "Built WebAssembly C99 core: $@ ($$(wc -c < $@) bytes)"

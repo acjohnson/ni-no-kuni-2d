@@ -19,7 +19,7 @@ const CG_PLATES: readonly { src: string; alt: string; fallbackBg: string }[] = [
   },
   {
     src: cgHollowOakChase,
-    alt: 'Young Rowan chasing Milo toward the glowing Hollow Oak in Whispering Woods',
+    alt: 'Young Rowan chasing Mido toward the glowing Hollow Oak in Whispering Woods',
     fallbackBg: 'linear-gradient(180deg, #122126 0%, #1d3c34 55%, #3c4d2c 100%)',
   },
   {
@@ -34,7 +34,7 @@ const CG_PLATES: readonly { src: string; alt: string; fallbackBg: string }[] = [
   },
   {
     src: cgBedroomComfort,
-    alt: 'Grandma Mara comforting five-year-old Rowan in his warm timber bedroom',
+    alt: 'Grandma Mara comforting young Rowan in his warm timber bedroom',
     fallbackBg: 'linear-gradient(180deg, #261914 0%, #5e3b24 55%, #231610 100%)',
   },
   {
@@ -44,7 +44,7 @@ const CG_PLATES: readonly { src: string; alt: string; fallbackBg: string }[] = [
   },
   {
     src: cgAtticKeepsake,
-    alt: 'Rowan opening Grandma Mara’s cedar attic chest to discover Milo’s brass bell and a pressed golden oak leaf',
+    alt: 'Rowan opening Grandma Mara’s cedar attic chest to discover Mido’s brass bell and a pressed golden oak leaf',
     fallbackBg: 'linear-gradient(180deg, #2b1d14 0%, #6a4424 52%, #241812 100%)',
   },
   {
@@ -226,15 +226,15 @@ export const CinemaTheater: React.FC<CinemaTheaterProps> = ({
       className="absolute inset-0 z-20 flex flex-col bg-[#08070F] select-none overflow-hidden"
       onClick={onAdvance}
     >
-      {/* TOP LETTERBOX BAR: Act Title + Unboxed 7-Act Progress Markers + Controls */}
+      {/* TOP LETTERBOX BAR: Act Title + Unboxed 6-Act Progress Markers + Controls */}
       <div className="flex shrink-0 items-center justify-between border-b border-[#6E552E]/70 bg-[#0C0A14] px-3.5 py-2 sm:px-5">
         <div className="flex items-center gap-3 min-w-0">
           <span className="font-pixel text-[10px] tracking-[0.14em] text-[#F5D688] truncate sm:text-[11px]">
             {intro.title || (intro.scriptId === 0 ? 'PROLOGUE' : 'CHAPTER I')}
           </span>
           {intro.scriptId === 0 ? (
-            <div className="hidden items-center gap-1 sm:flex" aria-label={`Act ${intro.actNum} of 7`}>
-              {[1, 2, 3, 4, 5, 6, 7].map((act) => (
+            <div className="hidden items-center gap-1 sm:flex" aria-label={`Act ${intro.actNum} of 6`}>
+              {[1, 2, 3, 4, 5, 6].map((act) => (
                 <span
                   key={act}
                   className={

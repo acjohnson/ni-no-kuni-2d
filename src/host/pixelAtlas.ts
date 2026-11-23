@@ -67,12 +67,21 @@ import {
   T_WOOD_FLOOR,
   T_WORLD_BEACH,
   T_WORLD_CASTLE,
+  T_WORLD_CORAL,
   T_WORLD_FOREST,
   T_WORLD_HILL,
+  T_WORLD_JUNGLE,
+  T_WORLD_LAVA,
   T_WORLD_OCEAN,
   T_WORLD_PEAK,
   T_WORLD_RUINS,
+  T_WORLD_SAND,
+  T_WORLD_SHALLOW,
+  T_WORLD_SNOW,
+  T_WORLD_TECH,
   T_WORLD_TOWN,
+  T_DOCK_PIER,
+  T_PALM_TREE,
   TILE_SIZE,
 } from '../core/types';
 
@@ -1138,6 +1147,158 @@ export class PixelAtlas {
     });
     this.bg1Tiles.set(T_WORLD_RUINS, [worldRuins]);
 
+    // 54. T_WORLD_SHALLOW: Animated turquoise raft-navigable coastal shoals
+    const shallowFrames = [0, 1].map((f) =>
+      makeTile((ctx) => {
+        ctx.fillStyle = p0[13];
+        ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = p0[14];
+        ctx.fillRect(0, 0, 16, 4);
+        ctx.fillRect((2 + f * 3) & 15, 7, 5, 2);
+        ctx.fillRect((9 - f * 2 + 16) & 15, 12, 4, 2);
+        ctx.fillStyle = '#E8FCFF';
+        ctx.fillRect((3 + f * 3) & 15, 7, 3, 1);
+        ctx.fillRect((10 - f * 2 + 16) & 15, 12, 2, 1);
+      })
+    );
+    this.bg1Tiles.set(T_WORLD_SHALLOW, shallowFrames);
+
+    // 55. T_WORLD_SAND: Warm wind-rippled golden Babana desert dunes
+    const worldSand = makeTile((ctx) => {
+      ctx.fillStyle = p0[7];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[8];
+      ctx.fillRect(0, 3, 12, 3);
+      ctx.fillRect(5, 10, 11, 3);
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(2, 6, 9, 1);
+      ctx.fillRect(7, 13, 8, 1);
+    });
+    this.bg1Tiles.set(T_WORLD_SAND, [worldSand]);
+
+    // 56. T_WORLD_SNOW: Crisp sparkling Frostmere winter snowfield
+    const worldSnow = makeTile((ctx) => {
+      ctx.fillStyle = p0[5];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[4];
+      ctx.fillRect(1, 4, 6, 2);
+      ctx.fillRect(9, 11, 6, 2);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(3, 2, 2, 1);
+      ctx.fillRect(12, 7, 2, 1);
+      ctx.fillRect(5, 13, 2, 1);
+    });
+    this.bg1Tiles.set(T_WORLD_SNOW, [worldSnow]);
+
+    // 57. T_WORLD_LAVA: Glowing molten Cinderpeak magma flow (2 animated frames)
+    const lavaFrames = [0, 1].map((f) =>
+      makeTile((ctx) => {
+        ctx.fillStyle = '#7A1B12';
+        ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = '#D8441C';
+        ctx.fillRect(0, 2 + f, 16, 5);
+        ctx.fillRect(0, 10 - f, 16, 4);
+        ctx.fillStyle = '#F5A623';
+        ctx.fillRect((2 + f * 3) & 15, 3 + f, 6, 2);
+        ctx.fillRect((9 - f * 2 + 16) & 15, 11 - f, 5, 2);
+        ctx.fillStyle = '#FFF099';
+        ctx.fillRect((4 + f * 3) & 15, 3 + f, 2, 1);
+      })
+    );
+    this.bg1Tiles.set(T_WORLD_LAVA, lavaFrames);
+
+    // 58. T_WORLD_JUNGLE: Deep lush Canopy Wilds fern & vine rainforest
+    const worldJungle = makeTile((ctx) => {
+      ctx.fillStyle = p0[2];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[3];
+      ctx.fillRect(1, 2, 6, 6);
+      ctx.fillRect(8, 7, 7, 7);
+      ctx.fillStyle = p0[4];
+      ctx.fillRect(2, 3, 4, 3);
+      ctx.fillRect(9, 8, 5, 4);
+      ctx.fillStyle = p0[5];
+      ctx.fillRect(3, 3, 2, 2);
+      ctx.fillRect(10, 9, 2, 2);
+      ctx.fillStyle = '#E8A838';
+      ctx.fillRect(12, 3, 2, 2);
+    });
+    this.bg1Tiles.set(T_WORLD_JUNGLE, [worldJungle]);
+
+    // 59. T_WORLD_CORAL: Sunlit turquoise Suncrest coral reef garden (2 frames)
+    const coralFrames = [0, 1].map((f) =>
+      makeTile((ctx) => {
+        ctx.drawImage(shallowFrames[f], 0, 0);
+        ctx.fillStyle = '#F26B7A';
+        ctx.fillRect(3, 6, 4, 5);
+        ctx.fillRect(2, 8, 6, 2);
+        ctx.fillStyle = '#FFB86B';
+        ctx.fillRect(10, 4, 3, 6);
+        ctx.fillRect(9, 6, 5, 2);
+        ctx.fillStyle = '#FFE89E';
+        ctx.fillRect(4, 7, 2, 2);
+        ctx.fillRect(11, 5, 1, 2);
+      })
+    );
+    this.bg1Tiles.set(T_WORLD_CORAL, coralFrames);
+
+    // 60. T_WORLD_TECH: Aetheris Citadel brushed alloy plate with glowing cyan circuit lines
+    const worldTech = makeTile((ctx) => {
+      ctx.fillStyle = p0[9];
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = p0[10];
+      ctx.fillRect(1, 1, 14, 14);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(0, 0, 16, 1);
+      ctx.fillRect(0, 0, 1, 16);
+      ctx.fillStyle = '#5AD2F4';
+      ctx.fillRect(3, 7, 10, 2);
+      ctx.fillRect(7, 3, 2, 10);
+      ctx.fillStyle = '#D6F8FF';
+      ctx.fillRect(7, 7, 2, 2);
+    });
+    this.bg1Tiles.set(T_WORLD_TECH, [worldTech]);
+
+    // 61. T_PALM_TREE: Desert oasis / tropical island palm over sunlit sand
+    const palmTree = makeTile((ctx) => {
+      ctx.drawImage(worldSand, 0, 0);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(6, 7, 4, 8);
+      ctx.fillStyle = p0[6];
+      ctx.fillRect(7, 8, 2, 7);
+      // Sweeping palm fronds
+      ctx.fillStyle = p0[2];
+      ctx.fillRect(2, 3, 12, 4);
+      ctx.fillRect(4, 1, 8, 5);
+      ctx.fillStyle = p0[4];
+      ctx.fillRect(3, 3, 10, 2);
+      ctx.fillRect(5, 2, 6, 2);
+      // Golden Babana cluster!
+      ctx.fillStyle = '#F5D042';
+      ctx.fillRect(6, 7, 2, 2);
+      ctx.fillRect(8, 7, 2, 2);
+    });
+    this.bg1Tiles.set(T_PALM_TREE, [palmTree]);
+
+    // 62. T_DOCK_PIER: Sun-weathered timber pier planking over turquoise shallows
+    const dockPier = makeTile((ctx) => {
+      ctx.drawImage(shallowFrames[0], 0, 0);
+      ctx.fillStyle = p0[1];
+      ctx.fillRect(1, 0, 14, 16);
+      ctx.fillStyle = '#9C6838';
+      ctx.fillRect(2, 0, 12, 16);
+      ctx.fillStyle = '#C48B50';
+      for (let py = 1; py < 16; py += 4) {
+        ctx.fillRect(2, py, 12, 2);
+      }
+      ctx.fillStyle = '#52341A';
+      ctx.fillRect(2, 2, 2, 2);
+      ctx.fillRect(12, 2, 2, 2);
+      ctx.fillRect(2, 12, 2, 2);
+      ctx.fillRect(12, 12, 2, 2);
+    });
+    this.bg1Tiles.set(T_DOCK_PIER, [dockPier]);
+
     /* BG2 OVERHEAD FOREGROUND CANOPIES & ARCHES */
     const makeCanopy = (quad: 'TL' | 'TR' | 'BL' | 'BR') =>
       makeTile((ctx) => {
@@ -2180,6 +2341,210 @@ export class PixelAtlas {
       ctx.fillStyle = PALETTES[2][7];
       ctx.fillRect(15, 7, 1, 12);
       register('npc_sentinel', 0, f, c);
+    }
+
+    /* 13. MILESTONE 4: CEDAR RAFT, DESERT ENEMIES, BIOME FAUNA, SHIPWRIGHT ORIN & BABANA STALL */
+    // Cedar Raft (24x20 hand-lashed logs + fluttering sunlit canvas pennant)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(24, 20);
+      const ctx = c.getContext('2d')!;
+      const bob = f;
+      ctx.fillStyle = '#182430';
+      ctx.fillRect(2, 7 + bob, 20, 11);
+      // Lashed cedar logs
+      for (let lx = 3; lx <= 18; lx += 4) {
+        ctx.fillStyle = '#9A6334';
+        ctx.fillRect(lx, 8 + bob, 3, 9);
+        ctx.fillStyle = '#C98A4E';
+        ctx.fillRect(lx, 8 + bob, 2, 8);
+      }
+      // Cross rope ties
+      ctx.fillStyle = '#E8D4A2';
+      ctx.fillRect(3, 10 + bob, 18, 2);
+      ctx.fillRect(3, 14 + bob, 18, 2);
+      // Short mast & fluttering pennant
+      ctx.fillStyle = '#52341A';
+      ctx.fillRect(11, 2 + bob, 2, 10);
+      ctx.fillStyle = '#F5C45A';
+      ctx.fillRect(13, 2 + bob, 6 + f, 4);
+      ctx.fillStyle = '#FFF4D0';
+      ctx.fillRect(14, 3 + bob, 3, 2);
+      register('raft', 0, f, c);
+    }
+
+    // Dune Scorpion (20x18 armored amber desert pincer foe)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(20, 18);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '............1111....',
+        '...........19aa91...',
+        '....11.....111991...',
+        '...19a1.......191...',
+        '..19a91..11111991...',
+        '.19a991119aaaa991...',
+        '.199911999a1b9aa1...',
+        '..111.19999999991...',
+        '......1911911911....',
+        '.....11..11..11.....',
+      ];
+      paintPattern(ctx, pat, 3, 0, 5 + f);
+      register('enemy_scorpion', 0, f, c);
+    }
+
+    // Giant Sandworm (32x34 coiled armored desert leviathan boss!)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(32, 34);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '........111111111111............',
+        '......1199aaaaaaaa9911..........',
+        '.....199aa11111111aa991.........',
+        '....19aa11cccccccc11aa91........',
+        '....19a11c11111111c11a91........',
+        '....19a11c1aa11aa1c11a91........',
+        '....19aa11cccccccc11aa91........',
+        '.....199aa11111111aa991.........',
+        '......119999aaaa999911..........',
+        '.......199aaaaaaaa991...........',
+        '......19999bbbbbb99991..........',
+        '.....199aaaa9999aaaa991.........',
+        '....199999bbbbbbbb999991........',
+        '....199aaaa999999aaaa99111......',
+        '.....1999999999999999999911.....',
+        '......11999aaaaaaaaaa999991.....',
+        '........111111111111111111......',
+      ];
+      paintPattern(ctx, pat, 3, 0, 10 + f);
+      register('enemy_sandworm', 0, f, c);
+    }
+
+    // Desert Camel Fauna (20x18)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(20, 18);
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#1D1B22';
+      ctx.fillRect(2, 4, 5, 5);
+      ctx.fillRect(5, 6, 3, 5);
+      ctx.fillRect(7, 4, 9, 8);
+      ctx.fillRect(8, 12, 2, 5 - f);
+      ctx.fillRect(14, 12, 2, 4 + f);
+      ctx.fillStyle = '#D8A25A';
+      ctx.fillRect(3, 5, 3, 3);
+      ctx.fillRect(6, 7, 2, 4);
+      ctx.fillRect(8, 5, 7, 6);
+      ctx.fillStyle = '#F0C478';
+      ctx.fillRect(9, 5, 5, 3);
+      ctx.fillStyle = '#D6483C';
+      ctx.fillRect(10, 7, 3, 2);
+      register('fauna_camel', 0, f, c);
+    }
+
+    // Frostmere Penguin Fauna (16x18)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(16, 18);
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#181E2E';
+      ctx.fillRect(4, 3 + f, 8, 12);
+      ctx.fillRect(3, 7 + f, 10, 6);
+      ctx.fillStyle = '#F4F8FF';
+      ctx.fillRect(6, 6 + f, 4, 8);
+      ctx.fillStyle = '#E8523A';
+      ctx.fillRect(5, 4 + f, 6, 2); // Festive scarf
+      ctx.fillStyle = '#F5A623';
+      ctx.fillRect(7, 5 + f, 2, 1); // Beak
+      ctx.fillRect(5, 15, 2, 2);
+      ctx.fillRect(9, 15, 2, 2);
+      register('fauna_penguin', 0, f, c);
+    }
+
+    // Canopy Wilds Monkey Fauna (16x18)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(16, 18);
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#1D1816';
+      ctx.fillRect(4, 3 + f, 8, 7);
+      ctx.fillRect(5, 10 + f, 6, 5);
+      ctx.fillRect(11, 8 + f, 3, 2);
+      ctx.fillRect(13, 6 + f, 2, 3);
+      ctx.fillStyle = '#7A4C2A';
+      ctx.fillRect(5, 4 + f, 6, 5);
+      ctx.fillRect(6, 10 + f, 4, 4);
+      ctx.fillStyle = '#E8C294';
+      ctx.fillRect(6, 5 + f, 4, 3);
+      ctx.fillStyle = '#181818';
+      ctx.fillRect(6, 6 + f, 1, 1);
+      ctx.fillRect(9, 6 + f, 1, 1);
+      register('fauna_monkey', 0, f, c);
+    }
+
+    // Aetheris Citadel Hover Robot Fauna (18x20)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(18, 20);
+      const ctx = c.getContext('2d')!;
+      const bob = f === 0 ? 0 : -1;
+      ctx.fillStyle = '#161C2A';
+      ctx.fillRect(4, 3 + bob, 10, 12);
+      ctx.fillRect(8, 1 + bob, 2, 2);
+      ctx.fillStyle = '#9CB0C8';
+      ctx.fillRect(5, 4 + bob, 8, 10);
+      ctx.fillStyle = '#DCE8F8';
+      ctx.fillRect(6, 4 + bob, 3, 9);
+      ctx.fillStyle = '#182438';
+      ctx.fillRect(6, 6 + bob, 6, 3);
+      ctx.fillStyle = f === 0 ? '#5AD2F4' : '#B8F6FF';
+      ctx.fillRect(7, 7 + bob, 4, 1);
+      ctx.fillRect(7, 16, 4, 2); // Hover thruster glow
+      register('fauna_robot', 0, f, c);
+    }
+
+    // Shipwright Orin (Heartland Timber Pier — weathered cedar vest, navy cap, mallet)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(18, 22);
+      const ctx = c.getContext('2d')!;
+      const pat = [
+        '....11111111....',
+        '...1888888881...',
+        '..1b22222222b1..',
+        '..1b21222212b1..',
+        '...122bbbb221...',
+        '..1ccbbbbbbcc1..',
+        '.1cccbbbbbbccc1.',
+        '.1cc2bbbbbb2cc1.',
+        '..1ccbbbbbbcc1..',
+        '...1111111111...',
+        '....181..181....',
+      ];
+      paintPattern(ctx, pat, 2, 1, 6 + f);
+      ctx.fillStyle = PALETTES[2][1];
+      ctx.fillRect(14, 7 + f, 3, 10);
+      ctx.fillStyle = PALETTES[2][7];
+      ctx.fillRect(14, 6 + f, 4, 3);
+      register('npc_shipwright', 0, f, c);
+    }
+
+    // Golden Babana Market Stall (24x22 striped oasis awning & radiant Babana pyramid!)
+    for (let f = 0; f < 2; f++) {
+      const c = makeCanvas(24, 22);
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#1C1820';
+      ctx.fillRect(1, 2, 22, 19);
+      // Striped crimson & cream sun awning
+      ctx.fillStyle = '#D6483C';
+      ctx.fillRect(2, 3, 20, 6);
+      ctx.fillStyle = '#FFF4DC';
+      ctx.fillRect(5, 3, 4, 6);
+      ctx.fillRect(13, 3, 4, 6);
+      // Timber counter & golden Babana bunches
+      ctx.fillStyle = '#6E462C';
+      ctx.fillRect(2, 13, 20, 7);
+      ctx.fillStyle = '#9C6838';
+      ctx.fillRect(3, 14, 18, 2);
+      ctx.fillStyle = f === 0 ? '#F5D042' : '#FFE878';
+      ctx.fillRect(5, 10, 4, 3);
+      ctx.fillRect(10, 9, 5, 4);
+      ctx.fillRect(16, 10, 4, 3);
+      register('babana_stall', 0, f, c);
     }
   }
 }

@@ -10,7 +10,7 @@
 
 #define WASM_EXPORT(name) __attribute__((export_name(#name)))
 
-#define SCALAR_LEN       160
+#define SCALAR_LEN       184
 #define OAM_STRIDE       12
 #define PARTY_STRIDE     16
 #define ENEMY_STRIDE     28
@@ -18,6 +18,8 @@
 #define FTEXT_STRIDE     6
 #define FIELD_BOX_STRIDE 3
 #define MAX_SFX_OUT      32
+#define VIEW_TILE_W      24
+#define VIEW_TILE_H      18
 
 static HearthState g_state;
 static int32_t     g_scalars[SCALAR_LEN];
@@ -27,6 +29,11 @@ static int32_t     g_enemies_buf[HEARTH_MAX_BATTLE_ENEMIES * ENEMY_STRIDE];
 static int32_t     g_particles_buf[HEARTH_MAX_PARTICLES * PARTICLE_STRIDE];
 static int32_t     g_ftexts_buf[HEARTH_MAX_FTEXT * FTEXT_STRIDE];
 static int32_t     g_field_box_buf[HEARTH_MAX_FIELD_ENEMIES * FIELD_BOX_STRIDE];
+static uint8_t     g_view_bg1[VIEW_TILE_W * VIEW_TILE_H];
+static uint8_t     g_view_bg2[VIEW_TILE_W * VIEW_TILE_H];
+static int32_t     g_view_origin_x = 0;
+static int32_t     g_view_origin_y = 0;
+static uint8_t     g_atlas_buf[HEARTH_ATLAS_W * HEARTH_ATLAS_H];
 static int32_t     g_cs_op_buf[6];
 static uint8_t     g_sfx_out[MAX_SFX_OUT];
 static uint8_t     g_sfx_out_count = 0;
@@ -222,15 +229,15 @@ static void sync_snapshot(void) {
     g_scalars[35] = (int32_t)(uintptr_t)d->full_text;
     g_scalars[36] = d->visible_chars;
     g_scalars[37] = d->finished ? 1 : 0;
-    g_scalars[38] = d->choice_count;
+    g_scalars[38] = (d->next_text == NULL) ? d->choice_count : 0;
     g_scalars[39] = d->selected_choice;
     g_scalars[40] = d->voice_sfx;
-    g_scalars[41] = (int32_t)(uintptr_t)(d->choice_count > 0 ? d->choices[0].label : NULL);
-    g_scalars[42] = (int32_t)(uintptr_t)(d->choice_count > 1 ? d->choices[1].label : NULL);
-    g_scalars[43] = (int32_t)(uintptr_t)(d->choice_count > 2 ? d->choices[2].label : NULL);
-    g_scalars[44] = d->choice_count > 0 ? d->choices[0].action_id : 0;
-    g_scalars[45] = d->choice_count > 1 ? d->choices[1].action_id : 0;
-    g_scalars[46] = d->choice_count > 2 ? d->choices[2].action_id : 0;
+    g_scalars[41] = (int32_t)(uintptr_t)((d->next_text == NULL && d->choice_count > 0) ? d->choices[0].label : NULL);
+    g_scalars[42] = (int32_t)(uintptr_t)((d->next_text == NULL && d->choice_count > 1) ? d->choices[1].label : NULL);
+    g_scalars[43] = (int32_t)(uintptr_t)((d->next_text == NULL && d->choice_count > 2) ? d->choices[2].label : NULL);
+    g_scalars[44] = (d->next_text == NULL && d->choice_count > 0) ? d->choices[0].action_id : 0;
+    g_scalars[45] = (d->next_text == NULL && d->choice_count > 1) ? d->choices[1].action_id : 0;
+    g_scalars[46] = (d->next_text == NULL && d->choice_count > 2) ? d->choices[2].action_id : 0;
 
     g_scalars[47] = b->active ? 1 : 0;
     g_scalars[48] = b->biome;
@@ -353,6 +360,41 @@ static void sync_snapshot(void) {
     g_scalars[157] = g_state.ch2_step;
     g_scalars[158] = g_state.flag_has_familiar ? 1 : 0;
     g_scalars[159] = g_state.flag_has_heart_vessel ? 1 : 0;
+
+    /* Milestone 4: Toroidal Globe Streaming, Vehicles, World Atlas & Designer Flag */
+    if (p->is_world_map) {
+        int32_t tx0 = ((p->cam_x >= 0) ? (p->cam_x / 16) : ((p->cam_x - 15) / 16)) - 1;
+        int32_t ty0 = ((p->cam_y >= 0) ? (p->cam_y / 16) : ((p->cam_y - 15) / 16)) - 1;
+        int32_t vx, vy;
+        g_view_origin_x = tx0;
+        g_view_origin_y = ty0;
+        for (vy = 0; vy < VIEW_TILE_H; vy++) {
+            for (vx = 0; vx < VIEW_TILE_W; vx++) {
+                uint8_t bg1, bg2, col, reg;
+                hearth_globe_cell(tx0 + vx, ty0 + vy, &bg1, &bg2, &col, &reg);
+                g_view_bg1[vy * VIEW_TILE_W + vx] = bg1;
+                g_view_bg2[vy * VIEW_TILE_W + vx] = bg2;
+            }
+        }
+    } else {
+        g_view_origin_x = 0;
+        g_view_origin_y = 0;
+    }
+
+    g_scalars[160] = p->world_region_id;
+    g_scalars[161] = p->active_vehicle;
+    g_scalars[162] = p->vehicle_unlocked_mask;
+    g_scalars[163] = p->atlas_open ? 1 : 0;
+    g_scalars[164] = p->designer_mode_enabled ? 1 : 0;
+    g_scalars[165] = g_state.designer_sandbox ? 1 : 0;
+    g_scalars[166] = g_view_origin_x;
+    g_scalars[167] = g_view_origin_y;
+    g_scalars[168] = g_state.babanas;
+    g_scalars[169] = g_state.planks_found_mask;
+    g_scalars[170] = (int32_t)((FROM_FP(g_state.hero_fx) / HEARTH_TILE_SIZE + HEARTH_GLOBE_W) % HEARTH_GLOBE_W);
+    g_scalars[171] = (int32_t)((FROM_FP(g_state.hero_fy) / HEARTH_TILE_SIZE + HEARTH_GLOBE_H) % HEARTH_GLOBE_H);
+    g_scalars[172] = p->globe_w;
+    g_scalars[173] = p->globe_h;
 }
 
 static void inject_ui_pad(uint16_t mask) {
@@ -368,7 +410,13 @@ static void inject_ui_pad(uint16_t mask) {
  * ============================================================================ */
 WASM_EXPORT(wasm_init)
 void wasm_init(void) {
+    uint8_t ax, ay;
     hearth_init(&g_state);
+    for (ay = 0; ay < HEARTH_ATLAS_H; ay++) {
+        for (ax = 0; ax < HEARTH_ATLAS_W; ax++) {
+            g_atlas_buf[(uint16_t)ay * HEARTH_ATLAS_W + ax] = hearth_globe_atlas_cell(ax, ay);
+        }
+    }
     g_sfx_out_count = 0;
     sync_snapshot();
 }
@@ -399,7 +447,31 @@ void wasm_start_sandbox(void) {
 WASM_EXPORT(wasm_enter_zone)
 void wasm_enter_zone(uint32_t zone_id, uint32_t tx, uint32_t ty) {
     g_state.ppu.sfx_count = 0;
-    hearth_enter_zone(&g_state, (uint8_t)zone_id, (uint8_t)tx, (uint8_t)ty);
+    hearth_enter_zone(&g_state, (uint8_t)zone_id, (uint16_t)tx, (uint16_t)ty);
+    append_ppu_sfx();
+    sync_snapshot();
+}
+
+WASM_EXPORT(wasm_toggle_atlas)
+void wasm_toggle_atlas(void) {
+    g_state.ppu.sfx_count = 0;
+    hearth_toggle_atlas(&g_state);
+    append_ppu_sfx();
+    sync_snapshot();
+}
+
+WASM_EXPORT(wasm_designer_cycle_vehicle)
+void wasm_designer_cycle_vehicle(void) {
+    g_state.ppu.sfx_count = 0;
+    hearth_designer_cycle_vehicle(&g_state);
+    append_ppu_sfx();
+    sync_snapshot();
+}
+
+WASM_EXPORT(wasm_designer_warp_region)
+void wasm_designer_warp_region(uint32_t region_id) {
+    g_state.ppu.sfx_count = 0;
+    hearth_designer_warp_region(&g_state, (uint8_t)region_id);
     append_ppu_sfx();
     sync_snapshot();
 }
@@ -431,6 +503,7 @@ void wasm_start_quick_battle(uint32_t preset) {
     if (preset == ENCOUNTER_SHRINE_BOSS) biome = (uint8_t)BIOME_SHRINE;
     else if (preset == ENCOUNTER_SEWER_PACK || preset == ENCOUNTER_SEWER_BOSS) biome = (uint8_t)BIOME_SEWER;
     else if (preset == ENCOUNTER_BOAR_GUARD || preset == ENCOUNTER_IRONFANG_BOSS) biome = (uint8_t)BIOME_BOARHOLD;
+    else if (preset == ENCOUNTER_DESERT_SCORPION || preset == ENCOUNTER_SANDWORM_BOSS) biome = (uint8_t)BIOME_DESERT;
     g_state.ppu.sfx_count = 0;
     hearth_start_battle(&g_state, (uint8_t)preset, biome, -1);
     append_ppu_sfx();
@@ -612,7 +685,7 @@ WASM_EXPORT(wasm_ui_shop_select)
 void wasm_ui_shop_select(uint32_t idx) {
     uint32_t max_rows;
     if (g_state.mode != MODE_SHOP || !g_state.shop.active) return;
-    max_rows = (g_state.shop.tab == 0u) ? 5u : (uint32_t)HEARTH_FISH_SPECIES;
+    max_rows = (g_state.shop.tab == 0u) ? (uint32_t)HEARTH_SHOP_ITEM_COUNT : (uint32_t)HEARTH_FISH_SPECIES;
     if (idx >= max_rows) return;
     g_state.shop.cursor = (uint8_t)idx;
     inject_ui_pad(PAD_A);
@@ -668,25 +741,70 @@ const uint8_t *wasm_get_bg2_ptr(void) { return g_state.map_bg2; }
 WASM_EXPORT(wasm_get_col_ptr)
 const uint8_t *wasm_get_col_ptr(void) { return g_state.map_col; }
 
+WASM_EXPORT(wasm_get_view_bg1_ptr)
+const uint8_t *wasm_get_view_bg1_ptr(void) { return g_view_bg1; }
+
+WASM_EXPORT(wasm_get_view_bg2_ptr)
+const uint8_t *wasm_get_view_bg2_ptr(void) { return g_view_bg2; }
+
+WASM_EXPORT(wasm_get_atlas_ptr)
+const uint8_t *wasm_get_atlas_ptr(void) { return g_atlas_buf; }
+
+WASM_EXPORT(wasm_get_landmark_count)
+uint32_t wasm_get_landmark_count(void) { return (uint32_t)HEARTH_GLOBE_LANDMARK_COUNT; }
+
+WASM_EXPORT(wasm_get_landmark_tx)
+uint32_t wasm_get_landmark_tx(uint32_t i) {
+    return (i < (uint32_t)HEARTH_GLOBE_LANDMARK_COUNT) ? HEARTH_GLOBE_LANDMARKS[i].tx : 0u;
+}
+
+WASM_EXPORT(wasm_get_landmark_ty)
+uint32_t wasm_get_landmark_ty(uint32_t i) {
+    return (i < (uint32_t)HEARTH_GLOBE_LANDMARK_COUNT) ? HEARTH_GLOBE_LANDMARKS[i].ty : 0u;
+}
+
+WASM_EXPORT(wasm_get_landmark_region)
+uint32_t wasm_get_landmark_region(uint32_t i) {
+    return (i < (uint32_t)HEARTH_GLOBE_LANDMARK_COUNT) ? HEARTH_GLOBE_LANDMARKS[i].region_id : 0u;
+}
+
+WASM_EXPORT(wasm_get_landmark_enterable)
+uint32_t wasm_get_landmark_enterable(uint32_t i) {
+    return (i < (uint32_t)HEARTH_GLOBE_LANDMARK_COUNT && HEARTH_GLOBE_LANDMARKS[i].enterable) ? 1u : 0u;
+}
+
+WASM_EXPORT(wasm_get_landmark_name)
+const char *wasm_get_landmark_name(uint32_t i) {
+    return (i < (uint32_t)HEARTH_GLOBE_LANDMARK_COUNT) ? HEARTH_GLOBE_LANDMARKS[i].name : "";
+}
+
+WASM_EXPORT(wasm_get_region_name)
+const char *wasm_get_region_name(uint32_t i) {
+    return (i < (uint32_t)REGION_COUNT) ? HEARTH_REGION_NAMES[i] : "";
+}
+
 WASM_EXPORT(wasm_get_palettes_ptr)
 const uint32_t *wasm_get_palettes_ptr(void) { return &HEARTH_PALETTES_RGB[0][0]; }
 
 WASM_EXPORT(wasm_get_zone_palettes_ptr)
 const uint32_t *wasm_get_zone_palettes_ptr(void) { return &HEARTH_ZONE_PALETTES_RGB[0][0]; }
 
+WASM_EXPORT(wasm_get_shop_item_count)
+uint32_t wasm_get_shop_item_count(void) { return (uint32_t)HEARTH_SHOP_ITEM_COUNT; }
+
 WASM_EXPORT(wasm_get_shop_item_name)
 const char *wasm_get_shop_item_name(uint32_t i) {
-    return (i < 5u) ? HEARTH_SHOP_ITEMS[i].name : "";
+    return (i < (uint32_t)HEARTH_SHOP_ITEM_COUNT) ? HEARTH_SHOP_ITEMS[i].name : "";
 }
 
 WASM_EXPORT(wasm_get_shop_item_desc)
 const char *wasm_get_shop_item_desc(uint32_t i) {
-    return (i < 5u) ? HEARTH_SHOP_ITEMS[i].desc : "";
+    return (i < (uint32_t)HEARTH_SHOP_ITEM_COUNT) ? HEARTH_SHOP_ITEMS[i].desc : "";
 }
 
 WASM_EXPORT(wasm_get_shop_item_price)
 uint32_t wasm_get_shop_item_price(uint32_t i) {
-    return (i < 5u) ? HEARTH_SHOP_ITEMS[i].price : 0u;
+    return (i < (uint32_t)HEARTH_SHOP_ITEM_COUNT) ? HEARTH_SHOP_ITEMS[i].price : 0u;
 }
 
 WASM_EXPORT(wasm_get_fish_name)

@@ -30,6 +30,14 @@ typedef struct {
     uint8_t      zone_id;
     uint8_t      map_w;
     uint8_t      map_h;
+    uint8_t      world_region_id; /* Active continent on 256x192 globe (0..6) */
+    uint8_t      globe_enemy_region; /* Region currently owning active field_enemies[] */
+    uint8_t      active_vehicle;  /* VEH_FOOT..VEH_SPACESHIP */
+    uint8_t      vehicle_unlocked_mask; /* Bitmask of story-unlocked travel tiers */
+    bool         atlas_open;      /* Toggleable World Atlas minimap overlay */
+    bool         deep_sea_hint_shown;
+    bool         designer_sandbox;/* True when launched via Explore Evertale (Designer) */
+    uint8_t      planks_found_mask; /* bits 0..2: 3 Sun-Cedar Driftwood Planks at Timber Pier */
     uint8_t      terrain_pal_id;
     uint8_t      bgm_id;
     uint8_t      time_of_day;     /* TOD_MORNING..TOD_NIGHT */
@@ -39,7 +47,7 @@ typedef struct {
     uint8_t      zone_banner_frames;
     uint8_t      story_stage;
     uint8_t      ch1_step;        /* 0..8 Chapter 1 Alderbrook & Woods progression */
-    uint8_t      ch2_step;        /* 0..4 Chapter 2 Evertale World & Sunhill Market progression */
+    uint8_t      ch2_step;        /* 0..7 Chapter 2 Evertale Globe, Sunhill & Raft Expedition */
     uint8_t      ch1_errands_mask;/* bit0=Maple Loaf, bit1=Barnaby Thermos, bit2=Jasper Met */
     uint8_t      woods_shrines_mask; /* bits 0..2: 3 lantern markers in Whispering Woods */
     bool         has_milo_bell;   /* Mido's heirloom brass bell & pressed oak leaf */
@@ -47,8 +55,8 @@ typedef struct {
     uint8_t      warp_fade;       /* 0..15 fade out/in on zone warp */
     bool         warp_pending;
     uint8_t      warp_dst_zone;
-    uint8_t      warp_dst_tx;
-    uint8_t      warp_dst_ty;
+    uint16_t     warp_dst_tx;
+    uint16_t     warp_dst_ty;
     bool         flashback_triggered;
 
     /* Active Zone Interactive Props & Portals */
@@ -101,6 +109,7 @@ typedef struct {
     uint8_t  potions;
     uint8_t  star_drops;
     uint8_t  snacks;
+    uint8_t  babanas;
     uint8_t  lure_tier;
     uint8_t  fish_bag[HEARTH_FISH_SPECIES];
     uint16_t fish_total_caught;
@@ -135,7 +144,7 @@ typedef struct {
     /* Combat State */
     HearthBattleState battle;
 
-    /* Title Menu Cursor: 0=New Story (Age 5->10), 1=Explore Evertale, 2=Replay Intro */
+    /* Title Menu Cursor: 0=New Story, 1=Explore Evertale, 2=Replay Intro */
     uint8_t title_cursor;
 
     /* Fixed-Capacity FX Pools */
@@ -171,7 +180,10 @@ void hearth_toggle_cinema_auto(HearthState *st);
 void hearth_start_story(HearthState *st);
 void hearth_start_sandbox(HearthState *st);
 const char *hearth_get_objective_text(const HearthState *st);
-void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint8_t tx, uint8_t ty);
+void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint16_t tx, uint16_t ty);
+void hearth_toggle_atlas(HearthState *st);
+void hearth_designer_cycle_vehicle(HearthState *st);
+void hearth_designer_warp_region(HearthState *st, uint8_t region_id);
 void hearth_start_cutscene(HearthState *st, const HearthCutsceneOp *script);
 void hearth_start_battle(HearthState *st, uint8_t preset, uint8_t biome, int8_t field_idx);
 void hearth_open_shop(HearthState *st, uint8_t shop_id);

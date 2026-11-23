@@ -11,6 +11,7 @@ const KEY_ROWS = [
   { action: 'Confirm / Interact / Timed Hit / Parry', keys: 'Space / Enter / Z / Click', pad: 'A / Cross' },
   { action: 'Dash (Overworld) / Cancel', keys: 'Hold Shift / X', pad: 'B / Circle' },
   { action: 'Hot-Swap Familiar (Free Turn)', keys: 'Q / E  or  [ / ]', pad: 'L / R Bumpers' },
+  { action: 'Toggle World Atlas Minimap', keys: 'M / Backspace', pad: 'Select' },
   { action: 'Toggle Engine Workbench', keys: 'Tab', pad: '—' },
 ];
 

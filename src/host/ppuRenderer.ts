@@ -17,6 +17,8 @@ import {
   T_LANTERN_POST,
   T_MTN_SKY,
   TILE_SIZE,
+  VIEW_TILE_H,
+  VIEW_TILE_W,
   WorldMapData,
 } from '../core/types';
 import { PixelAtlas } from './pixelAtlas';
@@ -125,19 +127,33 @@ export class SoftwarePpuRenderer {
     }
 
     // 1. BG1 Terrain & Architecture Plane
-    for (let r = startRow; r <= endRow; r++) {
-      const sy = r * TILE_SIZE - camY;
-      const rowOff = r * mapW;
-      for (let c = startCol; c <= endCol; c++) {
-        const sx = c * TILE_SIZE - camX;
-        const tileId = map.bg1[rowOff + c];
-        if (tileId === T_MTN_SKY && packet.hasMountainVista) continue;
-        const img = atlas.getBg1Tile(tileId, animTick);
-        ctx.drawImage(img, sx, sy, TILE_SIZE, TILE_SIZE);
+    if (packet.isWorldMap) {
+      // Real-time 24x18 toroidal sliding-window tile stream directly from C core!
+      for (let vy = 0; vy < VIEW_TILE_H; vy++) {
+        const sy = (packet.viewOriginY + vy) * TILE_SIZE - camY;
+        const rowOff = vy * VIEW_TILE_W;
+        for (let vx = 0; vx < VIEW_TILE_W; vx++) {
+          const sx = (packet.viewOriginX + vx) * TILE_SIZE - camX;
+          const tileId = packet.viewBg1[rowOff + vx];
+          const img = atlas.getBg1Tile(tileId, animTick);
+          ctx.drawImage(img, sx, sy, TILE_SIZE, TILE_SIZE);
+        }
+      }
+    } else {
+      for (let r = startRow; r <= endRow; r++) {
+        const sy = r * TILE_SIZE - camY;
+        const rowOff = r * mapW;
+        for (let c = startCol; c <= endCol; c++) {
+          const sx = c * TILE_SIZE - camX;
+          const tileId = map.bg1[rowOff + c];
+          if (tileId === T_MTN_SKY && packet.hasMountainVista) continue;
+          const img = atlas.getBg1Tile(tileId, animTick);
+          ctx.drawImage(img, sx, sy, TILE_SIZE, TILE_SIZE);
+        }
       }
     }
 
-    // 1.5. Impressive Multi-Tile Storybook Landmarks on the Evertale Open World Map!
+    // 1.5. Impressive Multi-Tile Storybook Landmarks on the Evertale Toroidal Globe!
     if (packet.isWorldMap) {
       this.renderWorldMapLandmarks(ctx, packet, atlas);
     }
@@ -150,15 +166,30 @@ export class SoftwarePpuRenderer {
     }
 
     // 3. BG2 Foreground Overhead Plane (Tree Canopies, Roof Eaves, Shrine Arch!)
-    for (let r = startRow; r <= endRow; r++) {
-      const sy = r * TILE_SIZE - camY;
-      const rowOff = r * mapW;
-      for (let c = startCol; c <= endCol; c++) {
-        const bg2Id = map.bg2[rowOff + c];
-        if (bg2Id === 0) continue;
-        const tileImg = atlas.getBg2Tile(bg2Id);
-        if (tileImg) {
-          ctx.drawImage(tileImg, c * TILE_SIZE - camX, sy, TILE_SIZE, TILE_SIZE);
+    if (packet.isWorldMap) {
+      for (let vy = 0; vy < VIEW_TILE_H; vy++) {
+        const sy = (packet.viewOriginY + vy) * TILE_SIZE - camY;
+        const rowOff = vy * VIEW_TILE_W;
+        for (let vx = 0; vx < VIEW_TILE_W; vx++) {
+          const bg2Id = packet.viewBg2[rowOff + vx];
+          if (bg2Id === 0) continue;
+          const tileImg = atlas.getBg2Tile(bg2Id);
+          if (tileImg) {
+            ctx.drawImage(tileImg, (packet.viewOriginX + vx) * TILE_SIZE - camX, sy, TILE_SIZE, TILE_SIZE);
+          }
+        }
+      }
+    } else {
+      for (let r = startRow; r <= endRow; r++) {
+        const sy = r * TILE_SIZE - camY;
+        const rowOff = r * mapW;
+        for (let c = startCol; c <= endCol; c++) {
+          const bg2Id = map.bg2[rowOff + c];
+          if (bg2Id === 0) continue;
+          const tileImg = atlas.getBg2Tile(bg2Id);
+          if (tileImg) {
+            ctx.drawImage(tileImg, c * TILE_SIZE - camX, sy, TILE_SIZE, TILE_SIZE);
+          }
         }
       }
     }
@@ -425,11 +456,22 @@ export class SoftwarePpuRenderer {
     atlas: PixelAtlas
   ): void {
     const { width, height, camX, camY, frameCount } = packet;
+    const globePxW = packet.globeW * TILE_SIZE;
+    const globePxH = packet.globeH * TILE_SIZE;
     const wave = (frameCount >> 4) & 1;
-    const inView = (x: number, y: number, w: number, h: number) =>
-      x + w >= -16 && x <= width + 16 && y + h >= -16 && y <= height + 16;
 
-    // Helper: storybook miniature timber cottage with terracotta or slate roof
+    const wrapDelta = (d: number, span: number) => {
+      const half = span >> 1;
+      let r = ((d + half) % span + span) % span - half;
+      return r;
+    };
+    const toScreenX = (worldPx: number) =>
+      Math.round((width >> 1) + wrapDelta(worldPx - (camX + (width >> 1)), globePxW));
+    const toScreenY = (worldPx: number) =>
+      Math.round((height >> 1) + wrapDelta(worldPx - (camY + (height >> 1)), globePxH));
+    const inView = (x: number, y: number, w: number, h: number) =>
+      x + w >= -24 && x <= width + 24 && y + h >= -24 && y <= height + 24;
+
     const drawCottage = (x: number, y: number, w: number, h: number, roofCol: string, roofHi: string) => {
       ctx.fillStyle = 'rgba(18, 26, 20, 0.35)';
       ctx.fillRect(x + 2, y + h - 2, w, 4);
@@ -447,288 +489,340 @@ export class SoftwarePpuRenderer {
       ctx.fillRect(x + 3, y + Math.floor(h * 0.58), 3, 3);
     };
 
-    // 1. CASTLE AURELIA — Grand Multi-Spire White-Marble Citadel at tiles (41..47, 9..12)
+    const lmPos = (idx: number): [number, number] | null => {
+      const lm = packet.landmarks[idx];
+      if (!lm) return null;
+      return [toScreenX(lm.tx * TILE_SIZE + 8), toScreenY(lm.ty * TILE_SIZE + 8)];
+    };
+
+    // 0. HOLLOW OAK GATE (idx 0)
     {
-      const bx = 41 * TILE_SIZE - camX;
-      const by = 8 * TILE_SIZE + 2 - camY;
-      if (inView(bx, by, 112, 78)) {
-        // Citadel shadow & stone plinth
-        ctx.fillStyle = 'rgba(18, 28, 36, 0.42)';
-        ctx.fillRect(bx + 4, by + 62, 104, 14);
-        // Outer white-stone curtain wall & battlements
-        ctx.fillStyle = '#202636';
-        ctx.fillRect(bx + 6, by + 34, 100, 34);
-        ctx.fillStyle = '#C9D5E6';
-        ctx.fillRect(bx + 8, by + 36, 96, 30);
-        ctx.fillStyle = '#EEF4FC';
-        ctx.fillRect(bx + 10, by + 38, 92, 6);
-        for (let mx = 8; mx < 102; mx += 10) {
-          ctx.fillStyle = '#202636';
-          ctx.fillRect(bx + mx, by + 31, 6, 4);
-          ctx.fillStyle = '#EEF4FC';
-          ctx.fillRect(bx + mx + 1, by + 32, 4, 3);
-        }
-        // Flanking twin watchtowers (left & right)
-        for (const tx of [bx + 8, bx + 84]) {
-          ctx.fillStyle = '#202636';
-          ctx.fillRect(tx, by + 18, 20, 48);
-          ctx.fillStyle = '#D8E3F2';
-          ctx.fillRect(tx + 2, by + 20, 16, 44);
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(tx + 3, by + 20, 5, 44);
-          // Azure conical roof
-          ctx.fillStyle = '#1E3C6E';
-          ctx.fillRect(tx - 2, by + 13, 24, 6);
-          ctx.fillStyle = '#3672B8';
-          ctx.fillRect(tx, by + 9, 20, 6);
-          ctx.fillStyle = '#5CA4E8';
-          ctx.fillRect(tx + 4, by + 4, 12, 6);
-          ctx.fillRect(tx + 8, by + 1, 4, 4);
-          // Waving golden pennant
+      const p = lmPos(0);
+      if (p) {
+        const bx = p[0] - 24;
+        const by = p[1] - 34;
+        if (inView(bx, by, 48, 46)) {
+          ctx.fillStyle = '#6E462C';
+          ctx.fillRect(bx + 14, by + 18, 20, 20);
+          ctx.fillStyle = wave ? '#74E8F5' : '#FFE07D';
+          ctx.fillRect(bx + 20, by + 26, 8, 12);
+          ctx.fillStyle = '#3E7A38';
+          ctx.fillRect(bx + 4, by + 4, 40, 16);
+          ctx.fillStyle = '#D48A34';
+          ctx.fillRect(bx + 8, by + 3, 32, 11);
           ctx.fillStyle = '#F5C45A';
-          ctx.fillRect(tx + 10, by - 3, 7 + wave, 3);
-          ctx.fillStyle = '#264470';
-          ctx.fillRect(tx + 8, by + 28, 4, 7);
+          ctx.fillRect(bx + 14, by + 2, 20, 6);
         }
-        // Central soaring royal keep & golden dome
-        ctx.fillStyle = '#202636';
-        ctx.fillRect(bx + 36, by + 8, 40, 56);
-        ctx.fillStyle = '#E4ECF8';
-        ctx.fillRect(bx + 38, by + 10, 36, 52);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(bx + 40, by + 10, 10, 52);
-        ctx.fillStyle = '#1E3C6E';
-        ctx.fillRect(bx + 34, by + 3, 44, 7);
-        ctx.fillStyle = '#3672B8';
-        ctx.fillRect(bx + 40, by - 4, 32, 8);
-        ctx.fillStyle = '#5CA4E8';
-        ctx.fillRect(bx + 46, by - 10, 20, 7);
-        ctx.fillStyle = '#F5C45A';
-        ctx.fillRect(bx + 54, by - 15, 4, 6);
-        ctx.fillRect(bx + 56, by - 15, 9 + wave, 3);
-        // Grand royal archway gate & sunlit rose window
-        ctx.fillStyle = '#F5C45A';
-        ctx.fillRect(bx + 51, by + 18, 10, 10);
-        ctx.fillStyle = '#70C4F8';
-        ctx.fillRect(bx + 53, by + 20, 6, 6);
-        ctx.fillStyle = '#202636';
-        ctx.fillRect(bx + 46, by + 44, 20, 24);
-        ctx.fillStyle = '#5E3B24';
-        ctx.fillRect(bx + 48, by + 46, 16, 22);
-        ctx.fillStyle = '#D49A42';
-        ctx.fillRect(bx + 48, by + 46, 16, 2);
-        ctx.fillRect(bx + 55, by + 46, 2, 22);
       }
     }
 
-    // 2. SUNHILL MARKET — Cozy Hilltop Medina-Style Market Town at tiles (42..46, 21..23)
+    // 1. WINDMILL HAMLET (idx 1)
     {
-      const bx = 42 * TILE_SIZE - camX;
-      const by = 20 * TILE_SIZE + 8 - camY;
-      if (inView(bx, by, 84, 58)) {
-        // Low stone terrace wall & archway
-        ctx.fillStyle = '#22202A';
-        ctx.fillRect(bx + 2, by + 40, 76, 12);
-        ctx.fillStyle = '#D4C8B4';
-        ctx.fillRect(bx + 4, by + 42, 72, 8);
-        ctx.fillStyle = '#8C7A64';
-        ctx.fillRect(bx + 32, by + 41, 16, 11);
-        ctx.fillStyle = '#E8D5A8';
-        ctx.fillRect(bx + 34, by + 43, 12, 9);
-        // Cluster of warm sunlit hilltop cottages
-        drawCottage(bx + 4, by + 16, 20, 22, '#C8523E', '#E67658');
-        drawCottage(bx + 56, by + 14, 20, 24, '#B84A38', '#DC6B52');
-        drawCottage(bx + 26, by + 4, 26, 22, '#3B6EA8', '#5C94CE');
-        // Golden archive belltower spire
-        ctx.fillStyle = '#20222E';
-        ctx.fillRect(bx + 34, by - 4, 10, 10);
-        ctx.fillStyle = '#F5C45A';
-        ctx.fillRect(bx + 36, by - 2, 6, 6);
-        // Red & cream striped market awning stalls flanking the plaza
-        for (const ax of [bx + 12, bx + 52]) {
-          ctx.fillStyle = '#201C24';
-          ctx.fillRect(ax, by + 31, 16, 9);
+      const p = lmPos(1);
+      if (p) {
+        const bx = p[0] - 28;
+        const by = p[1] - 32;
+        if (inView(bx, by, 58, 46)) {
+          drawCottage(bx + 2, by + 20, 18, 18, '#B8543E', '#D87258');
+          drawCottage(bx + 34, by + 22, 18, 16, '#A84836', '#CE684E');
+          ctx.fillStyle = '#B8C0CC';
+          ctx.fillRect(bx + 20, by + 12, 14, 24);
+          ctx.fillStyle = '#3B5998';
+          ctx.fillRect(bx + 17, by + 4, 20, 9);
+          const sails = atlas.getSprite('windmill_blades', 0, 0);
+          ctx.save();
+          ctx.translate(bx + 27, by + 14);
+          ctx.rotate(((frameCount * 0.9) * Math.PI) / 180);
+          ctx.drawImage(sails, -13, -13, 26, 26);
+          ctx.restore();
+        }
+      }
+    }
+
+    // 2. SUNHILL MARKET (idx 2)
+    {
+      const p = lmPos(2);
+      if (p) {
+        const bx = p[0] - 40;
+        const by = p[1] - 44;
+        if (inView(bx, by, 84, 58)) {
+          ctx.fillStyle = '#D4C8B4';
+          ctx.fillRect(bx + 4, by + 42, 72, 8);
+          drawCottage(bx + 4, by + 16, 20, 22, '#C8523E', '#E67658');
+          drawCottage(bx + 56, by + 14, 20, 24, '#B84A38', '#DC6B52');
+          drawCottage(bx + 26, by + 4, 26, 22, '#3B6EA8', '#5C94CE');
+          ctx.fillStyle = '#F5C45A';
+          ctx.fillRect(bx + 36, by - 2, 6, 6);
+          for (const ax of [bx + 12, bx + 52]) {
+            ctx.fillStyle = '#D6483C';
+            ctx.fillRect(ax + 1, by + 32, 14, 4);
+            ctx.fillStyle = '#FFF4DC';
+            ctx.fillRect(ax + 4, by + 32, 3, 4);
+            ctx.fillRect(ax + 10, by + 32, 3, 4);
+          }
+        }
+      }
+    }
+
+    // 3. CASTLE AURELIA (idx 3) — Grand White-Marble Citadel
+    {
+      const p = lmPos(3);
+      if (p) {
+        const bx = p[0] - 56;
+        const by = p[1] - 60;
+        if (inView(bx, by, 112, 78)) {
+          ctx.fillStyle = 'rgba(18, 28, 36, 0.42)';
+          ctx.fillRect(bx + 4, by + 62, 104, 14);
+          ctx.fillStyle = '#202636';
+          ctx.fillRect(bx + 6, by + 34, 100, 34);
+          ctx.fillStyle = '#C9D5E6';
+          ctx.fillRect(bx + 8, by + 36, 96, 30);
+          ctx.fillStyle = '#EEF4FC';
+          ctx.fillRect(bx + 10, by + 38, 92, 6);
+          for (const tx of [bx + 8, bx + 84]) {
+            ctx.fillStyle = '#202636';
+            ctx.fillRect(tx, by + 18, 20, 48);
+            ctx.fillStyle = '#D8E3F2';
+            ctx.fillRect(tx + 2, by + 20, 16, 44);
+            ctx.fillStyle = '#1E3C6E';
+            ctx.fillRect(tx - 2, by + 13, 24, 6);
+            ctx.fillStyle = '#3672B8';
+            ctx.fillRect(tx, by + 9, 20, 6);
+            ctx.fillStyle = '#5CA4E8';
+            ctx.fillRect(tx + 4, by + 4, 12, 6);
+            ctx.fillStyle = '#F5C45A';
+            ctx.fillRect(tx + 10, by - 3, 7 + wave, 3);
+          }
+          ctx.fillStyle = '#202636';
+          ctx.fillRect(bx + 36, by + 8, 40, 56);
+          ctx.fillStyle = '#E4ECF8';
+          ctx.fillRect(bx + 38, by + 10, 36, 52);
+          ctx.fillStyle = '#3672B8';
+          ctx.fillRect(bx + 40, by - 4, 32, 10);
+          ctx.fillStyle = '#5CA4E8';
+          ctx.fillRect(bx + 46, by - 10, 20, 7);
+          ctx.fillStyle = '#F5C45A';
+          ctx.fillRect(bx + 54, by - 15, 4, 6);
+          ctx.fillRect(bx + 56, by - 15, 9 + wave, 3);
+          ctx.fillStyle = '#5E3B24';
+          ctx.fillRect(bx + 48, by + 46, 16, 22);
+        }
+      }
+    }
+
+    // 4. BRAMBLEWOOD CROSSING (idx 4)
+    {
+      const p = lmPos(4);
+      if (p) {
+        const bx = p[0] - 28;
+        const by = p[1] - 32;
+        if (inView(bx, by, 58, 44)) {
+          for (const [tx, ty, sz] of [[4, 8, 22], [32, 8, 22], [16, 0, 26]] as const) {
+            ctx.fillStyle = '#285C36';
+            ctx.fillRect(bx + tx + 2, by + ty + 2, sz - 4, sz - 4);
+            ctx.fillStyle = '#448C48';
+            ctx.fillRect(bx + tx + 4, by + ty + 3, sz - 8, Math.floor(sz * 0.55));
+          }
+          ctx.fillStyle = '#9EAAB8';
+          ctx.fillRect(bx + 17, by + 25, 5, 14);
+          ctx.fillRect(bx + 36, by + 25, 5, 14);
+        }
+      }
+    }
+
+    // 5. SUNKEN WATCHTOWER (idx 5)
+    {
+      const p = lmPos(5);
+      if (p) {
+        const bx = p[0] - 32;
+        const by = p[1] - 34;
+        if (inView(bx, by, 66, 46)) {
+          ctx.fillStyle = '#7F8A9C';
+          ctx.fillRect(bx + 8, by + 20, 10, 18);
+          ctx.fillRect(bx + 46, by + 24, 10, 14);
+          ctx.fillRect(bx + 24, by + 6, 16, 32);
+          ctx.fillStyle = '#4B8E54';
+          ctx.fillRect(bx + 24, by + 6, 6, 4);
+        }
+      }
+    }
+
+    // 6. WHISKERBURGH (idx 6)
+    {
+      const p = lmPos(6);
+      if (p) {
+        const bx = p[0] - 40;
+        const by = p[1] - 38;
+        if (inView(bx, by, 80, 52)) {
+          drawCottage(bx + 4, by + 16, 20, 20, '#8A4E74', '#B4729B');
+          drawCottage(bx + 52, by + 16, 20, 20, '#8A4E74', '#B4729B');
+          drawCottage(bx + 24, by + 6, 28, 26, '#D49A38', '#F2C05A');
+          ctx.fillStyle = '#68BBE8';
+          ctx.fillRect(bx + 12, by + 38, 52, 5);
+        }
+      }
+    }
+
+    // 7. HEARTLAND TIMBER PIER (idx 7)
+    {
+      const p = lmPos(7);
+      if (p) {
+        const bx = p[0] - 24;
+        const by = p[1] - 22;
+        if (inView(bx, by, 52, 40)) {
+          drawCottage(bx + 4, by + 4, 22, 18, '#3B6EA8', '#5C94CE');
+          ctx.fillStyle = '#8C5B32';
+          ctx.fillRect(bx + 18, by + 22, 26, 8);
+          ctx.fillStyle = '#C48B50';
+          ctx.fillRect(bx + 20, by + 23, 22, 5);
+          ctx.fillStyle = '#F5C45A';
+          ctx.fillRect(bx + 40, by + 15, 5 + wave, 3);
+        }
+      }
+    }
+
+    // 8. SUNCREST CORAL COVE (idx 8)
+    {
+      const p = lmPos(8);
+      if (p) {
+        const bx = p[0] - 34;
+        const by = p[1] - 30;
+        if (inView(bx, by, 72, 48)) {
+          drawCottage(bx + 6, by + 14, 22, 20, '#C98A36', '#F0BE5C');
+          drawCottage(bx + 40, by + 12, 22, 20, '#D4565A', '#F28686');
+          ctx.fillStyle = '#2A4E6E';
+          ctx.fillRect(bx + 28, by + 2, 14, 12);
+          ctx.fillStyle = '#FFF5D6';
+          ctx.fillRect(bx + 32, by + 5, 6, 5);
+        }
+      }
+    }
+
+    // 9. OASIS OF BABANA (idx 9)
+    {
+      const p = lmPos(9);
+      if (p) {
+        const bx = p[0] - 40;
+        const by = p[1] - 38;
+        if (inView(bx, by, 84, 54)) {
+          ctx.fillStyle = '#E8C584';
+          ctx.fillRect(bx + 8, by + 18, 66, 24);
+          ctx.fillStyle = '#F5D042';
+          ctx.fillRect(bx + 28, by + 6, 26, 14);
+          ctx.fillRect(bx + 10, by + 12, 14, 10);
+          ctx.fillRect(bx + 58, by + 12, 14, 10);
+          ctx.fillStyle = '#48C4D4';
+          ctx.fillRect(bx + 26, by + 34, 30, 8);
           ctx.fillStyle = '#D6483C';
-          ctx.fillRect(ax + 1, by + 32, 14, 4);
-          ctx.fillStyle = '#FFF4DC';
-          ctx.fillRect(ax + 4, by + 32, 3, 4);
-          ctx.fillRect(ax + 10, by + 32, 3, 4);
-          ctx.fillStyle = '#B8844A';
-          ctx.fillRect(ax + 2, by + 36, 12, 3);
+          ctx.fillRect(bx + 14, by + 26, 12, 5);
+          ctx.fillRect(bx + 56, by + 26, 12, 5);
         }
-        // Central sparkling blue fountain glint
-        ctx.fillStyle = '#68BBE8';
-        ctx.fillRect(bx + 35, by + 32, 10, 6);
-        ctx.fillStyle = wave ? '#FFFFFF' : '#B8ECFF';
-        ctx.fillRect(bx + 38, by + 30, 4, 4);
       }
     }
 
-    // 3. WINDMILL HAMLET — Western Lakeside Mill Village at tiles (17..19, 26..27)
+    // 10. FROSTMERE NOEL VILLAGE (idx 10)
     {
-      const bx = 16 * TILE_SIZE + 8 - camX;
-      const by = 25 * TILE_SIZE + 4 - camY;
-      if (inView(bx, by, 58, 46)) {
-        drawCottage(bx + 2, by + 20, 18, 18, '#B8543E', '#D87258');
-        drawCottage(bx + 34, by + 22, 18, 16, '#A84836', '#CE684E');
-        // Stone windmill tower
-        ctx.fillStyle = '#1E222E';
-        ctx.fillRect(bx + 18, by + 6, 18, 32);
-        ctx.fillStyle = '#B8C0CC';
-        ctx.fillRect(bx + 20, by + 12, 14, 24);
-        ctx.fillStyle = '#DCE3EC';
-        ctx.fillRect(bx + 21, by + 12, 5, 24);
-        ctx.fillStyle = '#3B5998';
-        ctx.fillRect(bx + 17, by + 4, 20, 9);
-        ctx.fillStyle = '#5C82C4';
-        ctx.fillRect(bx + 20, by + 2, 14, 4);
-        ctx.fillStyle = '#5E3B24';
-        ctx.fillRect(bx + 24, by + 28, 6, 8);
-        // Spinning windmill sails
-        const sails = atlas.getSprite('windmill_blades', 0, 0);
-        ctx.save();
-        ctx.translate(bx + 27, by + 14);
-        ctx.rotate(((frameCount * 0.9) * Math.PI) / 180);
-        ctx.drawImage(sails, -13, -13, 26, 26);
-        ctx.restore();
-      }
-    }
-
-    // 4. HOLLOW OAK GATE — Monumental Golden-Amber Great Tree at tile (16, 43)
-    {
-      const bx = 15 * TILE_SIZE - camX;
-      const by = 41 * TILE_SIZE + 4 - camY;
-      if (inView(bx, by, 48, 46)) {
-        ctx.fillStyle = 'rgba(18, 28, 22, 0.4)';
-        ctx.fillRect(bx + 6, by + 34, 36, 8);
-        // Gnarled trunk & glowing portal arch
-        ctx.fillStyle = '#1E1818';
-        ctx.fillRect(bx + 12, by + 16, 24, 24);
-        ctx.fillStyle = '#6E462C';
-        ctx.fillRect(bx + 14, by + 18, 20, 20);
-        ctx.fillStyle = '#8C5B38';
-        ctx.fillRect(bx + 16, by + 18, 5, 18);
-        ctx.fillStyle = wave ? '#74E8F5' : '#FFE07D';
-        ctx.fillRect(bx + 20, by + 26, 8, 12);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(bx + 22, by + 28, 4, 7);
-        // Lush golden-emerald crown
-        ctx.fillStyle = '#1E241C';
-        ctx.fillRect(bx + 2, by + 2, 44, 20);
-        ctx.fillStyle = '#3E7A38';
-        ctx.fillRect(bx + 4, by + 4, 40, 16);
-        ctx.fillStyle = '#D48A34';
-        ctx.fillRect(bx + 8, by + 3, 32, 11);
-        ctx.fillStyle = '#F5C45A';
-        ctx.fillRect(bx + 14, by + 2, 20, 6);
-      }
-    }
-
-    // 5. BRAMBLEWOOD CROSSING — Towering Ancient Forest & Standing Stones at tiles (67..69, 23..24)
-    {
-      const bx = 66 * TILE_SIZE + 8 - camX;
-      const by = 22 * TILE_SIZE - camY;
-      if (inView(bx, by, 58, 44)) {
-        // Overlapping emerald ancient crowns
-        const trees: [number, number, number][] = [
-          [4, 8, 22],
-          [32, 8, 22],
-          [16, 0, 26],
-        ];
-        for (const [tx, ty, sz] of trees) {
-          ctx.fillStyle = '#16241B';
-          ctx.fillRect(bx + tx, by + ty, sz, sz);
-          ctx.fillStyle = '#285C36';
-          ctx.fillRect(bx + tx + 2, by + ty + 2, sz - 4, sz - 4);
-          ctx.fillStyle = '#448C48';
-          ctx.fillRect(bx + tx + 4, by + ty + 3, sz - 8, Math.floor(sz * 0.55));
-          ctx.fillStyle = '#74C064';
-          ctx.fillRect(bx + tx + 6, by + ty + 3, Math.floor(sz * 0.4), 4);
+      const p = lmPos(10);
+      if (p) {
+        const bx = p[0] - 36;
+        const by = p[1] - 32;
+        if (inView(bx, by, 76, 48)) {
+          drawCottage(bx + 4, by + 16, 20, 20, '#C83E3E', '#FFFFFF');
+          drawCottage(bx + 50, by + 16, 20, 20, '#2E7D4A', '#FFFFFF');
+          ctx.fillStyle = '#246B3C';
+          ctx.fillRect(bx + 32, by + 6, 12, 22);
+          ctx.fillStyle = wave ? '#FFE878' : '#F25454';
+          ctx.fillRect(bx + 37, by + 3, 3, 3);
+          ctx.fillRect(bx + 34, by + 13, 2, 2);
+          ctx.fillRect(bx + 40, by + 18, 2, 2);
         }
-        // Twin mossy standing stones & emerald trail arch
-        ctx.fillStyle = '#20262E';
-        ctx.fillRect(bx + 16, by + 24, 7, 16);
-        ctx.fillRect(bx + 35, by + 24, 7, 16);
-        ctx.fillStyle = '#9EAAB8';
-        ctx.fillRect(bx + 17, by + 25, 5, 14);
-        ctx.fillRect(bx + 36, by + 25, 5, 14);
-        ctx.fillStyle = wave ? '#8AE8A0' : '#5AD2F4';
-        ctx.fillRect(bx + 19, by + 29, 2, 5);
-        ctx.fillRect(bx + 38, by + 29, 2, 5);
       }
     }
 
-    // 6. SUNKEN WATCHTOWER — Coastal Cliffside Ruins at tiles (65..68, 41..42)
+    // 11. CANOPY TREETOP VILLAGE (idx 11)
     {
-      const bx = 65 * TILE_SIZE - camX;
-      const by = 39 * TILE_SIZE + 12 - camY;
-      if (inView(bx, by, 66, 46)) {
-        // Broken stone arch & crumbling sea tower
-        ctx.fillStyle = '#1E222C';
-        ctx.fillRect(bx + 6, by + 18, 14, 22);
-        ctx.fillRect(bx + 44, by + 22, 14, 18);
-        ctx.fillRect(bx + 22, by + 4, 20, 36);
-        ctx.fillStyle = '#7F8A9C';
-        ctx.fillRect(bx + 8, by + 20, 10, 18);
-        ctx.fillRect(bx + 46, by + 24, 10, 14);
-        ctx.fillRect(bx + 24, by + 6, 16, 32);
-        ctx.fillStyle = '#ABB6C8';
-        ctx.fillRect(bx + 25, by + 6, 5, 30);
-        // Jagged broken tower top & coastal moss
-        ctx.fillStyle = '#4B8E54';
-        ctx.fillRect(bx + 24, by + 6, 6, 4);
-        ctx.fillRect(bx + 8, by + 20, 6, 4);
-        ctx.fillStyle = '#1C222E';
-        ctx.fillRect(bx + 28, by + 24, 8, 14);
+      const p = lmPos(11);
+      if (p) {
+        const bx = p[0] - 34;
+        const by = p[1] - 30;
+        if (inView(bx, by, 72, 48)) {
+          ctx.fillStyle = '#2E6E36';
+          ctx.fillRect(bx + 2, by + 10, 68, 28);
+          ctx.fillStyle = '#9C6838';
+          ctx.fillRect(bx + 10, by + 18, 52, 6);
+          drawCottage(bx + 12, by + 4, 20, 16, '#4A8C3C', '#78BA58');
+          drawCottage(bx + 40, by + 4, 20, 16, '#4A8C3C', '#78BA58');
+        }
       }
     }
 
-    // 7. WHISKERBURGH — Northeast Mouse-Borough Canal Town at tiles (70..74, 11..13)
+    // 12. CINDERPEAK CALDERA GATE (idx 12)
     {
-      const bx = 70 * TILE_SIZE - camX;
-      const by = 10 * TILE_SIZE + 8 - camY;
-      if (inView(bx, by, 80, 52)) {
-        drawCottage(bx + 4, by + 16, 20, 20, '#8A4E74', '#B4729B');
-        drawCottage(bx + 52, by + 16, 20, 20, '#8A4E74', '#B4729B');
-        drawCottage(bx + 24, by + 6, 28, 26, '#D49A38', '#F2C05A');
-        // Little round guild dome
-        ctx.fillStyle = '#F5C45A';
-        ctx.fillRect(bx + 34, by + 2, 8, 5);
-        ctx.fillStyle = '#68BBE8';
-        ctx.fillRect(bx + 12, by + 38, 52, 5);
+      const p = lmPos(12);
+      if (p) {
+        const bx = p[0] - 36;
+        const by = p[1] - 34;
+        if (inView(bx, by, 74, 50)) {
+          ctx.fillStyle = '#2A2226';
+          ctx.fillRect(bx + 8, by + 10, 58, 34);
+          ctx.fillStyle = '#4A3638';
+          ctx.fillRect(bx + 16, by + 2, 42, 36);
+          ctx.fillStyle = wave ? '#F5A623' : '#E84A24';
+          ctx.fillRect(bx + 28, by + 24, 18, 18);
+          ctx.fillRect(bx + 22, by + 6, 30, 5);
+        }
+      }
+    }
+
+    // 13. AETHERIS CITADEL SPIRE (idx 13)
+    {
+      const p = lmPos(13);
+      if (p) {
+        const bx = p[0] - 34;
+        const by = p[1] - 40;
+        if (inView(bx, by, 70, 56)) {
+          ctx.fillStyle = '#28364A';
+          ctx.fillRect(bx + 12, by + 18, 46, 28);
+          ctx.fillStyle = '#B8CCE0';
+          ctx.fillRect(bx + 24, by + 2, 22, 42);
+          ctx.fillStyle = wave ? '#5AD2F4' : '#B8F6FF';
+          ctx.fillRect(bx + 32, by + 6, 6, 32);
+          ctx.fillRect(bx + 14, by + 26, 42, 3);
+        }
       }
     }
   }
 
   private renderWorldLandmarkBanners(ctx: CanvasRenderingContext2D, packet: PpuFramePacket): void {
-    const { width, camX, camY, heroWorldX, heroWorldY } = packet;
-    const landmarks: readonly { tx: number; ty: number; name: string }[] = [
-      { tx: 16, ty: 44, name: 'HOLLOW OAK GATE' },
-      { tx: 18, ty: 28, name: 'WINDMILL HAMLET' },
-      { tx: 44, ty: 24, name: 'SUNHILL MARKET' },
-      { tx: 44, ty: 13, name: 'CASTLE AURELIA' },
-      { tx: 68, ty: 25, name: 'BRAMBLEWOOD' },
-      { tx: 66, ty: 43, name: 'SUNKEN WATCHTOWER' },
-      { tx: 72, ty: 14, name: 'WHISKERBURGH' },
-    ];
+    const { width, height, camX, camY, heroWorldX, heroWorldY } = packet;
+    const globePxW = packet.globeW * TILE_SIZE;
+    const globePxH = packet.globeH * TILE_SIZE;
+    const wrapDelta = (d: number, span: number) => {
+      const half = span >> 1;
+      return ((d + half) % span + span) % span - half;
+    };
+
     ctx.font = 'bold 8px monospace';
     ctx.textBaseline = 'top';
-    for (const lm of landmarks) {
+    for (const lm of packet.landmarks) {
       const lx = lm.tx * TILE_SIZE + 8;
       const ly = lm.ty * TILE_SIZE + 8;
-      const dx = Math.abs(heroWorldX - lx);
-      const dy = Math.abs(heroWorldY - ly);
-      if (dx + dy > 104) continue;
-      const tw = Math.ceil(ctx.measureText(lm.name).width) + 10;
-      const sx = Math.max(4, Math.min(width - tw - 4, Math.round(lx - camX - tw / 2)));
-      const sy = Math.max(4, Math.round(ly - camY - 34));
+      const dx = Math.abs(wrapDelta(heroWorldX - lx, globePxW));
+      const dy = Math.abs(wrapDelta(heroWorldY - ly, globePxH));
+      if (dx + dy > 118) continue;
+      const label = lm.name.toUpperCase();
+      const tw = Math.ceil(ctx.measureText(label).width) + 10;
+      const screenX = (width >> 1) + wrapDelta(lx - (camX + (width >> 1)), globePxW);
+      const screenY = (height >> 1) + wrapDelta(ly - (camY + (height >> 1)), globePxH);
+      const sx = Math.max(4, Math.min(width - tw - 4, Math.round(screenX - tw / 2)));
+      const sy = Math.max(4, Math.min(height - 16, Math.round(screenY - 34)));
       ctx.fillStyle = 'rgba(18, 22, 34, 0.88)';
       ctx.fillRect(sx, sy, tw, 12);
-      ctx.strokeStyle = '#E8BE5E';
+      ctx.strokeStyle = lm.enterable ? '#E8BE5E' : '#6CC8E8';
       ctx.lineWidth = 1;
       ctx.strokeRect(sx + 0.5, sy + 0.5, tw - 1, 11);
-      ctx.fillStyle = '#FFF5D0';
-      ctx.fillText(lm.name, sx + 5, sy + 2);
+      ctx.fillStyle = lm.enterable ? '#FFF5D0' : '#D8F2FF';
+      ctx.fillText(label, sx + 5, sy + 2);
     }
   }
 
@@ -746,15 +840,21 @@ export class SoftwarePpuRenderer {
     const isShrine = biome === 'SHRINE';
     const isSewer = biome === 'SEWER';
     const isBoarhold = biome === 'BOARHOLD';
+    const isDesert = biome === 'DESERT';
+    const isParadise = biome === 'PARADISE';
 
     // 1. Layered 16-bit Sky & Horizon Backdrop (cohesive with world biome!)
     const skyBands = isSewer
       ? ['#0C141A', '#13212A', '#1B2E38', '#233B44']
       : isBoarhold
         ? ['#241418', '#422024', '#68302A', '#924834']
-        : isShrine
-          ? ['#1D2236', '#28314C', '#384666', '#4E5D7B']
-          : ['#5AA0D8', '#7BBCE8', '#A6D7F2', '#DCEFC8'];
+        : isDesert
+          ? ['#346AA6', '#66A0D4', '#E6B87A', '#F6D79A']
+          : isParadise
+            ? ['#2A8CD4', '#4EB8E8', '#84DCF4', '#C6F4FA']
+            : isShrine
+              ? ['#1D2236', '#28314C', '#384666', '#4E5D7B']
+              : ['#5AA0D8', '#7BBCE8', '#A6D7F2', '#DCEFC8'];
     const bandH = 19;
     skyBands.forEach((col, i) => {
       ctx.fillStyle = col;
@@ -782,6 +882,26 @@ export class SoftwarePpuRenderer {
       ctx.fillStyle = '#E88838';
       ctx.fillRect(46, 26, 6, 8);
       ctx.fillRect(width - 54, 26, 6, 8);
+    } else if (isDesert) {
+      // Blazing desert sun & golden Babana dunes
+      ctx.fillStyle = '#FFF5C4';
+      ctx.fillRect(width - 68, 10, 18, 18);
+      ctx.fillStyle = '#D4924A';
+      for (let x = 0; x < width; x += 4) {
+        const h = Math.round(14 + Math.sin(x * 0.025) * 8 + Math.cos(x * 0.04) * 4);
+        ctx.fillRect(x, 76 - h, 4, h + 12);
+      }
+    } else if (isParadise) {
+      // Turquoise lagoon horizon & sunlit coral archipelago
+      ctx.fillStyle = '#F6FCFF';
+      for (let i = 0; i < 4; i++) {
+        const cx = ((i * 92 + Math.floor(frameCount * 0.14)) % (width + 64)) - 32;
+        ctx.fillRect(cx, 12 + (i & 1) * 10, 32, 6);
+      }
+      ctx.fillStyle = '#228EC4';
+      ctx.fillRect(0, 58, width, 20);
+      ctx.fillStyle = '#5AE0F2';
+      ctx.fillRect(0, 68, width, 10);
     } else {
       // Drifting pixel clouds
       ctx.fillStyle = isShrine ? '#495472' : '#F4F7EE';
@@ -826,9 +946,13 @@ export class SoftwarePpuRenderer {
       ? '#21333B'
       : isBoarhold
         ? '#584440'
-        : isShrine
-          ? '#3D4555'
-          : '#5EA055';
+        : isDesert
+          ? '#D8A252'
+          : isParadise
+            ? '#E6CFA0'
+            : isShrine
+              ? '#3D4555'
+              : '#5EA055';
     ctx.fillRect(0, groundY, width, height - groundY);
 
     // Textured perspective strips & biome floor landmarks
@@ -850,6 +974,20 @@ export class SoftwarePpuRenderer {
       ctx.fillRect(0, groundY + 84, width, 3);
       ctx.fillStyle = '#3A2828';
       ctx.fillRect(0, 166, width, height - 166);
+    } else if (isDesert) {
+      ctx.fillStyle = '#E8BE6E';
+      ctx.fillRect(0, groundY + 10, width, 64);
+      ctx.fillStyle = '#F6D892';
+      ctx.fillRect(0, groundY + 18, width, 4);
+      ctx.fillStyle = '#B87A3A';
+      ctx.fillRect(0, 164, width, height - 164);
+    } else if (isParadise) {
+      ctx.fillStyle = '#48C4DC';
+      ctx.fillRect(0, groundY, width, 18);
+      ctx.fillStyle = '#F4E2B6';
+      ctx.fillRect(0, groundY + 18, width, 68);
+      ctx.fillStyle = '#C9A874';
+      ctx.fillRect(0, 164, width, height - 164);
     } else if (isShrine) {
       ctx.fillStyle = '#535E72';
       ctx.fillRect(0, groundY + 14, width, 74);

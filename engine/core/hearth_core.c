@@ -22,12 +22,13 @@ enum {
     ACT_START_FISHING = 8,
     ACT_OPEN_SHOP_2   = 9,
     ACT_REST_BED      = 10,
-    ACT_OPEN_SHOP_3   = 11
+    ACT_OPEN_SHOP_3   = 11,
+    ACT_OPEN_SHOP_4   = 12
 };
 
 /* Forward declarations */
 static void build_ppu_packet(HearthState *st);
-static void request_zone_warp(HearthState *st, uint8_t dst_zone, uint8_t tx, uint8_t ty);
+static void request_zone_warp(HearthState *st, uint8_t dst_zone, uint16_t tx, uint16_t ty);
 
 /* On SNES (65816), direct static WRAM access avoids 24-bit far-pointer overhead (~6x faster).
  * All other targets dereference the passed HearthState* parameter identically. */
@@ -44,15 +45,88 @@ static void request_zone_warp(HearthState *st, uint8_t dst_zone, uint8_t tx, uin
 #endif
 
 /* ============================================================================
- * INTERNAL INTEGER HELPERS
+ * INTERNAL INTEGER & TOROIDAL GLOBE MATH HELPERS
  * ============================================================================ */
+#define GLOBE_PX_W  4096
+#define GLOBE_PX_H  3072
+#define GLOBE_FP_W  ((fp16_t)1048576L)
+#define GLOBE_FP_H  ((fp16_t)786432L)
+
 static int16_t iclamp16(int16_t v, int16_t lo, int16_t hi) {
     return (v < lo) ? lo : ((v > hi) ? hi : v);
 }
 
 static uint16_t map_row_offset(uint16_t ty, uint8_t mw) {
-    uint16_t r = (uint16_t)((ty << 5) + (ty << 3) + (ty << 2));
-    return (mw == (uint8_t)HEARTH_WORLD_W) ? (uint16_t)(r << 1) : r;
+    (void)mw;
+    return (uint16_t)((ty << 5) + (ty << 3) + (ty << 2));
+}
+
+static int16_t wrap_globe_px_x(int16_t x) {
+    while (x < 0) x = (int16_t)(x + GLOBE_PX_W);
+    while (x >= GLOBE_PX_W) x = (int16_t)(x - GLOBE_PX_W);
+    return x;
+}
+
+static int16_t wrap_globe_px_y(int16_t y) {
+    while (y < 0) y = (int16_t)(y + GLOBE_PX_H);
+    while (y >= GLOBE_PX_H) y = (int16_t)(y - GLOBE_PX_H);
+    return y;
+}
+
+static fp16_t wrap_globe_fp_x(fp16_t fx) {
+    while (fx < 0) fx += GLOBE_FP_W;
+    while (fx >= GLOBE_FP_W) fx -= GLOBE_FP_W;
+    return fx;
+}
+
+static fp16_t wrap_globe_fp_y(fp16_t fy) {
+    while (fy < 0) fy += GLOBE_FP_H;
+    while (fy >= GLOBE_FP_H) fy -= GLOBE_FP_H;
+    return fy;
+}
+
+static int16_t wrap_delta_x(int16_t dx) {
+    if (dx > (GLOBE_PX_W >> 1)) dx = (int16_t)(dx - GLOBE_PX_W);
+    else if (dx < -(GLOBE_PX_W >> 1)) dx = (int16_t)(dx + GLOBE_PX_W);
+    return dx;
+}
+
+static int16_t wrap_delta_y(int16_t dy) {
+    if (dy > (GLOBE_PX_H >> 1)) dy = (int16_t)(dy - GLOBE_PX_H);
+    else if (dy < -(GLOBE_PX_H >> 1)) dy = (int16_t)(dy + GLOBE_PX_H);
+    return dy;
+}
+
+static int16_t world_dx(const HearthState *st, int16_t a, int16_t b) {
+    int16_t d = (int16_t)(a - b);
+    ST_UNUSED(st);
+    return HS.is_world_map ? wrap_delta_x(d) : d;
+}
+
+static int16_t world_dy(const HearthState *st, int16_t a, int16_t b) {
+    int16_t d = (int16_t)(a - b);
+    ST_UNUSED(st);
+    return HS.is_world_map ? wrap_delta_y(d) : d;
+}
+
+static uint8_t region_to_pal(uint8_t reg) {
+    if (reg == REGION_DESERT)    return (uint8_t)ZPAL_DESERT;
+    if (reg == REGION_PARADISE)  return (uint8_t)ZPAL_PARADISE;
+    if (reg == REGION_FROSTMERE) return (uint8_t)ZPAL_FROST;
+    if (reg == REGION_CANOPY)    return (uint8_t)ZPAL_JUNGLE;
+    if (reg == REGION_VOLCANO)   return (uint8_t)ZPAL_VOLCANO;
+    if (reg == REGION_AETHERIS)  return (uint8_t)ZPAL_TECH;
+    return (uint8_t)ZPAL_EVERTALE_WORLD;
+}
+
+static uint8_t region_to_bgm(uint8_t reg) {
+    if (reg == REGION_DESERT)    return (uint8_t)BGM_DESERT;
+    if (reg == REGION_PARADISE)  return (uint8_t)BGM_PARADISE;
+    if (reg == REGION_FROSTMERE) return (uint8_t)BGM_FROST;
+    if (reg == REGION_CANOPY)    return (uint8_t)BGM_JUNGLE;
+    if (reg == REGION_VOLCANO)   return (uint8_t)BGM_VOLCANO;
+    if (reg == REGION_AETHERIS)  return (uint8_t)BGM_TECH;
+    return (uint8_t)BGM_CINEMA_WONDER;
 }
 
 static uint16_t str_len16(const char *s) {
@@ -304,6 +378,7 @@ static void init_party(HearthState *st) {
     st->potions = 3;
     st->star_drops = 1;
     st->snacks = 0;
+    st->babanas = 0;
     st->lure_tier = 0;
 }
 
@@ -311,9 +386,17 @@ static void snap_cam_to_hero(HearthState *st) {
     uint16_t w, h;
     uint8_t lim;
     int16_t max_x, max_y, tx, ty;
-    int16_t mw = (int16_t)(st->map_w ? st->map_w : (uint8_t)HEARTH_MAP_W);
-    int16_t mh = (int16_t)(st->map_h ? st->map_h : (uint8_t)HEARTH_MAP_H);
+    int16_t mw, mh;
     get_ppu_dims(st, &w, &h, &lim);
+    if (st->is_world_map) {
+        tx = wrap_globe_px_x((int16_t)(FP_PX(st->hero_fx) - (int16_t)(w >> 1)));
+        ty = wrap_globe_px_y((int16_t)(FP_PX(st->hero_fy) - (int16_t)(h >> 1)));
+        st->cam_fx = TO_FP(tx);
+        st->cam_fy = TO_FP(ty);
+        return;
+    }
+    mw = (int16_t)(st->map_w ? st->map_w : (uint8_t)HEARTH_MAP_W);
+    mh = (int16_t)(st->map_h ? st->map_h : (uint8_t)HEARTH_MAP_H);
     max_x = (int16_t)(mw * HEARTH_TILE_SIZE - (int)w);
     max_y = (int16_t)(mh * HEARTH_TILE_SIZE - (int)h);
     tx = iclamp16((int16_t)(FP_PX(st->hero_fx) - (int16_t)(w >> 1)), 0, max_x);
@@ -324,13 +407,19 @@ static void snap_cam_to_hero(HearthState *st) {
 
 static void reset_trail_to_hero(HearthState *st) {
     int i;
+    fp16_t px = st->hero_fx - TO_FP(16);
+    fp16_t py = st->hero_fy - TO_FP(2);
+    if (st->is_world_map) {
+        px = wrap_globe_fp_x(px);
+        py = wrap_globe_fp_y(py);
+    }
     for (i = 0; i < HEARTH_TRAIL_LEN; i++) {
-        st->trail_x[i] = st->hero_fx - TO_FP(16);
-        st->trail_y[i] = st->hero_fy - TO_FP(2);
+        st->trail_x[i] = px;
+        st->trail_y[i] = py;
     }
     st->trail_head = 0;
-    st->pip_fx = st->hero_fx - TO_FP(16);
-    st->pip_fy = st->hero_fy - TO_FP(2);
+    st->pip_fx = px;
+    st->pip_fy = py;
     st->pip_dir = DIR_RIGHT;
 }
 
@@ -502,29 +591,137 @@ static void populate_zone_hollow_glade(HearthState *st) {
     set_portal(&st->portals[0], 21, 25, ZONE_WHISPERING_WOODS, 37, 6, 0, "Whispering Woods");
 }
 
+static void populate_globe_enemies_for_region(HearthState *st, uint8_t reg) {
+    int i;
+    for (i = 0; i < HEARTH_MAX_FIELD_ENEMIES; i++) st->field_enemies[i].alive = false;
+    st->globe_enemy_region = reg;
+    /* World Map stays 100% peaceful until Rowan bonds his first Familiar! */
+    if (!st->flag_has_familiar) return;
+
+    if (reg == REGION_DESERT) {
+        set_field_enemy(&st->field_enemies[0], "Dune Scorpion",  SPR_ENEMY_SCORPION, ENCOUNTER_DESERT_SCORPION, BIOME_DESERT, false, 120, 148, DIR_LEFT,  30);
+        set_field_enemy(&st->field_enemies[1], "Dune Scorpion",  SPR_ENEMY_SCORPION, ENCOUNTER_DESERT_SCORPION, BIOME_DESERT, false, 142, 142, DIR_DOWN,  55);
+        set_field_enemy(&st->field_enemies[2], "Dune Scorpion",  SPR_ENEMY_SCORPION, ENCOUNTER_DESERT_SCORPION, BIOME_DESERT, false, 146, 158, DIR_LEFT,  80);
+        set_field_enemy(&st->field_enemies[3], "Giant Sandworm", SPR_ENEMY_SANDWORM, ENCOUNTER_SANDWORM_BOSS,   BIOME_DESERT, true,  124, 160, DIR_RIGHT,  0);
+    } else if (reg == REGION_HEARTLAND) {
+        set_field_enemy(&st->field_enemies[0], "Gloomcap",   SPR_ENEMY_GLOOMCAP,  ENCOUNTER_MEADOW_PACK, BIOME_MEADOW, false,  88,  92, DIR_LEFT,  30);
+        set_field_enemy(&st->field_enemies[1], "Thornling",  SPR_ENEMY_THORNLING, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 118,  86, DIR_DOWN,  55);
+        set_field_enemy(&st->field_enemies[2], "Dusk Moth",  SPR_ENEMY_DUSK_MOTH, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 110,  98, DIR_LEFT,  80);
+        set_field_enemy(&st->field_enemies[3], "Boar Scout", SPR_ENEMY_BOAR,      ENCOUNTER_BOAR_GUARD,  BIOME_MEADOW, false, 124,  76, DIR_RIGHT, 45);
+    }
+}
+
+static void update_globe_region_streaming(HearthState *st, bool show_banner) {
+    uint16_t tx, ty;
+    uint8_t reg;
+    if (!st->is_world_map) return;
+    tx = (uint16_t)((uint16_t)wrap_globe_px_x(FP_PX(st->hero_fx)) >> 4);
+    ty = (uint16_t)((uint16_t)wrap_globe_px_y(FP_PX(st->hero_fy)) >> 4);
+    reg = hearth_globe_region_at(tx, ty);
+    if (reg != st->world_region_id) {
+        st->world_region_id = reg;
+        st->terrain_pal_id = region_to_pal(reg);
+        st->bgm_id = region_to_bgm(reg);
+        if (show_banner) st->zone_banner_frames = 100;
+        if (reg != st->globe_enemy_region && (reg == REGION_HEARTLAND || reg == REGION_DESERT)) {
+            populate_globe_enemies_for_region(st, reg);
+        }
+    }
+}
+
 static void populate_zone_evertale_world(HearthState *st) {
-    st->terrain_pal_id = ZPAL_EVERTALE_WORLD;
-    st->bgm_id = BGM_CINEMA_WONDER;
+    uint16_t tx = (uint16_t)((uint16_t)wrap_globe_px_x(FP_PX(st->hero_fx)) >> 4);
+    uint16_t ty = (uint16_t)((uint16_t)wrap_globe_px_y(FP_PX(st->hero_fy)) >> 4);
+    uint8_t reg = hearth_globe_region_at(tx, ty);
     st->is_world_map = true;
     st->has_windmill = true;
+    st->world_region_id = reg;
+    st->terrain_pal_id = region_to_pal(reg);
+    st->bgm_id = region_to_bgm(reg);
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
 
-    /* 7 Open-World Storybook Landmarks — players freely explore any of them! */
-    set_portal(&st->portals[0], 16, 44, ZONE_HOLLOW_GLADE,   21, 14, 0, "Hollow Oak Gate");
-    set_portal(&st->portals[1], 18, 28, ZONE_HAMLET,          4, 13, 0, "Windmill Hamlet");
-    set_portal(&st->portals[2], 44, 24, ZONE_SUNHILL_MARKET, 21, 24, 0, "Sunhill Market");
-    set_portal(&st->portals[3], 44, 13, ZONE_CASTLE_GATE,    21, 24, 0, "Castle Aurelia");
-    set_portal(&st->portals[4], 68, 25, ZONE_BRAMBLE_EDGE,    3, 13, 0, "Bramblewood Crossing");
-    set_portal(&st->portals[5], 66, 43, ZONE_SUNKEN_RUINS,    3, 12, 0, "Sunken Watchtower");
-    set_portal(&st->portals[6], 72, 14, ZONE_WHISKERBURGH,    3, 13, 0, "Whiskerburgh");
+    /* All 14 landmarks across 7 continents live in ROM table HEARTH_GLOBE_LANDMARKS[]! */
+    populate_globe_enemies_for_region(st, (reg == REGION_DESERT) ? (uint8_t)REGION_DESERT : (uint8_t)REGION_HEARTLAND);
+}
 
-    /* World Map stays 100% peaceful until Rowan bonds his first Familiar! */
-    if (st->flag_has_familiar) {
-        set_field_enemy(&st->field_enemies[0], "Gloomcap",   SPR_ENEMY_GLOOMCAP,  ENCOUNTER_MEADOW_PACK, BIOME_MEADOW, false, 31, 31, DIR_LEFT,  30);
-        set_field_enemy(&st->field_enemies[1], "Thornling",  SPR_ENEMY_THORNLING, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 56, 26, DIR_DOWN,  55);
-        set_field_enemy(&st->field_enemies[2], "Dusk Moth",  SPR_ENEMY_DUSK_MOTH, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 52, 36, DIR_LEFT,  80);
-        set_field_enemy(&st->field_enemies[3], "Boar Scout", SPR_ENEMY_BOAR,      ENCOUNTER_BOAR_GUARD,  BIOME_MEADOW, false, 60, 17, DIR_RIGHT, 45);
-    }
+static void populate_zone_timber_pier(HearthState *st) {
+    st->terrain_pal_id = ZPAL_EVERTALE_WORLD;
+    st->bgm_id = BGM_HAMLET;
+    st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
+    st->has_sign = true;
+    st->sign_tx = 18;
+    st->sign_ty = 8;
+
+    st->chest.active = true;
+    st->chest.tx = 35;
+    st->chest.ty = 11;
+    st->chest.chest_bit = 8;
+    st->chest.reward_kind = 0;
+
+    st->fish_spot.active = true;
+    st->fish_spot.tx = 26;
+    st->fish_spot.ty = 22;
+    st->fish_spot.cast_dx = 2;
+    st->fish_spot.cast_dy = 0;
+
+    set_npc(&st->npcs[0], 0, "Shipwright Orin", SPR_NPC_SHIPWRIGHT, 21, 16, DIR_DOWN, AURA_NONE);
+    set_npc(&st->npcs[1], 1, "Deckhand Kip",    SPR_NPC_TOWNSFOLK,  15, 11, DIR_RIGHT, AURA_NONE);
+
+    set_portal(&st->portals[0], 21, 1, ZONE_EVERTALE_WORLD, 108, 115, 0, "Evertale Globe");
+    set_portal(&st->portals[1], 22, 1, ZONE_EVERTALE_WORLD, 108, 115, 0, "Evertale Globe");
+}
+
+static void populate_zone_coral_cove(HearthState *st) {
+    st->terrain_pal_id = ZPAL_PARADISE;
+    st->bgm_id = BGM_PARADISE;
+    st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
+    st->has_sign = true;
+    st->sign_tx = 15;
+    st->sign_ty = 16;
+
+    st->chest.active = true;
+    st->chest.tx = 8;
+    st->chest.ty = 22;
+    st->chest.chest_bit = 9;
+    st->chest.reward_kind = 1;
+
+    st->fish_spot.active = true;
+    st->fish_spot.tx = 30;
+    st->fish_spot.ty = 13;
+    st->fish_spot.cast_dx = 2;
+    st->fish_spot.cast_dy = 0;
+
+    set_npc(&st->npcs[0], 0, "Capt. Barnacle", SPR_NPC_SHIPWRIGHT, 21, 13, DIR_DOWN, AURA_NONE);
+    set_npc(&st->npcs[1], 1, "Diver Maya",     SPR_NPC_CLARA,      26, 15, DIR_LEFT, AURA_NONE);
+    set_npc(&st->npcs[2], 2, "Reef Monkey",    SPR_FAUNA_MONKEY,   11, 18, DIR_RIGHT, AURA_NONE);
+
+    set_portal(&st->portals[0], 21, 1, ZONE_EVERTALE_WORLD, 52, 148, 0, "Evertale Globe");
+    set_portal(&st->portals[1], 22, 1, ZONE_EVERTALE_WORLD, 52, 148, 0, "Evertale Globe");
+}
+
+static void populate_zone_babana_oasis(HearthState *st) {
+    st->terrain_pal_id = ZPAL_DESERT;
+    st->bgm_id = BGM_DESERT;
+    st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
+    st->has_waystone = true;
+    st->waystone_tx = 21;
+    st->waystone_ty = 15;
+    st->has_sign = true;
+    st->sign_tx = 18;
+    st->sign_ty = 22;
+
+    st->chest.active = true;
+    st->chest.tx = 36;
+    st->chest.ty = 12;
+    st->chest.chest_bit = 10;
+    st->chest.reward_kind = 2;
+
+    set_npc(&st->npcs[0], 0, "Merchant Zari", SPR_NPC_TESSA,    12, 13, DIR_DOWN, AURA_NONE);
+    set_npc(&st->npcs[1], 1, "Guide Farid",   SPR_NPC_CORIN,    27, 15, DIR_LEFT, AURA_NONE);
+    set_npc(&st->npcs[2], 2, "Oasis Camel",   SPR_FAUNA_CAMEL,  15, 18, DIR_RIGHT, AURA_NONE);
+
+    set_portal(&st->portals[0], 21, 26, ZONE_EVERTALE_WORLD, 132, 156, 0, "Evertale Globe");
+    set_portal(&st->portals[1], 22, 26, ZONE_EVERTALE_WORLD, 132, 156, 0, "Evertale Globe");
 }
 
 static void populate_zone_sunhill_market(HearthState *st) {
@@ -547,8 +744,8 @@ static void populate_zone_sunhill_market(HearthState *st) {
     set_npc(&st->npcs[2], 2, "Mido",            SPR_PET_MILO,      22, 11, DIR_DOWN, AURA_NONE);
     set_npc(&st->npcs[3], 3, "Market Florist",  SPR_NPC_TOWNSFOLK, 26, 18, DIR_LEFT, AURA_NONE);
 
-    set_portal(&st->portals[0], 21, 26, ZONE_EVERTALE_WORLD, 44, 25, 0, "Evertale World Map");
-    set_portal(&st->portals[1], 22, 26, ZONE_EVERTALE_WORLD, 44, 25, 0, "Evertale World Map");
+    set_portal(&st->portals[0], 21, 26, ZONE_EVERTALE_WORLD, 104, 84, 0, "Evertale Globe");
+    set_portal(&st->portals[1], 22, 26, ZONE_EVERTALE_WORLD, 104, 84, 0, "Evertale Globe");
 }
 
 static void populate_zone_castle_gate(HearthState *st) {
@@ -563,8 +760,8 @@ static void populate_zone_castle_gate(HearthState *st) {
     set_npc(&st->npcs[0], 0, "Royal Sentinel", SPR_NPC_SENTINEL, 19, 11, DIR_DOWN, AURA_NONE);
     set_npc(&st->npcs[1], 1, "Royal Sentinel", SPR_NPC_SENTINEL, 24, 11, DIR_DOWN, AURA_NONE);
 
-    set_portal(&st->portals[0], 21, 26, ZONE_EVERTALE_WORLD, 44, 14, 0, "Evertale World Map");
-    set_portal(&st->portals[1], 22, 26, ZONE_EVERTALE_WORLD, 44, 14, 0, "Evertale World Map");
+    set_portal(&st->portals[0], 21, 26, ZONE_EVERTALE_WORLD, 104, 70, 0, "Evertale Globe");
+    set_portal(&st->portals[1], 22, 26, ZONE_EVERTALE_WORLD, 104, 70, 0, "Evertale Globe");
 }
 
 static void populate_zone_bramble_edge(HearthState *st) {
@@ -583,8 +780,8 @@ static void populate_zone_bramble_edge(HearthState *st) {
 
     set_npc(&st->npcs[0], 0, "Lantern Keeper", SPR_NPC_JASPER, 16, 13, DIR_DOWN, AURA_NONE);
 
-    set_portal(&st->portals[0], 1, 13, ZONE_EVERTALE_WORLD, 68, 26, 0, "Evertale World Map");
-    set_portal(&st->portals[1], 1, 14, ZONE_EVERTALE_WORLD, 68, 26, 0, "Evertale World Map");
+    set_portal(&st->portals[0], 1, 13, ZONE_EVERTALE_WORLD, 132, 88, 0, "Evertale Globe");
+    set_portal(&st->portals[1], 1, 14, ZONE_EVERTALE_WORLD, 132, 88, 0, "Evertale Globe");
 }
 
 static void populate_zone_sunken_ruins(HearthState *st) {
@@ -597,8 +794,8 @@ static void populate_zone_sunken_ruins(HearthState *st) {
 
     set_npc(&st->npcs[0], 0, "Antiquarian", SPR_NPC_ELDER, 21, 11, DIR_DOWN, AURA_NONE);
 
-    set_portal(&st->portals[0], 1, 12, ZONE_EVERTALE_WORLD, 66, 44, 0, "Evertale World Map");
-    set_portal(&st->portals[1], 1, 13, ZONE_EVERTALE_WORLD, 66, 44, 0, "Evertale World Map");
+    set_portal(&st->portals[0], 1, 12, ZONE_EVERTALE_WORLD, 130, 108, 0, "Evertale Globe");
+    set_portal(&st->portals[1], 1, 13, ZONE_EVERTALE_WORLD, 130, 108, 0, "Evertale Globe");
 }
 
 static void populate_zone_hamlet(HearthState *st) {
@@ -644,7 +841,7 @@ static void populate_zone_hamlet(HearthState *st) {
             ? (st->flag_guard_mended ? AURA_MENDED : AURA_HOLLOW_FEAR)
             : AURA_NONE);
 
-    set_portal(&st->portals[0], 2,  13, ZONE_EVERTALE_WORLD, 18, 29, 0, "Evertale World Map");
+    set_portal(&st->portals[0], 2,  13, ZONE_EVERTALE_WORLD, 78, 88, 0, "Evertale Globe");
     set_portal(&st->portals[1], 42, 13, ZONE_WHISKERBURGH,    2, 13, 0, "To Whiskerburgh");
 
     if (st->flag_has_familiar) {
@@ -683,8 +880,8 @@ static void populate_zone_whiskerburgh(HearthState *st) {
     set_npc(&st->npcs[1], 1, "Barnaby Shop", SPR_NPC_MOUSE, 29,  9, DIR_DOWN, AURA_NONE);
     set_npc(&st->npcs[2], 2, "Angler Pippo", SPR_NPC_MOUSE, 22, 16, DIR_LEFT, AURA_NONE);
 
-    set_portal(&st->portals[0],  1, 13, ZONE_EVERTALE_WORLD, 72, 15, 0, "Evertale World Map");
-    set_portal(&st->portals[1], 21,  2, ZONE_SEWERS,         21, 24, STORY_SEWER_KEY, "Sunken Sewers");
+    set_portal(&st->portals[0],  1, 13, ZONE_EVERTALE_WORLD, 138, 76, 0, "Evertale Globe");
+    set_portal(&st->portals[1], 21,  2, ZONE_SEWERS,          21, 24, STORY_SEWER_KEY, "Sunken Sewers");
 }
 
 static void populate_zone_sewers(HearthState *st) {
@@ -753,18 +950,24 @@ static void populate_zone_boarhold(HearthState *st) {
     if (st->flag_ironfang_defeated) st->field_enemies[3].alive = false;
 }
 
-void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint8_t tx, uint8_t ty) {
+void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint16_t tx, uint16_t ty) {
     if (zone_id >= ZONE_COUNT) zone_id = ZONE_EVERTALE_WORLD;
     st->zone_id = zone_id;
     st->map_revision++;
     st->zone_banner_frames = 120;
     st->cam_override = false;
+    st->atlas_open = false;
     st->hero_vx = 0;
     st->hero_vy = 0;
-    st->hero_fx = TO_FP((int16_t)tx * 16 + 8);
-    st->hero_fy = TO_FP((int16_t)ty * 16 + 8);
+    if (zone_id == ZONE_EVERTALE_WORLD) {
+        st->hero_fx = TO_FP((int16_t)((tx & 255u) * 16u + 8u));
+        st->hero_fy = TO_FP((int16_t)((ty % HEARTH_GLOBE_H) * 16u + 8u));
+    } else {
+        st->hero_fx = TO_FP((int16_t)tx * 16 + 8);
+        st->hero_fy = TO_FP((int16_t)ty * 16 + 8);
+        st->active_vehicle = VEH_FOOT;
+    }
     st->hero_safe_frames = 45;
-    reset_trail_to_hero(st);
 
     clear_zone_entities(st);
     hearth_build_zone_map(zone_id, st->map_bg1, st->map_bg2, st->map_col, &st->map_w, &st->map_h);
@@ -778,10 +981,15 @@ void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint8_t tx, uint8_t ty)
     else if (zone_id == ZONE_CASTLE_GATE)      populate_zone_castle_gate(st);
     else if (zone_id == ZONE_BRAMBLE_EDGE)     populate_zone_bramble_edge(st);
     else if (zone_id == ZONE_SUNKEN_RUINS)     populate_zone_sunken_ruins(st);
+    else if (zone_id == ZONE_TIMBER_PIER)      populate_zone_timber_pier(st);
+    else if (zone_id == ZONE_CORAL_COVE)       populate_zone_coral_cove(st);
+    else if (zone_id == ZONE_BABANA_OASIS)     populate_zone_babana_oasis(st);
     else if (zone_id == ZONE_WHISKERBURGH)     populate_zone_whiskerburgh(st);
     else if (zone_id == ZONE_SEWERS)           populate_zone_sewers(st);
     else if (zone_id == ZONE_BOARHOLD)         populate_zone_boarhold(st);
     else                                       populate_zone_hamlet(st);
+
+    reset_trail_to_hero(st);
 
     if (zone_id == ZONE_WHISPERING_WOODS && st->ch1_step == 6u) {
         st->ch1_step = 7u;
@@ -793,10 +1001,7 @@ void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint8_t tx, uint8_t ty)
 
 void hearth_respawn_enemies(HearthState *st) {
     if (st->zone_id == ZONE_EVERTALE_WORLD && st->flag_has_familiar) {
-        set_field_enemy(&st->field_enemies[0], "Gloomcap",   SPR_ENEMY_GLOOMCAP,  ENCOUNTER_MEADOW_PACK, BIOME_MEADOW, false, 31, 31, DIR_LEFT,  30);
-        set_field_enemy(&st->field_enemies[1], "Thornling",  SPR_ENEMY_THORNLING, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 56, 26, DIR_DOWN,  55);
-        set_field_enemy(&st->field_enemies[2], "Dusk Moth",  SPR_ENEMY_DUSK_MOTH, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 52, 36, DIR_LEFT,  80);
-        set_field_enemy(&st->field_enemies[3], "Boar Scout", SPR_ENEMY_BOAR,      ENCOUNTER_BOAR_GUARD,  BIOME_MEADOW, false, 60, 17, DIR_RIGHT, 45);
+        populate_globe_enemies_for_region(st, (st->world_region_id == REGION_DESERT) ? (uint8_t)REGION_DESERT : (uint8_t)REGION_HEARTLAND);
     } else if (st->zone_id == ZONE_HAMLET && st->story_stage != STORY_AGE5_FLASHBACK && st->flag_has_familiar) {
         set_field_enemy(&st->field_enemies[0], "Gloomcap",     SPR_ENEMY_GLOOMCAP,  ENCOUNTER_MEADOW_PACK, BIOME_MEADOW, false, 26, 15, DIR_LEFT, 30);
         set_field_enemy(&st->field_enemies[1], "Thornling",    SPR_ENEMY_THORNLING, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 30, 10, DIR_DOWN, 55);
@@ -939,7 +1144,7 @@ static void finish_cinema_mode(HearthState *st, bool play_sfx) {
         st->flag_has_heart_vessel = false;
         st->pip_visible = false;
         st->mode = MODE_EXPLORE;
-        hearth_enter_zone(st, ZONE_EVERTALE_WORLD, 16, 46);
+        hearth_enter_zone(st, ZONE_EVERTALE_WORLD, 74, 110);
         st->hero_dir = DIR_UP;
         st->warp_fade = 14;
         if (play_sfx) push_sfx(st, SFX_CONFIRM);
@@ -955,6 +1160,12 @@ static void finish_cinema_mode(HearthState *st, bool play_sfx) {
         st->ch2_step = 0u;
         st->ch1_errands_mask = 0u;
         st->woods_shrines_mask = 0u;
+        st->planks_found_mask = 0u;
+        st->active_vehicle = VEH_FOOT;
+        st->vehicle_unlocked_mask = 0u;
+        st->atlas_open = false;
+        st->deep_sea_hint_shown = false;
+        st->designer_sandbox = false;
         st->has_milo_bell = false;
         st->flag_has_wand = false;
         st->flag_has_familiar = false;
@@ -1100,7 +1311,7 @@ static void step_intro_cutscene(HearthState *st, uint16_t just_pressed) {
 
 const char *hearth_get_objective_text(const HearthState *st) {
     if (st->story_stage < STORY_EVERTALE_AWAKENED) {
-        if (st->ch1_step == 0u) return "Talk to Grandma Mara by the hearth";
+        if (st->ch1_step == 0u) return "Talk to Grandma Mara downstairs";
         if (st->ch1_step == 1u) return "Visit Baker Maple & Stationmaster Barnaby";
         if (st->ch1_step == 2u) return "Return home to Grandma Mara";
         if (st->ch1_step == 3u) return "Inspect the cedar chest in the attic loft";
@@ -1115,7 +1326,12 @@ const char *hearth_get_objective_text(const HearthState *st) {
         if (st->ch2_step == 1u) return "Visit Archivist Corin on Sunhill's upper terrace";
         if (st->ch2_step == 2u) return "Meet Mido by Sunhill Market's sunlit fountain";
         if (!st->flag_has_familiar) return "Visit Bramblewood Crossing east to bond a Familiar";
-        return "Explore Evertale & seek clues to the Hearthglass Pendant";
+        if ((st->vehicle_unlocked_mask & VEH_MASK_RAFT) == 0u) {
+            if (st->ch2_step < 5u) return "Visit Shipwright Orin south at Heartland Timber Pier";
+            return "Gather 3 Sun-Cedar Planks along Timber Pier beach";
+        }
+        if (st->ch2_step < 7u) return "Sail the Cedar Raft south to Suncrest & Sands of Babana";
+        return "Explore the Evertale Globe & uncover clues to the Sea Chart";
     }
     if (st->story_stage == STORY_SEWER_KEY) return "Descend into the Sunken Sewers north of Whiskerburgh";
     if (st->story_stage == STORY_MUCKMAW_DEFEATED) return "Cross into Boarhold Citadel & face Lord Ironfang";
@@ -1162,13 +1378,19 @@ void hearth_toggle_ppu_mode(HearthState *st) {
 }
 
 void hearth_start_story(HearthState *st) {
-    /* New Story launches the 7-Act Illustrated Opening Cinema -> Rowan's Cottage Dawn! */
+    /* New Story launches the Illustrated Opening Cinema -> Rowan's Cottage Dawn! */
     st->story_stage = STORY_AGE10_ALDERBROOK;
     st->time_of_day = TOD_MORNING;
     st->ch1_step = 0u;
     st->ch2_step = 0u;
     st->ch1_errands_mask = 0u;
     st->woods_shrines_mask = 0u;
+    st->planks_found_mask = 0u;
+    st->active_vehicle = VEH_FOOT;
+    st->vehicle_unlocked_mask = 0u;
+    st->atlas_open = false;
+    st->deep_sea_hint_shown = false;
+    st->designer_sandbox = false;
     st->has_milo_bell = false;
     st->flag_has_wand = false;
     st->flag_has_familiar = false;
@@ -1186,16 +1408,21 @@ void hearth_start_story(HearthState *st) {
 }
 
 void hearth_start_sandbox(HearthState *st) {
-    /* Jump straight onto the Evertale Open World Map outside Sunhill Market! */
+#if HEARTH_DESIGNER_MODE
+    /* Designer Mode: Jump straight onto the 256x192 Evertale Globe with travel tiers ready! */
     if (st->story_stage < STORY_EVERTALE_AWAKENED) {
         st->story_stage = STORY_EVERTALE_AWAKENED;
     }
     st->ch1_step = 8u;
-    st->ch2_step = 4u;
+    st->ch2_step = 6u;
     st->flag_has_wand = true;
     st->flag_has_familiar = true;
     st->flag_has_heart_vessel = false;
     st->pip_visible = true;
+    st->designer_sandbox = true;
+    st->active_vehicle = VEH_FOOT;
+    st->vehicle_unlocked_mask = (uint8_t)(VEH_MASK_RAFT | VEH_MASK_SHIP | VEH_MASK_BALLOON | VEH_MASK_AIRSHIP);
+    st->atlas_open = false;
     st->mode = MODE_EXPLORE;
     st->intro.fade = 0;
     st->cam_override = false;
@@ -1203,14 +1430,61 @@ void hearth_start_sandbox(HearthState *st) {
     st->battle.active = false;
     st->shop.active = false;
     st->fishing.active = false;
-    hearth_enter_zone(st, ZONE_EVERTALE_WORLD, 44, 27);
-    st->hero_dir = DIR_UP;
+    hearth_enter_zone(st, ZONE_EVERTALE_WORLD, 104, 84);
+    st->hero_dir = DIR_DOWN;
     push_sfx(st, SFX_CONFIRM);
+#else
+    hearth_start_story(st);
+#endif
+}
+
+void hearth_toggle_atlas(HearthState *st) {
+    if (st->mode != MODE_EXPLORE || st->dialogue.active || st->warp_pending) return;
+    st->atlas_open = !st->atlas_open;
+    push_sfx(st, SFX_CURSOR);
+    build_ppu_packet(st);
+}
+
+void hearth_designer_cycle_vehicle(HearthState *st) {
+#if HEARTH_DESIGNER_MODE
+    static const char *const veh_labels[5] = {
+        "ON FOOT", "CEDAR RAFT", "SAILING SHIP", "HOT AIR BALLOON", "SKY AIRSHIP"
+    };
+    if (!st->designer_sandbox || !st->is_world_map || st->mode != MODE_EXPLORE) return;
+    st->active_vehicle = (uint8_t)((st->active_vehicle + 1u) % 5u);
+    if (st->active_vehicle == VEH_RAFT)    st->vehicle_unlocked_mask |= (uint8_t)VEH_MASK_RAFT;
+    if (st->active_vehicle == VEH_SHIP)    st->vehicle_unlocked_mask |= (uint8_t)(VEH_MASK_RAFT | VEH_MASK_SHIP);
+    if (st->active_vehicle == VEH_BALLOON) st->vehicle_unlocked_mask |= (uint8_t)VEH_MASK_BALLOON;
+    if (st->active_vehicle == VEH_AIRSHIP) st->vehicle_unlocked_mask |= (uint8_t)VEH_MASK_AIRSHIP;
+    push_sfx(st, SFX_CONFIRM);
+    spawn_ftext(st, FP_PX(st->hero_fx), (int16_t)(FP_PX(st->hero_fy) - 22),
+        veh_labels[st->active_vehicle], 3, 11, true);
+    build_ppu_packet(st);
+#else
+    (void)st;
+#endif
+}
+
+void hearth_designer_warp_region(HearthState *st, uint8_t region_id) {
+#if HEARTH_DESIGNER_MODE
+    static const uint16_t rx[REGION_COUNT] = { 104u, 132u,  52u, 128u, 212u,  32u, 220u };
+    static const uint16_t ry[REGION_COUNT] = {  84u, 155u, 147u,  22u, 126u,  62u,  62u };
+    if (!st->designer_sandbox) return;
+    if (region_id >= REGION_COUNT) region_id = REGION_HEARTLAND;
+    st->atlas_open = false;
+    st->mode = MODE_EXPLORE;
+    st->dialogue.active = false;
+    hearth_enter_zone(st, ZONE_EVERTALE_WORLD, rx[region_id], ry[region_id]);
+    push_sfx(st, SFX_PORTAL);
+#else
+    (void)st; (void)region_id;
+#endif
 }
 
 void hearth_start_cutscene(HearthState *st, const HearthCutsceneOp *script) {
     st->mode = MODE_CUTSCENE;
     st->intro.fade = 0;
+    st->atlas_open = false;
     st->battle.active = false;
     st->dialogue.active = false;
     st->shop.active = false;
@@ -1220,7 +1494,7 @@ void hearth_start_cutscene(HearthState *st, const HearthCutsceneOp *script) {
     st->cs_wait_frames = 0;
 }
 
-static void request_zone_warp(HearthState *st, uint8_t dst_zone, uint8_t tx, uint8_t ty) {
+static void request_zone_warp(HearthState *st, uint8_t dst_zone, uint16_t tx, uint16_t ty) {
     st->warp_pending = true;
     st->warp_fade = 1;
     st->warp_dst_zone = dst_zone;
@@ -1230,12 +1504,23 @@ static void request_zone_warp(HearthState *st, uint8_t dst_zone, uint8_t tx, uin
 }
 
 /* ============================================================================
- * COLLISION & FLUID 8-WAY CORNER-NUDGING PHYSICS
+ * COLLISION & FLUID 8-WAY CORNER-NUDGING PHYSICS (WITH TOROIDAL GLOBE & VEHICLES)
  * ============================================================================ */
+static void open_dialogue(
+    HearthState *st, const char *speaker, uint8_t voice, const char *text,
+    uint8_t choice_count, const HearthChoice *choices
+);
+
 static uint8_t get_col_at_px(const HearthState *st, int16_t px, int16_t py) {
     uint16_t tx, ty;
-    uint8_t mw, mh;
+    uint8_t mw, mh, col = COL_SOLID;
     ST_UNUSED(st);
+    if (HS.is_world_map) {
+        tx = (uint16_t)((uint16_t)wrap_globe_px_x(px) >> 4);
+        ty = (uint16_t)((uint16_t)wrap_globe_px_y(py) >> 4);
+        hearth_globe_cell(tx, ty, NULL, NULL, &col, NULL);
+        return col;
+    }
     if (px < 0 || py < 0) return COL_SOLID;
     tx = (uint16_t)px >> 4;
     ty = (uint16_t)py >> 4;
@@ -1245,11 +1530,39 @@ static uint8_t get_col_at_px(const HearthState *st, int16_t px, int16_t py) {
     return HS.map_col[map_row_offset(ty, mw) + tx];
 }
 
+static bool globe_col_blocked(const HearthState *st, uint8_t col) {
+    ST_UNUSED(st);
+    if (HS.active_vehicle >= VEH_BALLOON) return false;
+    if (col == COL_WALKABLE || col == COL_TALL_GRASS) return false;
+    if (col == COL_SHALLOW) {
+        return ((HS.vehicle_unlocked_mask & VEH_MASK_RAFT) == 0u && HS.active_vehicle < VEH_RAFT);
+    }
+    if (col == COL_WATER) {
+        return ((HS.vehicle_unlocked_mask & VEH_MASK_SHIP) == 0u && HS.active_vehicle < VEH_SHIP);
+    }
+    return true; /* COL_SOLID or COL_LAVA */
+}
+
 static bool collides_world_px(const HearthState *st, int16_t cx, int16_t cy) {
     uint16_t tx0, tx1, ty0, ty1, row0, row1, c;
     int16_t dx, dy, i;
     uint8_t mw, mh;
+    bool block_shallow;
     ST_UNUSED(st);
+
+    if (HS.is_world_map) {
+        uint8_t c00, c10, c01, c11;
+        if (HS.active_vehicle >= VEH_BALLOON) return false;
+        c00 = get_col_at_px(st, (int16_t)(cx - 5), (int16_t)(cy - 3));
+        if (globe_col_blocked(st, c00)) return true;
+        c10 = get_col_at_px(st, (int16_t)(cx + 5), (int16_t)(cy - 3));
+        if (globe_col_blocked(st, c10)) return true;
+        c01 = get_col_at_px(st, (int16_t)(cx - 5), (int16_t)(cy + 3));
+        if (globe_col_blocked(st, c01)) return true;
+        c11 = get_col_at_px(st, (int16_t)(cx + 5), (int16_t)(cy + 3));
+        if (globe_col_blocked(st, c11)) return true;
+        return false;
+    }
 
     if (cx < 5 || cy < 3) return true;
     tx0 = (uint16_t)(cx - 5) >> 4;
@@ -1259,21 +1572,22 @@ static bool collides_world_px(const HearthState *st, int16_t cx, int16_t cy) {
     mw = HS.map_w ? HS.map_w : (uint8_t)HEARTH_MAP_W;
     mh = HS.map_h ? HS.map_h : (uint8_t)HEARTH_MAP_H;
     if (tx1 >= mw || ty1 >= mh) return true;
+    block_shallow = (HS.zone_id == ZONE_TIMBER_PIER || HS.zone_id == ZONE_CORAL_COVE);
 
     row0 = map_row_offset(ty0, mw);
     c = (uint16_t)HS.map_col[row0 + tx0];
-    if (c == COL_SOLID || c == COL_WATER) return true;
+    if (c == COL_SOLID || c == COL_WATER || c == COL_LAVA || (block_shallow && c == COL_SHALLOW)) return true;
     if (tx1 != tx0) {
         c = (uint16_t)HS.map_col[row0 + tx1];
-        if (c == COL_SOLID || c == COL_WATER) return true;
+        if (c == COL_SOLID || c == COL_WATER || c == COL_LAVA || (block_shallow && c == COL_SHALLOW)) return true;
     }
     if (ty1 != ty0) {
         row1 = map_row_offset(ty1, mw);
         c = (uint16_t)HS.map_col[row1 + tx0];
-        if (c == COL_SOLID || c == COL_WATER) return true;
+        if (c == COL_SOLID || c == COL_WATER || c == COL_LAVA || (block_shallow && c == COL_SHALLOW)) return true;
         if (tx1 != tx0) {
             c = (uint16_t)HS.map_col[row1 + tx1];
-            if (c == COL_SOLID || c == COL_WATER) return true;
+            if (c == COL_SOLID || c == COL_WATER || c == COL_LAVA || (block_shallow && c == COL_SHALLOW)) return true;
         }
     }
 
@@ -1305,38 +1619,84 @@ static bool collides_world_px(const HearthState *st, int16_t cx, int16_t cy) {
 static void step_hero_collide_xy(HearthState *st) {
     fp16_t nfx, nfy;
     int16_t hx, hy, nx, ny;
+    bool hit_block = false;
+    int16_t probe_x = 0, probe_y = 0;
 
     hx = FP_PX(HS.hero_fx);
     hy = FP_PX(HS.hero_fy);
 
     if (HS.hero_vx != 0) {
         nfx = HS.hero_fx + HS.hero_vx;
+        if (HS.is_world_map) nfx = wrap_globe_fp_x(nfx);
         nx = FP_PX(nfx);
         if (!collides_world_px(st, nx, hy)) {
             HS.hero_fx = nfx;
             hx = nx;
         } else if (!collides_world_px(st, nx, (int16_t)(hy - 5))) {
             HS.hero_fy -= 192;
+            if (HS.is_world_map) HS.hero_fy = wrap_globe_fp_y(HS.hero_fy);
             hy = FP_PX(HS.hero_fy);
         } else if (!collides_world_px(st, nx, (int16_t)(hy + 5))) {
             HS.hero_fy += 192;
+            if (HS.is_world_map) HS.hero_fy = wrap_globe_fp_y(HS.hero_fy);
             hy = FP_PX(HS.hero_fy);
         } else {
+            hit_block = true;
+            probe_x = (int16_t)(nx + ((HS.hero_vx > 0) ? 6 : -6));
+            probe_y = hy;
             HS.hero_vx = 0;
         }
     }
     if (HS.hero_vy != 0) {
         nfy = HS.hero_fy + HS.hero_vy;
+        if (HS.is_world_map) nfy = wrap_globe_fp_y(nfy);
         ny = FP_PX(nfy);
         if (!collides_world_px(st, hx, ny)) {
             HS.hero_fy = nfy;
+            hy = ny;
         } else if (!collides_world_px(st, (int16_t)(hx - 5), ny)) {
             HS.hero_fx -= 192;
+            if (HS.is_world_map) HS.hero_fx = wrap_globe_fp_x(HS.hero_fx);
+            hx = FP_PX(HS.hero_fx);
         } else if (!collides_world_px(st, (int16_t)(hx + 5), ny)) {
             HS.hero_fx += 192;
+            if (HS.is_world_map) HS.hero_fx = wrap_globe_fp_x(HS.hero_fx);
+            hx = FP_PX(HS.hero_fx);
         } else {
+            hit_block = true;
+            probe_x = hx;
+            probe_y = (int16_t)(ny + ((HS.hero_vy > 0) ? 5 : -5));
             HS.hero_vy = 0;
         }
+    }
+
+    if (HS.is_world_map) {
+        uint8_t cur_col = get_col_at_px(st, hx, hy);
+        if (HS.active_vehicle < VEH_BALLOON) {
+            if (cur_col == COL_WATER && (HS.vehicle_unlocked_mask & VEH_MASK_SHIP) != 0u) {
+                HS.active_vehicle = VEH_SHIP;
+            } else if (cur_col == COL_SHALLOW && (HS.vehicle_unlocked_mask & VEH_MASK_RAFT) != 0u) {
+                if (HS.active_vehicle == VEH_FOOT) {
+                    HS.active_vehicle = VEH_RAFT;
+                    push_sfx(st, SFX_WATER_SPLASH);
+                }
+            } else if (cur_col == COL_WALKABLE || cur_col == COL_TALL_GRASS) {
+                if (HS.active_vehicle == VEH_RAFT || HS.active_vehicle == VEH_SHIP) {
+                    HS.active_vehicle = VEH_FOOT;
+                }
+            }
+        }
+        /* One-time Pip hint when nudging deep cobalt ocean on the Cedar Raft */
+        if (hit_block && HS.active_vehicle == VEH_RAFT &&
+            (HS.vehicle_unlocked_mask & VEH_MASK_SHIP) == 0u &&
+            !HS.deep_sea_hint_shown &&
+            get_col_at_px(st, probe_x, probe_y) == COL_WATER) {
+            HS.deep_sea_hint_shown = true;
+            open_dialogue(st, "Pip", SFX_TEXT_PIP,
+                "Whoa, steady there Rowan! Our Cedar Raft can glide across turquoise coastal shallows and coral channels, but we'll need a sturdy Sailing Ship to cross the deep cobalt sea!",
+                0, NULL);
+        }
+        update_globe_region_streaming(st, true);
     }
 }
 
@@ -1350,8 +1710,8 @@ static void step_hero_trail_and_fx(HearthState *st) {
     hx = FP_PX(HS.hero_fx);
     hy = FP_PX(HS.hero_fy);
     th = (uint16_t)HS.trail_head;
-    dx = (int16_t)(hx - FP_PX(HS.trail_x[th]));
-    dy = (int16_t)(hy - FP_PX(HS.trail_y[th]));
+    dx = world_dx(st, hx, FP_PX(HS.trail_x[th]));
+    dy = world_dy(st, hy, FP_PX(HS.trail_y[th]));
     if (dx <= -2 || dx >= 2 || dy <= -2 || dy >= 2) {
         next_head = (uint16_t)(th + 1u);
         if (next_head >= (uint16_t)HEARTH_TRAIL_LEN) next_head = 0u;
@@ -1364,10 +1724,12 @@ static void step_hero_trail_and_fx(HearthState *st) {
     if ((uint16_t)HS.hero_step_timer >= cadence) {
         HS.hero_step_timer = 0;
         foot = (uint16_t)get_col_at_px(st, hx, hy);
-        if (foot == (uint16_t)COL_TALL_GRASS) {
+        if (HS.is_world_map && HS.active_vehicle >= VEH_BALLOON) {
+            spawn_burst(st, 0, hx, (int16_t)(hy + 6), 2, 0, 14, false);
+        } else if (foot == (uint16_t)COL_TALL_GRASS) {
             push_sfx(st, SFX_GRASS_RUSTLE);
             spawn_burst(st, 1, hx, hy, 4, 0, 4, false);
-        } else if (foot == (uint16_t)COL_SHALLOW) {
+        } else if (foot == (uint16_t)COL_SHALLOW || foot == (uint16_t)COL_WATER) {
             push_sfx(st, SFX_WATER_SPLASH);
             spawn_burst(st, 2, hx, hy, 4, 0, 14, false);
         } else {
@@ -1388,6 +1750,11 @@ static void step_hero_movement(HearthState *st, uint16_t pad) {
 
     HS.hero_dashing = ((pad & PAD_B) != 0) && (ix != 0 || iy != 0);
     max_spd = HS.hero_dashing ? HS.tuning.dash_speed_fp : HS.tuning.walk_speed_fp;
+    if (HS.is_world_map && HS.active_vehicle == VEH_RAFT) {
+        max_spd = (int16_t)(max_spd + (max_spd >> 3));
+    } else if (HS.is_world_map && HS.active_vehicle >= VEH_SHIP) {
+        max_spd = (int16_t)(max_spd + (max_spd >> 1));
+    }
 
     if (ix != 0 && iy != 0) {
         dspd = (int16_t)((max_spd >> 1) + (max_spd >> 3) + (max_spd >> 4) + (max_spd >> 6) + (max_spd >> 8));
@@ -1446,8 +1813,18 @@ static void step_pip_follower(HearthState *st) {
 
     dx = HS.trail_x[idx] - HS.pip_fx;
     dy = (HS.trail_y[idx] - TO_FP(4)) - HS.pip_fy;
+    if (HS.is_world_map) {
+        if (dx > (GLOBE_FP_W >> 1)) dx -= GLOBE_FP_W;
+        else if (dx < -(GLOBE_FP_W >> 1)) dx += GLOBE_FP_W;
+        if (dy > (GLOBE_FP_H >> 1)) dy -= GLOBE_FP_H;
+        else if (dy < -(GLOBE_FP_H >> 1)) dy += GLOBE_FP_H;
+    }
     if (dx != 0) HS.pip_fx += dx >> 3;
     if (dy != 0) HS.pip_fy += dy >> 3;
+    if (HS.is_world_map) {
+        HS.pip_fx = wrap_globe_fp_x(HS.pip_fx);
+        HS.pip_fy = wrap_globe_fp_y(HS.pip_fy);
+    }
     if (dx < -40 || dx > 40) HS.pip_dir = (uint8_t)((dx < 0) ? DIR_LEFT : DIR_RIGHT);
 }
 
@@ -1544,6 +1921,21 @@ static void populate_battle_preset(HearthBattleState *b, uint8_t preset, int8_t 
             field_idx, false, 48, 13, 2, (int16_t)(right_base + 16), 142, (int16_t)(right_base + 76),
             1, 2, 1, LOCK_STAR, LOCK_NONE, LOCK_NONE);
         copy_str_safe(b->banner, sizeof(b->banner), "GLADE ENCOUNTER!");
+    } else if (preset == ENCOUNTER_SANDWORM_BOSS) {
+        b->enemy_count = 1;
+        set_battle_enemy(&b->enemies[0], "Giant Sandworm", "Dune Tremor", SPR_ENEMY_SANDWORM,
+            field_idx, true, 195, 22, 5, right_base, 126, (int16_t)(right_base + 56),
+            2, 2, 3, LOCK_SWORD, LOCK_SUN, LOCK_STAR);
+        copy_str_safe(b->banner, sizeof(b->banner), "DESERT TITAN: GIANT SANDWORM!");
+    } else if (preset == ENCOUNTER_DESERT_SCORPION) {
+        b->enemy_count = 2;
+        set_battle_enemy(&b->enemies[0], "Dune Scorpion", "Amber Sting", SPR_ENEMY_SCORPION,
+            field_idx, false, 64, 16, 4, (int16_t)(right_base - 14), 108, (int16_t)(right_base + 54),
+            2, 2, 2, LOCK_SWORD, LOCK_SUN, LOCK_NONE);
+        set_battle_enemy(&b->enemies[1], "Sand Stinger", "Tail Sweep", SPR_ENEMY_SCORPION,
+            field_idx, false, 56, 15, 3, (int16_t)(right_base + 16), 142, (int16_t)(right_base + 74),
+            1, 2, 1, LOCK_STAR, LOCK_NONE, LOCK_NONE);
+        copy_str_safe(b->banner, sizeof(b->banner), "SANDS OF BABANA AMBUSH!");
     } else {
         b->enemy_count = 2;
         set_battle_enemy(&b->enemies[0], "Gloomcap", "Spore Burst", SPR_ENEMY_GLOOMCAP,
@@ -1585,7 +1977,8 @@ void hearth_start_battle(HearthState *st, uint8_t preset, uint8_t biome, int8_t 
     b->wizard_back_y = 130;
     b->field_enemy_idx = field_idx;
     b->encounter_preset = preset;
-    b->is_boss_battle = (preset == ENCOUNTER_SHRINE_BOSS || preset == ENCOUNTER_SEWER_BOSS || preset == ENCOUNTER_IRONFANG_BOSS);
+    b->is_boss_battle = (preset == ENCOUNTER_SHRINE_BOSS || preset == ENCOUNTER_SEWER_BOSS ||
+                         preset == ENCOUNTER_IRONFANG_BOSS || preset == ENCOUNTER_SANDWORM_BOSS);
 
     if (field_idx < 0) {
         for (i = 0; i < 3; i++) {
@@ -1789,6 +2182,16 @@ static void use_battle_item(HearthState *st) {
         push_sfx(st, SFX_HEAL);
         spawn_burst(st, 5, b->hero_x, (int16_t)(b->hero_y - 10), 14, 3, 11, true);
         spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), "SNACK FULL!", 3, 11, false);
+        begin_enemy_turn(b);
+    } else if (st->babanas > 0) {
+        st->babanas--;
+        for (p_idx = 0; p_idx < 3; p_idx++) {
+            st->party[p_idx].hp = (int16_t)((st->party[p_idx].hp + 70 > st->party[p_idx].max_hp) ? st->party[p_idx].max_hp : st->party[p_idx].hp + 70);
+            st->party[p_idx].mp = (int16_t)((st->party[p_idx].mp + 15 > st->party[p_idx].max_mp) ? st->party[p_idx].max_mp : st->party[p_idx].mp + 15);
+        }
+        push_sfx(st, SFX_HEAL);
+        spawn_burst(st, 5, b->hero_x, (int16_t)(b->hero_y - 10), 14, 3, 11, true);
+        spawn_ftext(st, b->hero_x, (int16_t)(b->hero_y - 28), "BABANA +70!", 3, 11, false);
         begin_enemy_turn(b);
     } else if (st->star_drops > 0) {
         st->star_drops--;
@@ -2417,7 +2820,8 @@ void hearth_open_shop(HearthState *st, uint8_t shop_id) {
     sh->tab = 0;
     sh->cursor = 0;
     sh->msg_timer = 90;
-    if (shop_id == 3u) sh->title = "TESSA'S SUNHILL BAKERY";
+    if (shop_id == 4u) sh->title = "ZARI'S GOLDEN BABANA STALL";
+    else if (shop_id == 3u) sh->title = "TESSA'S SUNHILL BAKERY";
     else if (shop_id == 2u) sh->title = "MAPLE'S MOUNTAIN BAKERY";
     else if (shop_id == 1u) sh->title = "PORKINS' CITADEL PROVISIONS";
     else sh->title = "BARNABY'S MOUSE MARKET";
@@ -2430,7 +2834,7 @@ void hearth_open_shop(HearthState *st, uint8_t shop_id) {
 static void shop_buy_item(HearthState *st, uint8_t idx) {
     const HearthShopItem *it;
     HearthShopState *sh = &st->shop;
-    if (idx >= 5u) return;
+    if (idx >= HEARTH_SHOP_ITEM_COUNT) return;
     it = &HEARTH_SHOP_ITEMS[idx];
     if (it->item_kind == 3u && st->lure_tier >= 1u) {
         copy_str_safe(sh->msg, sizeof(sh->msg), "You already own River Lure!");
@@ -2453,6 +2857,7 @@ static void shop_buy_item(HearthState *st, uint8_t idx) {
     else if (it->item_kind == 2u) st->snacks++;
     else if (it->item_kind == 3u) st->lure_tier = 1;
     else if (it->item_kind == 4u) st->lure_tier = 2;
+    else if (it->item_kind == 5u) st->babanas++;
 
     copy_str_safe(sh->msg, sizeof(sh->msg), "Purchased! Thank you!");
     sh->msg_timer = 75;
@@ -2476,7 +2881,7 @@ static void shop_sell_fish(HearthState *st, uint8_t idx) {
 
 static void step_shop(HearthState *st, uint16_t just_pressed) {
     HearthShopState *sh = &st->shop;
-    uint8_t max_rows = (sh->tab == 0u) ? 5u : (uint8_t)HEARTH_FISH_SPECIES;
+    uint8_t max_rows = (sh->tab == 0u) ? (uint8_t)HEARTH_SHOP_ITEM_COUNT : (uint8_t)HEARTH_FISH_SPECIES;
 
     if (sh->msg_timer > 0) sh->msg_timer--;
 
@@ -2510,11 +2915,12 @@ static void step_shop(HearthState *st, uint16_t just_pressed) {
 static uint8_t roll_fish_species(HearthState *st) {
     int16_t r = hearth_prng_range(&st->prng, 0, 99);
     if (r < 7) return 5u; /* Sunken Boot */
-    if (st->lure_tier >= 1u && r >= 84) return 4u; /* Golden Koi! */
-    if (st->zone_id == ZONE_SEWERS) return (r < 68) ? 3u : 4u; /* Sewer Glow-Eel */
-    if (st->zone_id == ZONE_WHISKERBURGH) return (r < 65) ? 2u : 1u; /* Whisker Perch */
-    if (st->zone_id == ZONE_ALDERBROOK) return (r < 72) ? 1u : 0u; /* Mountain Meadow Trout */
-    return (r < 55) ? 0u : 1u; /* Sun Carp or Meadow Trout */
+    if (st->zone_id == ZONE_CORAL_COVE) return (uint8_t)((r < 72) ? 4u : 0u); /* Tropical Coral Snapper */
+    if (st->lure_tier >= 1u && r >= 84) return 4u; /* Rare Coral Snapper */
+    if (st->zone_id == ZONE_SEWERS) return (uint8_t)((r < 68) ? 3u : 4u); /* Sewer Glow-Eel */
+    if (st->zone_id == ZONE_WHISKERBURGH) return (uint8_t)((r < 65) ? 2u : 1u); /* Whisker Perch */
+    if (st->zone_id == ZONE_ALDERBROOK) return (uint8_t)((r < 72) ? 1u : 0u); /* Mountain Meadow Trout */
+    return (uint8_t)((r < 55) ? 0u : 1u); /* Sun Carp or Meadow Trout */
 }
 
 void hearth_start_fishing(HearthState *st) {
@@ -2686,6 +3092,58 @@ static uint8_t infer_portrait_id(const HearthState *st, const char *speaker) {
     return (uint8_t)PORTRAIT_NONE;
 }
 
+static void load_dialogue_page(HearthState *st, const char *text) {
+    HearthDialogue *d = &st->dialogue;
+    uint16_t len, limit, cut, i, sent_cut, space_cut;
+    const char *nxt;
+
+    if (!text) {
+        d->full_text = "";
+        d->next_text = NULL;
+        d->full_len = 0;
+        d->visible_chars = 0;
+        d->finished = true;
+        return;
+    }
+    while (*text == ' ') text++;
+    len = str_len16(text);
+    if (st->tuning.ppu_mode == PPU_SNES_256x224) {
+        limit = (d->choice_count > 0u) ? 68u : 74u;
+    } else {
+        limit = (d->choice_count > 0u) ? 88u : 96u;
+    }
+
+    if (len <= limit) {
+        d->full_text = text;
+        d->full_len = len;
+        d->next_text = NULL;
+    } else {
+        sent_cut = 0u;
+        space_cut = 0u;
+        for (i = 0u; i < limit; i++) {
+            char c = text[i];
+            if (c == ' ') space_cut = i;
+            if ((c == '.' || c == '!' || c == '?') &&
+                (text[i + 1u] == ' ' || text[i + 1u] == '\0') &&
+                i >= (uint16_t)(limit >> 1)) {
+                sent_cut = (uint16_t)(i + 1u);
+            }
+        }
+        if (sent_cut > 0u)       cut = sent_cut;
+        else if (space_cut > 0u) cut = space_cut;
+        else                     cut = limit;
+
+        nxt = text + cut;
+        while (*nxt == ' ') nxt++;
+        d->full_text = text;
+        d->full_len = cut;
+        d->next_text = (*nxt != '\0') ? nxt : NULL;
+    }
+    d->visible_chars = 0;
+    d->finished = (d->full_len == 0u);
+    d->pause_frames = 0;
+}
+
 static void open_dialogue(
     HearthState *st, const char *speaker, uint8_t voice, const char *text,
     uint8_t choice_count, const HearthChoice *choices
@@ -2694,11 +3152,6 @@ static void open_dialogue(
     uint8_t i;
     d->active = true;
     d->speaker = speaker;
-    d->full_text = text;
-    d->full_len = str_len16(text);
-    d->visible_chars = 0;
-    d->finished = false;
-    d->pause_frames = 0;
     d->voice_sfx = voice;
     d->portrait_id = infer_portrait_id(st, speaker);
     d->choice_count = choice_count;
@@ -2706,6 +3159,7 @@ static void open_dialogue(
     for (i = 0; i < choice_count && i < HEARTH_MAX_CHOICES; i++) {
         d->choices[i] = choices[i];
     }
+    load_dialogue_page(st, text);
 }
 
 static void confirm_dialogue_choice(HearthState *st) {
@@ -2720,6 +3174,7 @@ static void confirm_dialogue_choice(HearthState *st) {
     else if (act == ACT_OPEN_SHOP_1)   hearth_open_shop(st, 1);
     else if (act == ACT_OPEN_SHOP_2)   hearth_open_shop(st, 2);
     else if (act == ACT_OPEN_SHOP_3)   hearth_open_shop(st, 3);
+    else if (act == ACT_OPEN_SHOP_4)   hearth_open_shop(st, 4);
     else if (act == ACT_MEND_CAPTAIN && st->flag_has_heart_vessel)  hearth_start_cutscene(st, CUTSCENE_MEND_CAPTAIN);
     else if (act == ACT_START_FISHING) hearth_start_fishing(st);
     else if (act == ACT_REST_BED) {
@@ -2750,6 +3205,11 @@ static void step_dialogue(HearthState *st, uint16_t just_pressed) {
             else if ((d->visible_chars % 3u) == 0u && ch != ' ') push_sfx(st, d->voice_sfx);
         }
         if (d->visible_chars >= d->full_len) d->finished = true;
+    } else if (d->next_text != NULL) {
+        if (just_pressed & (PAD_A | PAD_B)) {
+            push_sfx(st, SFX_CONFIRM);
+            load_dialogue_page(st, d->next_text);
+        }
     } else {
         if (d->choice_count > 0) {
             if (just_pressed & (PAD_UP | PAD_LEFT)) {
@@ -2855,6 +3315,18 @@ static void apply_cutscene_flag(HearthState *st, int16_t flag_id) {
         st->flag_has_familiar = true;
         st->flag_has_wand = true;
         st->pip_visible = true;
+    } else if (flag_id == FLAG_CH2_ORIN_QUEST) {
+        if (st->ch2_step < 5u) st->ch2_step = 5u;
+    } else if (flag_id == FLAG_CH2_RAFT_BUILT) {
+        if (st->ch2_step < 6u) st->ch2_step = 6u;
+        st->vehicle_unlocked_mask |= (uint8_t)VEH_MASK_RAFT;
+        spawn_ftext(st, FP_PX(st->hero_fx), (int16_t)(FP_PX(st->hero_fy) - 24), "CEDAR RAFT!", 3, 11, true);
+    } else if (flag_id == FLAG_CH2_CORAL_MET) {
+        if (st->ch2_step < 7u) st->ch2_step = 7u;
+        st->guilders = (uint16_t)(st->guilders + 25u);
+    } else if (flag_id == FLAG_CH2_BABANA_CLUE) {
+        if (st->ch2_step < 7u) st->ch2_step = 7u;
+        st->babanas++;
     }
 }
 
@@ -2990,8 +3462,8 @@ static void step_cutscene(HearthState *st, uint16_t just_pressed) {
 static void retarget_enemy_patrol(HearthState *st, HearthFieldEnemy *e) {
     int16_t hdx, hdy, pick;
     e->patrol_timer = (uint8_t)hearth_prng_range(&st->prng, 50, 105);
-    hdx = (int16_t)(FP_PX(e->home_fx) - FP_PX(e->fx));
-    hdy = (int16_t)(FP_PX(e->home_fy) - FP_PX(e->fy));
+    hdx = world_dx(st, FP_PX(e->home_fx), FP_PX(e->fx));
+    hdy = world_dy(st, FP_PX(e->home_fy), FP_PX(e->fy));
     if (hdx < -32 || hdx > 32 || hdy < -32 || hdy > 32) {
         e->vx = (hdx > 0) ? 85 : -85;
         e->vy = (hdy > 0) ? 85 : -85;
@@ -3005,7 +3477,7 @@ static void retarget_enemy_patrol(HearthState *st, HearthFieldEnemy *e) {
 static void step_enemy_patrol(HearthState *st, HearthFieldEnemy *e) {
     fp16_t nfx, nfy;
     int16_t px, py;
-    uint16_t tx, ty, c;
+    uint16_t c;
 
     e->alerted = false;
     if (e->is_boss) return;
@@ -3019,18 +3491,14 @@ static void step_enemy_patrol(HearthState *st, HearthFieldEnemy *e) {
 
     nfx = e->fx + e->vx;
     nfy = e->fy + e->vy;
+    if (HS.is_world_map) {
+        nfx = wrap_globe_fp_x(nfx);
+        nfy = wrap_globe_fp_y(nfy);
+    }
     px = FP_PX(nfx);
     py = FP_PX(nfy);
-    if (px < 0 || py < 0) { e->vx = 0; e->vy = 0; return; }
-    tx = (uint16_t)px >> 4;
-    ty = (uint16_t)py >> 4;
-    {
-        uint8_t mw = HS.map_w ? HS.map_w : (uint8_t)HEARTH_MAP_W;
-        uint8_t mh = HS.map_h ? HS.map_h : (uint8_t)HEARTH_MAP_H;
-        if (tx >= mw || ty >= mh) { e->vx = 0; e->vy = 0; return; }
-        c = (uint16_t)HS.map_col[map_row_offset(ty, mw) + tx];
-    }
-    if (c != COL_SOLID && c != COL_WATER) {
+    c = (uint16_t)get_col_at_px(st, px, py);
+    if (c == COL_WALKABLE || c == COL_TALL_GRASS) {
         e->fx = nfx;
         e->fy = nfy;
     } else {
@@ -3065,10 +3533,14 @@ static bool step_enemy_chase(HearthState *st, HearthFieldEnemy *e, int idx, int1
     }
     nfx = e->fx + nvx;
     nfy = e->fy + nvy;
+    if (HS.is_world_map) {
+        nfx = wrap_globe_fp_x(nfx);
+        nfy = wrap_globe_fp_y(nfy);
+    }
     cx = (uint16_t)get_col_at_px(st, FP_PX(nfx), ey);
     cy = (uint16_t)get_col_at_px(st, ex, FP_PX(nfy));
-    if (cx != COL_SOLID && cx != COL_WATER) e->fx = nfx;
-    if (cy != COL_SOLID && cy != COL_WATER) e->fy = nfy;
+    if (cx == COL_WALKABLE || cx == COL_TALL_GRASS) e->fx = nfx;
+    if (cy == COL_WALKABLE || cy == COL_TALL_GRASS) e->fy = nfy;
     adx = (dx < 0) ? (int16_t)(-dx) : dx;
     ady = (dy < 0) ? (int16_t)(-dy) : dy;
     e->dir = (uint8_t)((adx > ady)
@@ -3088,7 +3560,7 @@ static void step_field_enemies(HearthState *st, bool can_engage) {
     int16_t hy = FP_PX(HS.hero_fy);
     int16_t i;
     HearthFieldEnemy *e = HS.field_enemies;
-    uint16_t check_aggro = (can_engage && HS.hero_safe_frames == 0) ? 1u : 0u;
+    uint16_t check_aggro = (can_engage && HS.hero_safe_frames == 0 && HS.active_vehicle == VEH_FOOT) ? 1u : 0u;
 
     for (i = 0; i < HEARTH_MAX_FIELD_ENEMIES; i++, e++) {
         int16_t ex, ey, dx, dy, adx, ady, sight, doct;
@@ -3100,8 +3572,8 @@ static void step_field_enemies(HearthState *st, bool can_engage) {
         if (check_aggro) {
             ex = FP_PX(e->fx);
             ey = FP_PX(e->fy);
-            dx = (int16_t)(hx - ex);
-            dy = (int16_t)(hy - ey);
+            dx = world_dx(st, hx, ex);
+            dy = world_dy(st, hy, ey);
             sight = e->is_boss ? 52 : 66;
             if (dx > -sight && dx < sight && dy > -sight && dy < sight) {
                 adx = (dx < 0) ? (int16_t)(-dx) : dx;
@@ -3134,9 +3606,22 @@ static bool near_point_px(int16_t hx, int16_t hy, int16_t tx, int16_t ty, int16_
     return (doct < (int16_t)(rad + 2));
 }
 
+static bool near_world_point_px(const HearthState *st, int16_t hx, int16_t hy, int16_t tx, int16_t ty, int16_t rad) {
+    int16_t dx = world_dx(st, hx, tx);
+    int16_t dy = world_dy(st, hy, ty);
+    int16_t adx, ady, doct;
+    if (dx <= -rad || dx >= rad || dy <= -rad || dy >= rad) return false;
+    adx = (dx < 0) ? (int16_t)(-dx) : dx;
+    ady = (dy < 0) ? (int16_t)(-dy) : dy;
+    doct = (adx > ady) ? (int16_t)(adx + (ady >> 1)) : (int16_t)(ady + (adx >> 1));
+    return (doct < (int16_t)(rad + 2));
+}
+
 static int find_ch1_prop_interactable(const HearthState *st, int16_t hx, int16_t hy, int16_t *ox, int16_t *oy, const char **olabel) {
     static const uint8_t s_tx[3] = { 12u, 26u, 33u };
     static const uint8_t s_ty[3] = { 17u, 15u,  9u };
+    static const uint8_t p_tx[3] = {  8u, 15u, 34u };
+    static const uint8_t p_ty[3] = { 15u, 16u, 15u };
     int16_t nx, ny, i;
     ST_UNUSED(st);
 
@@ -3179,6 +3664,16 @@ static int find_ch1_prop_interactable(const HearthState *st, int16_t hx, int16_t
             *olabel = HS.flag_has_familiar ? "Familiar Shrine" : "Touch Shrine";
             return 19;
         }
+    } else if (HS.zone_id == ZONE_TIMBER_PIER && (HS.vehicle_unlocked_mask & VEH_MASK_RAFT) == 0u) {
+        for (i = 0; i < 3; i++) {
+            if ((HS.planks_found_mask & (uint8_t)(1u << i)) != 0u) continue;
+            nx = (int16_t)((int16_t)p_tx[i] * 16 + 8);
+            ny = (int16_t)((int16_t)p_ty[i] * 16 + 8);
+            if (near_point_px(hx, hy, nx, ny, 24)) {
+                *ox = nx; *oy = (int16_t)(ny - 18); *olabel = "Cedar Plank";
+                return 30 + (int)i;
+            }
+        }
     }
     return -1;
 }
@@ -3190,6 +3685,19 @@ static int find_interactable(const HearthState *st, int16_t *ox, int16_t *oy, co
     int16_t i;
     int ch1_hit;
     ST_UNUSED(st);
+
+    if (HS.is_world_map) {
+        for (i = 0; i < HEARTH_GLOBE_LANDMARK_COUNT; i++) {
+            const HearthGlobeLandmark *lm = &HEARTH_GLOBE_LANDMARKS[i];
+            nx = (int16_t)((int16_t)lm->tx * 16 + 8);
+            ny = (int16_t)((int16_t)lm->ty * 16 + 8);
+            if (near_world_point_px(st, hx, hy, nx, ny, 24)) {
+                *ox = nx; *oy = (int16_t)(ny - 20); *olabel = lm->name;
+                return 40 + (int)i;
+            }
+        }
+        return -1;
+    }
 
     if (HS.hero_dir == DIR_UP) py -= 15;
     else if (HS.hero_dir == DIR_DOWN) py += 15;
@@ -3305,6 +3813,15 @@ static void interact_signpost(HearthState *st) {
     } else if (st->zone_id == ZONE_SUNKEN_RUINS) {
         open_dialogue(st, "Coastal Stone", SFX_TEXT_ELDER,
             "SUNKEN WATCHTOWER | Old sea-cliffs overlooking the southern bay. Scholars from Sunhill Market study its weathered runes.", 0, NULL);
+    } else if (st->zone_id == ZONE_TIMBER_PIER) {
+        open_dialogue(st, "Harbor Board", SFX_TEXT_ELDER,
+            "HEARTLAND TIMBER PIER | Shipwright Orin's Raft Yard. Turquoise coastal channels reach Suncrest Paradise (SW) and Sands of Babana (SE).", 0, NULL);
+    } else if (st->zone_id == ZONE_CORAL_COVE) {
+        open_dialogue(st, "Lagoon Post", SFX_TEXT_ELDER,
+            "SUNCREST CORAL COVE | EAST PIER: Tropical Coral Snapper Fishing | NORTH CHANNEL: Sail back to Heartland or east to Sands of Babana.", 0, NULL);
+    } else if (st->zone_id == ZONE_BABANA_OASIS) {
+        open_dialogue(st, "Oasis Tablet", SFX_TEXT_ELDER,
+            "OASIS OF BABANA | WEST: Merchant Zari's Golden Babana Stall | CENTER: Healing Waystone | WATCH OUT: Dune Scorpions & Giant Sandworm roam the dunes!", 0, NULL);
     } else if (st->zone_id == ZONE_WHISKERBURGH) {
         open_dialogue(st, "Market Sign", SFX_TEXT_ELDER,
             "WEST: Evertale World Map | NORTH: Sunken Sewers | SOUTH: Canal Fishing Jetty | EAST: Barnaby's Shop.", 0, NULL);
@@ -3422,7 +3939,7 @@ static void interact_npc_chapter1(HearthState *st, int hit) {
                     "Oh, thank you, Rowan! The afternoon breeze is turning crisp off the peaks. Could you fetch my red wool shawl from the cedar chest up in the attic loft?", 0, NULL);
             } else if (st->ch1_step == 3u) {
                 open_dialogue(st, "Grandma Mara", SFX_TEXT_ELDER,
-                    "Climb the little stairs on the right side of the room to check my heirloom cedar chest, sparrow.", 0, NULL);
+                    "Climb the little stairs on the right side of the room to check my heirloom cedar chest, Rowan.", 0, NULL);
             } else if (st->ch1_step == 4u) {
                 hearth_start_cutscene(st, CUTSCENE_CH1_DUSK_TEA);
             } else if (st->ch1_step == 5u) {
@@ -3502,7 +4019,7 @@ static void interact_npc_chapter2(HearthState *st, int hit) {
                 hearth_start_cutscene(st, CUTSCENE_CH2_SUNHILL_CORIN);
             } else {
                 open_dialogue(st, "Archivist Corin", SFX_TEXT_ELDER,
-                    "Two travelers from beyond the mist passed through Sunhill ten winters ago... If anyone can uncover their trail - and the legend of the Hearthglass Pendant - it will be a steady heart like yours.", 0, NULL);
+                    "Two travelers from beyond the mist passed through Sunhill long ago... If anyone can uncover their trail - and the legend of the Hearthglass Pendant - it will be a steady heart like yours.", 0, NULL);
             }
         } else if (hit == 2) {
             if (st->ch2_step < 3u) {
@@ -3536,6 +4053,53 @@ static void interact_npc_chapter2(HearthState *st, int hit) {
     } else if (st->zone_id == ZONE_SUNKEN_RUINS) {
         open_dialogue(st, "Antiquarian", SFX_TEXT_ELDER,
             "Hmm... curious mountain-oak brass you've got on your coat, boy! I've only seen metalwork like that in sketches held by Archivist Corin up in Sunhill Market. Ask him!", 0, NULL);
+    } else if (st->zone_id == ZONE_TIMBER_PIER) {
+        if (hit == 0) {
+            if ((st->vehicle_unlocked_mask & VEH_MASK_RAFT) != 0u) {
+                open_dialogue(st, "Shipwright Orin", SFX_TEXT_ELDER,
+                    "That Cedar Raft rides like a dream, Rowan! Step right off the southern beaches into the turquoise shallows on the Globe to reach Suncrest Paradise or Sands of Babana!", 0, NULL);
+            } else if ((st->planks_found_mask & 7u) == 7u) {
+                hearth_start_cutscene(st, CUTSCENE_CH2_ORIN_RAFT_BUILT);
+            } else if (st->ch2_step < 5u) {
+                hearth_start_cutscene(st, CUTSCENE_CH2_ORIN_START);
+            } else {
+                open_dialogue(st, "Shipwright Orin", SFX_TEXT_ELDER,
+                    "Search the sandy beaches west and east of my pier for all 3 Sun-Cedar Driftwood Planks, Rowan! Bring them back and I'll lash your Cedar Raft together!", 0, NULL);
+            }
+        } else {
+            open_dialogue(st, "Deckhand Kip", SFX_TEXT_PIP,
+                "Press M (or SELECT) anytime on the Evertale Globe to open your World Atlas! You can spot the bright turquoise raft channels right from the map!", 0, NULL);
+        }
+    } else if (st->zone_id == ZONE_CORAL_COVE) {
+        if (hit == 0) {
+            if (st->ch2_step < 7u) {
+                hearth_start_cutscene(st, CUTSCENE_CH2_CORAL_BARNACLE);
+            } else {
+                open_dialogue(st, "Capt. Barnacle", SFX_TEXT_ELDER,
+                    "Har! Try casting a line off the east coral pier for tropical Coral Snappers, or ride the reef channel east straight to the Sands of Babana!", 0, NULL);
+            }
+        } else if (hit == 1) {
+            open_dialogue(st, "Diver Maya", SFX_TEXT_PIP,
+                "The coral reef glows emerald and pink at midday! Beyond the deep cobalt sea lie Frostmere North, Canopy Wilds, Cinderpeak Volcano, and even Aetheris Citadel!", 0, NULL);
+        } else {
+            open_dialogue(st, "Reef Monkey", SFX_TEXT_PIP,
+                "Ooh-ooh! The cheeky island monkey juggles two shiny seashells and points eagerly toward the golden desert across the eastern reef!", 0, NULL);
+        }
+    } else if (st->zone_id == ZONE_BABANA_OASIS) {
+        if (hit == 0) {
+            static const HearthChoice shop4_opts[2] = {
+                { "Browse Golden Babanas", ACT_OPEN_SHOP_4 },
+                { "Just Visiting",         ACT_CLOSE }
+            };
+            open_dialogue(st, "Merchant Zari", SFX_TEXT_PIP,
+                "Sweetest Golden Babanas in all of Evertale! Restores 70 HP and 15 MP in battle - and I pay top Guilders for tropical Coral Snappers!",
+                2, shop4_opts);
+        } else if (hit == 1) {
+            hearth_start_cutscene(st, CUTSCENE_CH2_BABANA_CLUE);
+        } else {
+            open_dialogue(st, "Oasis Camel", SFX_TEXT_ELDER,
+                "Mrrph! The desert camel chews contentedly on a Golden Babana leaf, completely unfazed by the scorpions out in the dunes.", 0, NULL);
+        }
     }
 }
 
@@ -3544,7 +4108,9 @@ static void interact_npc_other_zones(HearthState *st, int hit) {
         st->zone_id == ZONE_WHISPERING_WOODS || st->zone_id == ZONE_HOLLOW_GLADE) {
         interact_npc_chapter1(st, hit);
     } else if (st->zone_id == ZONE_SUNHILL_MARKET || st->zone_id == ZONE_CASTLE_GATE ||
-               st->zone_id == ZONE_BRAMBLE_EDGE || st->zone_id == ZONE_SUNKEN_RUINS) {
+               st->zone_id == ZONE_BRAMBLE_EDGE || st->zone_id == ZONE_SUNKEN_RUINS ||
+               st->zone_id == ZONE_TIMBER_PIER || st->zone_id == ZONE_CORAL_COVE ||
+               st->zone_id == ZONE_BABANA_OASIS) {
         interact_npc_chapter2(st, hit);
     } else if (st->zone_id == ZONE_WHISKERBURGH) {
         if (hit == 0) {
@@ -3564,7 +4130,7 @@ static void interact_npc_other_zones(HearthState *st, int hit) {
                 2, shop0_opts);
         } else {
             open_dialogue(st, "Angler Pippo", SFX_TEXT_PIP,
-                "Cast from the south canal jetty! Keep the fish inside your reel bar and tap A to reel in Golden Koi!", 0, NULL);
+                "Cast from the south canal jetty! Keep the fish inside your reel bar and tap A to reel in Coral Snappers!", 0, NULL);
         }
     } else if (st->zone_id == ZONE_BOARHOLD) {
         if (hit == 0) {
@@ -3588,7 +4154,7 @@ static void interact_npc_other_zones(HearthState *st, int hit) {
                     { "Not Yet",           ACT_CLOSE }
                 };
                 open_dialogue(st, "Captain Tusk", SFX_TEXT_ELDER,
-                    "Snort... my courage drained away when Lord Ironfang turned cruel. Wait—that pendant glows!",
+                    "Snort... my courage drained away when Lord Ironfang turned cruel. Wait - that pendant glows!",
                     2, cap_opts);
             } else {
                 open_dialogue(st, "Captain Tusk", SFX_TEXT_ELDER,
@@ -3663,13 +4229,60 @@ static void interact_ch1_prop(HearthState *st, int hit, int16_t ox, int16_t oy) 
             return;
         }
         if (st->story_stage >= STORY_EVERTALE_AWAKENED) {
-            request_zone_warp(st, ZONE_EVERTALE_WORLD, 16, 46);
+            request_zone_warp(st, ZONE_EVERTALE_WORLD, 74, 110);
         } else if (st->ch1_step >= 6u) {
             hearth_start_story_cg(st, 3u);
         } else {
             open_dialogue(st, "Rowan", SFX_TEXT_HERO,
                 "An enormous, ancient oak standing alone beneath the alpine peaks... Why does staring into its hollow trunk make my heart race?", 0, NULL);
         }
+    } else if (hit >= 30 && hit <= 32) {
+        uint8_t bit = (uint8_t)(1u << (hit - 30));
+        uint8_t cnt = 0u;
+        st->planks_found_mask |= bit;
+        if (st->ch2_step < 5u) st->ch2_step = 5u;
+        if (st->planks_found_mask & 1u) cnt++;
+        if (st->planks_found_mask & 2u) cnt++;
+        if (st->planks_found_mask & 4u) cnt++;
+        push_sfx(st, SFX_CHEST_OPEN);
+        spawn_burst(st, 3, ox, (int16_t)(oy + 8), 10, 3, 11, false);
+        if (cnt == 3u) {
+            spawn_ftext(st, ox, oy, "3/3 PLANKS!", 3, 11, true);
+            open_dialogue(st, "Rowan", SFX_TEXT_HERO,
+                "That's all 3 Sun-Cedar Driftwood Planks! Let's hurry back to Shipwright Orin on the pier so he can build our Cedar Raft!", 0, NULL);
+        } else if (cnt == 2u) {
+            spawn_ftext(st, ox, oy, "2/3 PLANKS", 3, 11, true);
+            open_dialogue(st, "Rowan", SFX_TEXT_HERO,
+                "Picked up a sturdy Sun-Cedar Plank! Just one more plank left along the sandy shore.", 0, NULL);
+        } else {
+            spawn_ftext(st, ox, oy, "1/3 PLANKS", 3, 11, true);
+            open_dialogue(st, "Rowan", SFX_TEXT_HERO,
+                "Found a dry Sun-Cedar Driftwood Plank! Two more along the beach and Orin can lash our Cedar Raft together.", 0, NULL);
+        }
+    }
+}
+
+static void interact_globe_landmark(HearthState *st, int lidx) {
+    const HearthGlobeLandmark *lm;
+    if (lidx < 0 || lidx >= HEARTH_GLOBE_LANDMARK_COUNT) return;
+    lm = &HEARTH_GLOBE_LANDMARKS[lidx];
+    if (lm->enterable && lm->dst_zone < ZONE_COUNT) {
+        request_zone_warp(st, lm->dst_zone, lm->dst_tx, lm->dst_ty);
+        return;
+    }
+    push_sfx(st, SFX_CONFIRM);
+    if (lm->region_id == REGION_FROSTMERE) {
+        open_dialogue(st, "Frostmere Noel Village", SFX_TEXT_PIP,
+            "Sleigh bells echo beneath glowing evergreens while cheerful penguins waddle across the ice! Frostmere's festive gates will open in a future chapter.", 0, NULL);
+    } else if (lm->region_id == REGION_CANOPY) {
+        open_dialogue(st, "Canopy Treetop Village", SFX_TEXT_PIP,
+            "Timber walkways and rope bridges weave high through giant rainforest boughs while monkeys chatter above! The treetop lift opens in a future chapter.", 0, NULL);
+    } else if (lm->region_id == REGION_VOLCANO) {
+        open_dialogue(st, "Cinderpeak Caldera Gate", SFX_TEXT_ELDER,
+            "Molten lava rivers glow beside jagged basalt cliffs! You'll need volcanic wards from a future chapter to venture inside Cinderpeak Caldera.", 0, NULL);
+    } else {
+        open_dialogue(st, "Aetheris Citadel Spire", SFX_TEXT_ELDER,
+            "Gleaming chrome arches and hovering light-drones hum with star-magic! Aetheris Citadel's high-tech spires await the endgame chapter.", 0, NULL);
     }
 }
 
@@ -3695,10 +4308,12 @@ static void try_interact(HearthState *st) {
         open_dialogue(st, "Fishing Pier", SFX_TEXT_PIP,
             "Ripples dance on the water! Cast your line and keep the fish inside the reel bar?",
             2, fish_opts);
-    } else if (hit >= 14 && hit <= 19) {
+    } else if ((hit >= 14 && hit <= 19) || (hit >= 30 && hit <= 32)) {
         interact_ch1_prop(st, hit, ox, oy);
     } else if (hit >= 20 && hit < 20 + HEARTH_MAX_PORTALS) {
         interact_portal(st, hit - 20);
+    } else if (hit >= 40 && hit < 40 + HEARTH_GLOBE_LANDMARK_COUNT) {
+        interact_globe_landmark(st, hit - 40);
     } else if (st->zone_id == ZONE_HAMLET) {
         interact_npc_hamlet(st, hit);
     } else {
@@ -3711,13 +4326,31 @@ static void check_explore_triggers(HearthState *st) {
     int16_t hy = FP_PX(HS.hero_fy);
     int i;
 
-    /* Age-5 Flashback trigger: walking east toward Milo sparks Shadow Grandmother cutscene! */
+    /* Age-5 Flashback trigger: walking east toward Mido sparks Shadow Grandmother cutscene! */
     if (st->zone_id == ZONE_HAMLET && st->story_stage == STORY_AGE5_FLASHBACK && !st->flashback_triggered) {
         if (hx >= 14 * 16) {
             st->flashback_triggered = true;
             hearth_start_cutscene(st, CUTSCENE_SHADOW_GRANDMA);
             return;
         }
+    }
+
+    /* Globe Landmark walk-in warps (only when on foot/raft/ship and not in spawn grace frames!) */
+    if (HS.is_world_map) {
+        if (HS.active_vehicle < VEH_BALLOON && HS.hero_safe_frames == 0) {
+            for (i = 0; i < HEARTH_GLOBE_LANDMARK_COUNT; i++) {
+                const HearthGlobeLandmark *lm = &HEARTH_GLOBE_LANDMARKS[i];
+                int16_t px, py;
+                if (!lm->enterable || lm->dst_zone >= ZONE_COUNT) continue;
+                px = (int16_t)((int16_t)lm->tx * 16 + 8);
+                py = (int16_t)((int16_t)lm->ty * 16 + 8);
+                if (near_world_point_px(st, hx, hy, px, py, 12)) {
+                    request_zone_warp(st, lm->dst_zone, lm->dst_tx, lm->dst_ty);
+                    return;
+                }
+            }
+        }
+        return;
     }
 
     /* Automatic walk-in portal transitions (edges & open archways) */
@@ -3783,6 +4416,19 @@ static void step_camera(HearthState *st) {
         return;
     }
     w = (HS.tuning.ppu_mode == PPU_SNES_256x224) ? (int16_t)256 : (int16_t)320;
+    if (HS.is_world_map) {
+        gx = wrap_globe_fp_x(HS.hero_fx - TO_FP(w >> 1));
+        gy = wrap_globe_fp_y(HS.hero_fy - TO_FP(112));
+        dx = gx - HS.cam_fx;
+        if (dx > (GLOBE_FP_W >> 1)) dx -= GLOBE_FP_W;
+        else if (dx < -(GLOBE_FP_W >> 1)) dx += GLOBE_FP_W;
+        dy = gy - HS.cam_fy;
+        if (dy > (GLOBE_FP_H >> 1)) dy -= GLOBE_FP_H;
+        else if (dy < -(GLOBE_FP_H >> 1)) dy += GLOBE_FP_H;
+        if (dx != 0) HS.cam_fx = wrap_globe_fp_x(HS.cam_fx + (dx >> 3));
+        if (dy != 0) HS.cam_fy = wrap_globe_fp_y(HS.cam_fy + (dy >> 3));
+        return;
+    }
     mw = (int16_t)(HS.map_w ? HS.map_w : (uint8_t)HEARTH_MAP_W);
     mh = (int16_t)(HS.map_h ? HS.map_h : (uint8_t)HEARTH_MAP_H);
     mx = (int16_t)(mw * 16 - w);
@@ -3946,15 +4592,15 @@ static uint16_t build_explore_ppu_enemies(
 #endif
     for (i = 0; i < HEARTH_MAX_FIELD_ENEMIES && cnt < HEARTH_MAX_OAM; i++, e++) {
         if (!e->alive) continue;
-        sx = (int16_t)(FP_PX(e->fx) - cx);
+        sx = world_dx(st, FP_PX(e->fx), cx);
         if (sx < -24 || sx > max_sx) continue;
         ey = FP_PX(e->fy);
-        sy = (int16_t)(ey - cy);
+        sy = world_dy(st, ey, cy);
         if (sy < -24 || sy > 248) continue;
         fl = (uint8_t)(OAM_FLAG_SHADOW | ((e->dir == DIR_RIGHT) ? OAM_FLAG_FLIP_X : 0));
         OAM_SET_IDX(p, cnt, sx, sy, e->sprite_id,
             (uint8_t)((e->anim_frame >> 4) & 1u), e->dir, fl,
-            FP_ONE, FP_ONE, AURA_NONE, 1, ey, 0);
+            FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
         cnt++;
     }
     return cnt;
@@ -3963,6 +4609,8 @@ static uint16_t build_explore_ppu_enemies(
 static uint16_t build_explore_ppu_props_and_actors(
     HearthState *st, HearthPpuPacket *p, int16_t cx, int16_t cy, int16_t max_sx
 ) {
+    static const uint8_t p_tx[3] = {  8u, 15u, 34u };
+    static const uint8_t p_ty[3] = { 15u, 16u, 15u };
     int16_t i, sx, sy, ny;
     uint16_t fc16 = (uint16_t)HS.frame_count;
     uint16_t cnt = 0u;
@@ -3982,27 +4630,56 @@ static uint16_t build_explore_ppu_props_and_actors(
             c_spr = ((HS.chests_opened_mask & (uint16_t)(1u << HS.chest.chest_bit)) != 0u)
                 ? (uint8_t)SPR_CHEST_OPEN : (uint8_t)SPR_CHEST;
             OAM_SET_IDX(p, cnt, sx, sy, c_spr, (c_spr == (uint8_t)SPR_CHEST_OPEN) ? 1u : 0u,
-                DIR_DOWN, OAM_FLAG_SHADOW, FP_ONE, FP_ONE, AURA_NONE, 1, ny, 0);
+                DIR_DOWN, OAM_FLAG_SHADOW, FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
             cnt++;
         }
     }
 
-    /* 2. Hollow Oak Gateway Arch Sprite in Hollow Glade, Windmill Hamlet, & Evertale World Map */
+    /* 1b. Driftwood Cedar Planks along Timber Pier beach (uncollected) */
+    if (HS.zone_id == ZONE_TIMBER_PIER && (HS.vehicle_unlocked_mask & VEH_MASK_RAFT) == 0u) {
+        for (i = 0; i < 3 && cnt < HEARTH_MAX_OAM; i++) {
+            if ((HS.planks_found_mask & (uint8_t)(1u << i)) != 0u) continue;
+            ny = (int16_t)((int16_t)p_ty[i] * 16 + 10);
+            sx = (int16_t)((int16_t)p_tx[i] * 16 + 8 - cx);
+            sy = (int16_t)(ny - cy);
+            if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248) {
+                OAM_SET_IDX(p, cnt, sx, sy, SPR_RAFT, npc_f, DIR_DOWN, OAM_FLAG_SHADOW,
+                    FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
+                cnt++;
+            }
+        }
+    }
+
+    /* 1c. Golden Babana Stall prop in Oasis of Babana */
+    if (HS.zone_id == ZONE_BABANA_OASIS && cnt < HEARTH_MAX_OAM) {
+        ny = (int16_t)(11 * 16 + 12);
+        sx = (int16_t)(11 * 16 + 8 - cx);
+        sy = (int16_t)(ny - cy);
+        if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248) {
+            OAM_SET_IDX(p, cnt, sx, sy, SPR_BABANA_STALL, npc_f, DIR_DOWN, OAM_FLAG_SHADOW,
+                FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
+            cnt++;
+        }
+    }
+
+    /* 2. Hollow Oak Gateway Arch Sprite in Hollow Glade, Windmill Hamlet, & Evertale Globe */
     if (HS.zone_id == ZONE_HOLLOW_GLADE || HS.zone_id == ZONE_HAMLET || HS.zone_id == ZONE_EVERTALE_WORLD) {
         if (HS.zone_id == ZONE_HOLLOW_GLADE) {
             ny = (int16_t)(12 * 16 + 4);
             sx = (int16_t)(21 * 16 + 8 - cx);
+            sy = (int16_t)(ny - cy);
         } else if (HS.zone_id == ZONE_EVERTALE_WORLD) {
-            ny = (int16_t)(43 * 16 + 10);
-            sx = (int16_t)(16 * 16 + 8 - cx);
+            ny = (int16_t)(108 * 16 + 10);
+            sx = world_dx(st, (int16_t)(74 * 16 + 8), cx);
+            sy = world_dy(st, ny, cy);
         } else {
             ny = (int16_t)(13 * 16 + 8);
             sx = (int16_t)(2 * 16 + 8 - cx);
+            sy = (int16_t)(ny - cy);
         }
-        sy = (int16_t)(ny - cy);
         if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
             OAM_SET_IDX(p, cnt, sx, sy, SPR_HOLLOW_OAK, npc_f, DIR_DOWN, OAM_FLAG_SHADOW,
-                FP_ONE, FP_ONE, AURA_NONE, 1, (int16_t)(ny - 4), 0);
+                FP_ONE, FP_ONE, AURA_NONE, 1, (int16_t)(sy - 4), 0);
             cnt++;
         }
     }
@@ -4014,7 +4691,25 @@ static uint16_t build_explore_ppu_props_and_actors(
         sy = (int16_t)(ny - cy);
         if (sx >= -32 && sx <= (int16_t)(max_sx + 16) && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
             OAM_SET_IDX(p, cnt, sx, sy, SPR_LOCOMOTIVE, npc_f, DIR_RIGHT, OAM_FLAG_SHADOW,
-                FP_ONE, FP_ONE, AURA_NONE, 1, ny, 0);
+                FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
+            cnt++;
+        }
+    }
+
+    /* 2c. Proximity-Streamed Biome Fauna across all 7 Continents on the Toroidal Globe */
+    if (HS.is_world_map) {
+        for (i = 0; i < HEARTH_GLOBE_FAUNA_COUNT && cnt < (uint16_t)(HEARTH_MAX_OAM - 12); i++) {
+            const HearthGlobeFauna *fa = &HEARTH_GLOBE_FAUNA[i];
+            int16_t bob = (int16_t)((HEARTH_SIN64[((fc16 >> 2) + fa->phase) & 63u] * 3) >> 7);
+            sx = world_dx(st, (int16_t)((int16_t)fa->tx * 16 + 8 + bob), cx);
+            if (sx < -20 || sx > max_sx) continue;
+            sy = world_dy(st, (int16_t)((int16_t)fa->ty * 16 + 8), cy);
+            if (sy < -20 || sy > 244) continue;
+            OAM_SET_IDX(p, cnt, sx, sy, fa->sprite_id,
+                (uint8_t)(((fc16 + fa->phase) >> 4) & 1u),
+                (bob < 0) ? DIR_LEFT : DIR_RIGHT,
+                (uint8_t)(OAM_FLAG_SHADOW | ((bob < 0) ? OAM_FLAG_FLIP_X : 0u)),
+                FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
             cnt++;
         }
     }
@@ -4028,7 +4723,7 @@ static uint16_t build_explore_ppu_props_and_actors(
         sy = (int16_t)(ny - cy);
         if (sy < -24 || sy > 248) continue;
         OAM_SET_IDX(p, cnt, sx, sy, HS.npcs[i].sprite_id, npc_f, HS.npcs[i].dir, OAM_FLAG_SHADOW,
-            FP_ONE, FP_ONE, HS.flag_has_heart_vessel ? HS.npcs[i].aura : AURA_NONE, 1, ny, 0);
+            FP_ONE, FP_ONE, HS.flag_has_heart_vessel ? HS.npcs[i].aura : AURA_NONE, 1, sy, 0);
         cnt++;
     }
 
@@ -4039,7 +4734,7 @@ static uint16_t build_explore_ppu_props_and_actors(
         sy = (int16_t)(ny - cy);
         if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
             OAM_SET_IDX(p, cnt, sx, sy, SPR_WAYSTONE, (uint8_t)((fc16 >> 4) & 3u), DIR_DOWN, OAM_FLAG_SHADOW,
-                FP_ONE, FP_ONE, AURA_NONE, 1, ny, 0);
+                FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
             cnt++;
         }
     }
@@ -4051,7 +4746,7 @@ static uint16_t build_explore_ppu_props_and_actors(
         sx = (int16_t)(HS.fishing.bobber_x - cx);
         sy = (int16_t)(HS.fishing.bobber_y + ny - cy);
         OAM_SET_IDX(p, cnt, sx, sy, SPR_BOBBER, (uint8_t)((fc16 >> 3) & 1u), DIR_DOWN, 0,
-            FP_ONE, FP_ONE, AURA_NONE, 1, HS.fishing.bobber_y, 0);
+            FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
         cnt++;
     }
 
@@ -4079,7 +4774,7 @@ static void emit_emote_oam(HearthPpuPacket *p, uint16_t idx, int16_t x, int16_t 
 
 static uint16_t build_explore_ppu_layer2(
     HearthState *st, HearthPpuPacket *p, uint16_t cnt, int16_t cx, int16_t cy,
-    int16_t hx, int16_t hy, int16_t px, int16_t py, int16_t max_sx
+    int16_t hsx, int16_t hsy, int16_t psx, int16_t psy, int16_t max_sx
 ) {
     int16_t i, sx, sy;
     const HearthFieldEnemy *e = HS.field_enemies;
@@ -4089,8 +4784,13 @@ static uint16_t build_explore_ppu_layer2(
 #endif
 
     if (HS.has_windmill) {
-        sx = (int16_t)(((HS.zone_id == ZONE_EVERTALE_WORLD) ? (18 * 16 + 8) : (6 * 16 + 8)) - cx);
-        sy = (int16_t)(((HS.zone_id == ZONE_EVERTALE_WORLD) ? (26 * 16 + 4) : (5 * 16 + 4)) - cy);
+        if (HS.zone_id == ZONE_EVERTALE_WORLD) {
+            sx = world_dx(st, (int16_t)(78 * 16 + 8), cx);
+            sy = world_dy(st, (int16_t)(84 * 16 + 4), cy);
+        } else {
+            sx = (int16_t)(6 * 16 + 8 - cx);
+            sy = (int16_t)(5 * 16 + 4 - cy);
+        }
         if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
             OAM_SET_IDX(p, cnt, sx, sy, SPR_WINDMILL_BLADES, 0, DIR_DOWN, 0, FP_ONE, FP_ONE, AURA_NONE, 2, 2000,
                 HS.windmill_rot);
@@ -4106,17 +4806,18 @@ static uint16_t build_explore_ppu_layer2(
     }
     for (i = 0; i < HEARTH_MAX_FIELD_ENEMIES && cnt < HEARTH_MAX_OAM; i++, e++) {
         if (e->alive && e->alert_frames > 0) {
-            emit_emote_oam(p, cnt++, (int16_t)(FP_PX(e->fx) - cx), (int16_t)(FP_PX(e->fy) - 26 - cy), SPR_EMOTE_BANG);
+            emit_emote_oam(p, cnt++, world_dx(st, FP_PX(e->fx), cx),
+                (int16_t)(world_dy(st, FP_PX(e->fy), cy) - 26), SPR_EMOTE_BANG);
         }
     }
     if (HS.mode == MODE_FISHING && HS.fishing.phase == FISH_PHASE_BITE_ALERT && cnt < HEARTH_MAX_OAM) {
         emit_emote_oam(p, cnt++, (int16_t)(HS.fishing.bobber_x - cx), (int16_t)(HS.fishing.bobber_y - 18 - cy), SPR_EMOTE_BANG);
     }
     if (HS.hero_emote_frames > 0 && HS.hero_emote != 0 && cnt < HEARTH_MAX_OAM) {
-        emit_emote_oam(p, cnt++, (int16_t)(hx - cx), (int16_t)(hy - 26 - cy), HS.hero_emote);
+        emit_emote_oam(p, cnt++, hsx, (int16_t)(hsy - 26), HS.hero_emote);
     }
     if (HS.pip_visible && HS.pip_emote_frames > 0 && HS.pip_emote != 0 && cnt < HEARTH_MAX_OAM) {
-        emit_emote_oam(p, cnt++, (int16_t)(px - cx), (int16_t)(py - 24 - cy), HS.pip_emote);
+        emit_emote_oam(p, cnt++, psx, (int16_t)(psy - 24), HS.pip_emote);
     }
     if (HS.heart_orb.active && cnt < HEARTH_MAX_OAM) {
         emit_heart_orb_oam(st, p, cnt++, cx, cy);
@@ -4128,48 +4829,57 @@ static uint16_t build_explore_ppu_layer2(
 static void build_explore_ppu_oam(HearthState *st, HearthPpuPacket *p) {
     int16_t cx = HP.cam_x, cy = HP.cam_y;
     int16_t max_sx = (int16_t)(HP.width + 24);
-    int16_t hx, hy, px, py, bob;
+    int16_t hsx, hsy, psx, psy, bob, raft_bob;
     uint16_t fc16 = (uint16_t)HS.frame_count;
     uint16_t cnt, layer1_cnt;
     uint8_t wf, pfl;
 
     cnt = build_explore_ppu_props_and_actors(st, p, cx, cy, max_sx);
 
-    /* Hero (Rowan, Layer 1) */
-    hx = FP_PX(HS.hero_fx);
-    hy = FP_PX(HS.hero_fy);
+    /* Hero (Rowan, Layer 1) + Active Vehicle Vessel on Globe */
+    hsx = world_dx(st, FP_PX(HS.hero_fx), cx);
+    hsy = world_dy(st, FP_PX(HS.hero_fy), cy);
+    raft_bob = 0;
+    if (HS.is_world_map && HS.active_vehicle >= VEH_RAFT && cnt < HEARTH_MAX_OAM) {
+        raft_bob = (int16_t)((HEARTH_SIN64[(fc16 >> 2) & 63u] * 2) >> 7);
+        if (HS.active_vehicle >= VEH_BALLOON) raft_bob = (int16_t)(raft_bob - 8);
+        OAM_SET_IDX(p, cnt, hsx, (int16_t)(hsy + 4 + raft_bob), SPR_RAFT,
+            (uint8_t)((fc16 >> 4) & 1u), HS.hero_dir, OAM_FLAG_SHADOW,
+            FP_ONE, FP_ONE, AURA_NONE, 1, (int16_t)(hsy - 1), 0);
+        cnt++;
+    }
     wf = (HS.hero_anim_tick == 0) ? 0 : (uint8_t)((HS.hero_anim_tick >> 3) & 3u);
     if ((HS.hero_safe_frames == 0 || (HS.hero_safe_frames & 4u) == 0u) && cnt < HEARTH_MAX_OAM) {
-        OAM_SET_IDX(p, cnt, (int16_t)(hx - cx), (int16_t)(hy - cy), SPR_HERO, wf, HS.hero_dir, OAM_FLAG_SHADOW,
+        OAM_SET_IDX(p, cnt, hsx, (int16_t)(hsy + raft_bob), SPR_HERO, wf, HS.hero_dir, OAM_FLAG_SHADOW,
             HS.hero_dashing ? 270 : FP_ONE, HS.hero_dashing ? 244 : FP_ONE,
-            AURA_NONE, 1, hy, 0);
+            AURA_NONE, 1, hsy, 0);
         cnt++;
     }
 
     /* Pip Hovering Companion (visible once reunited in Evertale) */
-    px = FP_PX(HS.pip_fx);
-    py = FP_PX(HS.pip_fy);
+    psx = world_dx(st, FP_PX(HS.pip_fx), cx);
+    psy = world_dy(st, FP_PX(HS.pip_fy), cy);
     if (HS.pip_visible && cnt < HEARTH_MAX_OAM) {
         bob = (int16_t)((HEARTH_SIN64[(fc16 >> 1) & 63u] * 3) >> 7);
         pfl = (uint8_t)(OAM_FLAG_SHADOW | ((HS.pip_dir == DIR_LEFT) ? OAM_FLAG_FLIP_X : 0));
-        OAM_SET_IDX(p, cnt, (int16_t)(px - cx), (int16_t)(py - 4 + bob - cy), SPR_PIP,
+        OAM_SET_IDX(p, cnt, psx, (int16_t)(psy - 4 + bob), SPR_PIP,
             (uint8_t)((fc16 >> 3) & 1u), HS.pip_dir, pfl,
-            FP_ONE, FP_ONE, AURA_NONE, 1, py, 0);
+            FP_ONE, FP_ONE, AURA_NONE, 1, psy, 0);
         cnt++;
     }
 
     layer1_cnt = cnt;
-    cnt = build_explore_ppu_layer2(st, p, cnt, cx, cy, hx, hy, px, py, max_sx);
+    cnt = build_explore_ppu_layer2(st, p, cnt, cx, cy, hsx, hsy, psx, psy, max_sx);
     HP.oam_count = (uint8_t)cnt;
     sort_ppu_oam(p, (int16_t)layer1_cnt);
 
-    if (HS.mode == MODE_EXPLORE && !HS.dialogue.active) {
+    if (HS.mode == MODE_EXPLORE && !HS.dialogue.active && !HS.atlas_open) {
         int16_t ix = 0, iy = 0;
         const char *ilbl = NULL;
         if (find_interactable(st, &ix, &iy, &ilbl) >= 0) {
             HP.interact_active = true;
-            HP.interact_x = (int16_t)(ix - cx);
-            HP.interact_y = (int16_t)(iy - cy);
+            HP.interact_x = world_dx(st, ix, cx);
+            HP.interact_y = world_dy(st, iy, cy);
             HP.interact_label = ilbl;
         }
     }
@@ -4237,6 +4947,13 @@ static void build_ppu_packet(HearthState *st) {
     HP.zone_id = HS.zone_id;
     HP.map_w = HS.map_w ? HS.map_w : (uint8_t)HEARTH_MAP_W;
     HP.map_h = HS.map_h ? HS.map_h : (uint8_t)HEARTH_MAP_H;
+    HP.globe_w = (uint16_t)HEARTH_GLOBE_W;
+    HP.globe_h = (uint16_t)HEARTH_GLOBE_H;
+    HP.world_region_id = HS.world_region_id;
+    HP.active_vehicle = HS.active_vehicle;
+    HP.vehicle_unlocked_mask = HS.vehicle_unlocked_mask;
+    HP.atlas_open = HS.atlas_open;
+    HP.designer_mode_enabled = (HEARTH_DESIGNER_MODE != 0);
     HP.is_world_map = HS.is_world_map;
     HP.terrain_pal_id = HS.terrain_pal_id;
     HP.bgm_id = resolve_active_bgm(st);
@@ -4244,7 +4961,9 @@ static void build_ppu_packet(HearthState *st) {
     HP.zone_is_dark = HS.zone_is_dark;
     HP.has_mountain_vista = HS.has_mountain_vista;
     HP.zone_banner_frames = HS.zone_banner_frames;
-    HP.zone_name = HEARTH_ZONE_NAMES[(HS.zone_id < ZONE_COUNT) ? HS.zone_id : 1u];
+    HP.zone_name = HS.is_world_map
+        ? HEARTH_REGION_NAMES[(HS.world_region_id < REGION_COUNT) ? HS.world_region_id : 0u]
+        : HEARTH_ZONE_NAMES[(HS.zone_id < ZONE_COUNT) ? HS.zone_id : 1u];
     HP.objective_text = hearth_get_objective_text(st);
     HP.cam_x = FP_PX(HS.cam_fx);
     HP.cam_y = FP_PX(HS.cam_fy);
@@ -4318,6 +5037,7 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
             frame_title_camera(st);
             step_field_enemies(st, false);
 
+#if HEARTH_DESIGNER_MODE
             if (just_pressed & (PAD_UP | PAD_LEFT)) {
                 HS.title_cursor = (uint8_t)((HS.title_cursor + 2) % 3);
                 push_sfx(st, SFX_CURSOR);
@@ -4329,6 +5049,16 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
                 else if (HS.title_cursor == 1) hearth_start_sandbox(st);
                 else hearth_start_intro(st);
             }
+#else
+            if (HS.title_cursor > 1u) HS.title_cursor = 0u;
+            if (just_pressed & (PAD_UP | PAD_LEFT | PAD_DOWN | PAD_RIGHT)) {
+                HS.title_cursor = (uint8_t)(HS.title_cursor ^ 1u);
+                push_sfx(st, SFX_CURSOR);
+            } else if (just_pressed & (PAD_A | PAD_START)) {
+                if (HS.title_cursor == 0) hearth_start_story(st);
+                else hearth_start_intro(st);
+            }
+#endif
             break;
         }
 
@@ -4336,12 +5066,28 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
             if (HS.hero_safe_frames > 0) HS.hero_safe_frames--;
             if (HS.dialogue.active) {
                 step_dialogue(st, just_pressed);
+            } else if (HS.atlas_open) {
+                if (just_pressed & (PAD_SELECT | PAD_B | PAD_START)) {
+                    HS.atlas_open = false;
+                    push_sfx(st, SFX_CANCEL);
+                }
             } else {
+                if (just_pressed & PAD_SELECT) {
+                    HS.atlas_open = true;
+                    push_sfx(st, SFX_CURSOR);
+                    break;
+                }
+#if HEARTH_DESIGNER_MODE
+                if ((just_pressed & PAD_Y) && HS.designer_sandbox && HS.is_world_map) {
+                    hearth_designer_cycle_vehicle(st);
+                }
+#endif
                 step_hero_movement(st, pad_bits);
+                if (HS.is_world_map) update_globe_region_streaming(st, true);
                 step_pip_follower(st);
                 step_field_enemies(st, true);
                 if (HS.mode == MODE_EXPLORE) check_explore_triggers(st);
-                if (HS.mode == MODE_EXPLORE && !HS.warp_pending) {
+                if (HS.mode == MODE_EXPLORE && !HS.warp_pending && !HS.dialogue.active) {
                     if (just_pressed & PAD_A) try_interact(st);
                     if (just_pressed & PAD_L) { HS.active_slot = (uint8_t)((HS.active_slot + 2) % 3); push_sfx(st, SFX_CURSOR); }
                     if (just_pressed & PAD_R) { HS.active_slot = (uint8_t)((HS.active_slot + 1) % 3); push_sfx(st, SFX_CURSOR); }
@@ -4358,6 +5104,22 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
                     spawn_particle(st, 0, px, py, hearth_prng_range(&HS.prng, -42, -14),
                         hearth_prng_range(&HS.prng, 28, 62), 60, 2, 0,
                         ((HS.frame_count & 32u) != 0u) ? 15 : 5, false);
+                }
+            } else if (HS.is_world_map && ((HS.frame_count & 15u) == 0u)) {
+                int16_t sx_p = hearth_prng_range(&HS.prng, 16, 304);
+                int16_t sy_p = hearth_prng_range(&HS.prng, 16, 204);
+                if (HS.world_region_id == REGION_FROSTMERE) {
+                    spawn_particle(st, 0, sx_p, sy_p, hearth_prng_range(&HS.prng, -28, 12),
+                        hearth_prng_range(&HS.prng, 34, 64), 48, 2, 3, 12, true);
+                } else if (HS.world_region_id == REGION_VOLCANO) {
+                    spawn_particle(st, 3, sx_p, sy_p, hearth_prng_range(&HS.prng, -20, 20),
+                        hearth_prng_range(&HS.prng, -56, -24), 40, 2, 3, 10, true);
+                } else if (HS.world_region_id == REGION_AETHERIS) {
+                    spawn_particle(st, 3, sx_p, sy_p, hearth_prng_range(&HS.prng, -16, 16),
+                        hearth_prng_range(&HS.prng, -32, 16), 36, 2, 3, 15, true);
+                } else if (HS.world_region_id == REGION_DESERT) {
+                    spawn_particle(st, 0, sx_p, sy_p, hearth_prng_range(&HS.prng, 38, 72),
+                        hearth_prng_range(&HS.prng, -10, 14), 34, 2, 3, 11, true);
                 }
             }
 #endif
