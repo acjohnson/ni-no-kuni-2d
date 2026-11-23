@@ -31,19 +31,22 @@ extern char SOUNDBANK__;
  * ============================================================================ */
 HearthState g_hearth;
 
-/* VRAM Word Addresses (Non-overlapping 64 KB layout: 0x0000..0x7FFF words) */
-#define VRAM_OBJ_GFX      0x0000u  /* 26 16x16 sprites -> 0x0000..0x073F */
-#define VRAM_BG0_GFX      0x2000u  /* UI box + 64 ASCII glyphs -> 0x2000..0x25FF */
-#define VRAM_BG1_GFX      0x4000u  /* 63 terrain tiles (0..62) + 340 CG tiles (64..403 -> 0x4400..0x593F) */
-#define VRAM_CG_TILE_BASE 64u      /* Non-overlapping BG1 tile slot for Cinema CG plates */
-#define VRAM_BG2_GFX      0x5C00u  /* 2bpp Parallax Alpine Vista tiles (32 tiles -> 0x5C00..0x5CFF) */
-#define VRAM_BG2_MAP      0x6000u  /* 64x32 Parallax Alpine Vista tilemap (2048 words -> 0x6000..0x67FF) */
-#define VRAM_BG0_MAP      0x6800u  /* 32x32 UI tilemap (1024 words = 2048 B) */
-#define VRAM_BG1_MAP      0x7000u  /* 64x32 world tilemap (2048 words = 4096 B) */
+/* VRAM Word Addresses (Non-overlapping, 100% 4KB-word hardware-aligned 64 KB layout) */
+#define VRAM_OBJ_GFX        0x0000u  /* 61 16x16 sprites -> 0x0000..0x0F9F (4KB aligned) */
+#define VRAM_BG2_GFX        0x1000u  /* 2bpp Parallax Alpine Vista -> 0x1000..0x1FFF (4KB aligned! 512 2bpp tiles) */
+#define VRAM_BG0_GFX        0x2000u  /* UI + Font + 384-tile Atlas -> 0x2000..0x3EFF (4KB aligned) */
+#define VRAM_BG1_GFX        0x4000u  /* 512 4bpp tiles -> 0x4000..0x5FFF (Terrain OR 480-tile Lossless CG!) */
+#define VRAM_CG_TILE_BASE   0u       /* Lossless 480-tile Cinema CG at BG1 tile 0..479 */
+#define VRAM_CG_EMPTY_TILE  511u     /* Transparent letterbox tile during MODE_INTRO */
+#define VRAM_BG2_MAP        0x6000u  /* 64x32 Parallax Alpine Vista tilemap (2048 words -> 0x6000..0x67FF) */
+#define VRAM_BG0_MAP        0x6800u  /* 32x32 UI tilemap (1024 words = 2048 B) */
+#define VRAM_BG1_MAP        0x7000u  /* 64x32 world tilemap (2048 words = 4096 B) */
 
-/* Tilemap entry helper: vhopppcc cccccccc */
+/* Tilemap entry helpers: vhopppcc cccccccc */
 #define SNES_TILE(t, pal, prio) \
     ((u16)(((u16)(t) & 0x03FFu) | (((u16)(pal) & 7u) << 10) | (((u16)(prio) & 1u) << 13)))
+#define SNES_TILE_H(t, pal, prio) \
+    ((u16)(SNES_TILE((t), (pal), (prio)) | 0x4000u))
 
 /* UI Palette slots in BG CGRAM (4..7) */
 #define PAL_UI_TEXT     4u  /* Warm cream on dark slate */
@@ -141,7 +144,7 @@ enum {
     ST_MAPLE_CANOPY,
     ST_PINE_TOP,
     ST_OAK_CROWN,
-    /* Milestone 3: Evertale Open World Map Tiles (55..62 < VRAM_CG_TILE_BASE=64) */
+    /* Milestone 3: Evertale Open World Map Tiles (55..62) */
     ST_WORLD_OCEAN,
     ST_WORLD_BEACH,
     ST_WORLD_PEAK,
@@ -149,8 +152,38 @@ enum {
     ST_WORLD_HILL,
     ST_WORLD_CASTLE,
     ST_WORLD_TOWN,
-    ST_WORLD_RUINS
+    ST_WORLD_RUINS,
+    /* True 16x16 2x2 Metatile Lower/Alternate Halves (63..82) */
+    ST_ROOF_TOP_B,
+    ST_ROOF_BODY_B,
+    ST_WALL_WOOD_B,
+    ST_WALL_WIN_B,
+    ST_WALL_DOOR_B,
+    ST_TRUNK_B,
+    ST_MAPLE_TRUNK_B,
+    ST_PINE_TRUNK_B,
+    ST_BOULDER_B,
+    ST_CLIFF_WALL_B,
+    ST_CLIFF_LEDGE_B,
+    ST_LAMP_B,
+    ST_SIGN_B,
+    ST_AUTUMN_GRASS_B,
+    ST_ROCKY_PATH_B,
+    ST_MAPLE_CANOPY_B,
+    ST_PINE_TOP_B,
+    ST_CANOPY_B,
+    ST_OAK_CROWN_B,
+    ST_RAIL_TRACK_B
 };
+
+#define META_OV_CANOPY     63u
+#define META_OV_ROOF_EAVE  64u
+#define META_OV_SHRINE     65u
+#define META_OV_MAPLE      66u
+#define META_OV_PINE       67u
+#define META_OV_OAK        68u
+#define META_EMPTY         69u
+#define META_COUNT         70u
 
 #define SPR_TIMED_RING_SLOT    49u  /* OBJ tile 0xC2 */
 #define SPR_HERO_DOWN_1        50u  /* OBJ tile 0xC4 */
@@ -168,7 +201,11 @@ enum {
 /* Tilemap shadow buffers & pixel baker scratchpads in Bank $7E WRAM */
 static u16 g_bg0_map[1024];
 static u16 g_bg1_map[2048];
-static u16 g_world_tile[HEARTH_MAX_MAP_CELLS];
+static u8  g_world_meta[HEARTH_MAX_MAP_CELLS];
+static u16 g_meta_tl[META_COUNT];
+static u16 g_meta_tr[META_COUNT];
+static u16 g_meta_bl[META_COUNT];
+static u16 g_meta_br[META_COUNT];
 static u8  g_pix8[64];
 static u8  g_pix16[256];
 static u8  g_tile32[32];
@@ -459,13 +496,45 @@ static void upload_all_palettes(void) {
 static void upload_zone_pal0(u8 pal_id) {
     u16 c;
     u8 pid;
+    const uint32_t *zpal;
 
     pid = (pal_id < ZPAL_COUNT) ? pal_id : 0u;
+    zpal = HEARTH_ZONE_PALETTES_RGB[pid];
     for (c = 0u; c < 16u; c++) {
-        g_pal16[c] = hearth_rgb_to_snes_bgr555(HEARTH_ZONE_PALETTES_RGB[pid][c]);
+        g_pal16[c] = hearth_rgb_to_snes_bgr555(zpal[c]);
     }
-    g_pal16[0] = hearth_rgb_to_snes_bgr555(HEARTH_ZONE_PALETTES_RGB[pid][1]);
+    /* When mountain parallax vista is active, backdrop CGRAM[0] matches mid alpine sky
+     * so 2bpp mountain summit silhouettes blend seamlessly into the sky with zero border! */
+    if (!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista) {
+        g_pal16[0] = hearth_rgb_to_snes_bgr555(zpal[13]);
+    } else {
+        g_pal16[0] = hearth_rgb_to_snes_bgr555(zpal[1]);
+    }
     dmaCopyCGram((u8 *)g_pal16, 0u, 32u);
+
+    /* Dedicated BG2 2bpp Alpine Parallax Vista Palettes in CGRAM 16..31 (2bpp PAL4..PAL7)
+     * Completely isolated from BG1's crimson roof index 15 -> zero red sky artifacts! */
+    /* 2bpp PAL4 (CGRAM 16..19): Zenith sky, Mid sky cerulean, Bright horizon mist */
+    g_pal16[0]  = 0u;
+    g_pal16[1]  = hearth_rgb_to_snes_bgr555(zpal[12]);
+    g_pal16[2]  = hearth_rgb_to_snes_bgr555(zpal[13]);
+    g_pal16[3]  = hearth_rgb_to_snes_bgr555(zpal[14]);
+    /* 2bpp PAL5 (CGRAM 20..23): Mountain shadow slate, Sunlit granite ridge, Snowcap white */
+    g_pal16[4]  = 0u;
+    g_pal16[5]  = hearth_rgb_to_snes_bgr555(zpal[9]);
+    g_pal16[6]  = hearth_rgb_to_snes_bgr555(zpal[10]);
+    g_pal16[7]  = hearth_rgb_to_snes_bgr555(zpal[11]);
+    /* 2bpp PAL6 (CGRAM 24..27): Deep spruce valley, Lit alpine pine, Distant misty mountain base */
+    g_pal16[8]  = 0u;
+    g_pal16[9]  = hearth_rgb_to_snes_bgr555(zpal[2]);
+    g_pal16[10] = hearth_rgb_to_snes_bgr555(zpal[3]);
+    g_pal16[11] = hearth_rgb_to_snes_bgr555(zpal[9]);
+    /* 2bpp PAL7 (CGRAM 28..31): Zenith sky, Soft cloud underside, Sunlit cumulus cloud white */
+    g_pal16[12] = 0u;
+    g_pal16[13] = hearth_rgb_to_snes_bgr555(zpal[12]);
+    g_pal16[14] = hearth_rgb_to_snes_bgr555(zpal[11]);
+    g_pal16[15] = hearth_rgb_to_snes_bgr555(zpal[14]);
+    dmaCopyCGram((u8 *)g_pal16, 16u, 32u);
 }
 
 /* ============================================================================
@@ -529,39 +598,69 @@ static void bake_bg1_terrain_part1(void) {
     p8_rect(1, 1, 6, 6, 3); p8_rect(2, 1, 4, 3, 4); p8_rect(2, 1, 2, 1, 5);
     upload_bg1_tile(ST_BUSH);
 
+    /* True 16x16 Centered Oak Trunk (TL + HFLIP TR, BL + HFLIP BR) */
     p8_fill(3);
-    p8_rect(2, 0, 4, 8, 6); p8_rect(3, 0, 2, 8, 7);
+    p8_rect(5, 0, 3, 8, 6); p8_rect(6, 0, 2, 8, 7); g_pix8[15] = 8; g_pix8[39] = 8;
     upload_bg1_tile(ST_TRUNK);
+    p8_fill(3);
+    p8_rect(5, 0, 3, 6, 6); p8_rect(6, 0, 2, 6, 7);
+    p8_rect(3, 5, 5, 2, 6); p8_rect(4, 5, 4, 1, 7); p8_rect(4, 7, 4, 1, 2);
+    upload_bg1_tile(ST_TRUNK_B);
 }
 
 static void bake_bg1_terrain_part2(void) {
-    /* Upgraded 4bpp Storybook Cottage Roofs, Timber Walls, Glowing Windows & Doors */
-    p8_fill(15); p8_rect(0, 0, 8, 1, 1); p8_rect(0, 1, 8, 2, 6);
-    p8_rect(1, 3, 2, 2, 7); p8_rect(5, 3, 2, 2, 7);
-    p8_rect(0, 6, 8, 1, 6); p8_rect(0, 7, 8, 1, 1);
+    /* 16x16 Staggered Terracotta Shingled Roof Top (gentle crest, zero harsh black bars) */
+    p8_fill(15); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 1, 8, 2, 8);
+    p8_rect(0, 3, 8, 1, 15); p8_rect(2, 4, 4, 1, 8);
+    p8_rect(0, 6, 8, 1, 6); g_pix8[43] = 6; g_pix8[51] = 6;
     upload_bg1_tile(ST_ROOF_TOP);
+    p8_fill(15); p8_rect(0, 0, 8, 1, 8); p8_rect(0, 3, 8, 1, 6);
+    p8_rect(4, 1, 1, 2, 6); p8_rect(1, 4, 3, 1, 8); p8_rect(0, 7, 8, 1, 6);
+    upload_bg1_tile(ST_ROOF_TOP_B);
 
-    p8_fill(15); p8_rect(0, 2, 8, 1, 6); p8_rect(0, 6, 8, 1, 6);
-    g_pix8[25] = 7; g_pix8[29] = 7; g_pix8[57] = 1; g_pix8[61] = 1;
-    p8_rect(0, 7, 8, 1, 1);
+    /* 16x16 Shingled Roof Body (interlocking tiles) */
+    p8_fill(15); p8_rect(0, 3, 8, 1, 6); p8_rect(0, 7, 8, 1, 6);
+    p8_rect(3, 0, 1, 3, 6); p8_rect(7, 4, 1, 3, 6);
+    g_pix8[9] = 8; g_pix8[10] = 8; g_pix8[44] = 8; g_pix8[45] = 8;
     upload_bg1_tile(ST_ROOF_BODY);
+    p8_fill(15); p8_rect(0, 3, 8, 1, 6); p8_rect(0, 7, 8, 1, 6);
+    p8_rect(1, 0, 1, 3, 6); p8_rect(5, 4, 1, 3, 6);
+    g_pix8[13] = 8; g_pix8[14] = 8; g_pix8[41] = 8; g_pix8[42] = 8;
+    upload_bg1_tile(ST_ROOF_BODY_B);
 
+    /* 16x16 Half-Timbered Tudor Cottage Wall (plaster + corner timber posts + horizontal beam) */
     p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 0, 1, 8, 6);
-    p8_rect(7, 0, 1, 8, 6); p8_rect(1, 1, 6, 6, 8);
-    p8_rect(1, 3, 6, 1, 7); p8_rect(0, 7, 8, 1, 6);
+    p8_rect(1, 1, 7, 1, 7); p8_rect(0, 7, 8, 1, 6);
     upload_bg1_tile(ST_WALL_WOOD);
+    p8_fill(8); p8_rect(0, 0, 1, 8, 6); p8_rect(1, 0, 7, 1, 7);
+    p8_rect(0, 6, 8, 2, 9); p8_rect(1, 6, 6, 1, 10); /* Stone foundation plinth */
+    upload_bg1_tile(ST_WALL_WOOD_B);
 
-    /* Warm sunlit/amber timber-mullioned cottage window */
-    p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 7, 8, 1, 6);
-    p8_rect(1, 1, 6, 6, 6); p8_rect(2, 2, 4, 4, 14);
-    g_pix8[18] = 8; g_pix8[19] = 14; g_pix8[42] = 8;
-    p8_rect(3, 2, 1, 4, 6); p8_rect(2, 4, 4, 1, 6);
+    /* True 16x16 Glowing Mullioned Cottage Window (ONE full-size window per metatile!) */
+    p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 0, 1, 8, 6);
+    p8_rect(2, 2, 6, 6, 6); p8_rect(3, 3, 4, 5, 14);
+    p8_rect(3, 3, 2, 2, 11); p8_rect(7, 3, 1, 5, 6); /* Center mullion */
     upload_bg1_tile(ST_WALL_WIN);
+    p8_fill(8); p8_rect(0, 0, 1, 8, 6);
+    p8_rect(2, 0, 6, 5, 6); p8_rect(3, 1, 4, 3, 5); p8_rect(3, 1, 2, 2, 14);
+    p8_rect(7, 0, 1, 5, 6); p8_rect(1, 5, 7, 1, 7); p8_rect(1, 6, 7, 1, 6); /* Sill */
+    p8_rect(0, 7, 8, 1, 9);
+    upload_bg1_tile(ST_WALL_WIN_B);
 
-    /* Arched storybook plank door with stone stoop & brass knob */
-    p8_fill(8); p8_rect(1, 0, 6, 8, 6); p8_rect(2, 1, 4, 6, 7);
-    p8_rect(3, 1, 1, 6, 6); g_pix8[37] = 8; p8_rect(1, 7, 6, 1, 10);
+    /* True 16x16 Arched Storybook Oak Cottage Door (ONE full-size arched door!) */
+    p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 0, 1, 8, 6);
+    p8_rect(3, 1, 5, 7, 6); p8_rect(2, 3, 6, 5, 6);
+    p8_rect(4, 2, 4, 6, 7); p8_rect(3, 4, 5, 4, 7);
+    p8_rect(5, 2, 1, 6, 6); p8_rect(7, 2, 1, 6, 6); /* Vertical plank seams */
+    p8_rect(3, 5, 3, 1, 1); /* Wrought iron strap hinge */
     upload_bg1_tile(ST_WALL_DOOR);
+    p8_fill(8); p8_rect(0, 0, 1, 8, 6);
+    p8_rect(2, 0, 6, 7, 6); p8_rect(3, 0, 5, 7, 7);
+    p8_rect(5, 0, 1, 7, 6); p8_rect(7, 0, 1, 7, 6);
+    p8_rect(6, 1, 1, 2, 5); /* Brass ring pull near center */
+    p8_rect(3, 4, 3, 1, 1); /* Lower iron hinge */
+    p8_rect(1, 7, 7, 1, 10); p8_rect(2, 7, 6, 1, 11); /* Stone doorstep */
+    upload_bg1_tile(ST_WALL_DOOR_B);
 
     /* Windmill & hamlet props */
     p8_fill(12); p8_rect(0, 6, 8, 2, 9); p8_rect(1, 2, 6, 4, 13); p8_rect(2, 1, 4, 2, 14);
@@ -578,11 +677,23 @@ static void bake_bg1_terrain_part2(void) {
     p8_rect(1, 1, 2, 7, 8); p8_rect(5, 1, 2, 7, 8);
     upload_bg1_tile(ST_FENCE);
 
-    p8_fill(10); p8_rect(3, 3, 2, 5, 1); p8_rect(2, 1, 4, 3, 8); p8_rect(3, 2, 2, 1, 14);
+    /* True 16x16 Centered Village Lantern Post */
+    p8_fill(4);
+    p8_rect(5, 1, 3, 1, 1); p8_rect(4, 2, 4, 4, 1); p8_rect(5, 3, 3, 3, 8); p8_rect(6, 3, 2, 2, 14);
+    p8_rect(5, 6, 3, 1, 1); p8_rect(7, 7, 1, 1, 1);
     upload_bg1_tile(ST_LAMP);
+    p8_fill(4);
+    p8_rect(7, 0, 1, 7, 1); p8_rect(6, 5, 2, 2, 9); p8_rect(5, 7, 3, 1, 1);
+    upload_bg1_tile(ST_LAMP_B);
 
-    p8_fill(4); p8_rect(1, 1, 6, 4, 7); p8_rect(2, 2, 4, 2, 8); p8_rect(3, 5, 2, 3, 6);
+    /* True 16x16 Centered Wooden Trail Signpost */
+    p8_fill(4);
+    p8_rect(1, 1, 7, 6, 6); p8_rect(2, 2, 6, 4, 7); p8_rect(3, 3, 5, 1, 8); p8_rect(3, 5, 4, 1, 6);
+    p8_rect(7, 7, 1, 1, 6);
     upload_bg1_tile(ST_SIGN);
+    p8_fill(4);
+    p8_rect(7, 0, 1, 7, 6); g_pix8[7] = 7; p8_rect(6, 6, 2, 1, 3);
+    upload_bg1_tile(ST_SIGN_B);
 
     /* Ancient Shrine & Priority-1 Overhead Tiles (opaque backing) */
     p8_fill(9); p8_rect(1, 1, 6, 6, 10); p8_rect(1, 1, 5, 1, 11);
@@ -594,11 +705,18 @@ static void bake_bg1_terrain_part2(void) {
     p8_fill(1); p8_rect(1, 0, 6, 8, 10); p8_rect(2, 0, 2, 8, 11); p8_rect(0, 0, 8, 2, 11);
     upload_bg1_tile(ST_SHRINE_PILLAR);
 
-    p8_fill(4); p8_rect(0, 0, 8, 8, 2); p8_rect(1, 1, 6, 5, 3);
-    p8_rect(2, 1, 4, 3, 4); p8_rect(3, 2, 2, 1, 5);
+    /* Lush 16x16 Billowing Emerald Canopy (ZERO grid lines!) */
+    p8_fill(3);
+    p8_rect(0, 0, 2, 2, 4); p8_rect(2, 0, 6, 8, 3);
+    p8_rect(1, 2, 7, 6, 3); p8_rect(3, 1, 5, 5, 4); p8_rect(4, 2, 4, 2, 5);
+    g_pix8[26] = 5; g_pix8[50] = 2;
     upload_bg1_tile(ST_CANOPY);
+    p8_fill(3);
+    p8_rect(0, 0, 8, 6, 3); p8_rect(1, 0, 7, 4, 4); p8_rect(2, 1, 4, 2, 5);
+    p8_rect(0, 5, 8, 3, 2); p8_rect(0, 7, 2, 1, 4); p8_rect(3, 5, 5, 2, 3);
+    upload_bg1_tile(ST_CANOPY_B);
 
-    p8_fill(8); p8_rect(0, 2, 8, 6, 15); p8_rect(0, 7, 8, 1, 1);
+    p8_fill(8); p8_rect(0, 2, 8, 6, 15); p8_rect(0, 7, 8, 1, 6);
     upload_bg1_tile(ST_ROOF_EAVE);
 
     p8_fill(9); p8_rect(0, 0, 8, 6, 10); p8_rect(0, 0, 8, 2, 11); p8_rect(0, 5, 8, 1, 1);
@@ -619,46 +737,91 @@ static void bake_bg1_terrain_part2(void) {
 }
 
 static void bake_bg1_terrain_part3(void) {
-    /* Distant Snow-Dusted Alpine Peaks & Horizon Sky */
+    /* Fallback distant mountain tile (used only if parallax vista disabled) */
     p8_fill(13); p8_rect(0, 0, 8, 2, 12);
-    p8_rect(2, 2, 4, 2, 14); p8_rect(3, 1, 2, 1, 14);
-    p8_rect(1, 4, 6, 4, 9);  p8_rect(0, 6, 8, 2, 2);
+    p8_rect(2, 2, 4, 2, 11); p8_rect(3, 1, 2, 1, 11);
+    p8_rect(1, 4, 6, 4, 10); p8_rect(0, 6, 8, 2, 9);
     upload_bg1_tile(ST_MTN_SKY);
 
-    /* Granite Cliff Wall & Mossy Ledge */
-    p8_fill(9); p8_rect(0, 0, 7, 3, 10); p8_rect(1, 0, 5, 1, 11);
-    p8_rect(0, 3, 8, 1, 1); p8_rect(1, 4, 6, 3, 10); p8_rect(0, 7, 8, 1, 1);
+    /* 16x16 Stratified Granite Mountain Cliff Wall (chunky rock faces, vertical fissures) */
+    p8_fill(9);
+    p8_rect(0, 0, 7, 6, 10); p8_rect(1, 0, 5, 2, 11);
+    p8_rect(7, 0, 1, 8, 1);  p8_rect(0, 6, 8, 2, 9); g_pix8[50] = 1; g_pix8[51] = 1;
     upload_bg1_tile(ST_CLIFF_WALL);
+    p8_fill(9);
+    p8_rect(2, 0, 6, 5, 10); p8_rect(3, 0, 4, 2, 11);
+    p8_rect(0, 0, 2, 8, 9);  p8_rect(1, 2, 1, 6, 1); p8_rect(0, 6, 8, 2, 10); g_pix8[60] = 1;
+    upload_bg1_tile(ST_CLIFF_WALL_B);
 
-    p8_fill(9); p8_rect(0, 0, 8, 3, 3); p8_rect(1, 0, 6, 2, 4); p8_rect(2, 0, 3, 1, 5);
-    p8_rect(0, 3, 8, 2, 11); p8_rect(0, 5, 8, 1, 1); p8_rect(1, 6, 6, 2, 10);
+    /* 16x16 Mossy Grass Cliff Overhang Ledge */
+    p8_fill(4);
+    p8_rect(0, 0, 8, 3, 4); p8_rect(1, 1, 3, 1, 5); p8_rect(0, 3, 8, 2, 3);
+    p8_rect(0, 5, 8, 2, 11); p8_rect(1, 6, 6, 2, 10); g_pix8[34] = 3; g_pix8[38] = 3;
     upload_bg1_tile(ST_CLIFF_LEDGE);
+    p8_fill(9);
+    p8_rect(0, 0, 8, 2, 10); p8_rect(0, 2, 8, 1, 1); p8_rect(1, 3, 6, 4, 10);
+    p8_rect(4, 3, 1, 5, 9);  p8_rect(0, 7, 8, 1, 9);
+    upload_bg1_tile(ST_CLIFF_LEDGE_B);
 
-    /* Boulder, Autumn Meadow Grass, Rocky Gravel Trail */
-    p8_fill(4); p8_rect(1, 2, 6, 5, 9); p8_rect(2, 2, 4, 4, 10); p8_rect(2, 2, 3, 2, 11); g_pix8[18] = 3;
+    /* True 16x16 Sculpted Granite Boulder */
+    p8_fill(4);
+    p8_rect(4, 2, 4, 6, 9); p8_rect(2, 4, 6, 4, 9);
+    p8_rect(3, 3, 5, 5, 10); p8_rect(4, 3, 4, 3, 11); g_pix8[42] = 3;
     upload_bg1_tile(ST_BOULDER);
+    p8_fill(4);
+    p8_rect(2, 0, 6, 5, 9); p8_rect(3, 0, 5, 4, 10); p8_rect(5, 0, 3, 2, 11);
+    p8_rect(3, 5, 5, 2, 3); /* Soft ground shadow */
+    upload_bg1_tile(ST_BOULDER_B);
 
-    p8_fill(4); g_pix8[10] = 5; g_pix8[46] = 3; g_pix8[21] = 15; g_pix8[50] = 8; g_pix8[35] = 15;
+    /* Organic Soft 16x16 Autumn Meadow Grass (subtle tufts, zero bright red polka dots!) */
+    p8_fill(4);
+    g_pix8[10] = 5; g_pix8[18] = 3; g_pix8[45] = 5; g_pix8[53] = 3;
     upload_bg1_tile(ST_AUTUMN_GRASS);
+    p8_fill(4);
+    g_pix8[13] = 3; g_pix8[29] = 5; g_pix8[50] = 8; g_pix8[51] = 5;
+    upload_bg1_tile(ST_AUTUMN_GRASS_B);
 
-    p8_fill(7); p8_rect(1, 1, 3, 2, 10); g_pix8[9] = 11; p8_rect(4, 5, 3, 2, 10); g_pix8[45] = 11;
+    /* Organic Soft 16x16 Packed Chestnut Trail (warm earth, gentle subtle gravel!) */
+    p8_fill(7);
+    g_pix8[10] = 8; g_pix8[11] = 8; g_pix8[26] = 6; g_pix8[45] = 6; g_pix8[52] = 8;
     upload_bg1_tile(ST_ROCKY_PATH);
+    p8_fill(7);
+    g_pix8[14] = 6; g_pix8[33] = 8; g_pix8[34] = 10; g_pix8[42] = 6; g_pix8[54] = 8;
+    upload_bg1_tile(ST_ROCKY_PATH_B);
 
-    /* Whitewater Rapids & Mountain Railway Track */
+    /* Whitewater Rapids & 16x16 Mountain Railway Track (2 crisp rails over cross-ties) */
     p8_fill(12); p8_rect(1, 1, 4, 1, 13); p8_rect(2, 2, 3, 1, 14); p8_rect(3, 5, 4, 1, 14);
     upload_bg1_tile(ST_RAPIDS);
 
-    p8_fill(9); p8_rect(1, 0, 2, 8, 6); p8_rect(5, 0, 2, 8, 6);
-    p8_rect(0, 1, 8, 2, 1); p8_rect(0, 1, 8, 1, 11);
-    p8_rect(0, 5, 8, 2, 1); p8_rect(0, 5, 8, 1, 11);
+    p8_fill(9);
+    p8_rect(1, 0, 2, 8, 6); p8_rect(5, 0, 2, 8, 6);
+    p8_rect(0, 3, 8, 3, 1); p8_rect(0, 3, 8, 2, 11); /* Top steel rail */
     upload_bg1_tile(ST_RAIL_TRACK);
+    p8_fill(9);
+    p8_rect(1, 0, 2, 8, 6); p8_rect(5, 0, 2, 8, 6);
+    p8_rect(0, 2, 8, 3, 1); p8_rect(0, 2, 8, 2, 11); /* Bottom steel rail */
+    upload_bg1_tile(ST_RAIL_TRACK_B);
 
-    /* Maple Trunk & Pine Trunk */
-    p8_fill(4); p8_rect(2, 0, 4, 8, 6); p8_rect(3, 0, 2, 7, 7); g_pix8[49] = 15; g_pix8[62] = 8;
+    /* True 16x16 Centered Sturdy Maple Trunk (ONE sculpted trunk with roots & fallen leaves) */
+    p8_fill(4);
+    p8_rect(5, 0, 3, 8, 6); p8_rect(6, 0, 2, 8, 7); p8_rect(7, 0, 1, 8, 8);
+    g_pix8[10] = 3; g_pix8[49] = 15;
     upload_bg1_tile(ST_MAPLE_TRUNK);
+    p8_fill(4);
+    p8_rect(5, 0, 3, 5, 6); p8_rect(6, 0, 2, 5, 7);
+    p8_rect(3, 4, 5, 2, 6); p8_rect(4, 4, 4, 1, 7);
+    p8_rect(3, 6, 5, 1, 3); g_pix8[50] = 5; g_pix8[57] = 15;
+    upload_bg1_tile(ST_MAPLE_TRUNK_B);
 
-    p8_fill(3); p8_rect(3, 4, 2, 4, 6); p8_rect(1, 0, 6, 5, 2); p8_rect(2, 1, 4, 3, 3);
+    /* True 16x16 Tiered Alpine Pine Base & Trunk (ONE full evergreen!) */
+    p8_fill(4);
+    p8_rect(2, 0, 6, 6, 2); p8_rect(1, 3, 7, 5, 2);
+    p8_rect(3, 1, 5, 4, 3); p8_rect(5, 2, 3, 3, 4);
     upload_bg1_tile(ST_PINE_TRUNK);
+    p8_fill(4);
+    p8_rect(1, 0, 7, 3, 2); p8_rect(3, 0, 5, 2, 3);
+    p8_rect(6, 3, 2, 5, 6); p8_rect(7, 3, 1, 4, 7); p8_rect(4, 7, 4, 1, 3);
+    upload_bg1_tile(ST_PINE_TRUNK_B);
 
     /* Cottage Interior & Hollow Oak Glade Tiles */
     p8_fill(7); p8_rect(0, 3, 8, 1, 6); p8_rect(0, 7, 8, 1, 6); p8_rect(1, 1, 4, 1, 8); p8_rect(4, 5, 3, 1, 8);
@@ -686,15 +849,37 @@ static void bake_bg1_terrain_part3(void) {
     p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 6, 8, 2, 6); p8_rect(3, 1, 2, 5, 7);
     upload_bg1_tile(ST_INTERIOR_WALL);
 
-    /* Priority-1 Overhead Autumn Canopies */
-    p8_fill(4); p8_rect(0, 0, 8, 8, 6); p8_rect(1, 1, 6, 5, 15); p8_rect(2, 2, 4, 3, 8); g_pix8[19] = 14;
+    /* Lush Continuous 16x16 Autumn Maple Canopy (blends seamlessly across multi-tile crowns!) */
+    p8_fill(15);
+    p8_rect(1, 0, 5, 3, 5); p8_rect(3, 0, 4, 2, 8);
+    p8_rect(0, 3, 4, 3, 15); p8_rect(4, 2, 4, 4, 5); p8_rect(2, 4, 3, 2, 8);
+    g_pix8[0] = 6; g_pix8[56] = 6; g_pix8[61] = 5; g_pix8[15] = 8;
     upload_bg1_tile(ST_MAPLE_CANOPY);
+    p8_fill(15);
+    p8_rect(0, 0, 5, 4, 15); p8_rect(3, 0, 4, 3, 5); p8_rect(1, 2, 3, 2, 5);
+    p8_rect(0, 5, 6, 3, 6); p8_rect(2, 5, 5, 2, 15); p8_rect(6, 4, 2, 3, 15);
+    g_pix8[11] = 8; g_pix8[48] = 6; g_pix8[63] = 6;
+    upload_bg1_tile(ST_MAPLE_CANOPY_B);
 
-    p8_fill(3); p8_rect(3, 0, 2, 2, 3); p8_rect(2, 2, 4, 3, 2); p8_rect(1, 5, 6, 3, 2); p8_rect(2, 5, 3, 2, 3);
+    /* True 16x16 Tapered Alpine Spruce Spire (ONE crisp pine peak!) */
+    p8_fill(4);
+    p8_rect(7, 1, 1, 7, 2); p8_rect(6, 3, 2, 5, 2); p8_rect(5, 5, 3, 3, 2); p8_rect(4, 7, 4, 1, 2);
+    p8_rect(6, 4, 2, 4, 3); g_pix8[23] = 3; g_pix8[54] = 4;
     upload_bg1_tile(ST_PINE_TOP);
+    p8_fill(4);
+    p8_rect(4, 0, 4, 8, 2); p8_rect(3, 2, 5, 6, 2); p8_rect(2, 5, 6, 3, 2);
+    p8_rect(5, 1, 3, 6, 3); p8_rect(4, 4, 4, 3, 3); p8_rect(6, 2, 2, 3, 4);
+    upload_bg1_tile(ST_PINE_TOP_B);
 
-    p8_fill(4); p8_rect(0, 1, 8, 6, 6); p8_rect(1, 1, 6, 5, 15); p8_rect(2, 2, 4, 3, 8); p8_rect(3, 2, 2, 2, 14);
+    /* Lush Continuous 16x16 Golden Hollow-Oak Crown */
+    p8_fill(5);
+    p8_rect(0, 0, 4, 3, 15); p8_rect(3, 0, 5, 4, 8); p8_rect(5, 1, 3, 2, 14);
+    p8_rect(1, 3, 6, 4, 5); p8_rect(0, 5, 4, 3, 15); g_pix8[57] = 6;
     upload_bg1_tile(ST_OAK_CROWN);
+    p8_fill(15);
+    p8_rect(1, 0, 6, 4, 5); p8_rect(4, 1, 3, 2, 8);
+    p8_rect(0, 5, 6, 3, 6); p8_rect(2, 4, 5, 3, 15); g_pix8[62] = 6;
+    upload_bg1_tile(ST_OAK_CROWN_B);
 }
 
 static void bake_bg1_terrain_part4(void) {
@@ -1543,100 +1728,214 @@ static void bake_obj_sprites_hero_ext(void) {
     }
 }
 
-/* Bake 2bpp Mode-1 BG2 Hardware Parallax Alpine Mountain Vista (16 tiles + 64x32 looping panorama)
- * Uses CGRAM 0..15 automatically tinted by Morning/Afternoon/Dusk/Night/Sunhill palettes:
- *   2bpp PAL3 (CGRAM 12..15): 1=sky blue, 2=bright mist/cloud, 3=warm horizon accent
- *   2bpp PAL2 (CGRAM  8..11): 1=dark slate ridge, 2=mid granite mountain, 3=snow peak highlight
- *   2bpp PAL0 (CGRAM  0.. 3): 1=ink dark, 2=deep alpine spruce silhouette, 3=distant ridge pine */
-static void bake_bg2_parallax_vista(void) {
-    u16 x, y, i, half, col, off, entry;
-    u8 row_h;
-    /* Tile 0: Deep Sky (PAL3 c1) */
-    p8_fill(1); upload_bg2_tile_2bpp(0u);
-    /* Tile 1: Sky -> Bright Mist Dither (PAL3 c1/c2) */
-    p8_fill(1); p8_rect(0, 4, 8, 4, 2); g_pix8[25] = 2; g_pix8[27] = 2; g_pix8[29] = 2; g_pix8[31] = 2;
-    upload_bg2_tile_2bpp(1u);
-    /* Tile 2: Bright Horizon Mist (PAL3 c2) */
-    p8_fill(2); upload_bg2_tile_2bpp(2u);
-    /* Tile 3: Fluffy Cloud Left (PAL3 c1 sky + c2 bright puff) */
-    p8_fill(1); p8_rect(3, 3, 5, 4, 2); p8_rect(1, 5, 7, 2, 2);
-    upload_bg2_tile_2bpp(3u);
-    /* Tile 4: Fluffy Cloud Mid */
-    p8_fill(1); p8_rect(0, 2, 8, 5, 2); p8_rect(2, 1, 4, 1, 2);
-    upload_bg2_tile_2bpp(4u);
-    /* Tile 5: Fluffy Cloud Right */
-    p8_fill(1); p8_rect(0, 3, 5, 4, 2); p8_rect(0, 5, 7, 2, 2);
-    upload_bg2_tile_2bpp(5u);
-    /* Tile 6: Snow-Capped Alpine Summit Peak (PAL2: 0=sky, 3=snow, 2=granite, 1=shadow) */
-    p8_fill(0);
-    p8_rect(3, 1, 2, 2, 3); p8_rect(2, 3, 4, 2, 3); p8_rect(1, 5, 6, 3, 3);
-    p8_rect(5, 4, 2, 4, 2); p8_rect(6, 6, 2, 2, 1);
-    upload_bg2_tile_2bpp(6u);
-    /* Tile 7: Mountain Left Slope with Snow Drift (PAL2) */
-    p8_fill(0);
-    p8_rect(5, 0, 3, 3, 3); p8_rect(3, 2, 5, 3, 3); p8_rect(1, 4, 7, 4, 2); p8_rect(0, 6, 8, 2, 2);
-    p8_rect(4, 3, 3, 2, 3);
-    upload_bg2_tile_2bpp(7u);
-    /* Tile 8: Mountain Right Shadow Slope (PAL2) */
-    p8_fill(0);
-    p8_rect(0, 0, 3, 3, 2); p8_rect(0, 2, 5, 3, 2); p8_rect(0, 4, 7, 4, 1); p8_rect(0, 6, 8, 2, 1);
-    upload_bg2_tile_2bpp(8u);
-    /* Tile 9: Solid Lit Granite Mountain Face (PAL2) */
-    p8_fill(2); p8_rect(5, 0, 3, 8, 1); p8_rect(0, 0, 2, 4, 3);
-    upload_bg2_tile_2bpp(9u);
-    /* Tile 10: Shaded Granite Mountain Body (PAL2) */
-    p8_fill(1); p8_rect(0, 0, 3, 8, 2); g_pix8[10] = 2; g_pix8[26] = 2;
-    upload_bg2_tile_2bpp(10u);
-    /* Tile 11: Distant Alpine Spruce Treeline Silhouette (PAL0: 2=deep spruce, 3=lit pine) */
-    p8_fill(0);
-    p8_rect(1, 3, 2, 5, 2); g_pix8[17] = 3; p8_rect(0, 5, 4, 3, 2);
-    p8_rect(5, 2, 2, 6, 2); g_pix8[13] = 3; p8_rect(4, 4, 4, 4, 2);
-    upload_bg2_tile_2bpp(11u);
-    /* Tile 12: Solid Distant Pine Ridge Base (PAL0) */
-    p8_fill(2); p8_rect(1, 1, 2, 2, 3); p8_rect(5, 3, 2, 2, 3);
-    upload_bg2_tile_2bpp(12u);
+/* Helper: sample sweeping continuous 256px-wide alpine mountain skyline height & slope */
+static u8 vista_mtn_y(u16 px, u8 *out_lit) {
+    /* Three grand asymmetric snow-capped alpine peaks + shoulders looping seamlessly across 256px */
+    static const u16 KNOT_X[12] = {
+        0u, 22u, 48u, 76u, 102u, 130u, 158u, 180u, 206u, 228u, 244u, 256u
+    };
+    static const u8 KNOT_Y[12] = {
+        38u, 26u, 14u, 32u, 22u, 8u, 30u, 18u, 36u, 20u, 32u, 38u
+    };
+    u8 k, y0, y1;
+    u16 x0, x1, dx, x8;
+    s16 dy, num;
 
-    /* Build seamless 64x32 alpine panorama into scratch g_bg1_map and DMA to VRAM_BG2_MAP */
-    {
-        static const u8 PEAK_H[32] = {
-            4u, 3u, 2u, 3u, 4u, 5u, 4u, 3u, 2u, 1u, 2u, 3u, 4u, 5u, 4u, 3u,
-            3u, 2u, 1u, 2u, 3u, 4u, 5u, 4u, 3u, 2u, 3u, 4u, 3u, 2u, 3u, 4u
-        };
-        for (i = 0u; i < 2048u; i++) {
-            g_bg1_map[i] = SNES_TILE(0u, 3u, 0u);
+    x8 = (u16)(px & 255u);
+    for (k = 0u; k < 11u; k++) {
+        if (x8 < KNOT_X[(u8)(k + 1u)]) break;
+    }
+    x0 = KNOT_X[k];
+    x1 = KNOT_X[(u8)(k + 1u)];
+    y0 = KNOT_Y[k];
+    y1 = KNOT_Y[(u8)(k + 1u)];
+    dx = (u16)(x1 - x0);
+    if (dx == 0u) dx = 1u;
+    dy = (s16)y1 - (s16)y0;
+    /* Left-facing slopes catch warm morning/afternoon sun (out_lit = 1) */
+    *out_lit = (dy < 0) ? 1u : 0u;
+    num = (s16)((s16)(x8 - x0) * dy);
+    return (u8)((s16)y0 + (num / (s16)dx));
+}
+
+/* Helper: sample rolling distant spruce treeline ridge across 256px */
+static u8 vista_pine_y(u16 px) {
+    u8 base = (u8)(50u + (((px >> 3) + (px >> 4)) & 3u));
+    u8 tree = (u8)(px & 7u);
+    u8 spire = (tree == 3u || tree == 4u) ? 5u
+             : ((tree == 2u || tree == 5u) ? 3u
+             : ((tree == 1u || tree == 6u) ? 1u : 0u));
+    u8 vary = (u8)(((px * 5u) >> 3) & 3u);
+    return (u8)(base - spire - vary);
+}
+
+/* Bake full-resolution 256x72px (32x9 tiles) 2bpp Mode-1 BG2 Hardware Parallax Alpine Vista!
+ * Stored at 4KB-aligned VRAM_BG2_GFX (0x1000..0x1FFF, capacity 512 2bpp tiles).
+ * Uses dedicated time-of-day palettes in CGRAM 16..31 (2bpp PAL4..PAL7) -> ZERO crimson red! */
+static void bake_bg2_parallax_vista(void) {
+    u16 tx, ty, lx, ly, px, py, next_t, off, half, col, entry, i;
+    u8 my, pine_y, lit, c, snow_d, use_pal, has_mtn, has_pine, has_cloud;
+
+    /* Shared solid/sky tiles 0..3 */
+    p8_fill(1u); upload_bg2_tile_2bpp(0u); /* PAL4: Zenith sky */
+    p8_fill(2u); upload_bg2_tile_2bpp(1u); /* PAL4: Mid cerulean sky */
+    /* Tile 2: Smooth dithered zenith -> mid sky transition */
+    for (ly = 0u; ly < 8u; ly++) {
+        for (lx = 0u; lx < 8u; lx++) {
+            c = (ly < 3u) ? 1u : ((ly >= 5u) ? 2u : ((((lx + ly) & 1u) == 0u) ? 1u : 2u));
+            g_pix8[(u16)((ly << 3) + lx)] = c;
         }
-        for (x = 0u; x < 64u; x++) {
-            half = (x < 32u) ? 0u : 1024u;
-            col = (u16)(x & 31u);
-            row_h = PEAK_H[x & 31u];
-            for (y = 0u; y < 32u; y++) {
-                off = (u16)(half + (y << 5) + col);
-                if (y == 1u && (x == 4u || x == 20u || x == 38u || x == 52u)) {
-                    entry = SNES_TILE(3u, 3u, 0u);
-                } else if (y == 1u && (x == 5u || x == 21u || x == 39u || x == 53u)) {
-                    entry = SNES_TILE(4u, 3u, 0u);
-                } else if (y == 1u && (x == 6u || x == 22u || x == 40u || x == 54u)) {
-                    entry = SNES_TILE(5u, 3u, 0u);
-                } else if (y < (u16)(row_h + 1u)) {
-                    entry = (y <= 1u) ? SNES_TILE(0u, 3u, 0u) : SNES_TILE(1u, 3u, 0u);
-                } else if (y == (u16)(row_h + 1u)) {
-                    u8 prev_h = PEAK_H[(x + 31u) & 31u];
-                    u8 next_h = PEAK_H[(x + 1u) & 31u];
-                    if (row_h <= prev_h && row_h <= next_h) entry = SNES_TILE(6u, 2u, 0u);
-                    else if (prev_h > row_h)               entry = SNES_TILE(7u, 2u, 0u);
-                    else                                   entry = SNES_TILE(8u, 2u, 0u);
-                } else if (y <= 6u) {
-                    entry = ((x & 1u) == 0u) ? SNES_TILE(9u, 2u, 0u) : SNES_TILE(10u, 2u, 0u);
-                } else if (y == 7u) {
-                    entry = SNES_TILE(11u, 0u, 0u);
-                } else {
-                    entry = SNES_TILE(12u, 0u, 0u);
+    }
+    upload_bg2_tile_2bpp(2u);
+    /* Tile 3: Solid deep spruce forest valley base (PAL6) */
+    p8_fill(1u); p8_rect(1u, 1u, 2u, 2u, 2u); p8_rect(5u, 4u, 2u, 2u, 2u);
+    upload_bg2_tile_2bpp(3u);
+
+    next_t = 4u;
+    for (i = 0u; i < 2048u; i++) {
+        g_bg1_map[i] = SNES_TILE(3u, 6u, 0u);
+    }
+
+    /* Paint sweeping 32x9 (256x72px) alpine skyline and duplicate seamlessly to 64x32 tilemap */
+    for (ty = 0u; ty < 9u; ty++) {
+        for (tx = 0u; tx < 32u; tx++) {
+            has_mtn = 0u;
+            has_pine = 0u;
+            has_cloud = 0u;
+            for (ly = 0u; ly < 8u; ly++) {
+                py = (u16)((ty << 3) + ly);
+                for (lx = 0u; lx < 8u; lx++) {
+                    px = (u16)((tx << 3) + lx);
+                    my = vista_mtn_y(px, &lit);
+                    pine_y = vista_pine_y(px);
+                    if (py >= pine_y) {
+                        has_pine = 1u;
+                    } else if (py >= my) {
+                        has_mtn = 1u;
+                    } else if (py >= 5u && py <= 14u) {
+                        /* Two soft drifting cumulus clouds in upper sky */
+                        if ((px >= 14u && px <= 46u) || (px >= 166u && px <= 198u)) {
+                            u16 cx = (px < 100u) ? (u16)(px - 14u) : (u16)(px - 166u);
+                            u8 top_c = (cx >= 10u && cx <= 22u) ? 6u : ((cx >= 4u && cx <= 28u) ? 9u : 11u);
+                            if (py >= top_c && py <= 13u) has_cloud = 1u;
+                        }
+                    }
                 }
+            }
+
+            if (!has_mtn && !has_pine && !has_cloud) {
+                if (ty == 0u)      entry = SNES_TILE(0u, 4u, 0u);
+                else if (ty == 1u) entry = SNES_TILE(2u, 4u, 0u);
+                else               entry = SNES_TILE(1u, 4u, 0u);
+            } else if (has_pine && !has_mtn && ty >= 7u) {
+                /* Pine treeline silhouette tile (PAL6: 1=deep spruce, 2=lit spruce, 3=mountain base) */
+                use_pal = 6u;
+                for (ly = 0u; ly < 8u; ly++) {
+                    py = (u16)((ty << 3) + ly);
+                    for (lx = 0u; lx < 8u; lx++) {
+                        px = (u16)((tx << 3) + lx);
+                        pine_y = vista_pine_y(px);
+                        if (py < pine_y) {
+                            c = 3u; /* Hazy mountain base behind pine tips */
+                        } else if (py <= (u16)(pine_y + 2u) && ((px & 7u) <= 3u)) {
+                            c = 2u; /* Sunlit left edge of spruce spire */
+                        } else {
+                            c = 1u; /* Deep alpine spruce silhouette */
+                        }
+                        g_pix8[(u16)((ly << 3) + lx)] = c;
+                    }
+                }
+                upload_bg2_tile_2bpp(next_t);
+                entry = SNES_TILE(next_t, use_pal, 0u);
+                next_t++;
+            } else if (has_cloud && !has_mtn && !has_pine) {
+                /* Soft cumulus cloud tile (PAL7: 1=zenith sky, 2=cloud shadow, 3=sunlit puff) */
+                use_pal = 7u;
+                for (ly = 0u; ly < 8u; ly++) {
+                    py = (u16)((ty << 3) + ly);
+                    for (lx = 0u; lx < 8u; lx++) {
+                        px = (u16)((tx << 3) + lx);
+                        c = 1u;
+                        if ((px >= 14u && px <= 46u) || (px >= 166u && px <= 198u)) {
+                            u16 cx = (px < 100u) ? (u16)(px - 14u) : (u16)(px - 166u);
+                            u8 top_c = (cx >= 10u && cx <= 22u) ? 6u : ((cx >= 4u && cx <= 28u) ? 9u : 11u);
+                            if (py >= top_c && py <= 13u) {
+                                c = (py >= 12u) ? 2u : 3u;
+                            }
+                        }
+                        g_pix8[(u16)((ly << 3) + lx)] = c;
+                    }
+                }
+                upload_bg2_tile_2bpp(next_t);
+                entry = SNES_TILE(next_t, use_pal, 0u);
+                next_t++;
+            } else if (has_pine) {
+                /* Transition row where spruce silhouettes rise over shaded mountain flanks */
+                use_pal = 6u;
+                for (ly = 0u; ly < 8u; ly++) {
+                    py = (u16)((ty << 3) + ly);
+                    for (lx = 0u; lx < 8u; lx++) {
+                        px = (u16)((tx << 3) + lx);
+                        my = vista_mtn_y(px, &lit);
+                        pine_y = vista_pine_y(px);
+                        if (py < my) {
+                            c = 0u; /* Seamless backdrop mid-sky */
+                        } else if (py < pine_y) {
+                            c = 3u; /* Shaded granite flank */
+                        } else if (py <= (u16)(pine_y + 2u) && ((px & 7u) <= 3u)) {
+                            c = 2u; /* Lit pine crest */
+                        } else {
+                            c = 1u; /* Deep spruce */
+                        }
+                        g_pix8[(u16)((ly << 3) + lx)] = c;
+                    }
+                }
+                upload_bg2_tile_2bpp(next_t);
+                entry = SNES_TILE(next_t, use_pal, 0u);
+                next_t++;
+            } else {
+                /* Snow-capped alpine granite mountain tile (PAL5: 0=sky backdrop, 1=shadow, 2=lit, 3=snow) */
+                use_pal = 5u;
+                for (ly = 0u; ly < 8u; ly++) {
+                    py = (u16)((ty << 3) + ly);
+                    for (lx = 0u; lx < 8u; lx++) {
+                        px = (u16)((tx << 3) + lx);
+                        my = vista_mtn_y(px, &lit);
+                        if (py < my) {
+                            c = 0u; /* Transparent -> CGRAM[0] mid-sky seamlessly! */
+                        } else {
+                            snow_d = (u8)(py - my);
+                            if (lit) {
+                                /* Sunlit left slope: rich snowcap with organic snow gullies */
+                                u8 snow_lim = (u8)(8u + (((px * 3u) >> 2) & 3u));
+                                if (snow_d < snow_lim) c = 3u;
+                                else if (snow_d < (u8)(snow_lim + 14u)) c = 2u;
+                                else c = ((((px * 3u + py * 5u) & 7u) == 0u) ? 2u : 1u);
+                            } else {
+                                /* Shadowed right slope: crisp snow rim + blue-slate shadow + subtle crag */
+                                u8 rim_lim = (u8)(3u + ((px >> 1) & 1u));
+                                if (snow_d < rim_lim) c = 3u;
+                                else if (snow_d < 8u && (((px + py) & 3u) == 0u)) c = 2u;
+                                else c = 1u;
+                            }
+                        }
+                        g_pix8[(u16)((ly << 3) + lx)] = c;
+                    }
+                }
+                upload_bg2_tile_2bpp(next_t);
+                entry = SNES_TILE(next_t, use_pal, 0u);
+                next_t++;
+            }
+
+            /* Stamp into BOTH left (0..31) and right (32..63) 32x32 halves of SC_64x32 map */
+            for (half = 0u; half < 2048u; half += 1024u) {
+                col = tx;
+                off = (u16)(half + (ty << 5) + col);
                 g_bg1_map[off] = entry;
             }
         }
-        dmaCopyVram((u8 *)g_bg1_map, VRAM_BG2_MAP, 4096u);
     }
+    dmaCopyVram((u8 *)g_bg1_map, VRAM_BG2_MAP, 4096u);
 }
 
 /* Pre-bake 4 animated frames for meadow grass, flowers, flowing water, ford,
@@ -1860,6 +2159,68 @@ static u16 snes_map_row_off(u16 my) {
     return (u16)((my << 5) + (my << 3) + (my << 2)); /* my * 44 */
 }
 
+static void set_meta_sym(u8 m, u16 top_t, u16 bot_t, u8 prio) {
+    g_meta_tl[m] = SNES_TILE(top_t, 0u, prio);
+    g_meta_tr[m] = SNES_TILE_H(top_t, 0u, prio);
+    g_meta_bl[m] = SNES_TILE(bot_t, 0u, prio);
+    g_meta_br[m] = SNES_TILE_H(bot_t, 0u, prio);
+}
+
+static void set_meta_alt(u8 m, u16 t_a, u16 t_b, u8 prio) {
+    g_meta_tl[m] = SNES_TILE(t_a, 0u, prio);
+    g_meta_tr[m] = SNES_TILE(t_b, 0u, prio);
+    g_meta_bl[m] = SNES_TILE_H(t_b, 0u, prio);
+    g_meta_br[m] = SNES_TILE_H(t_a, 0u, prio);
+}
+
+static void init_snes_metatiles(void) {
+    u8 m;
+    u16 base;
+    for (m = 0u; m < 63u; m++) {
+        base = SNES_TILE(TERRAIN_TILE_LUT[m], 0u, 0u);
+        g_meta_tl[m] = base;
+        g_meta_tr[m] = base;
+        g_meta_bl[m] = base;
+        g_meta_br[m] = base;
+    }
+    /* True 16x16 Symmetrical & Varied Architecture, Foliage & Cliff Metatiles */
+    set_meta_sym(T_TREE_TRUNK,   ST_TRUNK,        ST_TRUNK_B,        0u);
+    set_meta_sym(T_WALL_WOOD,    ST_WALL_WOOD,    ST_WALL_WOOD_B,    0u);
+    set_meta_sym(T_WALL_WINDOW,  ST_WALL_WIN,     ST_WALL_WIN_B,     0u);
+    set_meta_sym(T_WALL_DOOR,    ST_WALL_DOOR,    ST_WALL_DOOR_B,    0u);
+    set_meta_alt(T_ROOF_TOP,     ST_ROOF_TOP,     ST_ROOF_TOP_B,     0u);
+    set_meta_alt(T_ROOF_BODY,    ST_ROOF_BODY,    ST_ROOF_BODY_B,    0u);
+    set_meta_sym(T_SIGNPOST,     ST_SIGN,         ST_SIGN_B,         0u);
+    set_meta_sym(T_LANTERN_POST, ST_LAMP,         ST_LAMP_B,         0u);
+    set_meta_alt(T_CLIFF_WALL,   ST_CLIFF_WALL,   ST_CLIFF_WALL_B,   0u);
+    set_meta_sym(T_CLIFF_LEDGE,  ST_CLIFF_LEDGE,  ST_CLIFF_LEDGE_B,  0u);
+    set_meta_sym(T_BOULDER,      ST_BOULDER,      ST_BOULDER_B,      0u);
+    set_meta_alt(T_AUTUMN_GRASS, ST_AUTUMN_GRASS, ST_AUTUMN_GRASS_B, 0u);
+    set_meta_alt(T_ROCKY_PATH,   ST_ROCKY_PATH,   ST_ROCKY_PATH_B,   0u);
+    set_meta_sym(T_RAIL_TRACK,   ST_RAIL_TRACK,   ST_RAIL_TRACK_B,   0u);
+    set_meta_sym(T_MAPLE_TRUNK,  ST_MAPLE_TRUNK,  ST_MAPLE_TRUNK_B,  0u);
+    set_meta_sym(T_PINE_TRUNK,   ST_PINE_TRUNK,   ST_PINE_TRUNK_B,   0u);
+    set_meta_sym(T_PALM_TREE,    ST_PINE_TRUNK,   ST_PINE_TRUNK_B,   0u);
+
+    /* Priority-1 Overhead Canopies & Architecture Eaves */
+    set_meta_sym(META_OV_CANOPY, ST_CANOPY,       ST_CANOPY_B,       1u);
+    g_meta_tl[META_OV_ROOF_EAVE] = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
+    g_meta_tr[META_OV_ROOF_EAVE] = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
+    g_meta_bl[META_OV_ROOF_EAVE] = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
+    g_meta_br[META_OV_ROOF_EAVE] = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
+    g_meta_tl[META_OV_SHRINE]    = SNES_TILE(ST_SHRINE_ARCH, 0u, 1u);
+    g_meta_tr[META_OV_SHRINE]    = SNES_TILE(ST_SHRINE_ARCH, 0u, 1u);
+    g_meta_bl[META_OV_SHRINE]    = SNES_TILE(ST_SHRINE_ARCH, 0u, 1u);
+    g_meta_br[META_OV_SHRINE]    = SNES_TILE(ST_SHRINE_ARCH, 0u, 1u);
+    set_meta_sym(META_OV_MAPLE,  ST_MAPLE_CANOPY, ST_MAPLE_CANOPY_B, 1u);
+    set_meta_sym(META_OV_PINE,   ST_PINE_TOP,     ST_PINE_TOP_B,     1u);
+    set_meta_sym(META_OV_OAK,    ST_OAK_CROWN,    ST_OAK_CROWN_B,    1u);
+    g_meta_tl[META_EMPTY]        = SNES_TILE(ST_EMPTY, 0u, 0u);
+    g_meta_tr[META_EMPTY]        = SNES_TILE(ST_EMPTY, 0u, 0u);
+    g_meta_bl[META_EMPTY]        = SNES_TILE(ST_EMPTY, 0u, 0u);
+    g_meta_br[META_EMPTY]        = SNES_TILE(ST_EMPTY, 0u, 0u);
+}
+
 static void bake_world_tile_cache(void) {
     u16 idx, ov, t;
     if (g_hearth.is_world_map) return;
@@ -1868,30 +2229,30 @@ static void bake_world_tile_cache(void) {
         if (ov == 0u) {
             t = (u16)g_hearth.map_bg1[idx];
             if (g_hearth.has_mountain_vista && t == (u16)T_MTN_SKY) {
-                g_world_tile[idx] = SNES_TILE(ST_EMPTY, 0u, 0u);
+                g_world_meta[idx] = META_EMPTY;
             } else {
-                g_world_tile[idx] = (t < 63u) ? TERRAIN_TILE_LUT[t] : (u16)ST_GRASS;
+                g_world_meta[idx] = (t < 63u) ? (u8)t : (u8)T_GRASS;
             }
         } else if (ov == O_ROOF_EAVE) {
-            g_world_tile[idx] = SNES_TILE(ST_ROOF_EAVE, 0u, 1u);
+            g_world_meta[idx] = META_OV_ROOF_EAVE;
         } else if (ov == O_SHRINE_ARCH) {
-            g_world_tile[idx] = SNES_TILE(ST_SHRINE_ARCH, 0u, 1u);
+            g_world_meta[idx] = META_OV_SHRINE;
         } else if (ov == O_MAPLE_TL || ov == O_MAPLE_TR) {
-            g_world_tile[idx] = SNES_TILE(ST_MAPLE_CANOPY, 0u, 1u);
+            g_world_meta[idx] = META_OV_MAPLE;
         } else if (ov == O_PINE_TOP) {
-            g_world_tile[idx] = SNES_TILE(ST_PINE_TOP, 0u, 1u);
+            g_world_meta[idx] = META_OV_PINE;
         } else if (ov == O_OAK_CROWN) {
-            g_world_tile[idx] = SNES_TILE(ST_OAK_CROWN, 0u, 1u);
+            g_world_meta[idx] = META_OV_OAK;
         } else {
-            g_world_tile[idx] = SNES_TILE(ST_CANOPY, 0u, 1u);
+            g_world_meta[idx] = META_OV_CANOPY;
         }
     }
 }
 
 static void stream_world_col(s16 mx, s16 my_start) {
-    u16 half_col, row_off, off, k, entry, idx, idx_valid, step_w, wx, wy;
+    u16 half_col, row_off, off, k, idx, idx_valid, step_w, wx, wy;
     s16 my, mw, mh, wy_s;
-    u8 bg1, bg2;
+    u8 bg1, bg2, m;
 
     half_col = (u16)(((u16)mx & 15u) << 1);
     if (((u16)mx & 16u) == 0u) {
@@ -1910,13 +2271,12 @@ static void stream_world_col(s16 mx, s16 my_start) {
         wy = (u16)wy_s;
         for (k = 0u; k < 16u; k++) {
             hearth_globe_cell(wx, wy, &bg1, &bg2, NULL, NULL);
-            entry = (bg2 != 0u) ? SNES_TILE(ST_CANOPY, 0u, 1u)
-                  : ((bg1 < 63u) ? TERRAIN_TILE_LUT[bg1] : (u16)ST_WORLD_OCEAN);
+            m = (bg2 != 0u) ? META_OV_CANOPY : ((bg1 < 63u) ? bg1 : (u8)T_WORLD_OCEAN);
             off = (u16)(half_col + row_off);
-            g_bg1_map[off]              = entry;
-            g_bg1_map[(u16)(off + 1u)]  = entry;
-            g_bg1_map[(u16)(off + 32u)] = entry;
-            g_bg1_map[(u16)(off + 33u)] = entry;
+            g_bg1_map[off]              = g_meta_tl[m];
+            g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
+            g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
+            g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
             row_off = (u16)((row_off + 64u) & 1023u);
             wy++;
             if (wy >= HEARTH_GLOBE_H) wy = 0u;
@@ -1929,13 +2289,13 @@ static void stream_world_col(s16 mx, s16 my_start) {
     step_w = (u16)mw;
 
     if (mx < 0 || mx >= mw) {
-        entry = (u16)ST_BUSH;
+        m = (u8)T_BUSH;
         for (k = 0u; k < 16u; k++) {
             off = (u16)(half_col + row_off);
-            g_bg1_map[off]              = entry;
-            g_bg1_map[(u16)(off + 1u)]  = entry;
-            g_bg1_map[(u16)(off + 32u)] = entry;
-            g_bg1_map[(u16)(off + 33u)] = entry;
+            g_bg1_map[off]              = g_meta_tl[m];
+            g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
+            g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
+            g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
             row_off = (u16)((row_off + 64u) & 1023u);
         }
         return;
@@ -1946,28 +2306,28 @@ static void stream_world_col(s16 mx, s16 my_start) {
     idx_valid = 0u;
     for (k = 0u; k < 16u; k++, my++) {
         if (my < 0 || my >= mh) {
-            entry = (u16)ST_BUSH;
+            m = (g_hearth.has_mountain_vista && my < 0) ? META_EMPTY : (u8)T_BUSH;
         } else {
             if (!idx_valid) {
                 idx = (u16)(snes_map_row_off((u16)my) + (u16)mx);
                 idx_valid = 1u;
             }
-            entry = g_world_tile[idx];
+            m = g_world_meta[idx];
             idx = (u16)(idx + step_w);
         }
         off = (u16)(half_col + row_off);
-        g_bg1_map[off]              = entry;
-        g_bg1_map[(u16)(off + 1u)]  = entry;
-        g_bg1_map[(u16)(off + 32u)] = entry;
-        g_bg1_map[(u16)(off + 33u)] = entry;
+        g_bg1_map[off]              = g_meta_tl[m];
+        g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
+        g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
+        g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
         row_off = (u16)((row_off + 64u) & 1023u);
     }
 }
 
 static void stream_world_row(s16 mx_start, s16 my) {
-    u16 row_off, off, k, entry, idx, wx, wy;
+    u16 row_off, off, k, idx, wx, wy;
     s16 mx, mw, mh, wy_s;
-    u8 bg1, bg2;
+    u8 bg1, bg2, m;
 
     row_off = (u16)(((u16)my & 15u) << 6);
     g_bg1_dirty_l = 1;
@@ -1985,12 +2345,11 @@ static void stream_world_row(s16 mx_start, s16 my) {
         wy = (u16)wy_s;
         for (k = 0u; k < 18u; k++) {
             hearth_globe_cell(wx, wy, &bg1, &bg2, NULL, NULL);
-            entry = (bg2 != 0u) ? SNES_TILE(ST_CANOPY, 0u, 1u)
-                  : ((bg1 < 63u) ? TERRAIN_TILE_LUT[bg1] : (u16)ST_WORLD_OCEAN);
-            g_bg1_map[off]              = entry;
-            g_bg1_map[(u16)(off + 1u)]  = entry;
-            g_bg1_map[(u16)(off + 32u)] = entry;
-            g_bg1_map[(u16)(off + 33u)] = entry;
+            m = (bg2 != 0u) ? META_OV_CANOPY : ((bg1 < 63u) ? bg1 : (u8)T_WORLD_OCEAN);
+            g_bg1_map[off]              = g_meta_tl[m];
+            g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
+            g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
+            g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
             off = (u16)(off + 2u);
             if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
             wx = (u16)((wx + 1u) & 255u);
@@ -2002,12 +2361,12 @@ static void stream_world_row(s16 mx_start, s16 my) {
     mh = (s16)(g_hearth.map_h ? g_hearth.map_h : HEARTH_MAP_H);
 
     if (my < 0 || my >= mh) {
-        entry = (u16)ST_BUSH;
+        m = (g_hearth.has_mountain_vista && my < 0) ? META_EMPTY : (u8)T_BUSH;
         for (k = 0u; k < 18u; k++) {
-            g_bg1_map[off]              = entry;
-            g_bg1_map[(u16)(off + 1u)]  = entry;
-            g_bg1_map[(u16)(off + 32u)] = entry;
-            g_bg1_map[(u16)(off + 33u)] = entry;
+            g_bg1_map[off]              = g_meta_tl[m];
+            g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
+            g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
+            g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
             off = (u16)(off + 2u);
             if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
         }
@@ -2018,11 +2377,11 @@ static void stream_world_row(s16 mx_start, s16 my) {
     if (mx >= 0 && (s16)(mx + 18) <= mw) {
         idx = (u16)(idx + (u16)mx);
         for (k = 0u; k < 18u; k++) {
-            entry = g_world_tile[idx++];
-            g_bg1_map[off]              = entry;
-            g_bg1_map[(u16)(off + 1u)]  = entry;
-            g_bg1_map[(u16)(off + 32u)] = entry;
-            g_bg1_map[(u16)(off + 33u)] = entry;
+            m = g_world_meta[idx++];
+            g_bg1_map[off]              = g_meta_tl[m];
+            g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
+            g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
+            g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
             off = (u16)(off + 2u);
             if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
         }
@@ -2030,11 +2389,11 @@ static void stream_world_row(s16 mx_start, s16 my) {
     }
 
     for (k = 0u; k < 18u; k++, mx++) {
-        entry = (mx < 0 || mx >= mw) ? (u16)ST_BUSH : g_world_tile[(u16)(idx + (u16)mx)];
-        g_bg1_map[off]              = entry;
-        g_bg1_map[(u16)(off + 1u)]  = entry;
-        g_bg1_map[(u16)(off + 32u)] = entry;
-        g_bg1_map[(u16)(off + 33u)] = entry;
+        m = (mx < 0 || mx >= mw) ? (u8)T_BUSH : g_world_meta[(u16)(idx + (u16)mx)];
+        g_bg1_map[off]              = g_meta_tl[m];
+        g_bg1_map[(u16)(off + 1u)]  = g_meta_tr[m];
+        g_bg1_map[(u16)(off + 32u)] = g_meta_bl[m];
+        g_bg1_map[(u16)(off + 33u)] = g_meta_br[m];
         off = (u16)(off + 2u);
         if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
     }
@@ -2169,6 +2528,9 @@ static void upload_cinema_cg_force_blank(u8 scene) {
     dmaCopyVram(snes_cg_tiles_ptr(p),
                 (u16)(VRAM_BG1_GFX + ((u16)VRAM_CG_TILE_BASE << 4)),
                 byte_len);
+    /* Upload pure transparent letterbox tile at VRAM_CG_EMPTY_TILE (511) */
+    hearth_memset(g_tile32, 0u, 32u);
+    dmaCopyVram(g_tile32, (u16)(VRAM_BG1_GFX + ((u16)VRAM_CG_EMPTY_TILE << 4)), 32u);
     /* Pier Solar-style 4-palette = 60-color CGRAM upload (BG PAL0..PAL3, leaving PAL4..PAL7 for BG0 UI!) */
     dmaCopyCGram(snes_cg_pal_ptr(p), 0u, 128u);
 }
@@ -2176,13 +2538,13 @@ static void upload_cinema_cg_force_blank(u8 scene) {
 static void build_intro_bg1(u8 scene) {
     u8 p = (scene < CINEMA_ROM_PLATE_COUNT) ? scene : 0u;
     const u16 *mp = snes_cg_map_ptr(p);
-    u16 empty_e = SNES_TILE(ST_EMPTY, 0u, 0u);
+    u16 empty_e = SNES_TILE(VRAM_CG_EMPTY_TILE, 0u, 0u);
     u16 i;
 
     for (i = 0u; i < 1024u; i++) {
         g_bg1_map[i] = empty_e;
     }
-    /* Map 32x15 pre-encoded quantized anime CG plate into BG1 rows 2..16 */
+    /* Map 32x15 lossless Pier Solar multi-palette CG plate into BG1 rows 2..16 */
     for (i = 0u; i < CINEMA_ROM_MAP_LEN; i++) {
         g_bg1_map[(u16)(64u + i)] = mp[i];
     }
@@ -3318,6 +3680,7 @@ int main(void) {
     setScreenOff();
 
     upload_all_palettes();
+    init_snes_metatiles();
     bake_bg1_terrain_part1();
     bake_bg1_terrain_part2();
     bake_bg1_terrain_part3();
@@ -3461,11 +3824,16 @@ int main(void) {
                 g_pal_dirty = 0u;
                 g_full_pal_dirty = 0u;
             } else if (g_full_pal_dirty) {
+                /* Restore BG1 terrain tiles (overwritten by 480-tile lossless CG) + palettes */
+                bake_bg1_terrain_part1();
+                bake_bg1_terrain_part2();
+                bake_bg1_terrain_part3();
+                bake_bg1_terrain_part4();
                 upload_all_palettes();
                 upload_zone_pal0(g_last_pal_id);
                 g_full_pal_dirty = 0u;
                 g_pal_dirty = 0u;
-            } else if (g_pal_dirty) {
+            } else if (g_pal_dirty || want_bg2 != g_bg2_enabled) {
                 upload_zone_pal0(g_last_pal_id);
                 g_pal_dirty = 0u;
             }

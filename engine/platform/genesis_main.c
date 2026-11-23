@@ -20,41 +20,27 @@
 static HearthState g_hearth;
 
 /* ============================================================================
- * VRAM TILE INDEX ALLOCATION (All well below TILE_FONT_INDEX)
+ * VRAM TILE INDEX ALLOCATION (All strictly below TILE_FONT_INDEX = 1440!)
+ *   BG terrain + 16x16 metatile halves + opaque canopies: 16..111  (96 tiles)
+ *   UI boxes + fishing gauge + battle lock badges:       112..135  (24 tiles)
+ *   16x16 Hardware Sprites (61 slots x 4 tiles):         136..379  (244 tiles)
+ *   Opaque 5x7 ASCII Font (64 glyphs):                   380..443  (64 tiles)
+ *   Full-Color 24x16 Pixel-Art World Atlas:              444..827  (384 tiles)
+ *   Cinema CG (<= 480 lossless tiles) / Shared Vista:    828..1307 (480 tiles)
+ *   Headroom below TILE_FONT_INDEX (1440):               132 tiles free!
  * ============================================================================ */
 #define VRAM_BG_BASE    ((u16)(TILE_USER_INDEX))
-#define VRAM_UI_BASE    ((u16)(VRAM_BG_BASE + 64u))
-#define VRAM_SPR_BASE   ((u16)(VRAM_UI_BASE + 32u))
+#define VRAM_UI_BASE    ((u16)(VRAM_BG_BASE + 96u))
+#define VRAM_SPR_BASE   ((u16)(VRAM_UI_BASE + 24u))
 #define VRAM_FONT_BASE  ((u16)(VRAM_SPR_BASE + 244u))
 #define VRAM_ATLAS_BASE ((u16)(VRAM_FONT_BASE + 64u))
 #define VRAM_CG_BASE    ((u16)(VRAM_ATLAS_BASE + 384u))
-#define VRAM_VISTA_BASE ((u16)(VRAM_CG_BASE + 340u))
+#define VRAM_VISTA_BASE VRAM_CG_BASE
 
 #define GEN_ATLAS_TW    24u
 #define GEN_ATLAS_TH    16u
 
-/* 4bpp Parallax Alpine Vista & Opaque Canopy Tiles (offsets from VRAM_VISTA_BASE, 17 tiles < 20) */
-enum {
-    GV_SKY_TOP = 0,
-    GV_SKY_MID,
-    GV_SKY_HORIZON,
-    GV_CLOUD_L,
-    GV_CLOUD_M,
-    GV_CLOUD_R,
-    GV_PEAK_TIP,
-    GV_PEAK_L,
-    GV_PEAK_R,
-    GV_MTN_LIT,
-    GV_MTN_SHADE,
-    GV_PINE_RIDGE,
-    GV_PINE_BASE,
-    GV_OPAQUE_CANOPY,
-    GV_OPAQUE_MAPLE,
-    GV_OPAQUE_PINE,
-    GV_OPAQUE_OAK
-};
-
-/* BG Tile IDs (offsets from VRAM_BG_BASE — 63 tiles total, < 64) */
+/* BG Tile IDs (offsets from VRAM_BG_BASE — 91 tiles total, < 96) */
 enum {
     GT_EMPTY = 0,
     GT_GRASS,
@@ -112,7 +98,7 @@ enum {
     GT_MAPLE_CANOPY,
     GT_PINE_TOP,
     GT_OAK_CROWN,
-    /* Milestone 3: Evertale Open World Map Tiles (55..62 < 64) */
+    /* Milestone 3: Evertale Open World Map Tiles */
     GT_WORLD_OCEAN,
     GT_WORLD_BEACH,
     GT_WORLD_PEAK,
@@ -121,6 +107,36 @@ enum {
     GT_WORLD_CASTLE,
     GT_WORLD_TOWN,
     GT_WORLD_RUINS,
+    /* True 16x16 Metatile Bottom/Alternate 8x8 Halves (63..82) */
+    GT_TRUNK_B,
+    GT_ROOF_TOP_B,
+    GT_ROOF_BODY_B,
+    GT_WALL_WOOD_B,
+    GT_WALL_WIN_B,
+    GT_WALL_DOOR_B,
+    GT_LAMP_B,
+    GT_SIGN_B,
+    GT_CANOPY_B,
+    GT_CLIFF_WALL_B,
+    GT_CLIFF_LEDGE_B,
+    GT_BOULDER_B,
+    GT_AUTUMN_GRASS_B,
+    GT_ROCKY_PATH_B,
+    GT_RAIL_TRACK_B,
+    GT_MAPLE_TRUNK_B,
+    GT_PINE_TRUNK_B,
+    GT_MAPLE_CANOPY_B,
+    GT_PINE_TOP_B,
+    GT_OAK_CROWN_B,
+    /* Opaque-Backed 16x16 Canopy Halves for Parallax Mode on BG_A (83..90) */
+    GT_OPQ_CANOPY,
+    GT_OPQ_CANOPY_B,
+    GT_OPQ_MAPLE,
+    GT_OPQ_MAPLE_B,
+    GT_OPQ_PINE,
+    GT_OPQ_PINE_B,
+    GT_OPQ_OAK,
+    GT_OPQ_OAK_B,
     GT_COUNT
 };
 
@@ -384,33 +400,64 @@ static void bake_bg_and_ui_tiles(void) {
     p8_rect(1, 1, 6, 6, 3); p8_rect(2, 1, 4, 3, 4); p8_rect(2, 1, 2, 1, 5);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_BUSH);
 
-    /* 12: Tree trunk */
+    /* 12: True 16x16 Centered Oak Trunk (TL + HFLIP TR, BL + HFLIP BR) */
     p8_fill(3);
-    p8_rect(2, 0, 4, 8, 6); p8_rect(3, 0, 2, 8, 7);
+    p8_rect(5, 0, 3, 8, 6); p8_rect(6, 0, 2, 8, 7); g_pix8[1*8+7] = 8; g_pix8[4*8+7] = 8;
     upload_pix8_to_vram(VRAM_BG_BASE + GT_TRUNK);
+    p8_fill(3);
+    p8_rect(5, 0, 3, 6, 6); p8_rect(6, 0, 2, 6, 7);
+    p8_rect(3, 5, 5, 2, 6); p8_rect(4, 5, 4, 1, 7); p8_rect(4, 7, 4, 1, 2);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_TRUNK_B);
 
-    /* 13-14: Storybook Shingled Cottage Roof with sunlit crest & scalloped eaves */
-    p8_fill(15); p8_rect(0, 0, 8, 1, 8); p8_rect(0, 1, 8, 1, 6);
-    p8_rect(0, 4, 8, 1, 6); p8_rect(2, 2, 1, 2, 6); p8_rect(6, 5, 1, 2, 6);
-    p8_rect(0, 7, 8, 1, 1);
+    /* 13-14: 16x16 Staggered Terracotta Shingled Cottage Roof */
+    p8_fill(15); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 1, 8, 2, 8);
+    p8_rect(0, 3, 8, 1, 15); p8_rect(2, 4, 4, 1, 8);
+    p8_rect(0, 6, 8, 1, 6); g_pix8[5*8+3] = 6; g_pix8[6*8+3] = 6;
     upload_pix8_to_vram(VRAM_BG_BASE + GT_ROOF_TOP);
-    p8_fill(15); p8_rect(0, 3, 8, 1, 6); p8_rect(0, 7, 8, 1, 1);
-    g_pix8[1*8+1] = 8; g_pix8[1*8+5] = 8; p8_rect(3, 0, 1, 3, 6); p8_rect(7, 4, 1, 3, 6);
-    upload_pix8_to_vram(VRAM_BG_BASE + GT_ROOF_BODY);
+    p8_fill(15); p8_rect(0, 0, 8, 1, 8); p8_rect(0, 3, 8, 1, 6);
+    p8_rect(4, 1, 1, 2, 6); p8_rect(1, 4, 3, 1, 8); p8_rect(0, 7, 8, 1, 6);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_ROOF_TOP_B);
 
-    /* 15-17: Half-timbered plaster wall, warm glowing mullion window & arched oak door */
-    p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 4, 8, 1, 7); p8_rect(0, 7, 8, 1, 6);
-    p8_rect(0, 0, 1, 8, 6); p8_rect(7, 0, 1, 8, 6); g_pix8[2*8+2] = 14; g_pix8[5*8+5] = 14;
+    p8_fill(15); p8_rect(0, 3, 8, 1, 6); p8_rect(0, 7, 8, 1, 6);
+    p8_rect(3, 0, 1, 3, 6); p8_rect(7, 4, 1, 3, 6);
+    g_pix8[1*8+1] = 8; g_pix8[1*8+2] = 8; g_pix8[5*8+4] = 8; g_pix8[5*8+5] = 8;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_ROOF_BODY);
+    p8_fill(15); p8_rect(0, 3, 8, 1, 6); p8_rect(0, 7, 8, 1, 6);
+    p8_rect(1, 0, 1, 3, 6); p8_rect(5, 4, 1, 3, 6);
+    g_pix8[1*8+5] = 8; g_pix8[1*8+6] = 8; g_pix8[5*8+1] = 8; g_pix8[5*8+2] = 8;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_ROOF_BODY_B);
+
+    /* 15-17: 16x16 Half-Timbered Wall, Full-Size Glowing Mullioned Window & Arched Oak Door */
+    p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 0, 1, 8, 6);
+    p8_rect(1, 1, 7, 1, 7); p8_rect(0, 7, 8, 1, 6);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_WALL_WOOD);
-    p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(1, 1, 6, 6, 6);
-    p8_rect(2, 2, 4, 4, 14); p8_rect(2, 4, 4, 2, 8);
-    p8_rect(3, 2, 1, 4, 6); p8_rect(2, 4, 4, 1, 6);
-    p8_rect(1, 7, 6, 1, 7); /* Sill */
+    p8_fill(8); p8_rect(0, 0, 1, 8, 6); p8_rect(1, 0, 7, 1, 7);
+    p8_rect(0, 6, 8, 2, 9); p8_rect(1, 6, 6, 1, 10);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_WALL_WOOD_B);
+
+    p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 0, 1, 8, 6);
+    p8_rect(2, 2, 6, 6, 6); p8_rect(3, 3, 4, 5, 14);
+    p8_rect(3, 3, 2, 2, 11); p8_rect(7, 3, 1, 5, 6);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_WALL_WIN);
-    p8_fill(8); p8_rect(1, 0, 6, 8, 6); p8_rect(2, 1, 4, 7, 7);
-    p8_rect(2, 1, 4, 1, 6); p8_rect(3, 1, 2, 1, 7); /* Arched lintel */
-    p8_rect(4, 2, 1, 6, 6); g_pix8[4*8+5] = 14;     /* Brass doorknob */
+    p8_fill(8); p8_rect(0, 0, 1, 8, 6);
+    p8_rect(2, 0, 6, 5, 6); p8_rect(3, 1, 4, 3, 5); p8_rect(3, 1, 2, 2, 14);
+    p8_rect(7, 0, 1, 5, 6); p8_rect(1, 5, 7, 1, 7); p8_rect(1, 6, 7, 1, 6);
+    p8_rect(0, 7, 8, 1, 9);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_WALL_WIN_B);
+
+    p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 0, 1, 8, 6);
+    p8_rect(3, 1, 5, 7, 6); p8_rect(2, 3, 6, 5, 6);
+    p8_rect(4, 2, 4, 6, 7); p8_rect(3, 4, 5, 4, 7);
+    p8_rect(5, 2, 1, 6, 6); p8_rect(7, 2, 1, 6, 6);
+    p8_rect(3, 5, 3, 1, 1);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_WALL_DOOR);
+    p8_fill(8); p8_rect(0, 0, 1, 8, 6);
+    p8_rect(2, 0, 6, 7, 6); p8_rect(3, 0, 5, 7, 7);
+    p8_rect(5, 0, 1, 7, 6); p8_rect(7, 0, 1, 7, 6);
+    p8_rect(6, 1, 1, 2, 5);
+    p8_rect(3, 4, 3, 1, 1);
+    p8_rect(1, 7, 7, 1, 10); p8_rect(2, 7, 6, 1, 11);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_WALL_DOOR_B);
 
     /* 18-19: Stone Windmill Slate Dome & Dressed Masonry */
     p8_fill(12); p8_rect(0, 6, 8, 2, 9); p8_rect(1, 2, 6, 4, 13);
@@ -421,15 +468,27 @@ static void bake_bg_and_ui_tiles(void) {
     g_pix8[1*8+1] = 11; g_pix8[5*8+2] = 11;
     upload_pix8_to_vram(VRAM_BG_BASE + GT_WINDMILL_WALL);
 
-    /* 20-23: Props (Flower bed, fence, lantern, sign) */
+    /* 20-23: Props (Flower bed, fence, 16x16 lantern post, 16x16 wooden signpost) */
     p8_fill(6); p8_rect(1, 1, 6, 6, 3); g_pix8[2*8+2] = 15; g_pix8[2*8+5] = 8; g_pix8[5*8+4] = 14;
     upload_pix8_to_vram(VRAM_BG_BASE + GT_FLOWER_BED);
     p8_fill(4); p8_rect(0, 2, 8, 2, 7); p8_rect(0, 5, 8, 2, 6); p8_rect(1, 1, 2, 7, 8); p8_rect(5, 1, 2, 7, 8);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_FENCE);
-    p8_fill(10); p8_rect(3, 3, 2, 5, 1); p8_rect(2, 1, 4, 3, 8); p8_rect(3, 2, 2, 1, 14);
+
+    p8_fill(4);
+    p8_rect(5, 1, 3, 1, 1); p8_rect(4, 2, 4, 4, 1); p8_rect(5, 3, 3, 3, 8); p8_rect(6, 3, 2, 2, 14);
+    p8_rect(5, 6, 3, 1, 1); p8_rect(7, 7, 1, 1, 1);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_LAMP);
-    p8_fill(4); p8_rect(1, 1, 6, 4, 7); p8_rect(2, 2, 4, 2, 8); p8_rect(3, 5, 2, 3, 6);
+    p8_fill(4);
+    p8_rect(7, 0, 1, 7, 1); p8_rect(6, 5, 2, 2, 9); p8_rect(5, 7, 3, 1, 1);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_LAMP_B);
+
+    p8_fill(4);
+    p8_rect(1, 1, 7, 6, 6); p8_rect(2, 2, 6, 4, 7); p8_rect(3, 3, 5, 1, 8); p8_rect(3, 5, 4, 1, 6);
+    p8_rect(7, 7, 1, 1, 6);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_SIGN);
+    p8_fill(4);
+    p8_rect(7, 0, 1, 7, 6); g_pix8[0*8+7] = 7; p8_rect(6, 6, 2, 1, 3);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_SIGN_B);
 
     /* 24-26: Ancient Shrine */
     p8_fill(9); p8_rect(1, 1, 6, 6, 10); p8_rect(1, 1, 5, 1, 11);
@@ -439,10 +498,21 @@ static void bake_bg_and_ui_tiles(void) {
     p8_fill(1); p8_rect(1, 0, 6, 8, 10); p8_rect(2, 0, 2, 8, 11); p8_rect(0, 0, 8, 2, 11);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_SHRINE_PILLAR);
 
-    /* 27-29: Overhead BG_B tiles */
-    p8_fill(0); p8_rect(1, 1, 6, 6, 2); p8_rect(1, 1, 6, 5, 3); p8_rect(2, 1, 4, 3, 4); p8_rect(3, 2, 2, 1, 5);
+    /* 27-29: Lush 16x16 Billowing Emerald Canopy (transparent corners for BG_B & opaque for parallax BG_A) */
+    p8_fill(3); p8_rect(0, 0, 2, 2, 0); p8_rect(0, 0, 1, 3, 0);
+    p8_rect(2, 0, 6, 8, 3); p8_rect(1, 2, 7, 6, 3); p8_rect(3, 1, 5, 5, 4); p8_rect(4, 2, 4, 2, 5);
+    g_pix8[3*8+2] = 5; g_pix8[6*8+2] = 2;
     upload_pix8_to_vram(VRAM_BG_BASE + GT_CANOPY);
-    p8_fill(0); p8_rect(0, 4, 8, 4, 15); p8_rect(0, 7, 8, 1, 1);
+    p8_rect(0, 0, 2, 2, 4); p8_rect(0, 0, 1, 3, 4);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_OPQ_CANOPY);
+
+    p8_fill(3); p8_rect(0, 0, 8, 6, 3); p8_rect(1, 0, 7, 4, 4); p8_rect(2, 1, 4, 2, 5);
+    p8_rect(0, 5, 8, 3, 2); p8_rect(3, 5, 5, 2, 3); p8_rect(0, 7, 2, 1, 0);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_CANOPY_B);
+    p8_rect(0, 7, 2, 1, 4);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_OPQ_CANOPY_B);
+
+    p8_fill(0); p8_rect(0, 3, 8, 5, 15); p8_rect(0, 7, 8, 1, 6);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_ROOF_EAVE);
     p8_fill(0); p8_rect(0, 0, 8, 6, 10); p8_rect(0, 0, 8, 2, 11); p8_rect(0, 5, 8, 1, 1);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_SHRINE_ARCH);
@@ -457,42 +527,72 @@ static void bake_bg_and_ui_tiles(void) {
     p8_fill(9); p8_rect(0, 0, 8, 1, 11); p8_rect(0, 4, 8, 1, 1);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_BATTLE_GROUND_SHRINE);
 
-    /* 34..54: Ground-Up Autumn Mountain & Cottage Interior Tiles */
-    /* GT_MTN_SKY: Distant Snow-Dusted Alpine Peaks & Horizon Sky */
+    /* 34..54: Ground-Up 16x16 Autumn Mountain & Cottage Interior Tiles */
     p8_fill(13); p8_rect(0, 0, 8, 2, 12);
-    p8_rect(2, 2, 4, 2, 14); p8_rect(3, 1, 2, 1, 14); /* Snow cap */
-    p8_rect(1, 4, 6, 4, 9);  p8_rect(0, 6, 8, 2, 2);  /* Granite peak + autumn ridge */
+    p8_rect(2, 2, 4, 2, 11); p8_rect(3, 1, 2, 1, 11);
+    p8_rect(1, 4, 6, 4, 10); p8_rect(0, 6, 8, 2, 9);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_MTN_SKY);
 
-    /* GT_CLIFF_WALL & GT_CLIFF_LEDGE */
-    p8_fill(9); p8_rect(0, 0, 7, 3, 10); p8_rect(1, 0, 5, 1, 11);
-    p8_rect(0, 3, 8, 1, 1); p8_rect(1, 4, 6, 3, 10); p8_rect(0, 7, 8, 1, 1);
+    /* 16x16 Stratified Granite Cliff Wall & Mossy Cliff Ledge */
+    p8_fill(9); p8_rect(0, 0, 7, 6, 10); p8_rect(1, 0, 5, 2, 11);
+    p8_rect(7, 0, 1, 8, 1); p8_rect(0, 6, 8, 2, 9); g_pix8[6*8+2] = 1; g_pix8[6*8+3] = 1;
     upload_pix8_to_vram(VRAM_BG_BASE + GT_CLIFF_WALL);
-    p8_fill(9); p8_rect(0, 0, 8, 3, 3); p8_rect(1, 0, 6, 2, 4); p8_rect(2, 0, 3, 1, 5);
-    p8_rect(0, 3, 8, 2, 11); p8_rect(0, 5, 8, 1, 1); p8_rect(1, 6, 6, 2, 10);
+    p8_fill(9); p8_rect(2, 0, 6, 5, 10); p8_rect(3, 0, 4, 2, 11);
+    p8_rect(0, 0, 2, 8, 9); p8_rect(1, 2, 1, 6, 1); p8_rect(0, 6, 8, 2, 10); g_pix8[7*8+4] = 1;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_CLIFF_WALL_B);
+
+    p8_fill(4); p8_rect(0, 0, 8, 3, 4); p8_rect(1, 1, 3, 1, 5); p8_rect(0, 3, 8, 2, 3);
+    p8_rect(0, 5, 8, 2, 11); p8_rect(1, 6, 6, 2, 10); g_pix8[4*8+2] = 3; g_pix8[4*8+6] = 3;
     upload_pix8_to_vram(VRAM_BG_BASE + GT_CLIFF_LEDGE);
+    p8_fill(9); p8_rect(0, 0, 8, 2, 10); p8_rect(0, 2, 8, 1, 1); p8_rect(1, 3, 6, 4, 10);
+    p8_rect(4, 3, 1, 5, 9); p8_rect(0, 7, 8, 1, 9);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_CLIFF_LEDGE_B);
 
-    /* GT_BOULDER, GT_AUTUMN_GRASS, GT_ROCKY_PATH */
-    p8_fill(4); p8_rect(1, 2, 6, 5, 9); p8_rect(2, 2, 4, 4, 10); p8_rect(2, 2, 3, 2, 11); g_pix8[2*8+2] = 3;
+    /* True 16x16 Sculpted Granite Boulder */
+    p8_fill(4); p8_rect(4, 2, 4, 6, 9); p8_rect(2, 4, 6, 4, 9);
+    p8_rect(3, 3, 5, 5, 10); p8_rect(4, 3, 4, 3, 11); g_pix8[5*8+2] = 3;
     upload_pix8_to_vram(VRAM_BG_BASE + GT_BOULDER);
-    p8_fill(4); g_pix8[1*8+2] = 5; g_pix8[5*8+6] = 3; g_pix8[2*8+5] = 15; g_pix8[6*8+2] = 8; g_pix8[4*8+3] = 15;
-    upload_pix8_to_vram(VRAM_BG_BASE + GT_AUTUMN_GRASS);
-    p8_fill(7); p8_rect(1, 1, 3, 2, 10); g_pix8[1*8+1] = 11; p8_rect(4, 5, 3, 2, 10); g_pix8[5*8+5] = 11;
-    upload_pix8_to_vram(VRAM_BG_BASE + GT_ROCKY_PATH);
+    p8_fill(4); p8_rect(2, 0, 6, 5, 9); p8_rect(3, 0, 5, 4, 10); p8_rect(5, 0, 3, 2, 11);
+    p8_rect(3, 5, 5, 2, 3);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_BOULDER_B);
 
-    /* GT_RAPIDS & GT_RAIL_TRACK */
+    /* Organic Soft 16x16 Autumn Meadow Grass (subtle tufts, zero bright red polka dots!) */
+    p8_fill(4); g_pix8[1*8+2] = 5; g_pix8[2*8+2] = 3; g_pix8[5*8+5] = 5; g_pix8[6*8+5] = 3;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_AUTUMN_GRASS);
+    p8_fill(4); g_pix8[1*8+5] = 3; g_pix8[3*8+5] = 5; g_pix8[6*8+2] = 8; g_pix8[6*8+3] = 5;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_AUTUMN_GRASS_B);
+
+    /* Organic Soft 16x16 Packed Chestnut Trail (warm earth, gentle gravel!) */
+    p8_fill(7); g_pix8[1*8+2] = 8; g_pix8[1*8+3] = 8; g_pix8[3*8+2] = 6; g_pix8[5*8+5] = 6; g_pix8[6*8+4] = 8;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_ROCKY_PATH);
+    p8_fill(7); g_pix8[1*8+6] = 6; g_pix8[4*8+1] = 8; g_pix8[4*8+2] = 10; g_pix8[5*8+2] = 6; g_pix8[6*8+6] = 8;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_ROCKY_PATH_B);
+
+    /* GT_RAPIDS & 16x16 Two-Rail Mountain Railway Track */
     p8_fill(12); p8_rect(1, 1, 4, 1, 13); p8_rect(2, 2, 3, 1, 14); p8_rect(3, 5, 4, 1, 14);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_RAPIDS);
     p8_fill(9); p8_rect(1, 0, 2, 8, 6); p8_rect(5, 0, 2, 8, 6);
-    p8_rect(0, 1, 8, 2, 1); p8_rect(0, 1, 8, 1, 11);
-    p8_rect(0, 5, 8, 2, 1); p8_rect(0, 5, 8, 1, 11);
+    p8_rect(0, 3, 8, 3, 1); p8_rect(0, 3, 8, 2, 11);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_RAIL_TRACK);
+    p8_fill(9); p8_rect(1, 0, 2, 8, 6); p8_rect(5, 0, 2, 8, 6);
+    p8_rect(0, 2, 8, 3, 1); p8_rect(0, 2, 8, 2, 11);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_RAIL_TRACK_B);
 
-    /* GT_MAPLE_TRUNK & GT_PINE_TRUNK */
-    p8_fill(4); p8_rect(2, 0, 4, 8, 6); p8_rect(3, 0, 2, 7, 7); g_pix8[6*8+1] = 15; g_pix8[7*8+6] = 8;
+    /* True 16x16 Centered Sturdy Maple Trunk & Tiered Alpine Pine Base */
+    p8_fill(4); p8_rect(5, 0, 3, 8, 6); p8_rect(6, 0, 2, 8, 7); p8_rect(7, 0, 1, 8, 8);
+    g_pix8[1*8+2] = 3; g_pix8[6*8+1] = 15;
     upload_pix8_to_vram(VRAM_BG_BASE + GT_MAPLE_TRUNK);
-    p8_fill(3); p8_rect(3, 4, 2, 4, 6); p8_rect(1, 0, 6, 5, 2); p8_rect(2, 1, 4, 3, 3);
+    p8_fill(4); p8_rect(5, 0, 3, 5, 6); p8_rect(6, 0, 2, 5, 7);
+    p8_rect(3, 4, 5, 2, 6); p8_rect(4, 4, 4, 1, 7); p8_rect(3, 6, 5, 1, 3);
+    g_pix8[6*8+2] = 5; g_pix8[7*8+1] = 15;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_MAPLE_TRUNK_B);
+
+    p8_fill(4); p8_rect(2, 0, 6, 6, 2); p8_rect(1, 3, 7, 5, 2);
+    p8_rect(3, 1, 5, 4, 3); p8_rect(5, 2, 3, 3, 4);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_PINE_TRUNK);
+    p8_fill(4); p8_rect(1, 0, 7, 3, 2); p8_rect(3, 0, 5, 2, 3);
+    p8_rect(6, 3, 2, 5, 6); p8_rect(7, 3, 1, 4, 7); p8_rect(4, 7, 4, 1, 3);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_PINE_TRUNK_B);
 
     /* GT_WOOD_FLOOR, GT_HEARTH_RUG, GT_FIREPLACE, GT_BED_QUILT, GT_ATTIC_CHEST */
     p8_fill(7); p8_rect(0, 3, 8, 1, 6); p8_rect(0, 7, 8, 1, 6); p8_rect(1, 1, 4, 1, 8); p8_rect(4, 5, 3, 1, 8);
@@ -515,13 +615,48 @@ static void bake_bg_and_ui_tiles(void) {
     p8_fill(8); p8_rect(0, 0, 8, 1, 6); p8_rect(0, 6, 8, 2, 6); p8_rect(3, 1, 2, 5, 7);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_INTERIOR_WALL);
 
-    /* BG_B Overhead Autumn Canopies: GT_MAPLE_CANOPY, GT_PINE_TOP, GT_OAK_CROWN */
-    p8_fill(0); p8_rect(1, 1, 6, 6, 6); p8_rect(1, 1, 6, 5, 15); p8_rect(2, 2, 4, 3, 8); g_pix8[2*8+3] = 14;
+    /* Lush Continuous 16x16 Autumn Maple Canopy (blends seamlessly across multi-tile crowns!) */
+    p8_fill(15);
+    p8_rect(1, 0, 5, 3, 5); p8_rect(3, 0, 4, 2, 8);
+    p8_rect(0, 3, 4, 3, 15); p8_rect(4, 2, 4, 4, 5); p8_rect(2, 4, 3, 2, 8);
+    g_pix8[0] = 6; g_pix8[56] = 6; g_pix8[61] = 5; g_pix8[15] = 8;
     upload_pix8_to_vram(VRAM_BG_BASE + GT_MAPLE_CANOPY);
-    p8_fill(0); p8_rect(3, 0, 2, 2, 3); p8_rect(2, 2, 4, 3, 2); p8_rect(1, 5, 6, 3, 2); p8_rect(2, 5, 3, 2, 3);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_OPQ_MAPLE);
+
+    p8_fill(15);
+    p8_rect(0, 0, 5, 4, 15); p8_rect(3, 0, 4, 3, 5); p8_rect(1, 2, 3, 2, 5);
+    p8_rect(0, 5, 6, 3, 6); p8_rect(2, 5, 5, 2, 15); p8_rect(6, 4, 2, 3, 15);
+    g_pix8[11] = 8; g_pix8[48] = 6; g_pix8[63] = 6;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_MAPLE_CANOPY_B);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_OPQ_MAPLE_B);
+
+    /* True 16x16 Tapered Alpine Spruce Spire + Opaque Parallax Variant */
+    p8_fill(0);
+    p8_rect(7, 1, 1, 7, 2); p8_rect(6, 3, 2, 5, 2); p8_rect(5, 5, 3, 3, 2); p8_rect(4, 7, 4, 1, 2);
+    p8_rect(6, 4, 2, 4, 3); g_pix8[2*8+7] = 3; g_pix8[6*8+6] = 4;
     upload_pix8_to_vram(VRAM_BG_BASE + GT_PINE_TOP);
-    p8_fill(0); p8_rect(0, 1, 8, 6, 6); p8_rect(1, 1, 6, 5, 15); p8_rect(2, 2, 4, 3, 8); p8_rect(3, 2, 2, 2, 14);
+    for (u16 k = 0; k < 64u; k++) if (g_pix8[k] == 0u) g_pix8[k] = 4u;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_OPQ_PINE);
+
+    p8_fill(0);
+    p8_rect(4, 0, 4, 8, 2); p8_rect(3, 2, 5, 6, 2); p8_rect(2, 5, 6, 3, 2);
+    p8_rect(5, 1, 3, 6, 3); p8_rect(4, 4, 4, 3, 3); p8_rect(6, 2, 2, 3, 4);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_PINE_TOP_B);
+    for (u16 k = 0; k < 64u; k++) if (g_pix8[k] == 0u) g_pix8[k] = 4u;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_OPQ_PINE_B);
+
+    /* Lush Continuous 16x16 Golden Hollow-Oak Crown */
+    p8_fill(5);
+    p8_rect(0, 0, 4, 3, 15); p8_rect(3, 0, 5, 4, 8); p8_rect(5, 1, 3, 2, 14);
+    p8_rect(1, 3, 6, 4, 5); p8_rect(0, 5, 4, 3, 15); g_pix8[57] = 6;
     upload_pix8_to_vram(VRAM_BG_BASE + GT_OAK_CROWN);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_OPQ_OAK);
+
+    p8_fill(15);
+    p8_rect(1, 0, 6, 4, 5); p8_rect(4, 1, 3, 2, 8);
+    p8_rect(0, 5, 6, 3, 6); p8_rect(2, 4, 5, 3, 15); g_pix8[62] = 6;
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_OAK_CROWN_B);
+    upload_pix8_to_vram(VRAM_BG_BASE + GT_OPQ_OAK_B);
 
     /* Milestone 3: Evertale Open World Map Tiles */
     p8_fill(12); p8_rect(1, 2, 3, 1, 13); p8_rect(4, 5, 3, 1, 14);
@@ -662,76 +797,8 @@ static void bake_bg_and_ui_tiles(void) {
         upload_pix8_to_vram(VRAM_FONT_BASE + ch);
     }
 
-    /* 4bpp Parallax Alpine Mountain Vista Tiles (PAL0 -> auto-tints Morning/Afternoon/Dusk/Night/Sunhill!) */
-    /* GV_SKY_TOP: Deep zenith alpine sky */
-    p8_fill(12);
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_SKY_TOP);
-
-    /* GV_SKY_MID: Smooth sky gradient */
-    p8_fill(13); p8_rect(0, 0, 8, 2, 12); g_pix8[2*8+1] = 12; g_pix8[2*8+5] = 12;
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_SKY_MID);
-
-    /* GV_SKY_HORIZON: Sunlit misty horizon haze */
-    p8_fill(13); p8_rect(0, 5, 8, 3, 14); g_pix8[4*8+2] = 14; g_pix8[4*8+6] = 14;
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_SKY_HORIZON);
-
-    /* GV_CLOUD_L / M / R: Billowy sunlit alpine cumulus clouds */
-    p8_fill(12); p8_rect(4, 3, 4, 4, 14); p8_rect(2, 5, 6, 3, 14); p8_rect(3, 7, 5, 1, 11);
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_CLOUD_L);
-    p8_fill(12); p8_rect(0, 2, 8, 5, 14); p8_rect(1, 1, 5, 2, 14); p8_rect(0, 6, 8, 2, 11);
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_CLOUD_M);
-    p8_fill(12); p8_rect(0, 3, 5, 4, 14); p8_rect(0, 5, 6, 3, 14); p8_rect(0, 7, 5, 1, 11);
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_CLOUD_R);
-
-    /* GV_PEAK_TIP: Crisp snow-crowned alpine summit against sky */
-    p8_fill(13);
-    p8_rect(3, 1, 2, 2, 14); p8_rect(2, 3, 4, 2, 14);
-    p8_rect(1, 5, 4, 3, 11); p8_rect(5, 5, 2, 3, 10);
-    p8_rect(0, 7, 4, 1, 10); p8_rect(4, 7, 4, 1, 9);
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_PEAK_TIP);
-
-    /* GV_PEAK_L: Sunlit left mountain ridge slope with snow drift */
-    p8_fill(13);
-    p8_rect(5, 0, 3, 3, 14); p8_rect(3, 2, 5, 3, 14);
-    p8_rect(1, 4, 7, 4, 11); p8_rect(0, 6, 8, 2, 10);
-    p8_rect(4, 4, 4, 4, 10);
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_PEAK_L);
-
-    /* GV_PEAK_R: Shaded right alpine mountain ridge slope */
-    p8_fill(13);
-    p8_rect(0, 0, 3, 3, 11); p8_rect(0, 2, 5, 3, 10);
-    p8_rect(0, 4, 7, 4, 9);  p8_rect(0, 6, 8, 2, 9);
-    p8_rect(0, 3, 2, 5, 10);
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_PEAK_R);
-
-    /* GV_MTN_LIT: Sunlit granite mountain flank with snow veins */
-    p8_fill(10); p8_rect(0, 0, 3, 8, 11); p8_rect(5, 0, 3, 8, 9);
-    g_pix8[1*8+1] = 14; g_pix8[2*8+2] = 14; g_pix8[5*8+1] = 11;
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_MTN_LIT);
-
-    /* GV_MTN_SHADE: Shaded blue-slate granite mountain body */
-    p8_fill(9); p8_rect(0, 0, 2, 8, 10); g_pix8[2*8+4] = 10; g_pix8[6*8+6] = 1;
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_MTN_SHADE);
-
-    /* GV_PINE_RIDGE: Distant alpine spruce treeline over misty foothills */
-    p8_fill(9); p8_rect(0, 0, 8, 2, 10);
-    p8_rect(1, 2, 2, 6, 2); g_pix8[2*8+1] = 3; p8_rect(0, 5, 4, 3, 2);
-    p8_rect(5, 1, 2, 7, 2); g_pix8[1*8+5] = 3; p8_rect(4, 4, 4, 4, 2);
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_PINE_RIDGE);
-
-    /* GV_PINE_BASE: Deep mountain forest valley base */
-    p8_fill(2); p8_rect(1, 1, 2, 2, 3); p8_rect(5, 4, 2, 2, 3); p8_rect(0, 6, 8, 2, 1);
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_PINE_BASE);
-
-    /* Opaque Canopy Tiles over grass (so BG_A canopies over ground never leak BG_B parallax sky!) */
-    p8_fill(4); p8_rect(1, 1, 6, 6, 2); p8_rect(1, 1, 6, 5, 3); p8_rect(2, 1, 4, 3, 4); p8_rect(3, 2, 2, 1, 5);
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_OPAQUE_CANOPY);
-    p8_fill(4); p8_rect(1, 1, 6, 6, 6); p8_rect(1, 1, 6, 5, 15); p8_rect(2, 2, 4, 3, 8); g_pix8[2*8+3] = 14;
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_OPAQUE_MAPLE);
-    p8_fill(4); p8_rect(3, 0, 2, 2, 3); p8_rect(2, 2, 4, 3, 2); p8_rect(1, 5, 6, 3, 2); p8_rect(2, 5, 3, 2, 3);
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_OPAQUE_PINE);
-    p8_fill(4); p8_rect(0, 1, 8, 6, 6); p8_rect(1, 1, 6, 5, 15); p8_rect(2, 2, 4, 3, 8); p8_rect(3, 2, 2, 2, 14);
-    upload_pix8_to_vram(VRAM_VISTA_BASE + GV_OPAQUE_OAK);
+    /* Sweeping 4bpp Alpine Parallax Vista tiles are baked dynamically into VRAM_VISTA_BASE
+     * whenever entering exploration after boot or after an illustrated cinema sequence. */
 }
 
 /* Dedicated 16-Color Full-Color World Atlas Palette (Loaded into PAL0 while Atlas is open; 0 = VDP transparent) */
@@ -1481,8 +1548,14 @@ static void tick_env_animations(u32 frame_count) {
 }
 
 /* ============================================================================
- * 3. HARDWARE MAP TILE MAPPING & 64x64 SCROLL STREAMING
+ * 3. HARDWARE 16x16 METATILES, SWEEPING 4bpp PARALLAX VISTA & 64x64 STREAMING
  * ============================================================================ */
+static u16 g_bg1_tl[64], g_bg1_tr[64], g_bg1_bl[64], g_bg1_br[64];
+static u16 g_ov_tl[8],   g_ov_tr[8],   g_ov_bl[8],   g_ov_br[8];
+static u16 g_opq_tl[8],  g_opq_tr[8],  g_opq_bl[8],  g_opq_br[8];
+static u16 g_vista_map[8][32];
+static u8  g_vista_vram_dirty = 1u;
+
 static u16 map_bg1_to_vram_tile(u8 t) {
     switch (t) {
         case T_GRASS:          return VRAM_BG_BASE + GT_GRASS;
@@ -1552,63 +1625,229 @@ static u16 map_bg1_to_vram_tile(u8 t) {
     }
 }
 
-static u16 map_bg2_to_vram_tile(u8 t) {
-    if (t == O_NONE) return VRAM_BG_BASE + GT_EMPTY;
-    if (t == O_ROOF_EAVE) return VRAM_BG_BASE + GT_ROOF_EAVE;
-    if (t == O_SHRINE_ARCH) return VRAM_BG_BASE + GT_SHRINE_ARCH;
-    if (t == O_MAPLE_TL || t == O_MAPLE_TR) return VRAM_BG_BASE + GT_MAPLE_CANOPY;
-    if (t == O_PINE_TOP) return VRAM_BG_BASE + GT_PINE_TOP;
-    if (t == O_OAK_CROWN) return VRAM_BG_BASE + GT_OAK_CROWN;
-    return VRAM_BG_BASE + GT_CANOPY;
+static void gen_set_bg1_sym(u8 t, u16 top_gt, u16 bot_gt) {
+    g_bg1_tl[t] = TILE_ATTR_FULL(PAL0, 0, 0, 0, (u16)(VRAM_BG_BASE + top_gt));
+    g_bg1_tr[t] = TILE_ATTR_FULL(PAL0, 0, 0, 1, (u16)(VRAM_BG_BASE + top_gt));
+    g_bg1_bl[t] = TILE_ATTR_FULL(PAL0, 0, 0, 0, (u16)(VRAM_BG_BASE + bot_gt));
+    g_bg1_br[t] = TILE_ATTR_FULL(PAL0, 0, 0, 1, (u16)(VRAM_BG_BASE + bot_gt));
 }
 
-static u16 map_bg2_opaque_to_vram_tile(u8 t) {
-    if (t == O_ROOF_EAVE) return VRAM_BG_BASE + GT_ROOF_BODY;
-    if (t == O_SHRINE_ARCH) return VRAM_BG_BASE + GT_SHRINE_ARCH;
-    if (t == O_MAPLE_TL || t == O_MAPLE_TR) return VRAM_VISTA_BASE + GV_OPAQUE_MAPLE;
-    if (t == O_PINE_TOP) return VRAM_VISTA_BASE + GV_OPAQUE_PINE;
-    if (t == O_OAK_CROWN) return VRAM_VISTA_BASE + GV_OPAQUE_OAK;
-    return VRAM_VISTA_BASE + GV_OPAQUE_CANOPY;
+static void gen_set_bg1_alt(u8 t, u16 gt_a, u16 gt_b) {
+    g_bg1_tl[t] = TILE_ATTR_FULL(PAL0, 0, 0, 0, (u16)(VRAM_BG_BASE + gt_a));
+    g_bg1_tr[t] = TILE_ATTR_FULL(PAL0, 0, 0, 0, (u16)(VRAM_BG_BASE + gt_b));
+    g_bg1_bl[t] = TILE_ATTR_FULL(PAL0, 0, 0, 1, (u16)(VRAM_BG_BASE + gt_b));
+    g_bg1_br[t] = TILE_ATTR_FULL(PAL0, 0, 0, 1, (u16)(VRAM_BG_BASE + gt_a));
+}
+
+static void gen_set_ov_sym(u8 slot, u16 top_gt, u16 bot_gt, u16 opq_top, u16 opq_bot) {
+    g_ov_tl[slot]  = TILE_ATTR_FULL(PAL0, 1, 0, 0, (u16)(VRAM_BG_BASE + top_gt));
+    g_ov_tr[slot]  = TILE_ATTR_FULL(PAL0, 1, 0, 1, (u16)(VRAM_BG_BASE + top_gt));
+    g_ov_bl[slot]  = TILE_ATTR_FULL(PAL0, 1, 0, 0, (u16)(VRAM_BG_BASE + bot_gt));
+    g_ov_br[slot]  = TILE_ATTR_FULL(PAL0, 1, 0, 1, (u16)(VRAM_BG_BASE + bot_gt));
+    g_opq_tl[slot] = TILE_ATTR_FULL(PAL0, 1, 0, 0, (u16)(VRAM_BG_BASE + opq_top));
+    g_opq_tr[slot] = TILE_ATTR_FULL(PAL0, 1, 0, 1, (u16)(VRAM_BG_BASE + opq_top));
+    g_opq_bl[slot] = TILE_ATTR_FULL(PAL0, 1, 0, 0, (u16)(VRAM_BG_BASE + opq_bot));
+    g_opq_br[slot] = TILE_ATTR_FULL(PAL0, 1, 0, 1, (u16)(VRAM_BG_BASE + opq_bot));
+}
+
+static void init_genesis_metatiles(void) {
+    for (u8 t = 0u; t < 64u; t++) {
+        u16 a = TILE_ATTR_FULL(PAL0, 0, 0, 0, map_bg1_to_vram_tile(t));
+        g_bg1_tl[t] = a; g_bg1_tr[t] = a; g_bg1_bl[t] = a; g_bg1_br[t] = a;
+    }
+    gen_set_bg1_sym(T_TREE_TRUNK,   GT_TRUNK,        GT_TRUNK_B);
+    gen_set_bg1_sym(T_WALL_WOOD,    GT_WALL_WOOD,    GT_WALL_WOOD_B);
+    gen_set_bg1_sym(T_WALL_WINDOW,  GT_WALL_WIN,     GT_WALL_WIN_B);
+    gen_set_bg1_sym(T_WALL_DOOR,    GT_WALL_DOOR,    GT_WALL_DOOR_B);
+    gen_set_bg1_alt(T_ROOF_TOP,     GT_ROOF_TOP,     GT_ROOF_TOP_B);
+    gen_set_bg1_alt(T_ROOF_BODY,    GT_ROOF_BODY,    GT_ROOF_BODY_B);
+    gen_set_bg1_sym(T_SIGNPOST,     GT_SIGN,         GT_SIGN_B);
+    gen_set_bg1_sym(T_LANTERN_POST, GT_LAMP,         GT_LAMP_B);
+    gen_set_bg1_alt(T_CLIFF_WALL,   GT_CLIFF_WALL,   GT_CLIFF_WALL_B);
+    gen_set_bg1_sym(T_CLIFF_LEDGE,  GT_CLIFF_LEDGE,  GT_CLIFF_LEDGE_B);
+    gen_set_bg1_sym(T_BOULDER,      GT_BOULDER,      GT_BOULDER_B);
+    gen_set_bg1_alt(T_AUTUMN_GRASS, GT_AUTUMN_GRASS, GT_AUTUMN_GRASS_B);
+    gen_set_bg1_alt(T_ROCKY_PATH,   GT_ROCKY_PATH,   GT_ROCKY_PATH_B);
+    gen_set_bg1_sym(T_RAIL_TRACK,   GT_RAIL_TRACK,   GT_RAIL_TRACK_B);
+    gen_set_bg1_sym(T_MAPLE_TRUNK,  GT_MAPLE_TRUNK,  GT_MAPLE_TRUNK_B);
+    gen_set_bg1_sym(T_PINE_TRUNK,   GT_PINE_TRUNK,   GT_PINE_TRUNK_B);
+    gen_set_bg1_sym(T_PALM_TREE,    GT_PINE_TRUNK,   GT_PINE_TRUNK_B);
+
+    /* Overlay slot table: 0=empty, 1=canopy, 2=roof_eave, 3=shrine_arch, 4=maple, 5=pine, 6=oak */
+    {
+        u16 emp = TILE_ATTR_FULL(PAL0, 0, 0, 0, (u16)(VRAM_BG_BASE + GT_EMPTY));
+        u16 eav = TILE_ATTR_FULL(PAL0, 1, 0, 0, (u16)(VRAM_BG_BASE + GT_ROOF_EAVE));
+        u16 oea = TILE_ATTR_FULL(PAL0, 1, 0, 0, (u16)(VRAM_BG_BASE + GT_ROOF_BODY));
+        u16 arc = TILE_ATTR_FULL(PAL0, 1, 0, 0, (u16)(VRAM_BG_BASE + GT_SHRINE_ARCH));
+        g_ov_tl[0] = emp; g_ov_tr[0] = emp; g_ov_bl[0] = emp; g_ov_br[0] = emp;
+        g_opq_tl[0] = emp; g_opq_tr[0] = emp; g_opq_bl[0] = emp; g_opq_br[0] = emp;
+        gen_set_ov_sym(1u, GT_CANOPY,       GT_CANOPY_B,       GT_OPQ_CANOPY, GT_OPQ_CANOPY_B);
+        g_ov_tl[2] = eav; g_ov_tr[2] = eav; g_ov_bl[2] = eav; g_ov_br[2] = eav;
+        g_opq_tl[2] = oea; g_opq_tr[2] = oea; g_opq_bl[2] = oea; g_opq_br[2] = oea;
+        g_ov_tl[3] = arc; g_ov_tr[3] = arc; g_ov_bl[3] = arc; g_ov_br[3] = arc;
+        g_opq_tl[3] = arc; g_opq_tr[3] = arc; g_opq_bl[3] = arc; g_opq_br[3] = arc;
+        gen_set_ov_sym(4u, GT_MAPLE_CANOPY, GT_MAPLE_CANOPY_B, GT_OPQ_MAPLE,  GT_OPQ_MAPLE_B);
+        gen_set_ov_sym(5u, GT_PINE_TOP,     GT_PINE_TOP_B,     GT_OPQ_PINE,   GT_OPQ_PINE_B);
+        gen_set_ov_sym(6u, GT_OAK_CROWN,    GT_OAK_CROWN_B,    GT_OPQ_OAK,    GT_OPQ_OAK_B);
+    }
+}
+
+static u8 map_bg2_to_ov_slot(u8 t) {
+    if (t == O_NONE) return 0u;
+    if (t == O_ROOF_EAVE) return 2u;
+    if (t == O_SHRINE_ARCH) return 3u;
+    if (t == O_MAPLE_TL || t == O_MAPLE_TR) return 4u;
+    if (t == O_PINE_TOP) return 5u;
+    if (t == O_OAK_CROWN) return 6u;
+    return 1u;
+}
+
+/* Sweeping continuous 256px-wide alpine mountain skyline height & slope (1:1 parity with SNES) */
+static u8 gen_vista_mtn_y(u16 px, u8 *out_lit) {
+    static const u16 KNOT_X[12] = {
+        0u, 22u, 48u, 76u, 102u, 130u, 158u, 180u, 206u, 228u, 244u, 256u
+    };
+    static const u8 KNOT_Y[12] = {
+        38u, 26u, 14u, 32u, 22u, 8u, 30u, 18u, 36u, 20u, 32u, 38u
+    };
+    u16 x8 = (u16)(px & 255u);
+    u8 k;
+    for (k = 0u; k < 11u; k++) {
+        if (x8 < KNOT_X[k + 1u]) break;
+    }
+    u16 x0 = KNOT_X[k], x1 = KNOT_X[k + 1u];
+    u8 y0 = KNOT_Y[k], y1 = KNOT_Y[k + 1u];
+    u16 dx = (u16)(x1 - x0);
+    if (dx == 0u) dx = 1u;
+    s16 dy = (s16)y1 - (s16)y0;
+    *out_lit = (dy < 0) ? 1u : 0u;
+    return (u8)((s16)y0 + (((s16)(x8 - x0) * dy) / (s16)dx));
+}
+
+static u8 gen_vista_pine_y(u16 px) {
+    u8 base = (u8)(50u + (((px >> 3) + (px >> 4)) & 3u));
+    u8 tree = (u8)(px & 7u);
+    u8 spire = (tree == 3u || tree == 4u) ? 5u
+             : ((tree == 2u || tree == 5u) ? 3u
+             : ((tree == 1u || tree == 6u) ? 1u : 0u));
+    u8 vary = (u8)(((px * 5u) >> 3) & 3u);
+    return (u8)(base - spire - vary);
+}
+
+/* Bake full-resolution 256x64px (32x8 tiles) 4bpp Alpine Parallax Vista into VRAM_VISTA_BASE!
+ * Uses PAL0 sky/mountain/spruce indices (12,13,14,11,10,9,2,3) -> auto-tints by time of day! */
+static void bake_genesis_parallax_vista(void) {
+    /* Shared tiles 0..3: Zenith sky, Mid sky, Dithered sky gradient, Deep spruce valley */
+    p8_fill(12u); upload_pix8_to_vram((u16)(VRAM_VISTA_BASE + 0u));
+    p8_fill(13u); upload_pix8_to_vram((u16)(VRAM_VISTA_BASE + 1u));
+    for (u16 ly = 0u; ly < 8u; ly++) {
+        for (u16 lx = 0u; lx < 8u; lx++) {
+            g_pix8[ly * 8u + lx] = (ly < 3u) ? 12u : ((ly >= 5u) ? 13u : ((((lx + ly) & 1u) == 0u) ? 12u : 13u));
+        }
+    }
+    upload_pix8_to_vram((u16)(VRAM_VISTA_BASE + 2u));
+    p8_fill(2u); p8_rect(1, 1, 2, 2, 3); p8_rect(5, 4, 2, 2, 3);
+    upload_pix8_to_vram((u16)(VRAM_VISTA_BASE + 3u));
+
+    u16 next_t = 4u;
+    for (u16 ty = 0u; ty < 8u; ty++) {
+        for (u16 tx = 0u; tx < 32u; tx++) {
+            u8 has_mtn = 0u, has_pine = 0u, has_cloud = 0u, all_pine = 1u;
+            for (u16 ly = 0u; ly < 8u; ly++) {
+                u16 py = (u16)((ty << 3) + ly);
+                for (u16 lx = 0u; lx < 8u; lx++) {
+                    u16 px = (u16)((tx << 3) + lx);
+                    u8 lit = 0u;
+                    u8 my = gen_vista_mtn_y(px, &lit);
+                    u8 pine_y = gen_vista_pine_y(px);
+                    if (py >= pine_y) {
+                        has_pine = 1u;
+                    } else {
+                        all_pine = 0u;
+                        if (py >= my) {
+                            has_mtn = 1u;
+                        } else if (py >= 5u && py <= 14u &&
+                                   ((px >= 14u && px <= 46u) || (px >= 166u && px <= 198u))) {
+                            u16 cx = (px < 100u) ? (u16)(px - 14u) : (u16)(px - 166u);
+                            u8 top_c = (cx >= 10u && cx <= 22u) ? 6u : ((cx >= 4u && cx <= 28u) ? 9u : 11u);
+                            if (py >= top_c && py <= 13u) has_cloud = 1u;
+                        }
+                    }
+                }
+            }
+
+            if (all_pine) {
+                g_vista_map[ty][tx] = (u16)(VRAM_VISTA_BASE + 3u);
+            } else if (!has_mtn && !has_pine && !has_cloud) {
+                u16 st = (ty == 0u) ? 0u : ((ty == 1u) ? 2u : 1u);
+                g_vista_map[ty][tx] = (u16)(VRAM_VISTA_BASE + st);
+            } else {
+                for (u16 ly = 0u; ly < 8u; ly++) {
+                    u16 py = (u16)((ty << 3) + ly);
+                    for (u16 lx = 0u; lx < 8u; lx++) {
+                        u16 px = (u16)((tx << 3) + lx);
+                        u8 lit = 0u;
+                        u8 my = gen_vista_mtn_y(px, &lit);
+                        u8 pine_y = gen_vista_pine_y(px);
+                        u8 col;
+                        if (py >= pine_y) {
+                            col = (py <= (u16)(pine_y + 2u) && ((px & 7u) <= 3u)) ? 3u : 2u;
+                        } else if (py >= my) {
+                            u8 snow_d = (u8)(py - my);
+                            if (lit) {
+                                u8 snow_lim = (u8)(8u + (((px * 3u) >> 2) & 3u));
+                                if (snow_d < snow_lim) col = 14u;
+                                else if (snow_d < (u8)(snow_lim + 4u)) col = 11u;
+                                else if (snow_d < (u8)(snow_lim + 16u)) col = 10u;
+                                else col = ((((px * 3u + py * 5u) & 7u) == 0u) ? 10u : 9u);
+                            } else {
+                                u8 rim_lim = (u8)(3u + ((px >> 1) & 1u));
+                                if (snow_d < rim_lim) col = 11u;
+                                else if (snow_d < 8u && (((px + py) & 3u) == 0u)) col = 10u;
+                                else col = 9u;
+                            }
+                        } else {
+                            /* Smooth alpine sky + billowy cumulus clouds */
+                            col = (py < 11u) ? 12u : ((py < 13u) ? ((((px + py) & 1u) == 0u) ? 12u : 13u) : 13u);
+                            if (py >= 5u && py <= 14u &&
+                                ((px >= 14u && px <= 46u) || (px >= 166u && px <= 198u))) {
+                                u16 cx = (px < 100u) ? (u16)(px - 14u) : (u16)(px - 166u);
+                                u8 top_c = (cx >= 10u && cx <= 22u) ? 6u : ((cx >= 4u && cx <= 28u) ? 9u : 11u);
+                                if (py >= top_c && py <= 13u) col = (py >= 12u) ? 11u : 14u;
+                            }
+                        }
+                        g_pix8[ly * 8u + lx] = col;
+                    }
+                }
+                if (next_t < 480u) {
+                    upload_pix8_to_vram((u16)(VRAM_VISTA_BASE + next_t));
+                    g_vista_map[ty][tx] = (u16)(VRAM_VISTA_BASE + next_t);
+                    next_t++;
+                } else {
+                    g_vista_map[ty][tx] = (u16)(VRAM_VISTA_BASE + 1u);
+                }
+            }
+        }
+    }
+    g_vista_vram_dirty = 0u;
 }
 
 static void draw_genesis_parallax_vista(void) {
-    static const u8 PEAK_H[32] = {
-        4u, 3u, 2u, 3u, 4u, 5u, 4u, 3u, 2u, 1u, 2u, 3u, 4u, 5u, 4u, 3u,
-        3u, 2u, 1u, 2u, 3u, 4u, 5u, 4u, 3u, 2u, 3u, 4u, 3u, 2u, 3u, 4u
-    };
-    /* Stamp seamless 64x32 alpine sky, clouds, snow-capped peaks & pine ridge onto BG_B (priority 0) */
-    for (u16 x = 0u; x < 64u; x++) {
-        u8 row_h = PEAK_H[x & 31u];
-        u8 prev_h = PEAK_H[(x + 31u) & 31u];
-        u8 next_h = PEAK_H[(x + 1u) & 31u];
-        for (u16 y = 0u; y < 32u; y++) {
-            u16 tid;
-            if (y == 1u && (x == 4u || x == 20u || x == 38u || x == 52u)) {
-                tid = GV_CLOUD_L;
-            } else if (y == 1u && (x == 5u || x == 21u || x == 39u || x == 53u)) {
-                tid = GV_CLOUD_M;
-            } else if (y == 1u && (x == 6u || x == 22u || x == 40u || x == 54u)) {
-                tid = GV_CLOUD_R;
-            } else if (y < (u16)(row_h + 1u)) {
-                tid = (y <= 1u) ? GV_SKY_TOP : ((y == (u16)row_h) ? GV_SKY_HORIZON : GV_SKY_MID);
-            } else if (y == (u16)(row_h + 1u)) {
-                if (row_h <= prev_h && row_h <= next_h) tid = GV_PEAK_TIP;
-                else if (prev_h > row_h)                tid = GV_PEAK_L;
-                else                                    tid = GV_PEAK_R;
-            } else if (y <= 6u) {
-                tid = ((x & 1u) == 0u) ? GV_MTN_LIT : GV_MTN_SHADE;
-            } else if (y == 7u) {
-                tid = GV_PINE_RIDGE;
-            } else {
-                tid = GV_PINE_BASE;
-            }
-            VDP_setTileMapXY(BG_B, TILE_ATTR_FULL(PAL0, 0, 0, 0, (u16)(VRAM_VISTA_BASE + tid)), x, y);
+    if (g_vista_vram_dirty) {
+        bake_genesis_parallax_vista();
+    }
+    /* Stamp seamless 64x32 sweeping 4bpp alpine skyline onto BG_B (priority 0, PAL0) */
+    for (u16 y = 0u; y < 32u; y++) {
+        for (u16 x = 0u; x < 64u; x++) {
+            u16 tid = (y < 8u) ? g_vista_map[y][x & 31u] : (u16)(VRAM_VISTA_BASE + 3u);
+            VDP_setTileMapXY(BG_B, TILE_ATTR_FULL(PAL0, 0, 0, 0, tid), x, y);
         }
     }
 }
 
 static void write_metatile(s16 mx, s16 my) {
-    u16 a_attr, b_attr;
+    u16 a_tl, a_tr, a_bl, a_br;
+    u16 b_tl = 0u, b_tr = 0u, b_bl = 0u, b_br = 0u;
     u8 use_parallax = (!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista) ? 1u : 0u;
     if (g_hearth.is_world_map) {
         u16 wx = (u16)((u16)mx & 255u);
@@ -1617,40 +1856,41 @@ static void write_metatile(s16 mx, s16 my) {
         while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
         while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
         hearth_globe_cell(wx, (u16)wy_s, &bg1, &bg2, NULL, NULL);
-        u16 a_tile = map_bg1_to_vram_tile(bg1);
-        u16 b_tile = map_bg2_to_vram_tile(bg2);
-        a_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, a_tile);
-        b_attr = TILE_ATTR_FULL(PAL0, (b_tile != VRAM_BG_BASE + GT_EMPTY) ? 1 : 0, 0, 0, b_tile);
+        u8 b1 = (bg1 < 64u) ? bg1 : 0u;
+        u8 ov = map_bg2_to_ov_slot(bg2);
+        a_tl = g_bg1_tl[b1]; a_tr = g_bg1_tr[b1]; a_bl = g_bg1_bl[b1]; a_br = g_bg1_br[b1];
+        b_tl = g_ov_tl[ov];  b_tr = g_ov_tr[ov];  b_bl = g_ov_bl[ov];  b_br = g_ov_br[ov];
     } else {
         s16 mw = (s16)(g_hearth.map_w ? g_hearth.map_w : HEARTH_MAP_W);
         s16 mh = (s16)(g_hearth.map_h ? g_hearth.map_h : HEARTH_MAP_H);
         if (mx < 0 || my < 0 || mx >= mw || my >= mh) {
             u16 edge_t = (use_parallax && my < 4) ? (u16)(VRAM_BG_BASE + GT_EMPTY) : (u16)(VRAM_BG_BASE + GT_BUSH);
-            a_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, edge_t);
-            b_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, VRAM_BG_BASE + GT_EMPTY);
+            u16 ea = TILE_ATTR_FULL(PAL0, 0, 0, 0, edge_t);
+            a_tl = ea; a_tr = ea; a_bl = ea; a_br = ea;
+            b_tl = g_ov_tl[0]; b_tr = g_ov_tr[0]; b_bl = g_ov_bl[0]; b_br = g_ov_br[0];
         } else {
             u16 idx = (u16)(my * mw + mx);
             u8 bg1 = g_hearth.map_bg1[idx];
             u8 bg2 = g_hearth.map_bg2[idx];
+            u8 b1 = (bg1 < 64u) ? bg1 : 0u;
+            u8 ov = map_bg2_to_ov_slot(bg2);
             if (use_parallax) {
-                /* BG_B holds 60fps scrolling alpine mountains; BG_A renders foreground & canopies */
+                /* BG_B holds 60fps sweeping alpine mountains; BG_A renders foreground & canopies */
                 if (bg1 == T_MTN_SKY) {
-                    if (bg2 != O_NONE) {
-                        a_attr = TILE_ATTR_FULL(PAL0, 1, 0, 0, map_bg2_to_vram_tile(bg2));
+                    if (ov != 0u) {
+                        a_tl = g_ov_tl[ov]; a_tr = g_ov_tr[ov]; a_bl = g_ov_bl[ov]; a_br = g_ov_br[ov];
                     } else {
-                        a_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, (u16)(VRAM_BG_BASE + GT_EMPTY));
+                        u16 emp = TILE_ATTR_FULL(PAL0, 0, 0, 0, (u16)(VRAM_BG_BASE + GT_EMPTY));
+                        a_tl = emp; a_tr = emp; a_bl = emp; a_br = emp;
                     }
-                } else if (bg2 != O_NONE) {
-                    a_attr = TILE_ATTR_FULL(PAL0, 1, 0, 0, map_bg2_opaque_to_vram_tile(bg2));
+                } else if (ov != 0u) {
+                    a_tl = g_opq_tl[ov]; a_tr = g_opq_tr[ov]; a_bl = g_opq_bl[ov]; a_br = g_opq_br[ov];
                 } else {
-                    a_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, map_bg1_to_vram_tile(bg1));
+                    a_tl = g_bg1_tl[b1]; a_tr = g_bg1_tr[b1]; a_bl = g_bg1_bl[b1]; a_br = g_bg1_br[b1];
                 }
-                b_attr = 0u; /* Unused: BG_B stays untouched for hardware parallax vista */
             } else {
-                u16 a_tile = map_bg1_to_vram_tile(bg1);
-                u16 b_tile = map_bg2_to_vram_tile(bg2);
-                a_attr = TILE_ATTR_FULL(PAL0, 0, 0, 0, a_tile);
-                b_attr = TILE_ATTR_FULL(PAL0, (b_tile != VRAM_BG_BASE + GT_EMPTY) ? 1 : 0, 0, 0, b_tile);
+                a_tl = g_bg1_tl[b1]; a_tr = g_bg1_tr[b1]; a_bl = g_bg1_bl[b1]; a_br = g_bg1_br[b1];
+                b_tl = g_ov_tl[ov];  b_tr = g_ov_tr[ov];  b_bl = g_ov_bl[ov];  b_br = g_ov_br[ov];
             }
         }
     }
@@ -1658,15 +1898,15 @@ static void write_metatile(s16 mx, s16 my) {
     u16 tx1 = (u16)((tx0 + 1) & 63);
     u16 ty0 = (u16)((my * 2) & 63);
     u16 ty1 = (u16)((ty0 + 1) & 63);
-    VDP_setTileMapXY(BG_A, a_attr, tx0, ty0);
-    VDP_setTileMapXY(BG_A, a_attr, tx1, ty0);
-    VDP_setTileMapXY(BG_A, a_attr, tx0, ty1);
-    VDP_setTileMapXY(BG_A, a_attr, tx1, ty1);
+    VDP_setTileMapXY(BG_A, a_tl, tx0, ty0);
+    VDP_setTileMapXY(BG_A, a_tr, tx1, ty0);
+    VDP_setTileMapXY(BG_A, a_bl, tx0, ty1);
+    VDP_setTileMapXY(BG_A, a_br, tx1, ty1);
     if (!use_parallax) {
-        VDP_setTileMapXY(BG_B, b_attr, tx0, ty0);
-        VDP_setTileMapXY(BG_B, b_attr, tx1, ty0);
-        VDP_setTileMapXY(BG_B, b_attr, tx0, ty1);
-        VDP_setTileMapXY(BG_B, b_attr, tx1, ty1);
+        VDP_setTileMapXY(BG_B, b_tl, tx0, ty0);
+        VDP_setTileMapXY(BG_B, b_tr, tx1, ty0);
+        VDP_setTileMapXY(BG_B, b_bl, tx0, ty1);
+        VDP_setTileMapXY(BG_B, b_br, tx1, ty1);
     }
 }
 
@@ -1740,12 +1980,14 @@ static void draw_intro_backdrop(u8 scene) {
     VDP_clearPlane(BG_B, TRUE);
     VDP_clearPlane(BG_A, TRUE);
 
-    /* Pier Solar-style 45-color multi-palette Cinema CG (PAL0 + PAL1 + PAL3; PAL2 stays WINDOW UI!) */
+    /* Pier Solar-style 45-color multi-palette Cinema CG (PAL0 + PAL1 + PAL3; PAL2 stays WINDOW UI!)
+     * Transfer via CPU while display is disabled to guarantee zero 68000 128KB DMA boundary wraps! */
     PAL_setColors(0,  CINEMA_ROM_PALS[p][0], 16, CPU);
     PAL_setColors(16, CINEMA_ROM_PALS[p][1], 16, CPU);
     PAL_setColors(48, CINEMA_ROM_PALS[p][2], 16, CPU);
     g_cinema_pals_active = 1u;
-    VDP_loadTileData(CINEMA_GEN_TILE_PTRS[p], VRAM_CG_BASE, CINEMA_ROM_TILE_COUNTS[p], DMA);
+    g_vista_vram_dirty = 1u; /* Cinema CG shares VRAM_CG_BASE -> re-bake parallax vista on exit */
+    VDP_loadTileData(CINEMA_GEN_TILE_PTRS[p], VRAM_CG_BASE, CINEMA_ROM_TILE_COUNTS[p], CPU);
 
     /* Center 32x15 multi-palette 16-bit pixel-art CG plate on 40x28 Genesis screen (x=4..35, y=2..16) */
     for (u16 ty = 0; ty < CINEMA_ROM_TH; ty++) {
@@ -2847,6 +3089,7 @@ int main(bool hard_reset) {
     VDP_setBackgroundColor(33); /* PAL2[1] warm slate backdrop */
 
     bake_bg_and_ui_tiles();
+    init_genesis_metatiles();
     bake_genesis_atlas_bitmap();
     bake_all_sprites();
     bake_env_anim_frames();
@@ -2857,6 +3100,7 @@ int main(bool hard_reset) {
         const HearthPpuPacket *boot_ppu = hearth_step_60hz(&g_hearth, 0u);
         g_last_map_rev = g_hearth.map_revision;
         upload_zone_pal0_to_cram(boot_ppu->terrain_pal_id, CPU);
+        VDP_setEnable(FALSE);
         if (g_hearth.mode == MODE_INTRO) {
             g_last_scene_mode = 2u;
             g_last_intro_scene = g_hearth.intro.scene;
@@ -2874,6 +3118,7 @@ int main(bool hard_reset) {
                 VDP_setVerticalScrollVSync(BG_B,   (s16)( boot_ppu->cam_y));
             }
         }
+        VDP_setEnable(TRUE);
         update_window_ui(boot_ppu);
         render_sprites(boot_ppu);
         SYS_doVBlankProcess();

@@ -67,16 +67,20 @@ SDL_W, SDL_H = 340, 156
 PORT_W, PORT_H = 40, 40
 ROM_W, ROM_H = 256, 120   # 32 x 15 tiles of 8x8 = 480 map entries
 ROM_TW, ROM_TH = ROM_W // 8, ROM_H // 8
-MAX_ROM_TILES = 340       # Comfortably fits in SNES BG1 VRAM (64..403) & Genesis VRAM_CG_BASE
-SNES_CG_TILE_BASE = 64    # Matches VRAM_CG_TILE_BASE in engine/platform/snes_main.c
+MAX_ROM_TILES = 480       # Zero lossy tile merging! Fits cleanly in SNES BG1 (512 slots) & Genesis VRAM
+SNES_CG_TILE_BASE = 0     # Loaded at VRAM_BG1_GFX + 0 during MODE_INTRO (terrain re-baked on exit)
 
 # Genesis CRAM slots assigned to multi-palette cinema plates (PAL2 reserved for crisp WINDOW text)
 GEN_PAL_SLOTS = (0, 1, 3)
 
-# Subtle 2x2 ordered Bayer offsets for clean 16-bit shading without Floyd-Steinberg noise
-BAYER_2X2 = (
-    (-5,  3),
-    ( 5, -3),
+# Gentle 2x2 ordered Bayer offsets (smooth 16-bit shading without harsh checkerboard patterns)
+BAYER_2X2_SNES = (
+    (-3,  1),
+    ( 2, -2),
+)
+BAYER_2X2_GEN = (
+    (-5,  2),
+    ( 4, -3),
 )
 
 
@@ -307,9 +311,9 @@ def quantize_plate_multipal(raw, num_pals, bits):
                 n = len(members)
                 centers[c_idx] = tuple(sum(m[k] for m in members) // n for k in range(6))
 
-    # Iterative palette optimization (3 passes: build 15-color palettes -> reassign tiles by true MSE)
+    # Iterative palette optimization (8 passes: build 15-color palettes -> reassign tiles by true RGB MSE)
     pals = None
-    for _pass in range(3):
+    for _pass in range(8):
         pals = []
         for p in range(num_pals):
             counts = {}
@@ -318,7 +322,36 @@ def quantize_plate_multipal(raw, num_pals, bits):
                     continue
                 for rgb in snapped_tiles[ti]:
                     counts[rgb] = counts.get(rgb, 0) + 1
-            pals.append(median_cut_palette(counts, 15, bits))
+            pal = median_cut_palette(counts, 15, bits)
+            # 2 passes of weighted k-means refinement on the 15 opaque colors to minimize perceptual MSE
+            if len(counts) > 15:
+                centers_rgb = list(pal[1:16])
+                for _km in range(2):
+                    sums = [[0, 0, 0, 0] for _ in range(15)]
+                    for rgb, cnt in counts.items():
+                        bi = 0
+                        bd = color_dist2(rgb, centers_rgb[0])
+                        for ci in range(1, 15):
+                            d = color_dist2(rgb, centers_rgb[ci])
+                            if d < bd:
+                                bd = d
+                                bi = ci
+                        s = sums[bi]
+                        s[0] += rgb[0] * cnt
+                        s[1] += rgb[1] * cnt
+                        s[2] += rgb[2] * cnt
+                        s[3] += cnt
+                    for ci in range(15):
+                        s = sums[ci]
+                        if s[3] > 0:
+                            centers_rgb[ci] = snap_rgb(
+                                int(round(s[0] / s[3])),
+                                int(round(s[1] / s[3])),
+                                int(round(s[2] / s[3])),
+                                bits,
+                            )
+                pal = [(11, 13, 20)] + centers_rgb
+            pals.append(pal)
 
         # Build fast lookup cache per palette: snapped_rgb -> (pal_idx, dist2)
         caches = []
@@ -357,7 +390,8 @@ def quantize_plate_multipal(raw, num_pals, bits):
         if changed == 0:
             break
 
-    # Final tile encoding with subtle 2x2 ordered Bayer dithering (clean Pier Solar shading)
+    # Final tile encoding with gentle 2x2 ordered Bayer dithering (clean Pier Solar shading)
+    bayer = BAYER_2X2_SNES if bits == 5 else BAYER_2X2_GEN
     encoded_tiles = []
     total_mse = 0
     for ti, t in enumerate(rgb_tiles):
@@ -365,7 +399,7 @@ def quantize_plate_multipal(raw, num_pals, bits):
         pal = pals[p]
         buf = bytearray(64)
         for py in range(8):
-            brow = BAYER_2X2[py & 1]
+            brow = bayer[py & 1]
             ro = py * 8
             for px in range(8):
                 r, g, b = t[ro + px]
@@ -385,9 +419,8 @@ def quantize_plate_multipal(raw, num_pals, bits):
                 total_mse += color_dist2((r, g, b), pal[bi])
         encoded_tiles.append(bytes(buf))
 
-    # Deduplicate with H/V-flip matching (keep palette slot with each map entry)
+    # Lossless exact + H/V-flip deduplication ONLY (zero lossy tile merging -> zero blocky artifacts!)
     unique_tiles = []
-    unique_pals = []
     tile_lookup = {}  # (bytes, pal_id) -> (tid, hflip, vflip)
     tilemap = []      # [(tid, pal_id, hflip, vflip), ...]
 
@@ -400,78 +433,16 @@ def quantize_plate_multipal(raw, num_pals, bits):
         else:
             tid = len(unique_tiles)
             unique_tiles.append(raw_t)
-            unique_pals.append(p)
             th = flip_tile_h(raw_t)
             tv = flip_tile_v(raw_t)
             thv = flip_tile_v(th)
-            # Register all 4 orientations for this tile (exact match wins first)
             tile_lookup[(raw_t, p)] = (tid, 0, 0)
             tile_lookup.setdefault((th, p), (tid, 1, 0))
             tile_lookup.setdefault((tv, p), (tid, 0, 1))
             tile_lookup.setdefault((thv, p), (tid, 1, 1))
             tilemap.append((tid, p, 0, 0))
 
-    # If > MAX_ROM_TILES, merge closest tile pairs WITHIN the same palette group
-    if len(unique_tiles) > MAX_ROM_TILES:
-        n = len(unique_tiles)
-        pairs = []
-        for p in range(num_pals):
-            pal = pals[p]
-            group = [i for i in range(n) if unique_pals[i] == p]
-            if len(group) <= 1:
-                continue
-
-            def tkey(idx):
-                t = unique_tiles[idx]
-                rs = gs = bs = 0
-                for c in t:
-                    pr, pg, pb = pal[c]
-                    rs += pr; gs += pg; bs += pb
-                lum = (rs * 3 + gs * 6 + bs) // 10
-                return (lum, rs, gs, bs)
-
-            group.sort(key=tkey)
-            win = 32
-            for pos in range(len(group)):
-                a = group[pos]
-                ta = unique_tiles[a]
-                for pos2 in range(pos + 1, min(len(group), pos + 1 + win)):
-                    b = group[pos2]
-                    err = tile_mse(ta, unique_tiles[b], pal)
-                    pairs.append((err, a, b))
-        pairs.sort(key=lambda x: x[0])
-
-        parent = list(range(n))
-
-        def find(x):
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-
-        remaining = n
-        for _err, a, b in pairs:
-            if remaining <= MAX_ROM_TILES:
-                break
-            ra, rb = find(a), find(b)
-            if ra != rb:
-                parent[rb] = ra
-                remaining -= 1
-
-        if remaining > MAX_ROM_TILES:
-            for p in range(num_pals):
-                roots = [i for i in range(n) if unique_pals[i] == p and find(i) == i]
-                for k in range(0, len(roots) - 1, 2):
-                    if remaining <= MAX_ROM_TILES:
-                        break
-                    parent[roots[k + 1]] = roots[k]
-                    remaining -= 1
-
-        active = sorted({find(i) for i in range(n)})
-        new_id = {old: idx for idx, old in enumerate(active)}
-        unique_tiles = [unique_tiles[old] for old in active]
-        tilemap = [(new_id[find(tid)], p, hf, vf) for (tid, p, hf, vf) in tilemap]
-
+    assert len(unique_tiles) <= MAX_ROM_TILES, f"Unexpected tile count {len(unique_tiles)}"
     avg_err = (total_mse / (ROM_W * ROM_H * 11.0)) ** 0.5
     return pals, unique_tiles, tilemap, avg_err
 
