@@ -1146,201 +1146,242 @@ static uint8_t macro_char_to_region(char c, uint8_t mx, uint8_t my) {
     return REGION_HEARTLAND;
 }
 
+/* Multiply-free 65-byte-stride lookup: my * 65 + mx == (my << 6) + my + mx (zero __mulhi3 on SNES 65816!) */
+#define GLOBE_MACRO_CHAR(mx, my) \
+    ((&GLOBE_MACRO_ROWS[0][0])[((uint16_t)(my) << 6) + (uint16_t)(my) + (uint16_t)(mx)])
+
 uint8_t hearth_globe_atlas_cell(uint8_t mx, uint8_t my) {
     char c;
     mx = (uint8_t)(mx & 63u);
-    my = (uint8_t)(my % HEARTH_ATLAS_H);
-    c = GLOBE_MACRO_ROWS[my][mx];
-    if (c == '~') return 0u; /* Deep Cobalt Ocean */
-    if (c == 's') return 1u; /* Turquoise Shallows (Raftable) */
-    if (c == 'r') return 2u; /* Coral Reef Shoals (Raftable) */
-    if (c == 'g' || c == 'h' || c == 'f' || c == 'm') return 3u; /* Emerald Heartland */
-    if (c == 'b') return (my >= 32u) ? ((mx < 22u) ? 5u : 4u) : 3u;
-    if (c == 'd' || c == 'o') return 4u; /* Sands of Babana */
-    if (c == 'p') return 5u; /* Suncrest Paradise */
-    if (c == 'i' || c == 'I') return 6u; /* Frostmere North */
-    if (c == 'j' || c == 'J') return 7u; /* Canopy Wilds */
-    if (c == 'v' || c == 'V' || c == 'l') return 8u; /* Cinderpeak Caldera */
-    if (c == 't' || c == 'T') return 9u; /* Aetheris Citadel */
-    return 0u;
+    while (my >= (uint8_t)HEARTH_ATLAS_H) my = (uint8_t)(my - (uint8_t)HEARTH_ATLAS_H);
+    c = GLOBE_MACRO_CHAR(mx, my);
+    switch (c) {
+        case '~': return 0u; /* Deep Cobalt Ocean */
+        case 's': return 1u; /* Turquoise Shallows (Raftable) */
+        case 'r': return 2u; /* Coral Reef Shoals (Raftable) */
+        case 'g': case 'h': case 'f': case 'm': return 3u; /* Emerald Heartland */
+        case 'b': return (my >= 32u) ? ((mx < 22u) ? 5u : 4u) : 3u;
+        case 'd': case 'o': return 4u; /* Sands of Babana */
+        case 'p': return 5u; /* Suncrest Paradise */
+        case 'i': case 'I': return 6u; /* Frostmere North */
+        case 'j': case 'J': return 7u; /* Canopy Wilds */
+        case 'v': case 'V': case 'l': return 8u; /* Cinderpeak Caldera */
+        case 't': case 'T': return 9u; /* Aetheris Citadel */
+        default:  return 0u;
+    }
 }
 
 uint8_t hearth_globe_region_at(uint16_t tx, uint16_t ty) {
     uint8_t mx = (uint8_t)((tx & 255u) >> 2);
-    uint8_t my = (uint8_t)((ty % HEARTH_GLOBE_H) >> 2);
-    return macro_char_to_region(GLOBE_MACRO_ROWS[my][mx], mx, my);
+    uint16_t y = ty;
+    uint8_t my;
+    while (y >= HEARTH_GLOBE_H) y = (uint16_t)(y - HEARTH_GLOBE_H);
+    my = (uint8_t)(y >> 2);
+    return macro_char_to_region(GLOBE_MACRO_CHAR(mx, my), mx, my);
 }
 
 void hearth_globe_cell(uint16_t tx, uint16_t ty, uint8_t *out_bg1, uint8_t *out_bg2, uint8_t *out_col, uint8_t *out_region) {
     uint16_t x = (uint16_t)(tx & 255u);
-    uint16_t y = (uint16_t)(ty % HEARTH_GLOBE_H);
-    uint8_t  mx = (uint8_t)(x >> 2);
-    uint8_t  my = (uint8_t)(y >> 2);
-    uint8_t  lx = (uint8_t)(x & 3u);
-    uint8_t  ly = (uint8_t)(y & 3u);
-    uint8_t  hash = (uint8_t)((x * 37u + y * 53u) & 15u);
-    char     c = GLOBE_MACRO_ROWS[my][mx];
+    uint16_t y = ty;
+    uint8_t  mx, my, lx, ly, hash;
+    char     c;
     uint8_t  bg1 = T_WORLD_OCEAN;
     uint8_t  bg2 = O_NONE;
     uint8_t  col = COL_WATER;
-    uint8_t  reg = macro_char_to_region(c, mx, my);
 
-    /* 1. Base macro-biome decode (0 bytes RAM, O(1)) */
-    if (c == '~') {
-        bg1 = T_WORLD_OCEAN;   col = COL_WATER;
-    } else if (c == 's') {
-        bg1 = T_WORLD_SHALLOW; col = COL_SHALLOW;
-    } else if (c == 'r') {
-        bg1 = ((hash & 3u) == 0u) ? T_WORLD_CORAL : T_WORLD_SHALLOW;
-        col = COL_SHALLOW;
-    } else if (c == 'b') {
-        bg1 = T_WORLD_BEACH;   col = COL_WALKABLE;
-    } else if (c == 'g') {
-        if (hash == 2u || hash == 10u) bg1 = T_GRASS_ALT;
-        else if (hash == 7u)           bg1 = T_FLOWERS;
-        else                           bg1 = T_GRASS;
-        col = COL_WALKABLE;
-    } else if (c == 'h') {
-        bg1 = ((hash & 3u) == 0u) ? T_GRASS : T_WORLD_HILL;
-        col = COL_WALKABLE;
-    } else if (c == 'f') {
-        bg1 = T_WORLD_FOREST;  col = COL_SOLID;
-    } else if (c == 'm') {
-        bg1 = T_WORLD_PEAK;    col = COL_SOLID;
-    } else if (c == 'd') {
-        bg1 = (hash == 5u) ? T_WORLD_BEACH : T_WORLD_SAND;
-        col = COL_WALKABLE;
-    } else if (c == 'o') {
-        if (hash == 1u && (lx == 0u || lx == 3u)) {
-            bg1 = T_PALM_TREE; col = COL_SOLID;
-        } else {
-            bg1 = (hash == 4u) ? T_FLOWERS : T_GRASS;
+    while (y >= HEARTH_GLOBE_H) y = (uint16_t)(y - HEARTH_GLOBE_H);
+    mx = (uint8_t)(x >> 2);
+    my = (uint8_t)(y >> 2);
+    c  = GLOBE_MACRO_CHAR(mx, my);
+
+    /* Multiply-free 4-bit deterministic hash (pure shift/add/xor for 3.58MHz SNES 65816) */
+    hash = (uint8_t)(((x + (x << 2)) ^ (y + (y << 2) + (y << 1)) ^ ((x >> 2) + (y >> 3))) & 15u);
+
+    /* 1. Base macro-biome decode via O(1) switch (0 bytes RAM, 0 multiplies, 0 divides) */
+    switch (c) {
+        case '~':
+            bg1 = T_WORLD_OCEAN;   col = COL_WATER;
+            break;
+        case 's':
+            bg1 = T_WORLD_SHALLOW; col = COL_SHALLOW;
+            break;
+        case 'r':
+            bg1 = ((hash & 3u) == 0u) ? T_WORLD_CORAL : T_WORLD_SHALLOW;
+            col = COL_SHALLOW;
+            break;
+        case 'b':
+            bg1 = T_WORLD_BEACH;   col = COL_WALKABLE;
+            break;
+        case 'g':
+            if (hash == 2u || hash == 10u) bg1 = T_GRASS_ALT;
+            else if (hash == 7u)           bg1 = T_FLOWERS;
+            else                           bg1 = T_GRASS;
             col = COL_WALKABLE;
+            break;
+        case 'h':
+            bg1 = ((hash & 3u) == 0u) ? T_GRASS : T_WORLD_HILL;
+            col = COL_WALKABLE;
+            break;
+        case 'f':
+            bg1 = T_WORLD_FOREST;  col = COL_SOLID;
+            break;
+        case 'm':
+        case 'I':
+        case 'V':
+            bg1 = T_WORLD_PEAK;    col = COL_SOLID;
+            break;
+        case 'd':
+            bg1 = (hash == 5u) ? T_WORLD_BEACH : T_WORLD_SAND;
+            col = COL_WALKABLE;
+            break;
+        case 'o':
+            lx = (uint8_t)(x & 3u);
+            if (hash == 1u && (lx == 0u || lx == 3u)) {
+                bg1 = T_PALM_TREE; col = COL_SOLID;
+            } else {
+                bg1 = (hash == 4u) ? T_FLOWERS : T_GRASS;
+                col = COL_WALKABLE;
+            }
+            break;
+        case 'p':
+            lx = (uint8_t)(x & 3u);
+            ly = (uint8_t)(y & 3u);
+            if (hash == 3u && ly == 0u && lx == 2u) {
+                bg1 = T_PALM_TREE; col = COL_SOLID;
+            } else if (hash == 9u) {
+                bg1 = T_GRASS;     col = COL_WALKABLE;
+            } else {
+                bg1 = T_WORLD_BEACH; col = COL_WALKABLE;
+            }
+            break;
+        case 'i':
+            bg1 = (hash == 6u) ? T_WORLD_HILL : T_WORLD_SNOW;
+            col = COL_WALKABLE;
+            break;
+        case 'j':
+            bg1 = (hash == 4u) ? T_FLOWERS : T_WORLD_JUNGLE;
+            col = COL_WALKABLE;
+            break;
+        case 'J':
+            bg1 = T_WORLD_FOREST;  col = COL_SOLID;
+            break;
+        case 'v':
+            bg1 = (hash == 2u) ? T_BOULDER : T_ROCKY_PATH;
+            col = (hash == 2u) ? COL_SOLID : COL_WALKABLE;
+            break;
+        case 'l':
+            bg1 = T_WORLD_LAVA;    col = COL_LAVA;
+            break;
+        case 't':
+            bg1 = (hash == 5u) ? T_COBBLE : T_WORLD_TECH;
+            col = COL_WALKABLE;
+            break;
+        case 'T':
+            bg1 = T_WORLD_CASTLE;  col = COL_SOLID;
+            break;
+        default:
+            break;
+    }
+
+    /* 2. Y-Band Culled Landmark & Road Clearings (skips 90%+ of globe tiles in 1 branch!) */
+    if (y >= 64u && y <= 118u) {
+        if (x >= 68u && x <= 148u) {
+            /* Hollow Oak Clearing (72..82, 106..113) + North Road to Windmill Hamlet (77..79, 86..111) */
+            if (y >= 106u && y <= 113u && x >= 72u && x <= 82u) {
+                bg1 = (y >= 110u && y <= 111u) ? T_DIRT : T_GRASS; col = COL_WALKABLE;
+            }
+            if (x >= 77u && x <= 79u && y >= 86u && y <= 111u) {
+                bg1 = T_DIRT; col = COL_WALKABLE;
+            }
+            /* Main West-East Highway: Windmill Hamlet (78,87) -> Sunhill (104,87) -> Bramblewood (132,87) */
+            if (y >= 86u && y <= 88u && x >= 77u && x <= 135u) {
+                bg1 = T_DIRT; col = COL_WALKABLE;
+            }
+            /* Central Royal Cobble Avenue: Castle Aurelia (104,69) -> Sunhill (104,82) -> Timber Pier (108,114) */
+            if (x >= 103u && x <= 105u && y >= 69u && y <= 104u) {
+                bg1 = T_COBBLE; col = COL_WALKABLE;
+            }
+            if (y >= 102u && y <= 104u && x >= 104u && x <= 110u) {
+                bg1 = T_DIRT; col = COL_WALKABLE;
+            }
+            if (x >= 107u && x <= 109u && y >= 102u && y <= 114u) {
+                bg1 = T_DIRT; col = COL_WALKABLE;
+            }
+            /* Southern Meadow Connector: Hollow Oak (78,110) -> Timber Pier (108,110) -> Watchtower (130,108) */
+            if (y >= 109u && y <= 111u && x >= 74u && x <= 132u) {
+                bg1 = T_DIRT; col = COL_WALKABLE;
+            }
+            /* East Bank Highway: Watchtower (130,108) -> Bramblewood (132,86) -> Whiskerburgh (138,75) */
+            if (x >= 130u && x <= 132u && y >= 75u && y <= 109u) {
+                bg1 = T_DIRT; col = COL_WALKABLE;
+            }
+            if (y >= 74u && y <= 76u && x >= 131u && x <= 140u) {
+                bg1 = T_DIRT; col = COL_WALKABLE;
+            }
+            /* Heartland Timber Pier Wooden Jetty into Turquoise Bay (107..109, 114..116) */
+            if (y >= 114u && y <= 116u && x >= 107u && x <= 109u) {
+                bg1 = T_DOCK_PIER; col = COL_WALKABLE;
+            }
+            /* Hollow Oak Gate Landmark (74, 108) */
+            if (x == 74u && y == 108u) { bg1 = T_HOLLOW_OAK; col = COL_SOLID; }
+            if (y == 107u && x >= 73u && x <= 75u) { bg2 = O_OAK_CROWN; }
+            if (x == 74u && y == 109u) { bg1 = T_SHRINE_RUNE; col = COL_WALKABLE; }
+            /* Windmill Hamlet (77..79, 84..85) */
+            if (y >= 84u && y <= 85u && x >= 77u && x <= 79u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
+            /* Sunhill Market (102..106, 80..81) with walkable bypasses */
+            if (y >= 80u && y <= 81u && x >= 102u && x <= 106u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
+            if ((x == 101u || x == 107u) && y >= 79u && y <= 83u) { bg1 = T_COBBLE; col = COL_WALKABLE; }
+            /* Castle Aurelia (101..107, 65..67) */
+            if (y >= 65u && y <= 67u && x >= 101u && x <= 107u) { bg1 = T_WORLD_CASTLE; col = COL_SOLID; }
+            /* Bramblewood Crossing (132, 85) */
+            if (x == 132u && y == 85u) { bg1 = T_SHRINE_PILLAR; col = COL_SOLID; }
+            if (x == 132u && y == 86u) { bg1 = T_SHRINE_RUNE;   col = COL_WALKABLE; }
+            /* Sunken Watchtower (129..131, 104..105) */
+            if (y >= 104u && y <= 105u && x >= 129u && x <= 131u) { bg1 = T_WORLD_RUINS; col = COL_SOLID; }
+            /* Whiskerburgh (136..140, 72..73) */
+            if (y >= 72u && y <= 73u && x >= 136u && x <= 140u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
+        } else if (y == 64u) {
+            if (x >= 30u && x <= 34u) { bg1 = T_ROCKY_PATH; col = COL_WALKABLE; }
+            else if (x >= 218u && x <= 222u) { bg1 = T_WORLD_TECH; col = COL_WALKABLE; }
         }
-    } else if (c == 'p') {
-        if (hash == 3u && ly == 0u && lx == 2u) {
-            bg1 = T_PALM_TREE; col = COL_SOLID;
-        } else if (hash == 9u) {
-            bg1 = T_GRASS;     col = COL_WALKABLE;
-        } else {
+    } else if (y >= 143u && y <= 157u) {
+        /* 3. Suncrest Coral Cove (52, 146) & Oasis of Babana (132, 154) Clearings & Docks */
+        if (x >= 49u && x <= 55u && y <= 149u) {
             bg1 = T_WORLD_BEACH; col = COL_WALKABLE;
+            if (x >= 51u && x <= 53u && y >= 144u && y <= 145u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
+            if (x == 52u && y == 147u) { bg1 = T_DOCK_PIER; col = COL_WALKABLE; }
+        } else if (x >= 129u && x <= 135u && y >= 151u) {
+            bg1 = T_GRASS; col = COL_WALKABLE;
+            if (x >= 131u && x <= 133u && y >= 152u && y <= 153u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
+            if ((x == 129u || x == 135u) && y == 153u) { bg1 = T_PALM_TREE; col = COL_SOLID; }
         }
-    } else if (c == 'i') {
-        bg1 = (hash == 6u) ? T_WORLD_HILL : T_WORLD_SNOW;
-        col = COL_WALKABLE;
-    } else if (c == 'I') {
-        bg1 = T_WORLD_PEAK;    col = COL_SOLID;
-    } else if (c == 'j') {
-        bg1 = (hash == 4u) ? T_FLOWERS : T_WORLD_JUNGLE;
-        col = COL_WALKABLE;
-    } else if (c == 'J') {
-        bg1 = T_WORLD_FOREST;  col = COL_SOLID;
-    } else if (c == 'v') {
-        bg1 = (hash == 2u) ? T_BOULDER : T_ROCKY_PATH;
-        col = (hash == 2u) ? COL_SOLID : COL_WALKABLE;
-    } else if (c == 'V') {
-        bg1 = T_WORLD_PEAK;    col = COL_SOLID;
-    } else if (c == 'l') {
-        bg1 = T_WORLD_LAVA;    col = COL_LAVA;
-    } else if (c == 't') {
-        bg1 = (hash == 5u) ? T_COBBLE : T_WORLD_TECH;
-        col = COL_WALKABLE;
-    } else if (c == 'T') {
-        bg1 = T_WORLD_CASTLE;  col = COL_SOLID;
-    }
-
-    /* 2. Emerald Heartland Roads & Landmark Clearings (guaranteed open on-foot paths!) */
-    if (x >= 68u && x <= 148u && y >= 64u && y <= 118u) {
-        /* Hollow Oak Clearing (72..82, 106..113) + North Road to Windmill Hamlet (77..79, 86..111) */
-        if (x >= 72u && x <= 82u && y >= 106u && y <= 113u) {
-            bg1 = (y >= 110u && y <= 111u) ? T_DIRT : T_GRASS; col = COL_WALKABLE;
+    } else if (y <= 24u) {
+        /* 4a. Frostmere Noel Village Plaza */
+        if (y >= 20u && x >= 126u && x <= 130u) {
+            bg1 = T_WORLD_SNOW; col = COL_WALKABLE;
+            if (x >= 127u && x <= 129u && y == 21u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
         }
-        if (x >= 77u && x <= 79u && y >= 86u && y <= 111u) {
-            bg1 = T_DIRT; col = COL_WALKABLE;
+    } else if (y >= 60u && y <= 63u) {
+        /* 4b. Cinderpeak Caldera Gate & Aetheris Citadel Spire */
+        if (x >= 30u && x <= 34u) {
+            bg1 = T_ROCKY_PATH; col = COL_WALKABLE;
+            if (x >= 31u && x <= 33u && y == 61u) { bg1 = T_WORLD_RUINS; col = COL_SOLID; }
+        } else if (x >= 218u && x <= 222u) {
+            bg1 = T_WORLD_TECH; col = COL_WALKABLE;
+            if (x >= 219u && x <= 221u && y == 61u) { bg1 = T_WORLD_CASTLE; col = COL_SOLID; }
         }
-        /* Main West-East Highway: Windmill Hamlet (78,87) -> Sunhill (104,87) -> Bramblewood (132,87) */
-        if (x >= 77u && x <= 135u && y >= 86u && y <= 88u) {
-            bg1 = T_DIRT; col = COL_WALKABLE;
+    } else if (y >= 124u && y <= 128u) {
+        /* 4c. Canopy Treetop Village */
+        if (x >= 210u && x <= 214u) {
+            bg1 = T_WORLD_JUNGLE; col = COL_WALKABLE;
+            if (x >= 211u && x <= 213u && y == 125u) { bg1 = T_DOCK_PIER; col = COL_SOLID; }
         }
-        /* Central Royal Cobble Avenue: Castle Aurelia (104,69) -> Sunhill (104,82) -> Timber Pier (108,114) */
-        if (x >= 103u && x <= 105u && y >= 69u && y <= 104u) {
-            bg1 = T_COBBLE; col = COL_WALKABLE;
-        }
-        if (x >= 104u && x <= 110u && y >= 102u && y <= 104u) {
-            bg1 = T_DIRT; col = COL_WALKABLE;
-        }
-        if (x >= 107u && x <= 109u && y >= 102u && y <= 114u) {
-            bg1 = T_DIRT; col = COL_WALKABLE;
-        }
-        /* Southern Meadow Connector: Hollow Oak (78,110) -> Timber Pier (108,110) -> Watchtower (130,108) */
-        if (x >= 74u && x <= 132u && y >= 109u && y <= 111u) {
-            bg1 = T_DIRT; col = COL_WALKABLE;
-        }
-        /* East Bank Highway: Watchtower (130,108) -> Bramblewood (132,86) -> Whiskerburgh (138,75) */
-        if (x >= 130u && x <= 132u && y >= 75u && y <= 109u) {
-            bg1 = T_DIRT; col = COL_WALKABLE;
-        }
-        if (x >= 131u && x <= 140u && y >= 74u && y <= 76u) {
-            bg1 = T_DIRT; col = COL_WALKABLE;
-        }
-        /* Heartland Timber Pier Wooden Jetty into Turquoise Bay (107..109, 114..116) */
-        if (x >= 107u && x <= 109u && y >= 114u && y <= 116u) {
-            bg1 = T_DOCK_PIER; col = COL_WALKABLE;
-        }
-        /* Hollow Oak Gate Landmark (74, 108) */
-        if (x == 74u && y == 108u) { bg1 = T_HOLLOW_OAK; col = COL_SOLID; }
-        if (y == 107u && x >= 73u && x <= 75u) { bg2 = O_OAK_CROWN; }
-        if (x == 74u && y == 109u) { bg1 = T_SHRINE_RUNE; col = COL_WALKABLE; }
-        /* Windmill Hamlet (77..79, 84..85) */
-        if (x >= 77u && x <= 79u && y >= 84u && y <= 85u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
-        /* Sunhill Market (102..106, 80..81) with walkable bypasses */
-        if (x >= 102u && x <= 106u && y >= 80u && y <= 81u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
-        if ((x == 101u || x == 107u) && y >= 79u && y <= 83u) { bg1 = T_COBBLE; col = COL_WALKABLE; }
-        /* Castle Aurelia (101..107, 65..67) */
-        if (x >= 101u && x <= 107u && y >= 65u && y <= 67u) { bg1 = T_WORLD_CASTLE; col = COL_SOLID; }
-        /* Bramblewood Crossing (132, 85) */
-        if (x == 132u && y == 85u) { bg1 = T_SHRINE_PILLAR; col = COL_SOLID; }
-        if (x == 132u && y == 86u) { bg1 = T_SHRINE_RUNE;   col = COL_WALKABLE; }
-        /* Sunken Watchtower (129..131, 104..105) */
-        if (x >= 129u && x <= 131u && y >= 104u && y <= 105u) { bg1 = T_WORLD_RUINS; col = COL_SOLID; }
-        /* Whiskerburgh (136..140, 72..73) */
-        if (x >= 136u && x <= 140u && y >= 72u && y <= 73u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
-    }
-
-    /* 3. Suncrest Coral Cove (52, 146) & Oasis of Babana (132, 154) Clearings & Docks */
-    if (x >= 49u && x <= 55u && y >= 143u && y <= 149u) {
-        bg1 = T_WORLD_BEACH; col = COL_WALKABLE;
-        if (x >= 51u && x <= 53u && y >= 144u && y <= 145u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
-        if (x == 52u && y == 147u) { bg1 = T_DOCK_PIER; col = COL_WALKABLE; }
-    }
-    if (x >= 129u && x <= 135u && y >= 151u && y <= 157u) {
-        bg1 = T_GRASS; col = COL_WALKABLE;
-        if (x >= 131u && x <= 133u && y >= 152u && y <= 153u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
-        if ((x == 129u || x == 135u) && y == 153u) { bg1 = T_PALM_TREE; col = COL_SOLID; }
-    }
-
-    /* 4. Outer 4 Continents Preview Landmark Plazas (Frostmere, Canopy, Cinderpeak, Aetheris) */
-    if (x >= 126u && x <= 130u && y >= 20u && y <= 24u) {
-        bg1 = T_WORLD_SNOW; col = COL_WALKABLE;
-        if (x >= 127u && x <= 129u && y == 21u) { bg1 = T_WORLD_TOWN; col = COL_SOLID; }
-    }
-    if (x >= 210u && x <= 214u && y >= 124u && y <= 128u) {
-        bg1 = T_WORLD_JUNGLE; col = COL_WALKABLE;
-        if (x >= 211u && x <= 213u && y == 125u) { bg1 = T_DOCK_PIER; col = COL_SOLID; }
-    }
-    if (x >= 30u && x <= 34u && y >= 60u && y <= 64u) {
-        bg1 = T_ROCKY_PATH; col = COL_WALKABLE;
-        if (x >= 31u && x <= 33u && y == 61u) { bg1 = T_WORLD_RUINS; col = COL_SOLID; }
-    }
-    if (x >= 218u && x <= 222u && y >= 60u && y <= 64u) {
-        bg1 = T_WORLD_TECH; col = COL_WALKABLE;
-        if (x >= 219u && x <= 221u && y == 61u) { bg1 = T_WORLD_CASTLE; col = COL_SOLID; }
     }
 
     if (out_bg1)    *out_bg1 = bg1;
     if (out_bg2)    *out_bg2 = bg2;
     if (out_col)    *out_col = col;
-    if (out_region) *out_region = reg;
+    if (out_region) *out_region = macro_char_to_region(c, mx, my);
 }
 
 /* ============================================================================

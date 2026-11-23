@@ -1376,22 +1376,6 @@ static u16 snes_map_row_off(u16 my) {
     return (u16)((my << 5) + (my << 3) + (my << 2)); /* my * 44 */
 }
 
-static u16 snes_globe_tile_entry(s16 mx, s16 my) {
-    u16 wx;
-    s16 wy_s;
-    u8 bg1, bg2;
-
-    wx = (u16)((u16)mx & 255u);
-    wy_s = my;
-    while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
-    while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
-    hearth_globe_cell(wx, (u16)wy_s, &bg1, &bg2, NULL, NULL);
-    if (bg2 != 0u) {
-        return SNES_TILE(ST_CANOPY, 0u, 1u);
-    }
-    return (bg1 < 63u) ? TERRAIN_TILE_LUT[bg1] : (u16)ST_WORLD_OCEAN;
-}
-
 static void bake_world_tile_cache(void) {
     u16 idx, ov, t;
     if (g_hearth.is_world_map) return;
@@ -1417,8 +1401,9 @@ static void bake_world_tile_cache(void) {
 }
 
 static void stream_world_col(s16 mx, s16 my_start) {
-    u16 half_col, row_off, off, k, entry, idx, idx_valid, step_w;
-    s16 my, mw, mh;
+    u16 half_col, row_off, off, k, entry, idx, idx_valid, step_w, wx, wy;
+    s16 my, mw, mh, wy_s;
+    u8 bg1, bg2;
 
     half_col = (u16)(((u16)mx & 15u) << 1);
     if (((u16)mx & 16u) == 0u) {
@@ -1430,15 +1415,23 @@ static void stream_world_col(s16 mx, s16 my_start) {
     row_off = (u16)(((u16)my_start & 15u) << 6);
 
     if (g_hearth.is_world_map) {
-        my = my_start;
-        for (k = 0u; k < 16u; k++, my++) {
-            entry = snes_globe_tile_entry(mx, my);
+        wx = (u16)((u16)mx & 255u);
+        wy_s = my_start;
+        while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
+        while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
+        wy = (u16)wy_s;
+        for (k = 0u; k < 16u; k++) {
+            hearth_globe_cell(wx, wy, &bg1, &bg2, NULL, NULL);
+            entry = (bg2 != 0u) ? SNES_TILE(ST_CANOPY, 0u, 1u)
+                  : ((bg1 < 63u) ? TERRAIN_TILE_LUT[bg1] : (u16)ST_WORLD_OCEAN);
             off = (u16)(half_col + row_off);
             g_bg1_map[off]              = entry;
             g_bg1_map[(u16)(off + 1u)]  = entry;
             g_bg1_map[(u16)(off + 32u)] = entry;
             g_bg1_map[(u16)(off + 33u)] = entry;
             row_off = (u16)((row_off + 64u) & 1023u);
+            wy++;
+            if (wy >= HEARTH_GLOBE_H) wy = 0u;
         }
         return;
     }
@@ -1484,8 +1477,9 @@ static void stream_world_col(s16 mx, s16 my_start) {
 }
 
 static void stream_world_row(s16 mx_start, s16 my) {
-    u16 row_off, off, k, entry, idx;
-    s16 mx, mw, mh;
+    u16 row_off, off, k, entry, idx, wx, wy;
+    s16 mx, mw, mh, wy_s;
+    u8 bg1, bg2;
 
     row_off = (u16)(((u16)my & 15u) << 6);
     g_bg1_dirty_l = 1;
@@ -1496,14 +1490,22 @@ static void stream_world_row(s16 mx_start, s16 my) {
     if (((u16)mx & 16u) != 0u) off = (u16)(off + 1024u);
 
     if (g_hearth.is_world_map) {
-        for (k = 0u; k < 18u; k++, mx++) {
-            entry = snes_globe_tile_entry(mx, my);
+        wx = (u16)((u16)mx_start & 255u);
+        wy_s = my;
+        while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
+        while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
+        wy = (u16)wy_s;
+        for (k = 0u; k < 18u; k++) {
+            hearth_globe_cell(wx, wy, &bg1, &bg2, NULL, NULL);
+            entry = (bg2 != 0u) ? SNES_TILE(ST_CANOPY, 0u, 1u)
+                  : ((bg1 < 63u) ? TERRAIN_TILE_LUT[bg1] : (u16)ST_WORLD_OCEAN);
             g_bg1_map[off]              = entry;
             g_bg1_map[(u16)(off + 1u)]  = entry;
             g_bg1_map[(u16)(off + 32u)] = entry;
             g_bg1_map[(u16)(off + 33u)] = entry;
             off = (u16)(off + 2u);
             if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
+            wx = (u16)((wx + 1u) & 255u);
         }
         return;
     }
@@ -1563,34 +1565,52 @@ static void build_full_world_bg1(s16 cam_x, s16 cam_y) {
 }
 
 static void stream_world_bg1(s16 cam_x, s16 cam_y) {
-    s16 cmx, cmy;
+    s16 cmx, cmy, dx, dy;
 
     cmx = (s16)(cam_x >> 4);
     cmy = (s16)(cam_y >> 4);
     if (cmx == g_last_cam_mx && cmy == g_last_cam_my) return;
 
-    if ((cmx - g_last_cam_mx) > 2 || (g_last_cam_mx - cmx) > 2 ||
-        (cmy - g_last_cam_my) > 2 || (g_last_cam_my - cmy) > 2) {
+    dx = (s16)(cmx - g_last_cam_mx);
+    dy = (s16)(cmy - g_last_cam_my);
+    if (g_hearth.is_world_map) {
+        if (dx > 128) dx = (s16)(dx - HEARTH_GLOBE_W);
+        else if (dx < -128) dx = (s16)(dx + HEARTH_GLOBE_W);
+        if (dy > 96) dy = (s16)(dy - HEARTH_GLOBE_H);
+        else if (dy < -96) dy = (s16)(dy + HEARTH_GLOBE_H);
+    }
+
+    if (dx > 2 || dx < -2 || dy > 2 || dy < -2) {
         build_full_world_bg1(cam_x, cam_y);
         return;
     }
 
-    while (g_last_cam_mx < cmx) {
+    while (dx > 0) {
         g_last_cam_mx++;
+        if (g_hearth.is_world_map && g_last_cam_mx >= HEARTH_GLOBE_W) g_last_cam_mx = 0;
         stream_world_col((s16)(g_last_cam_mx + 16), (s16)(g_last_cam_my - 1));
+        dx--;
     }
-    while (g_last_cam_mx > cmx) {
+    while (dx < 0) {
         g_last_cam_mx--;
+        if (g_hearth.is_world_map && g_last_cam_mx < 0) g_last_cam_mx = (s16)(HEARTH_GLOBE_W - 1);
         stream_world_col((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my - 1));
+        dx++;
     }
-    while (g_last_cam_my < cmy) {
+    while (dy > 0) {
         g_last_cam_my++;
+        if (g_hearth.is_world_map && g_last_cam_my >= HEARTH_GLOBE_H) g_last_cam_my = 0;
         stream_world_row((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my + 14));
+        dy--;
     }
-    while (g_last_cam_my > cmy) {
+    while (dy < 0) {
         g_last_cam_my--;
+        if (g_hearth.is_world_map && g_last_cam_my < 0) g_last_cam_my = (s16)(HEARTH_GLOBE_H - 1);
         stream_world_row((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my - 1));
+        dy++;
     }
+    g_last_cam_mx = cmx;
+    g_last_cam_my = cmy;
 }
 
 static void build_battle_bg1(u8 biome) {
