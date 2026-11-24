@@ -14,6 +14,7 @@ import {
   OamSprite,
   PartyMemberState,
   PpuFramePacket,
+  T_FIREPLACE,
   T_LANTERN_POST,
   T_MTN_SKY,
   TILE_SIZE,
@@ -21,6 +22,7 @@ import {
   VIEW_TILE_W,
   WorldMapData,
 } from '../core/types';
+import { resolveChronoMeta } from './chronoTilesetData';
 import { PixelAtlas } from './pixelAtlas';
 
 export class SoftwarePpuRenderer {
@@ -126,28 +128,48 @@ export class SoftwarePpuRenderer {
       this.renderMountainVista(ctx, packet);
     }
 
-    // 1. BG1 Terrain & Architecture Plane
+    // 1. BG1 Terrain & Architecture Plane (Unified Chrono/Mana Autotiling, Shorelines & Cast Shadows!)
     if (packet.isWorldMap) {
       // Real-time 24x18 toroidal sliding-window tile stream directly from C core!
+      const vbg = packet.viewBg1;
+      const vov = packet.viewBg2;
       for (let vy = 0; vy < VIEW_TILE_H; vy++) {
-        const sy = (packet.viewOriginY + vy) * TILE_SIZE - camY;
+        const wy = packet.viewOriginY + vy;
+        const sy = wy * TILE_SIZE - camY;
         const rowOff = vy * VIEW_TILE_W;
+        const nRowOff = Math.max(0, vy - 1) * VIEW_TILE_W;
+        const sRowOff = Math.min(VIEW_TILE_H - 1, vy + 1) * VIEW_TILE_W;
         for (let vx = 0; vx < VIEW_TILE_W; vx++) {
-          const sx = (packet.viewOriginX + vx) * TILE_SIZE - camX;
-          const tileId = packet.viewBg1[rowOff + vx];
-          const img = atlas.getBg1Tile(tileId, animTick);
+          const wx = packet.viewOriginX + vx;
+          const sx = wx * TILE_SIZE - camX;
+          const tileId = vbg[rowOff + vx];
+          const tn = vbg[nRowOff + vx];
+          const ts = vbg[sRowOff + vx];
+          const tw = vbg[rowOff + Math.max(0, vx - 1)];
+          const te = vbg[rowOff + Math.min(VIEW_TILE_W - 1, vx + 1)];
+          const metaId = resolveChronoMeta(tileId, vov[rowOff + vx], tn, ts, tw, te, wx, wy, true);
+          const img = atlas.getBg1Tile(metaId, animTick);
           ctx.drawImage(img, sx, sy, TILE_SIZE, TILE_SIZE);
         }
       }
     } else {
+      const bg1 = map.bg1;
+      const bg2 = map.bg2;
       for (let r = startRow; r <= endRow; r++) {
         const sy = r * TILE_SIZE - camY;
         const rowOff = r * mapW;
+        const nRowOff = Math.max(0, r - 1) * mapW;
+        const sRowOff = Math.min(mapH - 1, r + 1) * mapW;
         for (let c = startCol; c <= endCol; c++) {
           const sx = c * TILE_SIZE - camX;
-          const tileId = map.bg1[rowOff + c];
+          const tileId = bg1[rowOff + c];
           if (tileId === T_MTN_SKY && packet.hasMountainVista) continue;
-          const img = atlas.getBg1Tile(tileId, animTick);
+          const tn = bg1[nRowOff + c];
+          const ts = bg1[sRowOff + c];
+          const tw = bg1[rowOff + Math.max(0, c - 1)];
+          const te = bg1[rowOff + Math.min(mapW - 1, c + 1)];
+          const metaId = resolveChronoMeta(tileId, bg2[rowOff + c], tn, ts, tw, te, c, r, false);
+          const img = atlas.getBg1Tile(metaId, animTick);
           ctx.drawImage(img, sx, sy, TILE_SIZE, TILE_SIZE);
         }
       }
@@ -227,8 +249,9 @@ export class SoftwarePpuRenderer {
       ctx.restore();
     }
 
-    // 5. World-Space Particles
+    // 5. World-Space Particles & Living Chrono/Mana Biome Atmosphere (Sunbeams, Glow & Drifting Petals/Leaves!)
     this.renderParticles(ctx, packet, false);
+    this.renderLivingAtmosphere(ctx, packet, map, startCol, endCol, startRow, endRow, mapW);
 
     // 5.5. Sunken Sewers Atmospheric Lantern Lighting Mask
     if (packet.zoneIsDark) {
@@ -314,6 +337,121 @@ export class SoftwarePpuRenderer {
       ctx.textBaseline = 'top';
       ctx.fillText(label, bx + 9, 9);
     }
+  }
+
+  /* ========================================================================
+   * LIVING CHRONO/MANA BIOME ATMOSPHERE: SUNBEAMS, WARM LANTERN GLOW & PARTICLES
+   * ======================================================================== */
+  private renderLivingAtmosphere(
+    ctx: CanvasRenderingContext2D,
+    packet: PpuFramePacket,
+    map: WorldMapData,
+    startCol: number,
+    endCol: number,
+    startRow: number,
+    endRow: number,
+    mapW: number
+  ): void {
+    const { width, height, camX, camY, frameCount, terrainPalId, isWorldMap, zoneIsDark } = packet;
+    ctx.save();
+
+    // 1. Diagonal Dappled Sunbeams / Interior Window Light Shafts (not in sewers or pitch dark)
+    if (!zoneIsDark && terrainPalId !== 3 && terrainPalId !== 5) {
+      let beamCol = 'rgba(255, 244, 186, 0.085)';
+      if (terrainPalId === 6) beamCol = 'rgba(255, 212, 184, 0.095)'; // Dawn rose-gold
+      else if (terrainPalId === 7) beamCol = 'rgba(255, 168, 102, 0.095)'; // Copper dusk
+      else if (terrainPalId === 8) beamCol = 'rgba(156, 204, 255, 0.065)'; // Silver moonbeams
+      else if (terrainPalId === 9) beamCol = 'rgba(255, 232, 164, 0.09)'; // Warm cottage window shafts
+      else if (terrainPalId === 14) beamCol = 'rgba(218, 244, 255, 0.075)'; // Frost sparkle rays
+
+      const drift = Math.sin(frameCount * 0.012) * 8;
+      ctx.fillStyle = beamCol;
+      const beamCount = isWorldMap ? 3 : 4;
+      for (let i = 0; i < beamCount; i++) {
+        const bx = ((i * 92 + 28 - Math.floor(camX * 0.25) + drift) % (width + 80)) - 30;
+        const bw = 22 + (i & 1) * 14;
+        ctx.beginPath();
+        ctx.moveTo(bx, 0);
+        ctx.lineTo(bx + bw, 0);
+        ctx.lineTo(bx + bw + 54, height);
+        ctx.lineTo(bx + 54, height);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // 2. Warm Glowing Lantern & Cozy Fireplace Halos (especially atmospheric at dusk/night/interiors!)
+    if (!isWorldMap) {
+      const flicker = Math.sin(frameCount * 0.14) * 2.5;
+      const haloAlpha = zoneIsDark || terrainPalId === 7 || terrainPalId === 8 || terrainPalId === 9 ? 0.22 : 0.11;
+      for (let r = startRow; r <= endRow; r++) {
+        const rowOff = r * mapW;
+        for (let c = startCol; c <= endCol; c++) {
+          const tid = map.bg1[rowOff + c];
+          if (tid === T_LANTERN_POST || tid === T_FIREPLACE) {
+            const lx = c * TILE_SIZE + 8 - camX;
+            const ly = r * TILE_SIZE + (tid === T_FIREPLACE ? 10 : 5) - camY;
+            const rad = (tid === T_FIREPLACE ? 32 : 24) + flicker;
+            const g = ctx.createRadialGradient(lx, ly, 2, lx, ly, rad);
+            g.addColorStop(0, `rgba(255, 236, 150, ${(haloAlpha * 1.45).toFixed(3)})`);
+            g.addColorStop(0.55, `rgba(255, 174, 72, ${(haloAlpha * 0.7).toFixed(3)})`);
+            g.addColorStop(1, 'rgba(255, 140, 40, 0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(lx - rad, ly - rad, rad * 2, rad * 2);
+          }
+        }
+      }
+    }
+
+    // 3. Biome-Specific Drifting 16-Bit Pixel Particles (Leaves, Petals, Fireflies, Snow, Embers!)
+    const isAutumn = terrainPalId === 1 || terrainPalId === 6;
+    const isFirefly = terrainPalId === 7 || terrainPalId === 8 || terrainPalId === 3 || terrainPalId === 5 || zoneIsDark;
+    const isSnow = terrainPalId === 14;
+    const isVolcano = terrainPalId === 16;
+    const isInterior = terrainPalId === 9;
+    const count = isInterior ? 8 : 14;
+
+    for (let i = 0; i < count; i++) {
+      const seed = (i * 73 + 19) & 255;
+      let px: number;
+      let py: number;
+      if (isFirefly) {
+        const pulse = Math.sin(frameCount * 0.08 + i * 1.7);
+        if (pulse < -0.25) continue;
+        px = (((seed * 7 + Math.sin(frameCount * 0.025 + i) * 18 - camX * 0.6) % width) + width) % width;
+        py = (((seed * 5 + Math.cos(frameCount * 0.032 + i * 1.3) * 14 - camY * 0.6) % height) + height) % height;
+        ctx.fillStyle = pulse > 0.35 ? 'rgba(255, 246, 168, 0.95)' : 'rgba(244, 198, 76, 0.65)';
+        ctx.fillRect(Math.round(px), Math.round(py), 2, 2);
+      } else if (isVolcano) {
+        px = (((seed * 9 + Math.sin(frameCount * 0.05 + i) * 10 - camX * 0.4) % width) + width) % width;
+        py = (((seed * 5 - frameCount * (0.45 + (i & 3) * 0.14) - camY * 0.4) % height) + height) % height;
+        ctx.fillStyle = (i & 1) ? '#FF9A34' : '#FFE468';
+        ctx.fillRect(Math.round(px), Math.round(py), 2, 1);
+      } else if (isSnow) {
+        px = (((seed * 9 + frameCount * 0.25 + Math.sin(frameCount * 0.04 + i) * 8 - camX * 0.4) % width) + width) % width;
+        py = (((seed * 5 + frameCount * (0.42 + (i & 3) * 0.1) - camY * 0.4) % height) + height) % height;
+        ctx.fillStyle = (i & 1) ? '#FFFFFF' : '#C8ECFF';
+        ctx.fillRect(Math.round(px), Math.round(py), 2, 2);
+      } else if (isAutumn) {
+        px = (((seed * 9 + frameCount * (0.35 + (i & 1) * 0.15) + Math.sin(frameCount * 0.05 + i) * 10 - camX * 0.5) % width) + width) % width;
+        py = (((seed * 5 + frameCount * (0.32 + (i & 3) * 0.08) - camY * 0.5) % height) + height) % height;
+        const flip = ((frameCount >> 4) + i) & 1;
+        ctx.fillStyle = (i % 3 === 0) ? '#D8402C' : (i % 3 === 1 ? '#F29A34' : '#F8CE52');
+        ctx.fillRect(Math.round(px), Math.round(py), flip ? 3 : 2, flip ? 2 : 3);
+      } else {
+        // Sunlit floating petals & golden pollen motes (Hamlet, Sunhill Market, Paradise, Interior, Globe)
+        px = (((seed * 9 + frameCount * 0.22 + Math.sin(frameCount * 0.04 + i) * 9 - camX * 0.45) % width) + width) % width;
+        py = (((seed * 5 + frameCount * (isInterior ? 0.12 : 0.22 + (i & 3) * 0.05) - camY * 0.45) % height) + height) % height;
+        ctx.fillStyle = isInterior
+          ? 'rgba(255, 240, 184, 0.55)'
+          : (i & 1)
+            ? 'rgba(255, 250, 232, 0.85)'
+            : 'rgba(255, 224, 128, 0.75)';
+        ctx.fillRect(Math.round(px), Math.round(py), 2, 1);
+      }
+    }
+
+    ctx.restore();
   }
 
   /* ========================================================================

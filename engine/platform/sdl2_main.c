@@ -29,6 +29,8 @@
 #include "pixel_art_data.h"
 #include "cinema_cg_sdl2.h"
 #include "hearth_hero24.h"
+#define HEARTH_INCLUDE_SDL2_TERRAIN 1
+#include "hearth_terrain_rom.h"
 
 /* ============================================================================
  * 1. VIRTUAL PPU FRAMEBUFFER & PIXEL HELPERS
@@ -38,6 +40,8 @@
 
 static uint32_t g_fb[FB_MAX_W * FB_MAX_H];
 static uint32_t g_pal_argb[4][16];
+static uint32_t g_chrono_pal_argb[4][16];
+static int8_t   g_chrono_anim_lut[CHRONO_META_COUNT];
 static HearthState g_state;
 
 static bool g_scanlines = false;
@@ -63,6 +67,11 @@ static void apply_zone_palette(uint8_t pal_id) {
     for (int i = 0; i < 16; i++) {
         g_pal_argb[0][i] = (i == 0) ? 0u : rgb_to_argb(HEARTH_ZONE_PALETTES_RGB[pal_id][i]);
     }
+    for (int p = 0; p < 4; p++) {
+        for (int i = 0; i < 16; i++) {
+            g_chrono_pal_argb[p][i] = (i == 0) ? 0u : rgb_to_argb(SDL_CHRONO_PALS[pal_id][p][i]);
+        }
+    }
 }
 
 static void init_palettes(void) {
@@ -71,7 +80,17 @@ static void init_palettes(void) {
             g_pal_argb[p][i] = (i == 0) ? 0u : rgb_to_argb(HEARTH_PALETTES_RGB[p][i]);
         }
     }
-    g_last_terrain_pal = 0;
+    for (unsigned m = 0; m < CHRONO_META_COUNT; m++) {
+        g_chrono_anim_lut[m] = -1;
+    }
+    for (unsigned ai = 0; ai < SDL_CHRONO_ANIM_META_COUNT; ai++) {
+        uint8_t mid = SDL_CHRONO_ANIM_IDS[ai];
+        if (mid < CHRONO_META_COUNT) {
+            g_chrono_anim_lut[mid] = (int8_t)ai;
+        }
+    }
+    g_last_terrain_pal = 255u;
+    apply_zone_palette(0);
 }
 
 static inline void put_px(int x, int y, uint32_t col) {
@@ -1319,587 +1338,162 @@ static void SDLCALL synth_audio_callback(void *userdata, Uint8 *stream, int len)
 }
 
 /* ============================================================================
- * 4. 16x16 SOFTWARE PPU TILE RENDERER (BG1 Terrain + BG2 Canopies)
+ * 4. UNIFIED 60-COLOR CHRONO/MANA 16x16 SOFTWARE PPU TILE RENDERER
+ *    Decodes pre-baked 4-subpalette pixel-art metatiles (BG1 + BG2 canopies)
+ *    and renders living biome atmosphere (sunbeams, lantern halos, particles).
  * ============================================================================ */
-static void draw_bg1_tile(int sx, int sy, uint8_t tile, uint32_t frame) {
-    uint32_t c_dark  = pal_col(0, 1);
-    uint32_t c_g0    = pal_col(0, 2);
-    uint32_t c_g1    = pal_col(0, 3);
-    uint32_t c_g2    = pal_col(0, 4);
-    uint32_t c_g3    = pal_col(0, 5);
-    uint32_t c_w0    = pal_col(0, 6);
-    uint32_t c_w1    = pal_col(0, 7);
-    uint32_t c_w2    = pal_col(0, 8);
-    uint32_t c_s0    = pal_col(0, 9);
-    uint32_t c_s1    = pal_col(0, 10);
-    uint32_t c_s2    = pal_col(0, 11);
-    uint32_t c_b0    = pal_col(0, 12);
-    uint32_t c_b1    = pal_col(0, 13);
-    uint32_t c_b2    = pal_col(0, 14);
-    uint32_t c_red   = pal_col(0, 15);
-    uint32_t c_gold  = pal_col(1, 10);
-    uint32_t c_cream = pal_col(1, 11);
+static void draw_chrono_meta16(int sx, int sy, uint8_t meta_id, uint8_t anim_frame) {
+    if (meta_id >= CHRONO_META_COUNT) meta_id = T_GRASS;
+    if (sx <= -16 || sy <= -16 || sx >= (int)g_ppu_w || sy >= (int)g_ppu_h) return;
 
-    switch (tile) {
-        case T_GRASS:
-            fill_rect_px(sx, sy, 16, 16, c_g2);
-            put_px(sx + 3, sy + 4, c_g3); put_px(sx + 4, sy + 5, c_g1);
-            put_px(sx + 11, sy + 10, c_g3); put_px(sx + 12, sy + 11, c_g1);
-            put_px(sx + 7, sy + 13, c_g1);
-            break;
-        case T_GRASS_ALT:
-            fill_rect_px(sx, sy, 16, 16, c_g2);
-            fill_rect_px(sx + 2, sy + 3, 2, 1, c_g3);
-            fill_rect_px(sx + 9, sy + 6, 3, 2, c_g1);
-            put_px(sx + 10, sy + 5, c_g3);
-            put_px(sx + 4, sy + 12, c_g1);
-            put_px(sx + 5, sy + 11, c_g3);
-            break;
-        case T_FLOWERS:
-            fill_rect_px(sx, sy, 16, 16, c_g2);
-            put_px(sx + 4, sy + 5, c_g0); put_px(sx + 3, sy + 4, c_cream); put_px(sx + 5, sy + 4, c_cream);
-            put_px(sx + 4, sy + 3, c_cream); put_px(sx + 4, sy + 4, c_gold);
-            put_px(sx + 11, sy + 11, c_g0); put_px(sx + 10, sy + 10, c_red); put_px(sx + 12, sy + 10, c_red);
-            put_px(sx + 11, sy + 9, c_red); put_px(sx + 11, sy + 10, c_cream);
-            break;
-        case T_TALL_GRASS: {
-            int sway = ((frame >> 4) & 1u) ? 1 : 0;
-            fill_rect_px(sx, sy, 16, 16, c_g1);
-            for (int i = 0; i < 4; i++) {
-                int bx = sx + 2 + i * 4;
-                fill_rect_px(bx, sy + 9, 2, 6, c_g0);
-                fill_rect_px(bx + sway, sy + 4, 2, 6, c_g2);
-                put_px(bx + sway, sy + 2, c_g3);
-                put_px(bx + 1, sy + 12, c_g2);
+    int8_t aslot = g_chrono_anim_lut[meta_id];
+    const uint8_t *src = (aslot >= 0)
+        ? SDL_CHRONO_ANIM_PX[(uint8_t)aslot][anim_frame & 3u]
+        : SDL_CHRONO_PX[meta_id];
+    const uint8_t *qpal = SDL_CHRONO_QPAL[meta_id];
+
+    int y0 = (sy < 0) ? -sy : 0;
+    int y1 = (sy + 16 > (int)g_ppu_h) ? ((int)g_ppu_h - sy) : 16;
+    int x0 = (sx < 0) ? -sx : 0;
+    int x1 = (sx + 16 > (int)g_ppu_w) ? ((int)g_ppu_w - sx) : 16;
+
+    for (int ly = y0; ly < y1; ly++) {
+        int qrow = (ly >= 8) ? 2 : 0;
+        const uint32_t *pal_l = g_chrono_pal_argb[qpal[qrow]];
+        const uint32_t *pal_r = g_chrono_pal_argb[qpal[qrow + 1]];
+        const uint8_t *srow = src + ly * 8;
+        uint32_t *drow = &g_fb[(sy + ly) * FB_MAX_W + sx];
+        for (int lx = x0; lx < x1; lx++) {
+            uint8_t byte_v = srow[lx >> 1];
+            uint8_t cidx = (lx & 1) ? (byte_v & 15u) : ((byte_v >> 4) & 15u);
+            if (cidx != 0u) {
+                drow[lx] = (lx < 8) ? pal_l[cidx] : pal_r[cidx];
             }
-            break;
         }
-        case T_DIRT:
-            fill_rect_px(sx, sy, 16, 16, c_w1);
-            fill_rect_px(sx + 2, sy + 3, 3, 2, c_w2);
-            fill_rect_px(sx + 10, sy + 9, 3, 2, c_w0);
-            put_px(sx + 6, sy + 13, c_w2);
-            put_px(sx + 13, sy + 4, c_w0);
-            break;
-        case T_COBBLE:
-            fill_rect_px(sx, sy, 16, 16, c_s0);
-            fill_rect_px(sx + 1, sy + 1, 6, 6, c_s1); fill_rect_px(sx + 1, sy + 1, 5, 2, c_s2);
-            fill_rect_px(sx + 8, sy + 1, 7, 6, c_s1); fill_rect_px(sx + 8, sy + 1, 6, 2, c_s2);
-            fill_rect_px(sx + 1, sy + 8, 9, 7, c_s1); fill_rect_px(sx + 1, sy + 8, 8, 2, c_s2);
-            fill_rect_px(sx + 11, sy + 8, 4, 7, c_s1); fill_rect_px(sx + 11, sy + 8, 3, 2, c_s2);
-            break;
-        case T_WATER: {
-            int wave = (int)((frame >> 4) & 3u);
-            fill_rect_px(sx, sy, 16, 16, c_b0);
-            fill_rect_px(sx + ((wave * 2) & 7), sy + 3, 5, 2, c_b1);
-            fill_rect_px(sx + ((wave * 2 + 2) & 7), sy + 3, 3, 1, c_b2);
-            fill_rect_px(sx + ((10 - wave * 2) & 7) + 2, sy + 10, 5, 2, c_b1);
-            fill_rect_px(sx + ((10 - wave * 2) & 7) + 3, sy + 10, 2, 1, c_b2);
-            break;
-        }
-        case T_FORD: {
-            int wave = (int)((frame >> 4) & 1u);
-            fill_rect_px(sx, sy, 16, 16, c_b1);
-            fill_rect_px(sx + 2, sy + 4, 4, 3, c_w2);
-            fill_rect_px(sx + 9, sy + 10, 5, 3, c_w1);
-            fill_rect_px(sx + 4 + wave, sy + 8, 5, 1, c_b2);
-            fill_rect_px(sx + 8 - wave, sy + 2, 4, 1, c_b2);
-            break;
-        }
-        case T_BRIDGE:
-            fill_rect_px(sx, sy, 16, 16, c_w0);
-            for (int bx = 0; bx < 16; bx += 4) {
-                fill_rect_px(sx + bx, sy + 1, 3, 14, c_w1);
-                fill_rect_px(sx + bx, sy + 1, 3, 2, c_w2);
-            }
-            break;
-        case T_BRIDGE_RAIL_N:
-        case T_BRIDGE_RAIL_S:
-            fill_rect_px(sx, sy, 16, 16, c_b0);
-            fill_rect_px(sx, sy + 4, 16, 8, c_w0);
-            fill_rect_px(sx, sy + 5, 16, 3, c_w2);
-            fill_rect_px(sx + 2, sy + 3, 3, 10, c_w1);
-            fill_rect_px(sx + 11, sy + 3, 3, 10, c_w1);
-            break;
-        case T_FENCE:
-            fill_rect_px(sx, sy, 16, 16, c_g2);
-            fill_rect_px(sx + 2, sy + 4, 3, 10, c_w0);
-            fill_rect_px(sx + 11, sy + 4, 3, 10, c_w0);
-            fill_rect_px(sx, sy + 6, 16, 2, c_w2);
-            fill_rect_px(sx, sy + 10, 16, 2, c_w1);
-            break;
-        case T_TREE_TRUNK:
-            fill_rect_px(sx, sy, 16, 16, c_g1);
-            fill_ellipse_alpha(sx + 8, sy + 12, 7, 3, c_dark, 110);
-            fill_rect_px(sx + 4, sy + 1, 8, 12, c_w0);
-            fill_rect_px(sx + 5, sy + 1, 3, 11, c_w1);
-            fill_rect_px(sx + 3, sy + 11, 10, 3, c_w0);
-            break;
-        case T_BUSH:
-            fill_rect_px(sx, sy, 16, 16, c_g0);
-            fill_rect_px(sx + 1, sy + 2, 14, 12, c_g1);
-            fill_rect_px(sx + 2, sy + 1, 12, 8, c_g2);
-            fill_rect_px(sx + 4, sy + 2, 8, 4, c_g3);
-            put_px(sx + 4, sy + 8, c_red);
-            put_px(sx + 11, sy + 6, c_gold);
-            break;
-        case T_WALL_WOOD:
-            fill_rect_px(sx, sy, 16, 16, c_w2);
-            fill_rect_px(sx, sy, 2, 16, c_w0);
-            fill_rect_px(sx + 14, sy, 2, 16, c_w0);
-            fill_rect_px(sx, sy + 13, 16, 3, c_s0);
-            break;
-        case T_WALL_WINDOW:
-            fill_rect_px(sx, sy, 16, 16, c_w2);
-            fill_rect_px(sx + 3, sy + 3, 10, 8, c_w0);
-            fill_rect_px(sx + 4, sy + 4, 8, 6, c_gold);
-            fill_rect_px(sx + 7, sy + 4, 2, 6, c_w0);
-            fill_rect_px(sx + 4, sy + 6, 8, 2, c_w0);
-            fill_rect_px(sx, sy + 13, 16, 3, c_s0);
-            break;
-        case T_WALL_DOOR:
-            fill_rect_px(sx, sy, 16, 16, c_w2);
-            fill_rect_px(sx + 3, sy + 2, 10, 14, c_w0);
-            fill_rect_px(sx + 4, sy + 3, 8, 12, c_w1);
-            put_px(sx + 10, sy + 9, c_gold);
-            break;
-        case T_ROOF_BODY:
-            fill_rect_px(sx, sy, 16, 16, c_red);
-            for (int ry = 0; ry < 16; ry += 4) {
-                fill_rect_px(sx, sy + ry + 3, 16, 1, c_w0);
-                for (int rx = (ry & 4) ? 2 : 0; rx < 16; rx += 4) {
-                    put_px(sx + rx, sy + ry + 1, c_w2);
-                }
-            }
-            break;
-        case T_ROOF_TOP:
-            fill_rect_px(sx, sy, 16, 16, c_g2);
-            fill_rect_px(sx, sy + 5, 16, 11, c_red);
-            fill_rect_px(sx, sy + 4, 16, 2, c_w2);
-            fill_rect_px(sx, sy + 11, 16, 1, c_w0);
-            break;
-        case T_WINDMILL_WALL:
-            fill_rect_px(sx, sy, 16, 16, c_s1);
-            fill_rect_px(sx + 1, sy + 2, 6, 5, c_s2);
-            fill_rect_px(sx + 9, sy + 9, 6, 5, c_s2);
-            fill_rect_px(sx, sy + 7, 16, 1, c_s0);
-            fill_rect_px(sx, sy + 15, 16, 1, c_s0);
-            break;
-        case T_WINDMILL_DOOR:
-            fill_rect_px(sx, sy, 16, 16, c_s1);
-            fill_rect_px(sx + 3, sy + 3, 10, 13, c_w0);
-            fill_rect_px(sx + 4, sy + 4, 8, 12, c_w1);
-            fill_rect_px(sx + 5, sy + 2, 6, 2, c_s0);
-            put_px(sx + 10, sy + 10, c_gold);
-            break;
-        case T_WINDMILL_ROOF:
-            fill_rect_px(sx, sy, 16, 16, c_b0);
-            fill_rect_px(sx + 1, sy + 2, 14, 12, c_s0);
-            fill_rect_px(sx + 2, sy + 3, 12, 4, c_b1);
-            break;
-        case T_SHRINE_FLOOR:
-            fill_rect_px(sx, sy, 16, 16, c_s0);
-            fill_rect_px(sx + 1, sy + 1, 14, 14, c_s1);
-            fill_rect_px(sx + 2, sy + 2, 12, 1, c_s2);
-            put_px(sx + 3, sy + 12, c_g1);
-            break;
-        case T_SHRINE_RUNE: {
-            uint32_t glow = ((frame >> 4) & 1u) ? pal_col(3, 15) : pal_col(0, 13);
-            fill_rect_px(sx, sy, 16, 16, c_s0);
-            fill_rect_px(sx + 1, sy + 1, 14, 14, c_s1);
-            draw_rect_outline(sx + 4, sy + 4, 8, 8, glow);
-            fill_rect_px(sx + 7, sy + 7, 2, 2, c_cream);
-            break;
-        }
-        case T_SHRINE_PILLAR:
-            fill_rect_px(sx, sy, 16, 16, c_s0);
-            fill_rect_px(sx + 3, sy + 1, 10, 14, c_s2);
-            fill_rect_px(sx + 4, sy + 2, 3, 12, c_s1);
-            fill_rect_px(sx + 2, sy + 1, 12, 2, c_cream);
-            fill_rect_px(sx + 2, sy + 13, 12, 2, c_dark);
-            break;
-        case T_SIGNPOST:
-            fill_rect_px(sx, sy, 16, 16, c_g2);
-            fill_rect_px(sx + 7, sy + 8, 2, 7, c_w0);
-            fill_rect_px(sx + 2, sy + 3, 12, 6, c_w1);
-            draw_rect_outline(sx + 2, sy + 3, 12, 6, c_w0);
-            fill_rect_px(sx + 4, sy + 5, 8, 1, c_dark);
-            fill_rect_px(sx + 4, sy + 7, 6, 1, c_dark);
-            break;
-        case T_LANTERN_POST:
-            fill_rect_px(sx, sy, 16, 16, c_g2);
-            fill_rect_px(sx + 7, sy + 7, 2, 8, c_dark);
-            fill_rect_px(sx + 5, sy + 2, 6, 6, c_dark);
-            fill_rect_px(sx + 6, sy + 3, 4, 4, ((frame >> 3) & 1u) ? c_cream : c_gold);
-            break;
-        case T_FLOWER_BED:
-            fill_rect_px(sx, sy, 16, 16, c_w0);
-            fill_rect_px(sx + 1, sy + 2, 14, 12, c_g1);
-            fill_rect_px(sx + 3, sy + 4, 3, 3, c_red);
-            fill_rect_px(sx + 9, sy + 5, 3, 3, c_gold);
-            fill_rect_px(sx + 5, sy + 9, 3, 3, c_cream);
-            fill_rect_px(sx + 11, sy + 9, 2, 2, pal_col(2, 14));
-            break;
-        /* === Ground-Up Autumn Mountain & Cottage Interior Tileset (Milestone 2) === */
-        case T_MTN_SKY:
-            /* Transparent skyline window — parallax snow-dusted peaks rendered underneath */
-            break;
-        case T_CLIFF_WALL:
-            fill_rect_px(sx, sy, 16, 16, c_s0);
-            fill_rect_px(sx + 1, sy + 1, 6, 5, c_s1); fill_rect_px(sx + 1, sy + 1, 5, 1, c_s2);
-            fill_rect_px(sx + 8, sy + 2, 7, 5, c_s1); fill_rect_px(sx + 8, sy + 2, 6, 1, c_s2);
-            fill_rect_px(sx, sy + 7, 16, 2, c_dark);
-            fill_rect_px(sx + 2, sy + 9, 8, 6, c_s1); fill_rect_px(sx + 2, sy + 9, 7, 1, c_s2);
-            fill_rect_px(sx + 11, sy + 9, 5, 6, c_s0);
-            fill_rect_px(sx + 4, sy + 14, 3, 2, c_g0);
-            break;
-        case T_CLIFF_LEDGE:
-            fill_rect_px(sx, sy, 16, 16, c_s0);
-            fill_rect_px(sx, sy, 16, 5, c_g1);
-            fill_rect_px(sx + 1, sy + 1, 14, 2, c_g2);
-            fill_rect_px(sx + 3, sy + 2, 4, 1, c_g3);
-            fill_rect_px(sx, sy + 5, 16, 3, c_s2);
-            fill_rect_px(sx, sy + 8, 16, 2, c_dark);
-            fill_rect_px(sx + 2, sy + 10, 6, 5, c_s1);
-            fill_rect_px(sx + 9, sy + 10, 6, 5, c_s1);
-            break;
-        case T_BOULDER:
-            fill_rect_px(sx, sy, 16, 16, c_g2);
-            fill_ellipse_alpha(sx + 8, sy + 13, 7, 3, c_dark, 110);
-            fill_rect_px(sx + 2, sy + 4, 12, 9, c_s0);
-            fill_rect_px(sx + 3, sy + 3, 10, 8, c_s1);
-            fill_rect_px(sx + 4, sy + 3, 6, 3, c_s2);
-            fill_rect_px(sx + 4, sy + 4, 3, 2, c_g1);
-            put_px(sx + 11, sy + 9, c_dark);
-            break;
-        case T_AUTUMN_GRASS:
-            fill_rect_px(sx, sy, 16, 16, c_g2);
-            put_px(sx + 3, sy + 3, c_g3); put_px(sx + 4, sy + 4, c_g1);
-            put_px(sx + 11, sy + 11, c_g3); put_px(sx + 12, sy + 12, c_g1);
-            /* Fallen crimson & amber maple leaves */
-            fill_rect_px(sx + 5, sy + 9, 2, 2, c_red);
-            put_px(sx + 11, sy + 4, c_gold); put_px(sx + 12, sy + 5, c_red);
-            put_px(sx + 2, sy + 13, c_gold);
-            break;
-        case T_ROCKY_PATH:
-            fill_rect_px(sx, sy, 16, 16, c_w1);
-            fill_rect_px(sx + 1, sy + 2, 5, 4, c_s1); fill_rect_px(sx + 2, sy + 2, 3, 1, c_s2);
-            fill_rect_px(sx + 9, sy + 4, 5, 4, c_s1); fill_rect_px(sx + 10, sy + 4, 3, 1, c_s2);
-            fill_rect_px(sx + 4, sy + 10, 6, 4, c_s1); fill_rect_px(sx + 5, sy + 10, 4, 1, c_s2);
-            put_px(sx + 12, sy + 12, c_w0); put_px(sx + 2, sy + 8, c_w2);
-            break;
-        case T_RAPIDS: {
-            int flow = (int)((frame >> 3) & 7u);
-            fill_rect_px(sx, sy, 16, 16, c_b0);
-            fill_rect_px(sx + 1, sy + ((flow * 2) & 15), 4, 2, c_b1);
-            fill_rect_px(sx + 2, sy + ((flow * 2) & 15), 2, 1, c_b2);
-            fill_rect_px(sx + 8, sy + ((flow * 2 + 6) & 15), 5, 2, c_b1);
-            fill_rect_px(sx + 9, sy + ((flow * 2 + 6) & 15), 3, 1, 0xFFF2F8FCu);
-            fill_rect_px(sx + 4, sy + ((flow * 2 + 12) & 15), 6, 1, 0xFFE6F4FAu);
-            break;
-        }
-        case T_RAIL_TRACK:
-            fill_rect_px(sx, sy, 16, 16, c_s0);
-            put_px(sx + 2, sy + 2, c_s1); put_px(sx + 11, sy + 13, c_s1);
-            put_px(sx + 7, sy + 8, c_s2); put_px(sx + 13, sy + 3, c_w0);
-            /* Heavy creosote timber sleepers */
-            for (int rx = 1; rx < 16; rx += 5) {
-                fill_rect_px(sx + rx, sy + 1, 3, 14, c_w0);
-                fill_rect_px(sx + rx + 1, sy + 2, 1, 12, c_w1);
-            }
-            /* Twin brushed-iron rails */
-            fill_rect_px(sx, sy + 3, 16, 2, c_dark);
-            fill_rect_px(sx, sy + 3, 16, 1, c_s2);
-            fill_rect_px(sx, sy + 11, 16, 2, c_dark);
-            fill_rect_px(sx, sy + 11, 16, 1, c_s2);
-            break;
-        case T_MAPLE_TRUNK:
-            fill_rect_px(sx, sy, 16, 16, c_g2);
-            fill_ellipse_alpha(sx + 8, sy + 13, 7, 3, c_dark, 115);
-            fill_rect_px(sx + 5, sy + 1, 6, 12, c_w0);
-            fill_rect_px(sx + 6, sy + 1, 2, 11, c_w1);
-            fill_rect_px(sx + 3, sy + 11, 10, 3, c_w0);
-            put_px(sx + 2, sy + 13, c_red); put_px(sx + 12, sy + 12, c_gold);
-            break;
-        case T_PINE_TRUNK:
-            fill_rect_px(sx, sy, 16, 16, c_g1);
-            fill_ellipse_alpha(sx + 8, sy + 13, 7, 3, c_dark, 115);
-            fill_rect_px(sx + 6, sy + 4, 4, 10, c_w0);
-            fill_rect_px(sx + 1, sy + 1, 14, 7, c_g0);
-            fill_rect_px(sx + 3, sy + 2, 10, 4, c_g1);
-            fill_rect_px(sx + 5, sy + 1, 6, 2, c_g2);
-            break;
-        case T_WOOD_FLOOR:
-            fill_rect_px(sx, sy, 16, 16, c_w1);
-            fill_rect_px(sx, sy + 4, 16, 1, c_w0);
-            fill_rect_px(sx, sy + 9, 16, 1, c_w0);
-            fill_rect_px(sx, sy + 14, 16, 1, c_w0);
-            fill_rect_px(sx + 2, sy + 1, 6, 1, c_w2);
-            fill_rect_px(sx + 8, sy + 6, 5, 1, c_w2);
-            fill_rect_px(sx + 1, sy + 11, 7, 1, c_w2);
-            put_px(sx + 7, sy + 2, c_w0); put_px(sx + 13, sy + 7, c_w0);
-            break;
-        case T_HEARTH_RUG:
-            fill_rect_px(sx, sy, 16, 16, c_red);
-            draw_rect_outline(sx + 1, sy + 1, 14, 14, c_gold);
-            fill_rect_px(sx + 4, sy + 4, 8, 8, c_w0);
-            fill_rect_px(sx + 6, sy + 6, 4, 4, c_cream);
-            break;
-        case T_FIREPLACE: {
-            int flk = (int)((frame >> 2) & 1u);
-            fill_rect_px(sx, sy, 16, 16, c_s0);
-            fill_rect_px(sx + 1, sy + 1, 14, 3, c_s2);
-            fill_rect_px(sx + 1, sy + 4, 3, 12, c_s1);
-            fill_rect_px(sx + 12, sy + 4, 3, 12, c_s1);
-            fill_rect_px(sx + 4, sy + 5, 8, 11, c_dark);
-            fill_rect_px(sx + 5, sy + 12, 6, 3, c_w0);
-            fill_rect_px(sx + 5, sy + 8 + flk, 6, 5 - flk, c_red);
-            fill_rect_px(sx + 6, sy + 9 - flk, 4, 4, c_gold);
-            fill_rect_px(sx + 7, sy + 10, 2, 2, c_cream);
-            break;
-        }
-        case T_BED_QUILT:
-            fill_rect_px(sx, sy, 16, 16, c_w0);
-            fill_rect_px(sx + 1, sy + 1, 14, 14, c_w1);
-            fill_rect_px(sx + 2, sy + 2, 12, 4, c_cream);
-            fill_rect_px(sx + 2, sy + 6, 6, 4, c_red);
-            fill_rect_px(sx + 8, sy + 6, 6, 4, c_b1);
-            fill_rect_px(sx + 2, sy + 10, 6, 4, c_gold);
-            fill_rect_px(sx + 8, sy + 10, 6, 4, c_red);
-            break;
-        case T_ATTIC_CHEST: {
-            int shim = (int)((frame >> 4) & 1u);
-            fill_rect_px(sx, sy, 16, 16, c_w1);
-            fill_rect_px(sx + 2, sy + 3, 12, 11, c_w0);
-            fill_rect_px(sx + 3, sy + 4, 10, 4, c_red);
-            fill_rect_px(sx + 3, sy + 9, 10, 4, c_w2);
-            fill_rect_px(sx + 2, sy + 8, 12, 1, c_gold);
-            fill_rect_px(sx + 7, sy + 7, 2, 3, shim ? c_cream : c_gold);
-            break;
-        }
-        case T_HOLLOW_OAK: {
-            int pulse = (int)((frame >> 4) & 1u);
-            fill_rect_px(sx, sy, 16, 16, c_w0);
-            fill_rect_px(sx + 1, sy + 1, 14, 14, c_w1);
-            fill_rect_px(sx + 4, sy + 3, 8, 13, c_dark);
-            fill_rect_px(sx + 5, sy + 4, 6, 11, pulse ? c_b2 : c_b1);
-            fill_rect_px(sx + 6, sy + 6, 4, 7, pulse ? c_cream : c_gold);
-            break;
-        }
-        case T_STONE_STAIRS:
-            fill_rect_px(sx, sy, 16, 16, c_s0);
-            for (int ry = 0; ry < 16; ry += 4) {
-                fill_rect_px(sx + 1, sy + ry, 14, 3, c_s1);
-                fill_rect_px(sx + 1, sy + ry, 14, 1, c_s2);
-                fill_rect_px(sx + 1, sy + ry + 3, 14, 1, c_dark);
-            }
-            break;
-        case T_INTERIOR_WALL:
-            fill_rect_px(sx, sy, 16, 16, c_w2);
-            fill_rect_px(sx, sy, 16, 2, c_w0);
-            fill_rect_px(sx, sy + 12, 16, 4, c_w0);
-            fill_rect_px(sx + 7, sy + 2, 2, 10, c_w1);
-            break;
-        case T_WORLD_OCEAN: {
-            int wave = (int)((frame >> 4) & 3u);
-            fill_rect_px(sx, sy, 16, 16, 0xFF28588Au);
-            fill_rect_px(sx + ((wave * 3) & 11), sy + 3, 5, 1, 0xFF4284B8u);
-            fill_rect_px(sx + ((wave * 3 + 6) & 11), sy + 10, 6, 1, 0xFF6AB2DCu);
-            fill_rect_px(sx + ((wave * 2 + 2) & 11), sy + 14, 3, 1, 0xFF9CD4F0u);
-            break;
-        }
-        case T_WORLD_BEACH: {
-            int wave = (int)((frame >> 4) & 3u);
-            fill_rect_px(sx, sy, 16, 16, 0xFFE6CE94u);
-            fill_rect_px(sx + 2, sy + 2, 12, 10, 0xFFF2DEAAu);
-            fill_rect_px(sx + ((wave * 2) & 7), sy + 13, 8, 2, 0xFF6AB8E0u);
-            put_px(sx + 4, sy + 5, 0xFFC8A86Eu);
-            put_px(sx + 11, sy + 9, 0xFFC8A86Eu);
-            break;
-        }
-        case T_WORLD_PEAK:
-            fill_rect_px(sx, sy, 16, 16, 0xFF548840u);
-            fill_rect_px(sx + 1, sy + 8, 14, 8, 0xFF5E5A68u);
-            fill_rect_px(sx + 3, sy + 4, 10, 9, 0xFF767080u);
-            fill_rect_px(sx + 5, sy + 1, 6, 5, 0xFF948EA0u);
-            fill_rect_px(sx + 6, sy + 1, 4, 3, 0xFFF4F6FAu);
-            break;
-        case T_WORLD_FOREST:
-            fill_rect_px(sx, sy, 16, 16, 0xFF2E5C32u);
-            fill_rect_px(sx + 1, sy + 2, 7, 7, 0xFF3E7840u);
-            fill_rect_px(sx + 2, sy + 3, 4, 3, 0xFF5A9852u);
-            fill_rect_px(sx + 8, sy + 6, 7, 7, 0xFF3A6E3Cu);
-            fill_rect_px(sx + 10, sy + 7, 4, 3, 0xFF5A9852u);
-            fill_rect_px(sx + 4, sy + 10, 5, 5, 0xFF28502Cu);
-            break;
-        case T_WORLD_HILL:
-            fill_rect_px(sx, sy, 16, 16, 0xFF68A64Eu);
-            fill_rect_px(sx + 2, sy + 6, 12, 9, 0xFF548840u);
-            fill_rect_px(sx + 4, sy + 4, 8, 6, 0xFF7BB256u);
-            fill_rect_px(sx + 5, sy + 4, 5, 2, 0xFF98CA6Cu);
-            break;
-        case T_WORLD_CASTLE:
-            fill_rect_px(sx, sy, 16, 16, 0xFFD8D0C0u);
-            fill_rect_px(sx + 1, sy + 2, 14, 13, 0xFFEEE8D8u);
-            fill_rect_px(sx + 2, sy + 0, 4, 4, 0xFF3462A4u);
-            fill_rect_px(sx + 10, sy + 0, 4, 4, 0xFF3462A4u);
-            fill_rect_px(sx + 6, sy + 8, 4, 7, 0xFF423026u);
-            break;
-        case T_WORLD_TOWN:
-            fill_rect_px(sx, sy, 16, 16, 0xFF68A64Eu);
-            fill_rect_px(sx + 2, sy + 6, 12, 9, 0xFFF4EAD2u);
-            fill_rect_px(sx + 1, sy + 2, 14, 5, 0xFFCC523Cu);
-            fill_rect_px(sx + 3, sy + 3, 10, 2, 0xFFE47254u);
-            fill_rect_px(sx + 6, sy + 10, 4, 5, 0xFF5C3A24u);
-            break;
-        case T_WORLD_RUINS:
-            fill_rect_px(sx, sy, 16, 16, 0xFF5A8248u);
-            fill_rect_px(sx + 2, sy + 3, 4, 11, 0xFF888C9Cu);
-            fill_rect_px(sx + 10, sy + 5, 4, 9, 0xFF767A8Au);
-            fill_rect_px(sx + 2, sy + 3, 12, 2, 0xFFB0B4C2u);
-            fill_rect_px(sx + 6, sy + 9, 3, 3, 0xFF426A3Eu);
-            break;
-        case T_WORLD_SHALLOW: {
-            int wave = (int)((frame >> 4) & 3u);
-            fill_rect_px(sx, sy, 16, 16, 0xFF3EAEC4u);
-            fill_rect_px(sx + ((wave * 3) & 11), sy + 4, 5, 1, 0xFF7ADCF0u);
-            fill_rect_px(sx + ((wave * 2 + 5) & 11), sy + 11, 6, 1, 0xFFB8F4FCu);
-            put_px(sx + ((wave * 3 + 2) & 15), sy + 8, 0xFFE8FCFFu);
-            break;
-        }
-        case T_WORLD_SAND:
-            fill_rect_px(sx, sy, 16, 16, 0xFFE8C26Eu);
-            fill_rect_px(sx + 1, sy + 3, 12, 2, 0xFFF4D688u);
-            fill_rect_px(sx + 3, sy + 10, 11, 2, 0xFFD4A654u);
-            put_px(sx + 4, sy + 7, 0xFFC29242u);
-            put_px(sx + 12, sy + 13, 0xFFC29242u);
-            break;
-        case T_WORLD_SNOW:
-            fill_rect_px(sx, sy, 16, 16, 0xFFE6F0FAu);
-            fill_rect_px(sx + 2, sy + 4, 9, 2, 0xFFFFFFFFu);
-            fill_rect_px(sx + 5, sy + 11, 8, 2, 0xFFC8DCF0u);
-            put_px(sx + 13, sy + 3, 0xFF9AC4E8u);
-            put_px(sx + 3, sy + 13, 0xFF9AC4E8u);
-            break;
-        case T_WORLD_LAVA: {
-            int glow = (int)((frame >> 3) & 3u);
-            fill_rect_px(sx, sy, 16, 16, 0xFF9E2418u);
-            fill_rect_px(sx + 1, sy + ((glow * 3) & 11), 13, 3, 0xFFE85224u);
-            fill_rect_px(sx + 3, sy + ((glow * 3 + 7) & 11), 9, 2, 0xFFFFB838u);
-            put_px(sx + 6 + glow, sy + 5, 0xFFFFF4A8u);
-            break;
-        }
-        case T_WORLD_JUNGLE:
-            fill_rect_px(sx, sy, 16, 16, 0xFF1F542Cu);
-            fill_rect_px(sx + 1, sy + 2, 8, 7, 0xFF2E783Cu);
-            fill_rect_px(sx + 7, sy + 7, 8, 7, 0xFF3E9448u);
-            fill_rect_px(sx + 2, sy + 3, 4, 2, 0xFF70BA5Au);
-            put_px(sx + 11, sy + 9, 0xFFE86878u);
-            break;
-        case T_WORLD_CORAL: {
-            int wave = (int)((frame >> 4) & 3u);
-            fill_rect_px(sx, sy, 16, 16, 0xFF3CAEC6u);
-            fill_rect_px(sx + ((wave * 2) & 9), sy + 2, 5, 1, 0xFF9CECF8u);
-            fill_rect_px(sx + 3, sy + 5, 4, 4, 0xFFF27084u);
-            fill_rect_px(sx + 9, sy + 8, 5, 4, 0xFFF4A45Au);
-            fill_rect_px(sx + 5, sy + 11, 3, 3, 0xFF7AD6A8u);
-            break;
-        }
-        case T_WORLD_TECH:
-            fill_rect_px(sx, sy, 16, 16, 0xFF283448u);
-            fill_rect_px(sx + 1, sy + 1, 14, 14, 0xFF364862u);
-            fill_rect_px(sx + 0, sy + 7, 16, 2, 0xFF42D6F4u);
-            fill_rect_px(sx + 7, sy + 0, 2, 16, 0xFF42D6F4u);
-            fill_rect_px(sx + 6, sy + 6, 4, 4, 0xFFB8F6FFu);
-            break;
-        case T_PALM_TREE:
-            fill_rect_px(sx, sy, 16, 16, 0xFFE8C26Eu);
-            fill_rect_px(sx + 6, sy + 7, 4, 8, 0xFF8C5832u);
-            fill_rect_px(sx + 7, sy + 7, 2, 8, 0xFFB07446u);
-            fill_rect_px(sx + 1, sy + 2, 14, 5, 0xFF2E7E42u);
-            fill_rect_px(sx + 3, sy + 1, 10, 4, 0xFF52A858u);
-            fill_rect_px(sx + 6, sy + 5, 4, 2, 0xFFE8C84Au);
-            break;
-        case T_DOCK_PIER:
-            fill_rect_px(sx, sy, 16, 16, 0xFF3EAEC4u);
-            fill_rect_px(sx + 1, sy + 1, 14, 14, 0xFF7C4E2Cu);
-            fill_rect_px(sx + 2, sy + 2, 12, 3, 0xFFA66E42u);
-            fill_rect_px(sx + 2, sy + 6, 12, 3, 0xFFA66E42u);
-            fill_rect_px(sx + 2, sy + 10, 12, 3, 0xFFA66E42u);
-            fill_rect_px(sx + 2, sy + 2, 2, 2, 0xFF52321Au);
-            fill_rect_px(sx + 12, sy + 11, 2, 2, 0xFF52321Au);
-            break;
-        default:
-            fill_rect_px(sx, sy, 16, 16, c_g2);
-            break;
     }
 }
 
-static void draw_bg2_tile(int sx, int sy, uint8_t tile) {
-    uint32_t c_g0 = pal_col(0, 2);
-    uint32_t c_g1 = pal_col(0, 3);
-    uint32_t c_g2 = pal_col(0, 4);
-    uint32_t c_g3 = pal_col(0, 5);
-    uint32_t c_red = pal_col(0, 15);
-    uint32_t c_gold = pal_col(1, 10);
-    uint32_t c_cream = pal_col(1, 11);
-    switch (tile) {
-        case O_CANOPY_TL:
-            fill_rect_px(sx + 4, sy + 4, 12, 12, c_g1);
-            fill_rect_px(sx + 6, sy + 2, 10, 10, c_g2);
-            fill_rect_px(sx + 8, sy + 4, 6, 5, c_g3);
-            break;
-        case O_CANOPY_TR:
-            fill_rect_px(sx, sy + 4, 12, 12, c_g1);
-            fill_rect_px(sx, sy + 2, 10, 10, c_g2);
-            fill_rect_px(sx + 2, sy + 4, 6, 5, c_g3);
-            break;
-        case O_CANOPY_BL:
-            fill_rect_px(sx + 2, sy, 14, 12, c_g0);
-            fill_rect_px(sx + 4, sy, 12, 9, c_g1);
-            fill_rect_px(sx + 6, sy + 1, 10, 5, c_g2);
-            break;
-        case O_CANOPY_BR:
-            fill_rect_px(sx, sy, 14, 12, c_g0);
-            fill_rect_px(sx, sy, 12, 9, c_g1);
-            fill_rect_px(sx, sy + 1, 10, 5, c_g2);
-            break;
-        case O_ROOF_EAVE:
-            fill_rect_px(sx, sy + 12, 16, 4, pal_col(0, 15));
-            fill_rect_px(sx, sy + 15, 16, 1, pal_col(0, 1));
-            break;
-        case O_SHRINE_ARCH:
-            fill_rect_px(sx + 2, sy, 12, 6, pal_col(0, 10));
-            fill_rect_px(sx + 3, sy + 1, 10, 2, pal_col(0, 11));
-            fill_rect_px(sx + 2, sy + 6, 12, 1, pal_col(0, 1));
-            break;
-        case O_MAPLE_TL:
-            fill_rect_px(sx + 3, sy + 3, 13, 13, pal_col(0, 6));
-            fill_rect_px(sx + 4, sy + 2, 12, 11, c_red);
-            fill_rect_px(sx + 6, sy + 3, 8, 6, c_gold);
-            put_px(sx + 8, sy + 4, c_cream);
-            break;
-        case O_MAPLE_TR:
-            fill_rect_px(sx, sy + 3, 13, 13, pal_col(0, 6));
-            fill_rect_px(sx, sy + 2, 12, 11, c_red);
-            fill_rect_px(sx + 2, sy + 3, 8, 6, c_gold);
-            put_px(sx + 5, sy + 5, c_cream);
-            break;
-        case O_PINE_TOP:
-            fill_rect_px(sx + 6, sy + 1, 4, 4, c_g1);
-            fill_rect_px(sx + 4, sy + 5, 8, 5, c_g0);
-            fill_rect_px(sx + 2, sy + 10, 12, 6, c_g0);
-            fill_rect_px(sx + 5, sy + 4, 4, 3, c_g2);
-            fill_rect_px(sx + 3, sy + 10, 6, 3, c_g1);
-            break;
-        case O_OAK_CROWN:
-            fill_rect_px(sx + 1, sy + 2, 14, 14, pal_col(0, 6));
-            fill_rect_px(sx + 2, sy + 1, 12, 11, c_red);
-            fill_rect_px(sx + 4, sy + 2, 8, 7, c_gold);
-            fill_rect_px(sx + 6, sy + 4, 4, 3, c_cream);
-            break;
-        default:
-            break;
+static inline int atmos_tri_wave(int phase, int amp) {
+    int p = phase & 255;
+    int t = (p < 128) ? (p - 64) : (192 - p);
+    return (t * amp) / 64;
+}
+
+static void render_sdl2_living_atmosphere(const HearthState *st, const HearthPpuPacket *ppu,
+                                          int cam_x, int cam_y,
+                                          int tx0, int ty0, int tx1, int ty1, int mw) {
+    int w = (int)g_ppu_w;
+    int h = (int)g_ppu_h;
+    uint32_t fc = ppu->frame_count;
+    uint8_t pal_id = ppu->terrain_pal_id;
+
+    /* 1. Diagonal Dappled Sunbeams / Interior Window Light Shafts */
+    if (!ppu->zone_is_dark && pal_id != 3u && pal_id != 5u) {
+        uint32_t beam_col = 0xFFFFF4BAu;
+        uint8_t beam_a = 22u;
+        if (pal_id == 6u)      { beam_col = 0xFFFFD4B8u; beam_a = 24u; } /* Dawn rose-gold */
+        else if (pal_id == 7u) { beam_col = 0xFFFFA866u; beam_a = 24u; } /* Copper dusk */
+        else if (pal_id == 8u) { beam_col = 0xFF9CCCFFu; beam_a = 17u; } /* Silver moonbeams */
+        else if (pal_id == 9u) { beam_col = 0xFFFFE8A4u; beam_a = 23u; } /* Cottage window shafts */
+        else if (pal_id == 14u){ beam_col = 0xFFDAF4FFu; beam_a = 19u; } /* Frost sparkle rays */
+
+        int drift = atmos_tri_wave((int)(fc >> 1), 8);
+        int beam_count = st->is_world_map ? 3 : 4;
+        int span_w = w + 80;
+        for (int i = 0; i < beam_count; i++) {
+            int raw_x = i * 92 + 28 - (cam_x >> 2) + drift;
+            int bx = ((raw_x % span_w) + span_w) % span_w - 30;
+            int bw = 22 + (i & 1) * 14;
+            for (int py = 0; py < h; py++) {
+                int sl = (py * 54) / h;
+                int x_start = bx + sl;
+                int x_end = x_start + bw;
+                if (x_start < 0) x_start = 0;
+                if (x_end > w) x_end = w;
+                for (int px = x_start; px < x_end; px++) {
+                    put_px_blend(px, py, beam_col, beam_a);
+                }
+            }
+        }
+    }
+
+    /* 2. Warm Glowing Lantern & Cozy Fireplace Halos */
+    if (!st->is_world_map) {
+        int flick = atmos_tri_wave((int)(fc * 3u), 3);
+        bool dim_scene = ppu->zone_is_dark || pal_id == 7u || pal_id == 8u || pal_id == 9u;
+        uint8_t outer_a = dim_scene ? 34u : 18u;
+        uint8_t inner_a = dim_scene ? 64u : 32u;
+        for (int ty = ty0; ty <= ty1; ty++) {
+            int row_off = ty * mw;
+            for (int tx = tx0; tx <= tx1; tx++) {
+                uint8_t tid = st->map_bg1[row_off + tx];
+                if (tid == T_LANTERN_POST || tid == T_FIREPLACE) {
+                    int lx = tx * HEARTH_TILE_SIZE + 8 - cam_x;
+                    int ly = ty * HEARTH_TILE_SIZE + ((tid == T_FIREPLACE) ? 10 : 5) - cam_y;
+                    int rad = ((tid == T_FIREPLACE) ? 28 : 22) + flick;
+                    fill_ellipse_alpha(lx, ly, rad, rad, 0xFFFFAE48u, outer_a);
+                    fill_ellipse_alpha(lx, ly, rad / 2, rad / 2, 0xFFFFEC96u, inner_a);
+                }
+            }
+        }
+    }
+
+    /* 3. Biome-Specific Drifting 16-Bit Pixel Particles (Leaves, Petals, Fireflies, Snow, Embers) */
+    bool is_autumn   = (pal_id == 1u || pal_id == 6u);
+    bool is_firefly  = (pal_id == 7u || pal_id == 8u || pal_id == 3u || pal_id == 5u || ppu->zone_is_dark);
+    bool is_snow     = (pal_id == 14u);
+    bool is_volcano  = (pal_id == 16u);
+    bool is_interior = (pal_id == 9u);
+    int pcount = is_interior ? 8 : 14;
+
+    for (int i = 0; i < pcount; i++) {
+        int seed = (i * 73 + 19) & 255;
+        int px, py;
+        if (is_firefly) {
+            int pulse = atmos_tri_wave((int)(fc * 2u) + i * 43, 100);
+            if (pulse < -25) continue;
+            int wx = seed * 7 + atmos_tri_wave((int)fc + i * 31, 18) - (cam_x * 3) / 5;
+            int wy = seed * 5 + atmos_tri_wave((int)fc + i * 47 + 64, 14) - (cam_y * 3) / 5;
+            px = ((wx % w) + w) % w;
+            py = ((wy % h) + h) % h;
+            fill_rect_alpha(px, py, 2, 2, (pulse > 35) ? 0xFFFFF6A8u : 0xFFF4C64Cu,
+                            (pulse > 35) ? 235u : 165u);
+        } else if (is_volcano) {
+            int wx = seed * 9 + atmos_tri_wave((int)(fc * 2u) + i * 29, 10) - (cam_x * 2) / 5;
+            int wy = seed * 5 - (int)((fc * (uint32_t)(5 + (i & 3))) >> 3) - (cam_y * 2) / 5;
+            px = ((wx % w) + w) % w;
+            py = ((wy % h) + h) % h;
+            fill_rect_px(px, py, 2, 1, (i & 1) ? 0xFFFF9A34u : 0xFFFFE468u);
+        } else if (is_snow) {
+            int wx = seed * 9 + (int)(fc >> 2) + atmos_tri_wave((int)fc + i * 23, 8) - (cam_x * 2) / 5;
+            int wy = seed * 5 + (int)((fc * (uint32_t)(4 + (i & 3))) >> 3) - (cam_y * 2) / 5;
+            px = ((wx % w) + w) % w;
+            py = ((wy % h) + h) % h;
+            fill_rect_px(px, py, 2, 2, (i & 1) ? 0xFFFFFFFFu : 0xFFC8ECFFu);
+        } else if (is_autumn) {
+            int wx = seed * 9 + (int)((fc * (uint32_t)(3 + (i & 1))) >> 3)
+                     + atmos_tri_wave((int)(fc * 2u) + i * 19, 10) - (cam_x >> 1);
+            int wy = seed * 5 + (int)((fc * (uint32_t)(3 + (i & 3))) >> 3) - (cam_y >> 1);
+            px = ((wx % w) + w) % w;
+            py = ((wy % h) + h) % h;
+            int flip = ((int)(fc >> 4) + i) & 1;
+            uint32_t lcol = (i % 3 == 0) ? 0xFFD8402Cu : ((i % 3 == 1) ? 0xFFF29A34u : 0xFFF8CE52u);
+            fill_rect_px(px, py, flip ? 3 : 2, flip ? 2 : 3, lcol);
+        } else if (is_interior) {
+            int wx = seed * 7 + atmos_tri_wave((int)(fc >> 1) + i * 37, 12) - (cam_x >> 2);
+            int wy = seed * 5 + (int)(fc >> 3) - (cam_y >> 2);
+            px = ((wx % w) + w) % w;
+            py = ((wy % h) + h) % h;
+            put_px_blend(px, py, 0xFFFFF0B8u, 150u);
+        } else {
+            /* Sunlit meadow blossom petals & golden pollen */
+            int wx = seed * 9 + (int)(fc >> 2) + atmos_tri_wave((int)fc + i * 27, 9) - (cam_x >> 1);
+            int wy = seed * 5 + (int)((fc * (uint32_t)(2 + (i & 1))) >> 3) - (cam_y >> 1);
+            px = ((wx % w) + w) % w;
+            py = ((wy % h) + h) % h;
+            uint32_t pcol = (i % 3 == 0) ? 0xFFFFF4DCu : ((i % 3 == 1) ? 0xFFFFCBE0u : 0xFFFCEB8Bu);
+            fill_rect_alpha(px, py, 2, 1, pcol, 200u);
+        }
     }
 }
 
@@ -3589,19 +3183,35 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
             if (ty1 >= mh) ty1 = mh - 1;
         }
 
-        /* Layer 1: BG1 Ground & Architecture (Real-time Toroidal Globe Streaming vs Zone Buffer) */
+        /* Layer 1: BG1 Ground & Architecture (Unified 60-Color Chrono/Mana Autotiled PPU) */
+        uint8_t anim_f = (uint8_t)((ppu->frame_count >> 4) & 3u);
         for (int ty = ty0; ty <= ty1; ty++) {
             for (int tx = tx0; tx <= tx1; tx++) {
-                uint8_t tile;
+                uint8_t tile, ov_here = 0u, tn, ts, tw, te;
+                uint16_t mx_u, my_u;
                 if (st->is_world_map) {
-                    uint16_t wx = (uint16_t)(tx & (HEARTH_GLOBE_W - 1));
-                    uint16_t wy = (uint16_t)(((ty % HEARTH_GLOBE_H) + HEARTH_GLOBE_H) % HEARTH_GLOBE_H);
-                    hearth_globe_cell(wx, wy, &tile, NULL, NULL, NULL);
+                    mx_u = (uint16_t)(tx & (HEARTH_GLOBE_W - 1));
+                    my_u = (uint16_t)(((ty % HEARTH_GLOBE_H) + HEARTH_GLOBE_H) % HEARTH_GLOBE_H);
+                    hearth_globe_cell(mx_u, my_u, &tile, &ov_here, NULL, NULL);
+                    hearth_globe_cell(mx_u, (uint16_t)((my_u + HEARTH_GLOBE_H - 1u) % HEARTH_GLOBE_H), &tn, NULL, NULL, NULL);
+                    hearth_globe_cell(mx_u, (uint16_t)((my_u + 1u) % HEARTH_GLOBE_H), &ts, NULL, NULL, NULL);
+                    hearth_globe_cell((uint16_t)((mx_u - 1u) & (HEARTH_GLOBE_W - 1u)), my_u, &tw, NULL, NULL, NULL);
+                    hearth_globe_cell((uint16_t)((mx_u + 1u) & (HEARTH_GLOBE_W - 1u)), my_u, &te, NULL, NULL, NULL);
                 } else {
+                    mx_u = (uint16_t)tx;
+                    my_u = (uint16_t)ty;
                     tile = st->map_bg1[ty * mw + tx];
                     if (tile == T_MTN_SKY && ppu->has_mountain_vista) continue;
+                    ov_here = st->map_bg2[ty * mw + tx];
+                    tn = (ty > 0)      ? st->map_bg1[(ty - 1) * mw + tx] : tile;
+                    ts = (ty + 1 < mh) ? st->map_bg1[(ty + 1) * mw + tx] : tile;
+                    tw = (tx > 0)      ? st->map_bg1[ty * mw + (tx - 1)] : tile;
+                    te = (tx + 1 < mw) ? st->map_bg1[ty * mw + (tx + 1)] : tile;
                 }
-                draw_bg1_tile(tx * HEARTH_TILE_SIZE - cam_x, ty * HEARTH_TILE_SIZE - cam_y, tile, ppu->frame_count);
+                uint8_t meta = hearth_resolve_chrono_meta(tile, ov_here, tn, ts, tw, te,
+                                                          mx_u, my_u, st->is_world_map ? 1u : 0u);
+                draw_chrono_meta16(tx * HEARTH_TILE_SIZE - cam_x,
+                                   ty * HEARTH_TILE_SIZE - cam_y, meta, anim_f);
             }
         }
 
@@ -3618,7 +3228,7 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
             }
         }
 
-        /* Layer 3: BG2 Overhead Tree Canopies & Roof Eaves */
+        /* Layer 3: BG2 Overhead Tree Canopies & Roof Eaves (Unified 60-Color Chrono/Mana) */
         for (int ty = ty0; ty <= ty1; ty++) {
             for (int tx = tx0; tx <= tx1; tx++) {
                 uint8_t ov;
@@ -3629,8 +3239,10 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
                 } else {
                     ov = st->map_bg2[ty * mw + tx];
                 }
-                if (ov != O_NONE) {
-                    draw_bg2_tile(tx * HEARTH_TILE_SIZE - cam_x, ty * HEARTH_TILE_SIZE - cam_y, ov);
+                if (ov != O_NONE && ov <= O_OAK_CROWN) {
+                    draw_chrono_meta16(tx * HEARTH_TILE_SIZE - cam_x,
+                                       ty * HEARTH_TILE_SIZE - cam_y,
+                                       (uint8_t)(CM_OV_CANOPY_TL + (ov - 1u)), 0u);
                 }
             }
         }
@@ -3642,6 +3254,9 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
                 draw_oam_sprite(o, o->x + ppu->shake_x, o->y + ppu->shake_y, ppu->frame_count);
             }
         }
+
+        /* Layer 4.5: Living Chrono/Mana Biome Atmosphere (Sunbeams, Lantern Halos, Drifting Particles) */
+        render_sdl2_living_atmosphere(st, ppu, cam_x, cam_y, tx0, ty0, tx1, ty1, mw);
 
         if (st->is_world_map && st->mode == MODE_EXPLORE) {
             render_sdl_world_banners(st, cam_x, cam_y);

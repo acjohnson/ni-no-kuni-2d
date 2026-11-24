@@ -19,71 +19,53 @@ import {
   O_ROOF_EAVE,
   O_SHRINE_ARCH,
   SpriteId,
-  T_ATTIC_CHEST,
-  T_AUTUMN_GRASS,
-  T_BED_QUILT,
-  T_BOULDER,
-  T_BRIDGE,
-  T_BRIDGE_RAIL_N,
-  T_BRIDGE_RAIL_S,
-  T_BUSH,
-  T_CLIFF_LEDGE,
-  T_CLIFF_WALL,
-  T_COBBLE,
-  T_DIRT,
-  T_FENCE,
-  T_FIREPLACE,
-  T_FLOWER_BED,
-  T_FLOWERS,
-  T_FORD,
   T_GRASS,
-  T_GRASS_ALT,
-  T_HEARTH_RUG,
-  T_HOLLOW_OAK,
-  T_INTERIOR_WALL,
-  T_LANTERN_POST,
-  T_MAPLE_TRUNK,
-  T_MTN_SKY,
-  T_PINE_TRUNK,
-  T_RAIL_TRACK,
-  T_RAPIDS,
-  T_ROCKY_PATH,
-  T_ROOF_BODY,
-  T_ROOF_TOP,
-  T_SHRINE_FLOOR,
-  T_SHRINE_PILLAR,
-  T_SHRINE_RUNE,
-  T_SIGNPOST,
-  T_STONE_STAIRS,
-  T_TALL_GRASS,
-  T_TREE_TRUNK,
-  T_WALL_DOOR,
-  T_WALL_WINDOW,
-  T_WALL_WOOD,
-  T_WATER,
-  T_WINDMILL_DOOR,
-  T_WINDMILL_ROOF,
-  T_WINDMILL_WALL,
-  T_WOOD_FLOOR,
-  T_WORLD_BEACH,
-  T_WORLD_CASTLE,
-  T_WORLD_CORAL,
-  T_WORLD_FOREST,
-  T_WORLD_HILL,
-  T_WORLD_JUNGLE,
-  T_WORLD_LAVA,
-  T_WORLD_OCEAN,
-  T_WORLD_PEAK,
-  T_WORLD_RUINS,
-  T_WORLD_SAND,
-  T_WORLD_SHALLOW,
-  T_WORLD_SNOW,
-  T_WORLD_TECH,
-  T_WORLD_TOWN,
-  T_DOCK_PIER,
-  T_PALM_TREE,
   TILE_SIZE,
 } from '../core/types';
+import {
+  CHRONO_ANIM_META_IDS,
+  CHRONO_ANIM_PX_B64,
+  CHRONO_BASE_PX_B64,
+  CHRONO_META_COUNT,
+  CHRONO_META_QPAL,
+  CHRONO_ZONE_PALS,
+  CM_OV_CANOPY_BL,
+  CM_OV_CANOPY_BR,
+  CM_OV_CANOPY_TL,
+  CM_OV_CANOPY_TR,
+  CM_OV_MAPLE_TL,
+  CM_OV_MAPLE_TR,
+  CM_OV_OAK_CROWN,
+  CM_OV_PINE_TOP,
+  CM_OV_ROOF_EAVE,
+  CM_OV_SHRINE_ARCH,
+} from './chronoTilesetData';
+
+function decodeB64Bytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+let cachedChronoBasePx: Uint8Array | null = null;
+let cachedChronoAnimPx: Uint8Array | null = null;
+
+function getChronoBasePx(): Uint8Array {
+  if (!cachedChronoBasePx) cachedChronoBasePx = decodeB64Bytes(CHRONO_BASE_PX_B64);
+  return cachedChronoBasePx;
+}
+
+function getChronoAnimPx(): Uint8Array {
+  if (!cachedChronoAnimPx) cachedChronoAnimPx = decodeB64Bytes(CHRONO_ANIM_PX_B64);
+  return cachedChronoAnimPx;
+}
+
+function hexToRgbaTuple(hex: string): [number, number, number, number] {
+  if (!hex || hex.startsWith('rgba')) return [0, 0, 0, 0];
+  const v = parseInt(hex.slice(1), 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255, 255];
+}
 
 export type SwappableSlotId =
   | 'hero'
@@ -146,9 +128,11 @@ export class PixelAtlas {
 
   public setTerrainPalette(palId: number): void {
     if (palId === this.currentTerrainPalId) return;
-    if (palId >= 0 && palId < this.zonePalettes.length) {
+    if (palId >= 0 && palId < CHRONO_ZONE_PALS.length) {
       this.currentTerrainPalId = palId;
-      this.activePalettes[0] = this.zonePalettes[palId];
+      if (palId < this.zonePalettes.length) {
+        this.activePalettes[0] = this.zonePalettes[palId];
+      }
       this.buildAllTiles();
     }
   }
@@ -214,1181 +198,92 @@ export class PixelAtlas {
   }
 
   /* ========================================================================
-   * 16x16 TERRAIN & ARCHITECTURE TILES (PALETTE 0)
+   * UNIFIED 60-COLOR CHRONO TRIGGER / TRIALS OF MANA 16x16 MASTER TILESET
    * ======================================================================== */
   private buildAllTiles(): void {
-    const PALETTES = this.activePalettes;
-    const p0 = PALETTES[0];
-    const makeTile = (fn: (ctx: CanvasRenderingContext2D) => void): HTMLCanvasElement => {
+    const palId =
+      this.currentTerrainPalId >= 0 && this.currentTerrainPalId < CHRONO_ZONE_PALS.length
+        ? this.currentTerrainPalId
+        : 0;
+    const fourPals = CHRONO_ZONE_PALS[palId];
+    const rgbaPals = fourPals.map((sub) => sub.map(hexToRgbaTuple));
+
+    const basePx = getChronoBasePx();
+    const animPx = getChronoAnimPx();
+
+    const renderPacked16 = (
+      src: Uint8Array,
+      byteOffset: number,
+      qpal: readonly [number, number, number, number]
+    ): HTMLCanvasElement => {
       const c = makeCanvas(TILE_SIZE, TILE_SIZE);
       const ctx = c.getContext('2d')!;
-      fn(ctx);
+      const imgData = ctx.createImageData(TILE_SIZE, TILE_SIZE);
+      const data = imgData.data;
+      for (let y = 0; y < 16; y++) {
+        const qRow = y >= 8 ? 2 : 0;
+        const rowByte = byteOffset + y * 8;
+        for (let x = 0; x < 16; x += 2) {
+          const b = src[rowByte + (x >> 1)];
+          const c0 = (b >> 4) & 15;
+          const c1 = b & 15;
+          const pIdx0 = qpal[qRow + (x >= 8 ? 1 : 0)];
+          const pIdx1 = qpal[qRow + (x + 1 >= 8 ? 1 : 0)];
+          if (c0 > 0) {
+            const rgba = rgbaPals[pIdx0][c0];
+            const dst = (y * 16 + x) * 4;
+            data[dst] = rgba[0];
+            data[dst + 1] = rgba[1];
+            data[dst + 2] = rgba[2];
+            data[dst + 3] = rgba[3];
+          }
+          if (c1 > 0) {
+            const rgba = rgbaPals[pIdx1][c1];
+            const dst = (y * 16 + x + 1) * 4;
+            data[dst] = rgba[0];
+            data[dst + 1] = rgba[1];
+            data[dst + 2] = rgba[2];
+            data[dst + 3] = rgba[3];
+          }
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
       return c;
     };
 
-    // Grass base
-    const grass0 = makeTile((ctx) => {
-      ctx.fillStyle = p0[3];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(2, 3, 2, 1);
-      ctx.fillRect(10, 8, 2, 1);
-      ctx.fillRect(5, 13, 1, 2);
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(3, 4, 1, 1);
-      ctx.fillRect(11, 9, 1, 1);
-      ctx.fillRect(13, 2, 1, 2);
-    });
-    this.bg1Tiles.set(T_GRASS, [grass0]);
+    this.bg1Tiles.clear();
+    for (let mid = 0; mid < CHRONO_META_COUNT; mid++) {
+      const canvas = renderPacked16(basePx, mid * 128, CHRONO_META_QPAL[mid]);
+      this.bg1Tiles.set(mid, [canvas]);
+    }
 
-    // Grass Alt (sunlit tufts)
-    const grassAlt = makeTile((ctx) => {
-      ctx.drawImage(grass0, 0, 0);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(4, 6, 1, 2);
-      ctx.fillRect(6, 5, 1, 3);
-      ctx.fillRect(8, 6, 1, 2);
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(6, 4, 1, 1);
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(4, 8, 5, 1);
-    });
-    this.bg1Tiles.set(T_GRASS_ALT, [grassAlt]);
-
-    // Wildflowers (2-frame gentle breeze!)
-    const flowerFrames = [0, 1].map((f) =>
-      makeTile((ctx) => {
-        ctx.drawImage(grass0, 0, 0);
-        const shift = f;
-        // Little red & cream daisies
-        ctx.fillStyle = p0[2];
-        ctx.fillRect(3, 6, 2, 2);
-        ctx.fillRect(10, 11, 2, 2);
-        ctx.fillStyle = p0[15];
-        ctx.fillRect(3 + shift, 4, 2, 2);
-        ctx.fillStyle = p0[8];
-        ctx.fillRect(4 + shift, 4, 1, 1);
-        ctx.fillStyle = p0[11];
-        ctx.fillRect(10 - shift, 9, 2, 2);
-        ctx.fillStyle = PALETTES[1][10];
-        ctx.fillRect(11 - shift, 9, 1, 1);
-      })
-    );
-    this.bg1Tiles.set(T_FLOWERS, flowerFrames);
-
-    // Tall Rustling Grass (2-frame wind sway!)
-    const tallFrames = [0, 1].map((f) =>
-      makeTile((ctx) => {
-        ctx.fillStyle = p0[2];
-        ctx.fillRect(0, 0, 16, 16);
-        for (let bx = 1; bx < 15; bx += 3) {
-          for (let by = 4; by <= 13; by += 5) {
-            const lean = ((bx + by) & 1) === 0 ? f : -f;
-            ctx.fillStyle = p0[3];
-            ctx.fillRect(bx, by, 2, 4);
-            ctx.fillStyle = p0[4];
-            ctx.fillRect(bx + lean, by - 2, 1, 3);
-            ctx.fillStyle = p0[5];
-            ctx.fillRect(bx + lean, by - 3, 1, 1);
-          }
-        }
-      })
-    );
-    this.bg1Tiles.set(T_TALL_GRASS, tallFrames);
-
-    // Warm Ochre Dirt Road
-    const dirt = makeTile((ctx) => {
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(2, 2, 3, 1);
-      ctx.fillRect(10, 7, 3, 1);
-      ctx.fillRect(4, 12, 2, 1);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(6, 5, 2, 1);
-      ctx.fillRect(12, 13, 2, 1);
-      ctx.fillRect(1, 9, 1, 1);
-    });
-    this.bg1Tiles.set(T_DIRT, [dirt]);
-
-    // Cobblestone Plaza
-    const cobble = makeTile((ctx) => {
-      ctx.fillStyle = p0[9];
-      ctx.fillRect(0, 0, 16, 16);
-      const stones = [
-        [1, 1, 6, 5],
-        [8, 1, 7, 5],
-        [0, 7, 4, 4],
-        [5, 7, 6, 4],
-        [12, 7, 4, 4],
-        [1, 12, 7, 3],
-        [9, 12, 6, 3],
-      ];
-      for (const [x, y, w, h] of stones) {
-        ctx.fillStyle = p0[10];
-        ctx.fillRect(x, y, w, h);
-        ctx.fillStyle = p0[11];
-        ctx.fillRect(x, y, w - 1, 1);
+    // Attach 4-frame animated sequences for shimmering water, foaming shorelines, wildflowers, rapids & hearth
+    for (let ai = 0; ai < CHRONO_ANIM_META_IDS.length; ai++) {
+      const mid = CHRONO_ANIM_META_IDS[ai];
+      const qpal = CHRONO_META_QPAL[mid];
+      const frames: HTMLCanvasElement[] = [];
+      for (let f = 0; f < 4; f++) {
+        frames.push(renderPacked16(animPx, (ai * 4 + f) * 128, qpal));
       }
-    });
-    this.bg1Tiles.set(T_COBBLE, [cobble]);
+      this.bg1Tiles.set(mid, frames);
+    }
 
-    // Animated Creek Water (4 frames scrolling shimmer!)
-    const waterFrames = [0, 1, 2, 3].map((f) =>
-      makeTile((ctx) => {
-        ctx.fillStyle = p0[12];
-        ctx.fillRect(0, 0, 16, 16);
-        ctx.fillStyle = p0[13];
-        ctx.fillRect(0, (f * 4) % 16, 16, 4);
-        ctx.fillRect(0, (f * 4 + 8) % 16, 16, 3);
-        ctx.fillStyle = p0[14];
-        ctx.fillRect((2 + f * 2) % 13, (3 + f * 4) % 15, 4, 1);
-        ctx.fillRect((9 - f + 16) % 13, (10 + f * 4) % 15, 3, 1);
-      })
-    );
-    this.bg1Tiles.set(T_WATER, waterFrames);
-
-    // Shallow Pebble Ford (Walkable water with stepping stones!)
-    const fordFrames = [0, 1].map((f) =>
-      makeTile((ctx) => {
-        ctx.fillStyle = p0[13];
-        ctx.fillRect(0, 0, 16, 16);
-        ctx.fillStyle = p0[14];
-        ctx.fillRect(1 + f * 2, 2, 4, 1);
-        ctx.fillRect(9 - f, 12, 4, 1);
-        // Submerged pebbles
-        ctx.fillStyle = p0[10];
-        ctx.fillRect(3, 5, 4, 3);
-        ctx.fillRect(9, 8, 5, 3);
-        ctx.fillStyle = p0[11];
-        ctx.fillRect(4, 5, 2, 1);
-        ctx.fillRect(10, 8, 3, 1);
-      })
-    );
-    this.bg1Tiles.set(T_FORD, fordFrames);
-
-    // Timber Bridge Planks
-    const bridge = makeTile((ctx) => {
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(0, 0, 16, 16);
-      for (let x = 0; x < 16; x += 4) {
-        ctx.fillStyle = p0[7];
-        ctx.fillRect(x, 1, 3, 14);
-        ctx.fillStyle = p0[8];
-        ctx.fillRect(x, 1, 1, 14);
-        ctx.fillStyle = p0[1];
-        ctx.fillRect(x + 1, 2, 1, 1);
-        ctx.fillRect(x + 1, 13, 1, 1);
-      }
-    });
-    this.bg1Tiles.set(T_BRIDGE, [bridge]);
-
-    // Bridge Rail North & South
-    const makeRail = (isNorth: boolean) =>
-      makeTile((ctx) => {
-        ctx.drawImage(waterFrames[0], 0, 0);
-        const y0 = isNorth ? 8 : 0;
-        ctx.fillStyle = p0[1];
-        ctx.fillRect(0, y0, 16, 8);
-        ctx.fillStyle = p0[6];
-        ctx.fillRect(0, y0 + 1, 16, 6);
-        ctx.fillStyle = p0[8];
-        ctx.fillRect(0, y0 + 2, 16, 2);
-        // Posts
-        ctx.fillStyle = p0[7];
-        ctx.fillRect(2, y0, 3, 8);
-        ctx.fillRect(11, y0, 3, 8);
-      });
-    this.bg1Tiles.set(T_BRIDGE_RAIL_N, [makeRail(true)]);
-    this.bg1Tiles.set(T_BRIDGE_RAIL_S, [makeRail(false)]);
-
-    // Wooden Fence
-    const fence = makeTile((ctx) => {
-      ctx.drawImage(grass0, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(0, 5, 16, 8);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(0, 6, 16, 6);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(0, 7, 16, 2);
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(2, 3, 3, 11);
-      ctx.fillRect(11, 3, 3, 11);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(3, 3, 1, 10);
-      ctx.fillRect(12, 3, 1, 10);
-    });
-    this.bg1Tiles.set(T_FENCE, [fence]);
-
-    // Tree Trunk (BG1 base — lush canopy drawn overhead in BG2!)
-    const trunk = makeTile((ctx) => {
-      ctx.drawImage(grass0, 0, 0);
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(2, 11, 12, 4);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(4, 0, 8, 13);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(5, 0, 6, 12);
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(6, 0, 2, 12);
-    });
-    this.bg1Tiles.set(T_TREE_TRUNK, [trunk]);
-
-    // Lush Perimeter Bush
-    const bush = makeTile((ctx) => {
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(1, 2, 14, 12);
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(2, 3, 12, 10);
-      ctx.fillStyle = p0[3];
-      ctx.fillRect(3, 3, 10, 7);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(4, 3, 6, 4);
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(5, 4, 2, 2);
-      ctx.fillRect(10, 5, 2, 1);
-    });
-    this.bg1Tiles.set(T_BUSH, [bush]);
-
-    // Cottage Timber Walls, Warm Lit Window, Wooden Door & Clay Shingle Roof
-    const wallWood = makeTile((ctx) => {
-      ctx.fillStyle = PALETTES[2][15];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(0, 0, 2, 16);
-      ctx.fillRect(14, 0, 2, 16);
-      ctx.fillRect(0, 13, 16, 3);
-      ctx.fillStyle = p0[9];
-      ctx.fillRect(0, 14, 16, 2);
-    });
-    this.bg1Tiles.set(T_WALL_WOOD, [wallWood]);
-
-    const wallWindow = makeTile((ctx) => {
-      ctx.drawImage(wallWood, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(3, 3, 10, 9);
-      ctx.fillStyle = PALETTES[1][10];
-      ctx.fillRect(4, 4, 8, 7);
-      ctx.fillStyle = PALETTES[1][11];
-      ctx.fillRect(5, 5, 3, 3);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(7, 4, 2, 7);
-      ctx.fillRect(4, 7, 8, 1);
-    });
-    this.bg1Tiles.set(T_WALL_WINDOW, [wallWindow]);
-
-    const wallDoor = makeTile((ctx) => {
-      ctx.drawImage(wallWood, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(3, 2, 10, 14);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(4, 3, 8, 13);
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(5, 4, 6, 12);
-      ctx.fillStyle = PALETTES[1][10];
-      ctx.fillRect(9, 9, 2, 2);
-    });
-    this.bg1Tiles.set(T_WALL_DOOR, [wallDoor]);
-
-    const roofBody = makeTile((ctx) => {
-      ctx.fillStyle = p0[15];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[1];
-      for (let y = 3; y < 16; y += 4) ctx.fillRect(0, y, 16, 1);
-      ctx.fillStyle = PALETTES[1][9];
-      for (let y = 0; y < 16; y += 4) {
-        ctx.fillRect(1 + ((y >> 2) & 1) * 3, y + 1, 4, 1);
-        ctx.fillRect(9 + ((y >> 2) & 1) * 2, y + 1, 4, 1);
-      }
-    });
-    this.bg1Tiles.set(T_ROOF_BODY, [roofBody]);
-
-    const roofTop = makeTile((ctx) => {
-      ctx.drawImage(grass0, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(0, 4, 16, 12);
-      ctx.fillStyle = p0[15];
-      ctx.fillRect(0, 5, 16, 11);
-      ctx.fillStyle = PALETTES[1][9];
-      ctx.fillRect(0, 6, 16, 2);
-    });
-    this.bg1Tiles.set(T_ROOF_TOP, [roofTop]);
-
-    // Stone Windmill Masonry & Door & Roof
-    const wmWall = makeTile((ctx) => {
-      ctx.fillStyle = p0[9];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[10];
-      ctx.fillRect(1, 1, 6, 6);
-      ctx.fillRect(8, 1, 7, 6);
-      ctx.fillRect(0, 8, 4, 7);
-      ctx.fillRect(5, 8, 6, 7);
-      ctx.fillRect(12, 8, 4, 7);
-      ctx.fillStyle = p0[11];
-      ctx.fillRect(1, 1, 5, 1);
-      ctx.fillRect(8, 1, 6, 1);
-      ctx.fillRect(5, 8, 5, 1);
-    });
-    this.bg1Tiles.set(T_WINDMILL_WALL, [wmWall]);
-
-    const wmDoor = makeTile((ctx) => {
-      ctx.drawImage(wmWall, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(3, 3, 10, 13);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(4, 4, 8, 12);
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(5, 5, 6, 11);
-    });
-    this.bg1Tiles.set(T_WINDMILL_DOOR, [wmDoor]);
-
-    const wmRoof = makeTile((ctx) => {
-      ctx.fillStyle = PALETTES[1][12];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(0, 14, 16, 2);
-      ctx.fillStyle = PALETTES[1][13];
-      ctx.fillRect(2, 3, 12, 2);
-      ctx.fillRect(4, 8, 8, 2);
-    });
-    this.bg1Tiles.set(T_WINDMILL_ROOF, [wmRoof]);
-
-    // Ancient Shrine Stone Floor, Glowing Rune, and Mossy Pillar
-    const shrineFloor = makeTile((ctx) => {
-      ctx.fillStyle = PALETTES[3][13];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = PALETTES[3][14];
-      ctx.fillRect(1, 1, 14, 14);
-      ctx.fillStyle = p0[11];
-      ctx.fillRect(1, 1, 13, 1);
-      ctx.fillStyle = PALETTES[3][7];
-      ctx.fillRect(12, 12, 3, 2);
-    });
-    this.bg1Tiles.set(T_SHRINE_FLOOR, [shrineFloor]);
-
-    const shrineRuneFrames = [0, 1].map((f) =>
-      makeTile((ctx) => {
-        ctx.drawImage(shrineFloor, 0, 0);
-        ctx.fillStyle = f === 0 ? PALETTES[3][15] : PALETTES[1][11];
-        ctx.fillRect(4, 4, 8, 1);
-        ctx.fillRect(4, 11, 8, 1);
-        ctx.fillRect(4, 4, 1, 8);
-        ctx.fillRect(11, 4, 1, 8);
-        ctx.fillRect(7, 6, 2, 4);
-      })
-    );
-    this.bg1Tiles.set(T_SHRINE_RUNE, shrineRuneFrames);
-
-    const shrinePillar = makeTile((ctx) => {
-      ctx.drawImage(shrineFloor, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(2, 0, 12, 15);
-      ctx.fillStyle = PALETTES[3][13];
-      ctx.fillRect(3, 1, 10, 13);
-      ctx.fillStyle = PALETTES[3][14];
-      ctx.fillRect(4, 2, 7, 10);
-      ctx.fillStyle = PALETTES[3][7];
-      ctx.fillRect(4, 3, 3, 4);
-      ctx.fillRect(9, 8, 3, 3);
-    });
-    this.bg1Tiles.set(T_SHRINE_PILLAR, [shrinePillar]);
-
-    // Signpost, Lantern Post, Flower Bed
-    const signpost = makeTile((ctx) => {
-      ctx.drawImage(grass0, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(6, 9, 4, 6);
-      ctx.fillRect(2, 2, 12, 8);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(7, 9, 2, 5);
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(3, 3, 10, 6);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(4, 4, 8, 1);
-      ctx.fillRect(4, 6, 6, 1);
-    });
-    this.bg1Tiles.set(T_SIGNPOST, [signpost]);
-
-    const lanternFrames = [0, 1].map((f) =>
-      makeTile((ctx) => {
-        ctx.drawImage(cobble, 0, 0);
-        ctx.fillStyle = p0[1];
-        ctx.fillRect(6, 6, 4, 9);
-        ctx.fillRect(4, 1, 8, 6);
-        ctx.fillStyle = p0[9];
-        ctx.fillRect(7, 6, 2, 8);
-        ctx.fillStyle = f === 0 ? PALETTES[1][10] : PALETTES[1][11];
-        ctx.fillRect(5, 2, 6, 4);
-      })
-    );
-    this.bg1Tiles.set(T_LANTERN_POST, lanternFrames);
-
-    const flowerBed = makeTile((ctx) => {
-      ctx.drawImage(grass0, 0, 0);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(1, 5, 14, 9);
-      ctx.fillStyle = p0[3];
-      ctx.fillRect(2, 4, 12, 7);
-      ctx.fillStyle = p0[15];
-      ctx.fillRect(3, 5, 2, 2);
-      ctx.fillRect(10, 6, 2, 2);
-      ctx.fillStyle = PALETTES[1][10];
-      ctx.fillRect(7, 4, 2, 2);
-    });
-    this.bg1Tiles.set(T_FLOWER_BED, [flowerBed]);
-
-    /* ======================================================================
-     * CHAPTER 1 GROUND-UP AUTUMN MOUNTAIN & COTTAGE INTERIOR TILES (28..45)
-     * ====================================================================== */
-    // 28. T_MTN_SKY: Transparent aperture revealing live parallax alpine vista behind BG1
-    const mtnSky = makeTile(() => {
-      /* intentionally transparent */
-    });
-    this.bg1Tiles.set(T_MTN_SKY, [mtnSky]);
-
-    // 29. T_CLIFF_WALL: Steep stratified slate-granite mountain cliff face
-    const cliffWall = makeTile((ctx) => {
-      ctx.fillStyle = p0[9];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[10];
-      ctx.fillRect(1, 1, 6, 7);
-      ctx.fillRect(8, 2, 7, 6);
-      ctx.fillRect(0, 9, 5, 6);
-      ctx.fillRect(6, 10, 6, 5);
-      ctx.fillRect(13, 9, 3, 6);
-      ctx.fillStyle = p0[11];
-      ctx.fillRect(1, 1, 5, 1);
-      ctx.fillRect(8, 2, 6, 1);
-      ctx.fillRect(6, 10, 5, 1);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(0, 8, 16, 1);
-      ctx.fillRect(7, 0, 1, 9);
-      ctx.fillRect(5, 9, 1, 7);
-      ctx.fillRect(12, 9, 1, 7);
-    });
-    this.bg1Tiles.set(T_CLIFF_WALL, [cliffWall]);
-
-    // 30. T_CLIFF_LEDGE: Moss-crowned granite cliff escarpment edge
-    const cliffLedge = makeTile((ctx) => {
-      ctx.drawImage(cliffWall, 0, 0);
-      ctx.fillStyle = p0[3];
-      ctx.fillRect(0, 0, 16, 5);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(1, 1, 5, 2);
-      ctx.fillRect(9, 0, 6, 3);
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(2, 1, 2, 1);
-      ctx.fillRect(11, 1, 3, 1);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(0, 5, 16, 1);
-      ctx.fillStyle = p0[11];
-      ctx.fillRect(1, 6, 14, 1);
-    });
-    this.bg1Tiles.set(T_CLIFF_LEDGE, [cliffLedge]);
-
-    // 31. T_BOULDER: Mossy alpine granite boulder
-    const boulder = makeTile((ctx) => {
-      ctx.fillStyle = p0[3];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(2, 12, 12, 3);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(2, 3, 12, 10);
-      ctx.fillRect(4, 2, 8, 12);
-      ctx.fillStyle = p0[9];
-      ctx.fillRect(3, 4, 10, 8);
-      ctx.fillStyle = p0[10];
-      ctx.fillRect(4, 3, 8, 7);
-      ctx.fillStyle = p0[11];
-      ctx.fillRect(5, 3, 5, 3);
-      ctx.fillRect(4, 5, 2, 2);
-      // Autumn moss tuft on stone
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(9, 4, 3, 2);
-      ctx.fillStyle = p0[15];
-      ctx.fillRect(11, 10, 2, 1);
-    });
-    this.bg1Tiles.set(T_BOULDER, [boulder]);
-
-    // 32. T_AUTUMN_GRASS: Golden-ochre meadow scattered with fallen crimson & gold maple leaves
-    const autumnGrass = makeTile((ctx) => {
-      ctx.fillStyle = p0[3];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(1, 2, 4, 2);
-      ctx.fillRect(9, 7, 5, 2);
-      ctx.fillRect(3, 12, 4, 2);
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(6, 4, 2, 1);
-      ctx.fillRect(12, 13, 2, 1);
-      // Fallen crimson & amber maple leaves
-      ctx.fillStyle = p0[15];
-      ctx.fillRect(3, 5, 2, 2);
-      ctx.fillRect(12, 3, 2, 1);
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(10, 11, 2, 2);
-      ctx.fillRect(5, 13, 2, 1);
-    });
-    this.bg1Tiles.set(T_AUTUMN_GRASS, [autumnGrass]);
-
-    // 33. T_ROCKY_PATH: Mountain gravel trail with flat slate stepping stones
-    const rockyPath = makeTile((ctx) => {
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(0, 0, 2, 1);
-      ctx.fillRect(13, 14, 3, 2);
-      ctx.fillStyle = p0[10];
-      ctx.fillRect(2, 2, 5, 4);
-      ctx.fillRect(9, 8, 5, 4);
-      ctx.fillRect(3, 10, 4, 3);
-      ctx.fillStyle = p0[11];
-      ctx.fillRect(2, 2, 4, 1);
-      ctx.fillRect(9, 8, 4, 1);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(10, 3, 2, 1);
-      ctx.fillRect(1, 7, 2, 1);
-    });
-    this.bg1Tiles.set(T_ROCKY_PATH, [rockyPath]);
-
-    // 34. T_RAPIDS: 4-frame animated whitewater alpine rapids
-    const rapidsFrames = [0, 1, 2, 3].map((f) =>
-      makeTile((ctx) => {
-        ctx.fillStyle = p0[12];
-        ctx.fillRect(0, 0, 16, 16);
-        ctx.fillStyle = p0[13];
-        ctx.fillRect(0, (f * 4) % 16, 16, 5);
-        ctx.fillRect(0, (f * 4 + 9) % 16, 16, 4);
-        // Foaming whitewater streaks
-        ctx.fillStyle = p0[14];
-        ctx.fillRect((1 + f * 3) % 12, (2 + f * 4) % 14, 5, 2);
-        ctx.fillRect((8 + f * 2) % 11, (9 + f * 4) % 14, 6, 2);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect((2 + f * 3) % 13, (2 + f * 4) % 14, 3, 1);
-        ctx.fillRect((9 + f * 2) % 12, (10 + f * 4) % 14, 4, 1);
-      })
-    );
-    this.bg1Tiles.set(T_RAPIDS, rapidsFrames);
-
-    // 35. T_RAIL_TRACK: Mountain railway ballast, cedar ties, and glinting twin steel rails
-    const railTrack = makeTile((ctx) => {
-      ctx.fillStyle = p0[9];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[10];
-      for (let x = 1; x < 16; x += 3) {
-        ctx.fillRect(x, 1, 2, 2);
-        ctx.fillRect((x + 1) % 15, 13, 2, 2);
-      }
-      // Cedar sleepers (crossties)
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(2, 2, 3, 12);
-      ctx.fillRect(10, 2, 3, 12);
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(3, 3, 1, 10);
-      ctx.fillRect(11, 3, 1, 10);
-      // Twin iron rails
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(0, 3, 16, 3);
-      ctx.fillRect(0, 10, 16, 3);
-      ctx.fillStyle = p0[11];
-      ctx.fillRect(0, 4, 16, 1);
-      ctx.fillRect(0, 11, 16, 1);
-    });
-    this.bg1Tiles.set(T_RAIL_TRACK, [railTrack]);
-
-    // 36. T_MAPLE_TRUNK: Flared dark trunk with crimson & gold autumn leaf litter
-    const mapleTrunk = makeTile((ctx) => {
-      ctx.drawImage(autumnGrass, 0, 0);
-      ctx.fillStyle = p0[15];
-      ctx.fillRect(2, 11, 4, 3);
-      ctx.fillRect(10, 12, 4, 2);
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(3, 12, 2, 1);
-      ctx.fillRect(11, 11, 2, 2);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(4, 0, 8, 13);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(5, 0, 6, 12);
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(6, 0, 2, 11);
-    });
-    this.bg1Tiles.set(T_MAPLE_TRUNK, [mapleTrunk]);
-
-    // 37. T_PINE_TRUNK: Rugged alpine spruce base with dark evergreen boughs
-    const pineTrunk = makeTile((ctx) => {
-      ctx.drawImage(grass0, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(5, 8, 6, 7);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(6, 8, 4, 6);
-      // Lower evergreen boughs
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(1, 2, 14, 8);
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(2, 2, 12, 7);
-      ctx.fillStyle = p0[3];
-      ctx.fillRect(3, 3, 10, 4);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(5, 3, 5, 2);
-    });
-    this.bg1Tiles.set(T_PINE_TRUNK, [pineTrunk]);
-
-    // 38. T_WOOD_FLOOR: Warm cedar cottage floorboards
-    const woodFloor = makeTile((ctx) => {
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(0, 1, 16, 2);
-      ctx.fillRect(0, 9, 16, 2);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(0, 7, 16, 1);
-      ctx.fillRect(0, 15, 16, 1);
-      ctx.fillRect(7, 0, 1, 8);
-      ctx.fillRect(14, 8, 1, 8);
-    });
-    this.bg1Tiles.set(T_WOOD_FLOOR, [woodFloor]);
-
-    // 39. T_HEARTH_RUG: Cozy woven burgundy & cream hearth rug
-    const hearthRug = makeTile((ctx) => {
-      ctx.fillStyle = p0[15];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(1, 1, 14, 1);
-      ctx.fillRect(1, 14, 14, 1);
-      ctx.fillRect(1, 1, 1, 14);
-      ctx.fillRect(14, 1, 1, 14);
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(4, 4, 8, 8);
-      ctx.fillStyle = p0[15];
-      ctx.fillRect(6, 6, 4, 4);
-    });
-    this.bg1Tiles.set(T_HEARTH_RUG, [hearthRug]);
-
-    // 40. T_FIREPLACE: 2-frame crackling stone cottage hearth
-    const fireplaceFrames = [0, 1].map((f) =>
-      makeTile((ctx) => {
-        ctx.fillStyle = p0[9];
-        ctx.fillRect(0, 0, 16, 16);
-        ctx.fillStyle = p0[10];
-        ctx.fillRect(1, 1, 14, 4);
-        ctx.fillRect(1, 6, 3, 9);
-        ctx.fillRect(12, 6, 3, 9);
-        ctx.fillStyle = p0[11];
-        ctx.fillRect(1, 1, 14, 1);
-        // Firebox opening
-        ctx.fillStyle = p0[1];
-        ctx.fillRect(4, 6, 8, 9);
-        // Logs & dancing flame
-        ctx.fillStyle = p0[6];
-        ctx.fillRect(5, 12, 6, 2);
-        ctx.fillStyle = p0[15];
-        ctx.fillRect(5, 8 + f, 6, 4 - f);
-        ctx.fillStyle = p0[5];
-        ctx.fillRect(6, 7 + (1 - f), 4, 4);
-        ctx.fillStyle = p0[8];
-        ctx.fillRect(7, 9, 2, 3);
-      })
-    );
-    this.bg1Tiles.set(T_FIREPLACE, fireplaceFrames);
-
-    // 41. T_BED_QUILT: Rowan's patchwork mountain quilt & cream pillow
-    const bedQuilt = makeTile((ctx) => {
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(2, 2, 12, 4);
-      ctx.fillStyle = p0[11];
-      ctx.fillRect(3, 3, 10, 2);
-      ctx.fillStyle = p0[15];
-      ctx.fillRect(2, 6, 12, 8);
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(2, 7, 4, 3);
-      ctx.fillRect(10, 10, 4, 3);
-      ctx.fillStyle = p0[3];
-      ctx.fillRect(6, 10, 4, 3);
-    });
-    this.bg1Tiles.set(T_BED_QUILT, [bedQuilt]);
-
-    // 42. T_ATTIC_CHEST: Heirloom brass-banded cedar keepsake chest
-    const atticChest = makeTile((ctx) => {
-      ctx.drawImage(woodFloor, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(1, 2, 14, 12);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(2, 3, 12, 10);
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(3, 4, 10, 4);
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(2, 7, 12, 1);
-      ctx.fillRect(7, 6, 2, 3);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(3, 3, 10, 1);
-    });
-    this.bg1Tiles.set(T_ATTIC_CHEST, [atticChest]);
-
-    // 43. T_HOLLOW_OAK: Ancient mossy oak root ring with subtle golden runes
-    const hollowOakTile = makeTile((ctx) => {
-      ctx.drawImage(autumnGrass, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(1, 1, 14, 14);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(2, 2, 12, 12);
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(3, 3, 10, 10);
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(6, 5, 4, 6);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(7, 6, 2, 4);
-    });
-    this.bg1Tiles.set(T_HOLLOW_OAK, [hollowOakTile]);
-
-    // 44. T_STONE_STAIRS: Carved highland stone steps
-    const stoneStairs = makeTile((ctx) => {
-      ctx.fillStyle = p0[9];
-      ctx.fillRect(0, 0, 16, 16);
-      for (let y = 0; y < 16; y += 4) {
-        ctx.fillStyle = p0[10];
-        ctx.fillRect(1, y, 14, 3);
-        ctx.fillStyle = p0[11];
-        ctx.fillRect(1, y, 14, 1);
-        ctx.fillStyle = p0[1];
-        ctx.fillRect(0, y + 3, 16, 1);
-      }
-    });
-    this.bg1Tiles.set(T_STONE_STAIRS, [stoneStairs]);
-
-    // 45. T_INTERIOR_WALL: Warm cedar-beamed cottage wall
-    const interiorWall = makeTile((ctx) => {
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(0, 0, 16, 2);
-      ctx.fillRect(0, 10, 16, 6);
-      ctx.fillRect(0, 0, 2, 16);
-      ctx.fillRect(14, 0, 2, 16);
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(2, 11, 12, 4);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(0, 15, 16, 1);
-    });
-    this.bg1Tiles.set(T_INTERIOR_WALL, [interiorWall]);
-
-    /* ======================================================================
-     * EVERTALE OPEN WORLD CONTINENT TILES (46..53)
-     * ====================================================================== */
-    // 46. T_WORLD_OCEAN: 4-frame shimmering cerulean storybook sea
-    const worldOceanFrames = [0, 1, 2, 3].map((f) =>
-      makeTile((ctx) => {
-        ctx.fillStyle = p0[12];
-        ctx.fillRect(0, 0, 16, 16);
-        ctx.fillStyle = p0[13];
-        ctx.fillRect(0, (f * 4 + 2) % 16, 16, 3);
-        ctx.fillRect(0, (f * 4 + 10) % 16, 16, 2);
-        ctx.fillStyle = p0[14];
-        ctx.fillRect((2 + f * 3) % 12, (3 + f * 2) % 14, 4, 1);
-        ctx.fillRect((10 - f * 2 + 16) % 12, (11 + f * 2) % 14, 3, 1);
-      })
-    );
-    this.bg1Tiles.set(T_WORLD_OCEAN, worldOceanFrames);
-
-    // 47. T_WORLD_BEACH: Warm golden sandbar & gentle foam surf
-    const worldBeachFrames = [0, 1].map((f) =>
-      makeTile((ctx) => {
-        ctx.fillStyle = p0[13];
-        ctx.fillRect(0, 0, 16, 16);
-        ctx.fillStyle = p0[14];
-        ctx.fillRect(1 + f, 1, 14 - f * 2, 2);
-        ctx.fillRect(2 - f, 13, 12 + f, 2);
-        ctx.fillStyle = p0[8];
-        ctx.fillRect(2, 3, 12, 10);
-        ctx.fillStyle = p0[7];
-        ctx.fillRect(3, 5, 10, 7);
-        ctx.fillStyle = p0[8];
-        ctx.fillRect(5, 6, 3, 2);
-        ctx.fillRect(9, 9, 3, 2);
-      })
-    );
-    this.bg1Tiles.set(T_WORLD_BEACH, worldBeachFrames);
-
-    // 48. T_WORLD_PEAK: Snow-capped storybook alpine peaks
-    const worldPeak = makeTile((ctx) => {
-      ctx.fillStyle = p0[3];
-      ctx.fillRect(0, 0, 16, 16);
-      // Back right peak
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(8, 3, 6, 12);
-      ctx.fillStyle = p0[9];
-      ctx.fillRect(9, 4, 5, 10);
-      ctx.fillStyle = p0[10];
-      ctx.fillRect(10, 4, 2, 9);
-      ctx.fillStyle = p0[11];
-      ctx.fillRect(10, 3, 3, 3);
-      // Front main peak
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(1, 9, 12, 6);
-      ctx.fillRect(3, 5, 8, 5);
-      ctx.fillRect(5, 2, 4, 4);
-      ctx.fillStyle = p0[9];
-      ctx.fillRect(2, 10, 10, 4);
-      ctx.fillRect(4, 6, 6, 5);
-      ctx.fillStyle = p0[10];
-      ctx.fillRect(3, 10, 4, 4);
-      ctx.fillRect(4, 6, 3, 4);
-      // Snow cap
-      ctx.fillStyle = p0[11];
-      ctx.fillRect(5, 2, 4, 3);
-      ctx.fillRect(4, 4, 5, 2);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(6, 2, 2, 2);
-    });
-    this.bg1Tiles.set(T_WORLD_PEAK, [worldPeak]);
-
-    // 49. T_WORLD_FOREST: Dense multi-crown overworld woodland cluster
-    const worldForest = makeTile((ctx) => {
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(0, 0, 16, 16);
-      const drawMiniTree = (tx: number, ty: number) => {
-        ctx.fillStyle = p0[1];
-        ctx.fillRect(tx, ty + 1, 7, 6);
-        ctx.fillRect(tx + 1, ty, 5, 7);
-        ctx.fillStyle = p0[2];
-        ctx.fillRect(tx + 1, ty + 2, 5, 4);
-        ctx.fillStyle = p0[3];
-        ctx.fillRect(tx + 1, ty + 1, 5, 4);
-        ctx.fillStyle = p0[4];
-        ctx.fillRect(tx + 2, ty + 1, 3, 2);
-        ctx.fillStyle = p0[5];
-        ctx.fillRect(tx + 2, ty + 1, 1, 1);
-      };
-      drawMiniTree(1, 0);
-      drawMiniTree(8, 1);
-      drawMiniTree(4, 6);
-      drawMiniTree(0, 9);
-      drawMiniTree(9, 8);
-    });
-    this.bg1Tiles.set(T_WORLD_FOREST, [worldForest]);
-
-    // 50. T_WORLD_HILL: Sunlit rolling emerald highland clover hills
-    const worldHill = makeTile((ctx) => {
-      ctx.fillStyle = p0[3];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(1, 5, 14, 8);
-      ctx.fillRect(3, 3, 10, 4);
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(4, 3, 6, 2);
-      ctx.fillRect(2, 6, 4, 1);
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(2, 12, 12, 2);
-    });
-    this.bg1Tiles.set(T_WORLD_HILL, [worldHill]);
-
-    // 51. T_WORLD_CASTLE: White-stone citadel rampart & azure tower
-    const worldCastle = makeTile((ctx) => {
-      ctx.drawImage(grass0, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(1, 4, 14, 11);
-      ctx.fillStyle = p0[10];
-      ctx.fillRect(2, 6, 12, 8);
-      ctx.fillStyle = p0[11];
-      ctx.fillRect(2, 5, 3, 8);
-      ctx.fillRect(7, 5, 3, 8);
-      ctx.fillRect(11, 5, 3, 8);
-      ctx.fillStyle = p0[13];
-      ctx.fillRect(5, 1, 6, 4);
-      ctx.fillStyle = PALETTES[1][10];
-      ctx.fillRect(7, 0, 3, 2);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(6, 10, 4, 4);
-    });
-    this.bg1Tiles.set(T_WORLD_CASTLE, [worldCastle]);
-
-    // 52. T_WORLD_TOWN: Miniature sunlit village cottages for overworld cluster
-    const worldTown = makeTile((ctx) => {
-      ctx.drawImage(grass0, 0, 0);
-      // Left cottage
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(1, 5, 7, 8);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(2, 8, 5, 4);
-      ctx.fillStyle = p0[15];
-      ctx.fillRect(1, 5, 7, 3);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(4, 10, 2, 2);
-      // Right cottage
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(8, 3, 7, 9);
-      ctx.fillStyle = p0[11];
-      ctx.fillRect(9, 6, 5, 5);
-      ctx.fillStyle = p0[15];
-      ctx.fillRect(8, 3, 7, 3);
-      ctx.fillStyle = PALETTES[1][10];
-      ctx.fillRect(10, 8, 2, 2);
-    });
-    this.bg1Tiles.set(T_WORLD_TOWN, [worldTown]);
-
-    // 53. T_WORLD_RUINS: Mossy weathered sea-cliff watchtower stone
-    const worldRuins = makeTile((ctx) => {
-      ctx.drawImage(grass0, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(2, 4, 5, 10);
-      ctx.fillRect(9, 7, 5, 7);
-      ctx.fillStyle = p0[9];
-      ctx.fillRect(3, 5, 3, 8);
-      ctx.fillRect(10, 8, 3, 5);
-      ctx.fillStyle = p0[10];
-      ctx.fillRect(3, 5, 2, 5);
-      ctx.fillRect(10, 8, 2, 3);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(3, 4, 3, 2);
-      ctx.fillRect(11, 7, 2, 2);
-    });
-    this.bg1Tiles.set(T_WORLD_RUINS, [worldRuins]);
-
-    // 54. T_WORLD_SHALLOW: Animated turquoise raft-navigable coastal shoals
-    const shallowFrames = [0, 1].map((f) =>
-      makeTile((ctx) => {
-        ctx.fillStyle = p0[13];
-        ctx.fillRect(0, 0, 16, 16);
-        ctx.fillStyle = p0[14];
-        ctx.fillRect(0, 0, 16, 4);
-        ctx.fillRect((2 + f * 3) & 15, 7, 5, 2);
-        ctx.fillRect((9 - f * 2 + 16) & 15, 12, 4, 2);
-        ctx.fillStyle = '#E8FCFF';
-        ctx.fillRect((3 + f * 3) & 15, 7, 3, 1);
-        ctx.fillRect((10 - f * 2 + 16) & 15, 12, 2, 1);
-      })
-    );
-    this.bg1Tiles.set(T_WORLD_SHALLOW, shallowFrames);
-
-    // 55. T_WORLD_SAND: Warm wind-rippled golden Babana desert dunes
-    const worldSand = makeTile((ctx) => {
-      ctx.fillStyle = p0[7];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(0, 3, 12, 3);
-      ctx.fillRect(5, 10, 11, 3);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(2, 6, 9, 1);
-      ctx.fillRect(7, 13, 8, 1);
-    });
-    this.bg1Tiles.set(T_WORLD_SAND, [worldSand]);
-
-    // 56. T_WORLD_SNOW: Crisp sparkling Frostmere winter snowfield
-    const worldSnow = makeTile((ctx) => {
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(1, 4, 6, 2);
-      ctx.fillRect(9, 11, 6, 2);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(3, 2, 2, 1);
-      ctx.fillRect(12, 7, 2, 1);
-      ctx.fillRect(5, 13, 2, 1);
-    });
-    this.bg1Tiles.set(T_WORLD_SNOW, [worldSnow]);
-
-    // 57. T_WORLD_LAVA: Glowing molten Cinderpeak magma flow (2 animated frames)
-    const lavaFrames = [0, 1].map((f) =>
-      makeTile((ctx) => {
-        ctx.fillStyle = '#7A1B12';
-        ctx.fillRect(0, 0, 16, 16);
-        ctx.fillStyle = '#D8441C';
-        ctx.fillRect(0, 2 + f, 16, 5);
-        ctx.fillRect(0, 10 - f, 16, 4);
-        ctx.fillStyle = '#F5A623';
-        ctx.fillRect((2 + f * 3) & 15, 3 + f, 6, 2);
-        ctx.fillRect((9 - f * 2 + 16) & 15, 11 - f, 5, 2);
-        ctx.fillStyle = '#FFF099';
-        ctx.fillRect((4 + f * 3) & 15, 3 + f, 2, 1);
-      })
-    );
-    this.bg1Tiles.set(T_WORLD_LAVA, lavaFrames);
-
-    // 58. T_WORLD_JUNGLE: Deep lush Canopy Wilds fern & vine rainforest
-    const worldJungle = makeTile((ctx) => {
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[3];
-      ctx.fillRect(1, 2, 6, 6);
-      ctx.fillRect(8, 7, 7, 7);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(2, 3, 4, 3);
-      ctx.fillRect(9, 8, 5, 4);
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(3, 3, 2, 2);
-      ctx.fillRect(10, 9, 2, 2);
-      ctx.fillStyle = '#E8A838';
-      ctx.fillRect(12, 3, 2, 2);
-    });
-    this.bg1Tiles.set(T_WORLD_JUNGLE, [worldJungle]);
-
-    // 59. T_WORLD_CORAL: Sunlit turquoise Suncrest coral reef garden (2 frames)
-    const coralFrames = [0, 1].map((f) =>
-      makeTile((ctx) => {
-        ctx.drawImage(shallowFrames[f], 0, 0);
-        ctx.fillStyle = '#F26B7A';
-        ctx.fillRect(3, 6, 4, 5);
-        ctx.fillRect(2, 8, 6, 2);
-        ctx.fillStyle = '#FFB86B';
-        ctx.fillRect(10, 4, 3, 6);
-        ctx.fillRect(9, 6, 5, 2);
-        ctx.fillStyle = '#FFE89E';
-        ctx.fillRect(4, 7, 2, 2);
-        ctx.fillRect(11, 5, 1, 2);
-      })
-    );
-    this.bg1Tiles.set(T_WORLD_CORAL, coralFrames);
-
-    // 60. T_WORLD_TECH: Aetheris Citadel brushed alloy plate with glowing cyan circuit lines
-    const worldTech = makeTile((ctx) => {
-      ctx.fillStyle = p0[9];
-      ctx.fillRect(0, 0, 16, 16);
-      ctx.fillStyle = p0[10];
-      ctx.fillRect(1, 1, 14, 14);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(0, 0, 16, 1);
-      ctx.fillRect(0, 0, 1, 16);
-      ctx.fillStyle = '#5AD2F4';
-      ctx.fillRect(3, 7, 10, 2);
-      ctx.fillRect(7, 3, 2, 10);
-      ctx.fillStyle = '#D6F8FF';
-      ctx.fillRect(7, 7, 2, 2);
-    });
-    this.bg1Tiles.set(T_WORLD_TECH, [worldTech]);
-
-    // 61. T_PALM_TREE: Desert oasis / tropical island palm over sunlit sand
-    const palmTree = makeTile((ctx) => {
-      ctx.drawImage(worldSand, 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(6, 7, 4, 8);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(7, 8, 2, 7);
-      // Sweeping palm fronds
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(2, 3, 12, 4);
-      ctx.fillRect(4, 1, 8, 5);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(3, 3, 10, 2);
-      ctx.fillRect(5, 2, 6, 2);
-      // Golden Babana cluster!
-      ctx.fillStyle = '#F5D042';
-      ctx.fillRect(6, 7, 2, 2);
-      ctx.fillRect(8, 7, 2, 2);
-    });
-    this.bg1Tiles.set(T_PALM_TREE, [palmTree]);
-
-    // 62. T_DOCK_PIER: Sun-weathered timber pier planking over turquoise shallows
-    const dockPier = makeTile((ctx) => {
-      ctx.drawImage(shallowFrames[0], 0, 0);
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(1, 0, 14, 16);
-      ctx.fillStyle = '#9C6838';
-      ctx.fillRect(2, 0, 12, 16);
-      ctx.fillStyle = '#C48B50';
-      for (let py = 1; py < 16; py += 4) {
-        ctx.fillRect(2, py, 12, 2);
-      }
-      ctx.fillStyle = '#52341A';
-      ctx.fillRect(2, 2, 2, 2);
-      ctx.fillRect(12, 2, 2, 2);
-      ctx.fillRect(2, 12, 2, 2);
-      ctx.fillRect(12, 12, 2, 2);
-    });
-    this.bg1Tiles.set(T_DOCK_PIER, [dockPier]);
-
-    /* BG2 OVERHEAD FOREGROUND CANOPIES & ARCHES */
-    const makeCanopy = (quad: 'TL' | 'TR' | 'BL' | 'BR') =>
-      makeTile((ctx) => {
-        ctx.fillStyle = p0[1];
-        ctx.fillRect(quad.includes('L') ? 2 : 0, quad.includes('T') ? 2 : 0, 14, 14);
-        ctx.fillStyle = p0[2];
-        ctx.fillRect(quad.includes('L') ? 3 : 0, quad.includes('T') ? 3 : 0, 13, 12);
-        ctx.fillStyle = p0[3];
-        ctx.fillRect(quad.includes('L') ? 4 : 1, quad.includes('T') ? 3 : 1, 11, 10);
-        if (quad.includes('T')) {
-          ctx.fillStyle = p0[4];
-          ctx.fillRect(4, 4, 7, 5);
-          ctx.fillStyle = p0[5];
-          ctx.fillRect(5, 5, 3, 2);
-        }
-      });
-    this.bg2Tiles.set(O_CANOPY_TL, makeCanopy('TL'));
-    this.bg2Tiles.set(O_CANOPY_TR, makeCanopy('TR'));
-    this.bg2Tiles.set(O_CANOPY_BL, makeCanopy('BL'));
-    this.bg2Tiles.set(O_CANOPY_BR, makeCanopy('BR'));
-
-    const roofEave = makeTile((ctx) => {
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(0, 12, 16, 4);
-      ctx.fillStyle = p0[15];
-      ctx.fillRect(0, 12, 16, 3);
-    });
-    this.bg2Tiles.set(O_ROOF_EAVE, roofEave);
-
-    const shrineArch = makeTile((ctx) => {
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(2, 0, 12, 16);
-      ctx.fillStyle = PALETTES[3][14];
-      ctx.fillRect(3, 0, 10, 16);
-      ctx.fillStyle = PALETTES[3][15];
-      ctx.fillRect(7, 3, 2, 10);
-    });
-    this.bg2Tiles.set(O_SHRINE_ARCH, shrineArch);
-
-    // 7 & 8. O_MAPLE_TL / O_MAPLE_TR: Radiant crimson, amber & gold autumn maple foliage!
-    const makeMapleCanopy = (left: boolean) =>
-      makeTile((ctx) => {
-        ctx.fillStyle = p0[1];
-        ctx.fillRect(left ? 1 : 0, 1, 15, 14);
-        ctx.fillStyle = p0[15];
-        ctx.fillRect(left ? 2 : 0, 2, 14, 12);
-        ctx.fillStyle = p0[7];
-        ctx.fillRect(left ? 3 : 1, 3, 12, 9);
-        ctx.fillStyle = p0[15];
-        ctx.fillRect(left ? 2 : 3, 5, 10, 7);
-        ctx.fillStyle = p0[5];
-        ctx.fillRect(left ? 4 : 2, 2, 7, 5);
-        ctx.fillStyle = p0[8];
-        ctx.fillRect(left ? 5 : 4, 3, 3, 2);
-      });
-    this.bg2Tiles.set(O_MAPLE_TL, makeMapleCanopy(true));
-    this.bg2Tiles.set(O_MAPLE_TR, makeMapleCanopy(false));
-
-    // 9. O_PINE_TOP: Pointed tiered alpine spruce spire
-    const pineTop = makeTile((ctx) => {
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(6, 1, 4, 4);
-      ctx.fillRect(4, 4, 8, 5);
-      ctx.fillRect(1, 8, 14, 8);
-      ctx.fillStyle = p0[2];
-      ctx.fillRect(7, 2, 2, 3);
-      ctx.fillRect(5, 5, 6, 4);
-      ctx.fillRect(2, 9, 12, 6);
-      ctx.fillStyle = p0[3];
-      ctx.fillRect(6, 5, 4, 3);
-      ctx.fillRect(3, 10, 9, 4);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(5, 10, 4, 2);
-    });
-    this.bg2Tiles.set(O_PINE_TOP, pineTop);
-
-    // 10. O_OAK_CROWN: Monumental golden-amber Hollow Oak canopy crown
-    const oakCrown = makeTile((ctx) => {
-      ctx.fillStyle = p0[1];
-      ctx.fillRect(0, 1, 16, 14);
-      ctx.fillStyle = p0[6];
-      ctx.fillRect(1, 2, 14, 12);
-      ctx.fillStyle = p0[4];
-      ctx.fillRect(1, 2, 14, 9);
-      ctx.fillStyle = p0[5];
-      ctx.fillRect(3, 3, 10, 5);
-      ctx.fillStyle = p0[8];
-      ctx.fillRect(5, 4, 5, 2);
-    });
-    this.bg2Tiles.set(O_OAK_CROWN, oakCrown);
+    // Bind BG2 transparent overhead canopies, overhanging terracotta roof eaves & shrine arch
+    this.bg2Tiles.clear();
+    const bindOv = (ovId: number, cmId: number) => {
+      const frames = this.bg1Tiles.get(cmId);
+      if (frames && frames[0]) this.bg2Tiles.set(ovId, frames[0]);
+    };
+    bindOv(O_CANOPY_TL, CM_OV_CANOPY_TL);
+    bindOv(O_CANOPY_TR, CM_OV_CANOPY_TR);
+    bindOv(O_CANOPY_BL, CM_OV_CANOPY_BL);
+    bindOv(O_CANOPY_BR, CM_OV_CANOPY_BR);
+    bindOv(O_ROOF_EAVE, CM_OV_ROOF_EAVE);
+    bindOv(O_SHRINE_ARCH, CM_OV_SHRINE_ARCH);
+    bindOv(O_MAPLE_TL, CM_OV_MAPLE_TL);
+    bindOv(O_MAPLE_TR, CM_OV_MAPLE_TR);
+    bindOv(O_PINE_TOP, CM_OV_PINE_TOP);
+    bindOv(O_OAK_CROWN, CM_OV_OAK_CROWN);
   }
 
   /* ========================================================================
