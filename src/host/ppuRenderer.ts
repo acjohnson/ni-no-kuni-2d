@@ -142,12 +142,32 @@ export class SoftwarePpuRenderer {
         for (let vx = 0; vx < VIEW_TILE_W; vx++) {
           const wx = packet.viewOriginX + vx;
           const sx = wx * TILE_SIZE - camX;
+          const vxL = Math.max(0, vx - 1);
+          const vxR = Math.min(VIEW_TILE_W - 1, vx + 1);
           const tileId = vbg[rowOff + vx];
           const tn = vbg[nRowOff + vx];
           const ts = vbg[sRowOff + vx];
-          const tw = vbg[rowOff + Math.max(0, vx - 1)];
-          const te = vbg[rowOff + Math.min(VIEW_TILE_W - 1, vx + 1)];
-          const metaId = resolveChronoMeta(tileId, vov[rowOff + vx], tn, ts, tw, te, wx, wy, true);
+          const tw = vbg[rowOff + vxL];
+          const te = vbg[rowOff + vxR];
+          const tnw = vbg[nRowOff + vxL];
+          const tne = vbg[nRowOff + vxR];
+          const tsw = vbg[sRowOff + vxL];
+          const tse = vbg[sRowOff + vxR];
+          const metaId = resolveChronoMeta(
+            tileId,
+            vov[rowOff + vx],
+            tn,
+            ts,
+            tw,
+            te,
+            tnw,
+            tne,
+            tsw,
+            tse,
+            wx,
+            wy,
+            true
+          );
           const img = atlas.getBg1Tile(metaId, animTick);
           ctx.drawImage(img, sx, sy, TILE_SIZE, TILE_SIZE);
         }
@@ -164,11 +184,31 @@ export class SoftwarePpuRenderer {
           const sx = c * TILE_SIZE - camX;
           const tileId = bg1[rowOff + c];
           if (tileId === T_MTN_SKY && packet.hasMountainVista) continue;
+          const cL = Math.max(0, c - 1);
+          const cR = Math.min(mapW - 1, c + 1);
           const tn = bg1[nRowOff + c];
           const ts = bg1[sRowOff + c];
-          const tw = bg1[rowOff + Math.max(0, c - 1)];
-          const te = bg1[rowOff + Math.min(mapW - 1, c + 1)];
-          const metaId = resolveChronoMeta(tileId, bg2[rowOff + c], tn, ts, tw, te, c, r, false);
+          const tw = bg1[rowOff + cL];
+          const te = bg1[rowOff + cR];
+          const tnw = bg1[nRowOff + cL];
+          const tne = bg1[nRowOff + cR];
+          const tsw = bg1[sRowOff + cL];
+          const tse = bg1[sRowOff + cR];
+          const metaId = resolveChronoMeta(
+            tileId,
+            bg2[rowOff + c],
+            tn,
+            ts,
+            tw,
+            te,
+            tnw,
+            tne,
+            tsw,
+            tse,
+            c,
+            r,
+            false
+          );
           const img = atlas.getBg1Tile(metaId, animTick);
           ctx.drawImage(img, sx, sy, TILE_SIZE, TILE_SIZE);
         }

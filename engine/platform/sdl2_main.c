@@ -3187,28 +3187,45 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
         uint8_t anim_f = (uint8_t)((ppu->frame_count >> 4) & 3u);
         for (int ty = ty0; ty <= ty1; ty++) {
             for (int tx = tx0; tx <= tx1; tx++) {
-                uint8_t tile, ov_here = 0u, tn, ts, tw, te;
+                uint8_t tile, ov_here = 0u, tn, ts, tw, te, tnw, tne, tsw, tse;
                 uint16_t mx_u, my_u;
                 if (st->is_world_map) {
                     mx_u = (uint16_t)(tx & (HEARTH_GLOBE_W - 1));
                     my_u = (uint16_t)(((ty % HEARTH_GLOBE_H) + HEARTH_GLOBE_H) % HEARTH_GLOBE_H);
+                    uint16_t mx_w = (uint16_t)((mx_u - 1u) & (HEARTH_GLOBE_W - 1u));
+                    uint16_t mx_e = (uint16_t)((mx_u + 1u) & (HEARTH_GLOBE_W - 1u));
+                    uint16_t my_n = (uint16_t)((my_u + HEARTH_GLOBE_H - 1u) % HEARTH_GLOBE_H);
+                    uint16_t my_s = (uint16_t)((my_u + 1u) % HEARTH_GLOBE_H);
                     hearth_globe_cell(mx_u, my_u, &tile, &ov_here, NULL, NULL);
-                    hearth_globe_cell(mx_u, (uint16_t)((my_u + HEARTH_GLOBE_H - 1u) % HEARTH_GLOBE_H), &tn, NULL, NULL, NULL);
-                    hearth_globe_cell(mx_u, (uint16_t)((my_u + 1u) % HEARTH_GLOBE_H), &ts, NULL, NULL, NULL);
-                    hearth_globe_cell((uint16_t)((mx_u - 1u) & (HEARTH_GLOBE_W - 1u)), my_u, &tw, NULL, NULL, NULL);
-                    hearth_globe_cell((uint16_t)((mx_u + 1u) & (HEARTH_GLOBE_W - 1u)), my_u, &te, NULL, NULL, NULL);
+                    hearth_globe_cell(mx_u, my_n, &tn, NULL, NULL, NULL);
+                    hearth_globe_cell(mx_u, my_s, &ts, NULL, NULL, NULL);
+                    hearth_globe_cell(mx_w, my_u, &tw, NULL, NULL, NULL);
+                    hearth_globe_cell(mx_e, my_u, &te, NULL, NULL, NULL);
+                    hearth_globe_cell(mx_w, my_n, &tnw, NULL, NULL, NULL);
+                    hearth_globe_cell(mx_e, my_n, &tne, NULL, NULL, NULL);
+                    hearth_globe_cell(mx_w, my_s, &tsw, NULL, NULL, NULL);
+                    hearth_globe_cell(mx_e, my_s, &tse, NULL, NULL, NULL);
                 } else {
+                    int tx_l = (tx > 0)      ? (tx - 1) : tx;
+                    int tx_r = (tx + 1 < mw) ? (tx + 1) : tx;
+                    int ty_u = (ty > 0)      ? (ty - 1) : ty;
+                    int ty_d = (ty + 1 < mh) ? (ty + 1) : ty;
                     mx_u = (uint16_t)tx;
                     my_u = (uint16_t)ty;
                     tile = st->map_bg1[ty * mw + tx];
                     if (tile == T_MTN_SKY && ppu->has_mountain_vista) continue;
                     ov_here = st->map_bg2[ty * mw + tx];
-                    tn = (ty > 0)      ? st->map_bg1[(ty - 1) * mw + tx] : tile;
-                    ts = (ty + 1 < mh) ? st->map_bg1[(ty + 1) * mw + tx] : tile;
-                    tw = (tx > 0)      ? st->map_bg1[ty * mw + (tx - 1)] : tile;
-                    te = (tx + 1 < mw) ? st->map_bg1[ty * mw + (tx + 1)] : tile;
+                    tn  = st->map_bg1[ty_u * mw + tx];
+                    ts  = st->map_bg1[ty_d * mw + tx];
+                    tw  = st->map_bg1[ty * mw + tx_l];
+                    te  = st->map_bg1[ty * mw + tx_r];
+                    tnw = st->map_bg1[ty_u * mw + tx_l];
+                    tne = st->map_bg1[ty_u * mw + tx_r];
+                    tsw = st->map_bg1[ty_d * mw + tx_l];
+                    tse = st->map_bg1[ty_d * mw + tx_r];
                 }
                 uint8_t meta = hearth_resolve_chrono_meta(tile, ov_here, tn, ts, tw, te,
+                                                          tnw, tne, tsw, tse,
                                                           mx_u, my_u, st->is_world_map ? 1u : 0u);
                 draw_chrono_meta16(tx * HEARTH_TILE_SIZE - cam_x,
                                    ty * HEARTH_TILE_SIZE - cam_y, meta, anim_f);

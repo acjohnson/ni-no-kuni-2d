@@ -1122,22 +1122,10 @@ static void tick_env_animations(u32 frame_count) {
 }
 
 /* ============================================================================
- * 3. CHRONO/MANA 148-METATILE AUTOTILER, PAL3 PARALLAX VISTA & 64x64 STREAMING
+ * 3. CHRONO/MANA 188-METATILE AUTOTILER, PAL3 PARALLAX VISTA & 64x64 STREAMING
  * ============================================================================ */
 static u8  g_gen_bg_meta[HEARTH_MAX_MAP_CELLS];
 static u16 g_vista_map[8][32];
-
-static u8 gen_world_spatial_meta(u8 t, u16 wx, u16 wy) {
-    u8 v;
-    if (t >= CHRONO_META_COUNT) return (u8)T_GRASS;
-    v = (u8)(((wx * 3u + wy * 5u) ^ (wx >> 1)) & 3u);
-    if (t == (u8)T_GRASS && v > 0u) return (u8)(CM_GRASS_V1 + (v - 1u));
-    if (t == (u8)T_WORLD_SAND && (v & 1u)) return (u8)CM_SAND_V1;
-    if (t == (u8)T_WORLD_SNOW && (v & 1u)) return (u8)CM_SNOW_V1;
-    if (t == (u8)T_WORLD_JUNGLE && (v & 1u)) return (u8)CM_JUNGLE_V1;
-    if (t == (u8)T_WORLD_OCEAN && (v & 1u)) return (u8)CM_OCEAN_V1;
-    return t;
-}
 
 static void bake_genesis_zone_metas(void) {
     if (g_hearth.is_world_map) return;
@@ -1148,15 +1136,24 @@ static void bake_genesis_zone_metas(void) {
 
     for (u16 my = 0u; my < mh; my++) {
         u16 row_off = (u16)(my * mw);
+        u16 n_off = (my > 0u) ? (u16)((my - 1u) * mw) : row_off;
+        u16 s_off = ((u16)(my + 1u) < mh) ? (u16)((my + 1u) * mw) : row_off;
         for (u16 mx = 0u; mx < mw; mx++) {
+            u16 mx_l = (mx > 0u) ? (u16)(mx - 1u) : mx;
+            u16 mx_r = ((u16)(mx + 1u) < mw) ? (u16)(mx + 1u) : mx;
             u16 idx = (u16)(row_off + mx);
-            u8 t  = p1[idx];
-            u8 ov = p2[idx];
-            u8 tn = (my > 0u) ? p1[(u16)(idx - mw)] : t;
-            u8 ts = ((u16)(my + 1u) < mh) ? p1[(u16)(idx + mw)] : t;
-            u8 tw = (mx > 0u) ? p1[(u16)(idx - 1u)] : t;
-            u8 te = ((u16)(mx + 1u) < mw) ? p1[(u16)(idx + 1u)] : t;
-            g_gen_bg_meta[idx] = hearth_resolve_chrono_meta(t, ov, tn, ts, tw, te, mx, my, 0u);
+            u8 t   = p1[idx];
+            u8 ov  = p2[idx];
+            u8 tn  = p1[(u16)(n_off + mx)];
+            u8 ts  = p1[(u16)(s_off + mx)];
+            u8 tw  = p1[(u16)(row_off + mx_l)];
+            u8 te  = p1[(u16)(row_off + mx_r)];
+            u8 tnw = p1[(u16)(n_off + mx_l)];
+            u8 tne = p1[(u16)(n_off + mx_r)];
+            u8 tsw = p1[(u16)(s_off + mx_l)];
+            u8 tse = p1[(u16)(s_off + mx_r)];
+            g_gen_bg_meta[idx] = hearth_resolve_chrono_meta(t, ov, tn, ts, tw, te,
+                                                            tnw, tne, tsw, tse, mx, my, 0u);
         }
     }
 }
@@ -1331,11 +1328,33 @@ static void resolve_metatile_attrs(s16 mx, s16 my, u8 use_parallax,
     if (g_hearth.is_world_map) {
         u16 wx = (u16)((u16)mx & 255u);
         s16 wy_s = my;
-        u8 bg1, bg2;
+        u8 bg1, bg2, m1;
         while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
         while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
-        hearth_globe_cell(wx, (u16)wy_s, &bg1, &bg2, NULL, NULL);
-        u8 m1 = gen_world_spatial_meta(bg1, wx, (u16)wy_s);
+        u16 wy = (u16)wy_s;
+        hearth_globe_cell(wx, wy, &bg1, &bg2, NULL, NULL);
+        if (bg1 == (u8)T_WORLD_OCEAN || bg1 == (u8)T_WORLD_SHALLOW ||
+            bg1 == (u8)T_WORLD_BEACH || bg1 == (u8)T_WORLD_SAND ||
+            bg1 == (u8)T_WATER || bg1 == (u8)T_FORD) {
+            u16 wx_w = (u16)((wx - 1u) & 255u);
+            u16 wx_e = (u16)((wx + 1u) & 255u);
+            u16 wy_n = (wy == 0u) ? (u16)(HEARTH_GLOBE_H - 1u) : (u16)(wy - 1u);
+            u16 wy_d = ((u16)(wy + 1u) >= (u16)HEARTH_GLOBE_H) ? 0u : (u16)(wy + 1u);
+            u8 tn, ts, tw, te, tnw, tne, tsw, tse;
+            hearth_globe_cell(wx, wy_n, &tn, NULL, NULL, NULL);
+            hearth_globe_cell(wx, wy_d, &ts, NULL, NULL, NULL);
+            hearth_globe_cell(wx_w, wy, &tw, NULL, NULL, NULL);
+            hearth_globe_cell(wx_e, wy, &te, NULL, NULL, NULL);
+            hearth_globe_cell(wx_w, wy_n, &tnw, NULL, NULL, NULL);
+            hearth_globe_cell(wx_e, wy_n, &tne, NULL, NULL, NULL);
+            hearth_globe_cell(wx_w, wy_d, &tsw, NULL, NULL, NULL);
+            hearth_globe_cell(wx_e, wy_d, &tse, NULL, NULL, NULL);
+            m1 = hearth_resolve_chrono_meta(bg1, bg2, tn, ts, tw, te,
+                                            tnw, tne, tsw, tse, wx, wy, 1u);
+        } else {
+            m1 = hearth_resolve_chrono_meta(bg1, bg2, bg1, bg1, bg1, bg1,
+                                            bg1, bg1, bg1, bg1, wx, wy, 1u);
+        }
         *a_tl = gen_meta_attr(GEN_META_TL[m1]);
         *a_tr = gen_meta_attr(GEN_META_TR[m1]);
         *a_bl = gen_meta_attr(GEN_META_BL[m1]);

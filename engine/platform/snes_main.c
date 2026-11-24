@@ -158,8 +158,10 @@ static u8  g_spc_booted       = 0u;
 static u8  g_spc_playing      = 0u;
 static u8  g_boot_stage       = 0u;
 
-/* Scratch buffer in Bank $7E WRAM for fast strip-batched open-world globe streaming */
-static u8 g_stream_meta[18];
+/* Scratch 3-strip buffers in Bank $7E WRAM for 8-neighbor open-world globe streaming */
+static u8 g_stream_a[20];
+static u8 g_stream_b[20];
+static u8 g_stream_c[20];
 /* 32x32 4bpp canvas in Bank $7E WRAM for procedural retro boot splash emblems */
 static u8 g_splash_32[1024];
 
@@ -1509,27 +1511,15 @@ static void bake_env_windmill_frames(void) {
 }
 
 /* ============================================================================
- * 6. BG1 SC_64x32 WORLD MAP & BATTLE ARENA STREAMING (148 Chrono Metatiles)
+ * 6. BG1 SC_64x32 WORLD MAP & BATTLE ARENA STREAMING (188 Chrono Metatiles)
  * ============================================================================ */
 static u16 snes_map_row_off(u16 my) {
     return (u16)((my << 5) + (my << 3) + (my << 2)); /* my * 44 */
 }
 
-static u8 snes_world_spatial_meta(u8 t, u16 wx, u16 wy) {
-    u8 v;
-    if (t >= CHRONO_META_COUNT) return (u8)T_GRASS;
-    v = (u8)(((wx * 3u + wy * 5u) ^ (wx >> 1)) & 3u);
-    if (t == (u8)T_GRASS && v > 0u) return (u8)(CM_GRASS_V1 + (v - 1u));
-    if (t == (u8)T_WORLD_SAND && (v & 1u)) return (u8)CM_SAND_V1;
-    if (t == (u8)T_WORLD_SNOW && (v & 1u)) return (u8)CM_SNOW_V1;
-    if (t == (u8)T_WORLD_JUNGLE && (v & 1u)) return (u8)CM_JUNGLE_V1;
-    if (t == (u8)T_WORLD_OCEAN && (v & 1u)) return (u8)CM_OCEAN_V1;
-    return t;
-}
-
 static void bake_world_tile_cache(void) {
-    u16 mx, my, mw, mh, row_off, idx;
-    u8 ov, t, tn, ts, tw, te, has_vista;
+    u16 mx, my, mw, mh, row_off, n_off, s_off, mx_l, mx_r, idx;
+    u8 ov, t, tn, ts, tw, te, tnw, tne, tsw, tse, has_vista;
     const u8 *p1;
     const u8 *p2;
 
@@ -1542,6 +1532,8 @@ static void bake_world_tile_cache(void) {
 
     for (my = 0u; my < mh; my++) {
         row_off = (u16)(my * mw);
+        n_off = (my > 0u) ? (u16)((my - 1u) * mw) : row_off;
+        s_off = ((u16)(my + 1u) < mh) ? (u16)((my + 1u) * mw) : row_off;
         for (mx = 0u; mx < mw; mx++) {
             idx = (u16)(row_off + mx);
             t  = p1[idx];
@@ -1551,22 +1543,28 @@ static void bake_world_tile_cache(void) {
             } else if (has_vista && t == (u8)T_MTN_SKY) {
                 g_world_meta[idx] = (u8)CM_EMPTY;
             } else {
-                tn = (my > 0u) ? p1[(u16)(idx - mw)] : t;
-                ts = ((u16)(my + 1u) < mh) ? p1[(u16)(idx + mw)] : t;
-                tw = (mx > 0u) ? p1[(u16)(idx - 1u)] : t;
-                te = ((u16)(mx + 1u) < mw) ? p1[(u16)(idx + 1u)] : t;
-                g_world_meta[idx] = hearth_resolve_chrono_meta(t, ov, tn, ts, tw, te, mx, my, 0u);
+                mx_l = (mx > 0u) ? (u16)(mx - 1u) : mx;
+                mx_r = ((u16)(mx + 1u) < mw) ? (u16)(mx + 1u) : mx;
+                tn  = p1[(u16)(n_off + mx)];
+                ts  = p1[(u16)(s_off + mx)];
+                tw  = p1[(u16)(row_off + mx_l)];
+                te  = p1[(u16)(row_off + mx_r)];
+                tnw = p1[(u16)(n_off + mx_l)];
+                tne = p1[(u16)(n_off + mx_r)];
+                tsw = p1[(u16)(s_off + mx_l)];
+                tse = p1[(u16)(s_off + mx_r)];
+                g_world_meta[idx] = hearth_resolve_chrono_meta(t, ov, tn, ts, tw, te,
+                                                               tnw, tne, tsw, tse, mx, my, 0u);
             }
         }
     }
 }
 
 static void stream_world_col(s16 mx, s16 my_start) {
-    u16 half_col, row_off, k, idx, idx_valid, step_w, wx, wy;
+    u16 half_col, row_off, k, j, idx, idx_valid, step_w, wx, wy, wy_prev;
     s16 my, mw, mh, wy_s;
-    u8 m;
+    u8 m, t;
     u16 *dst;
-    const u8 *sp;
 
     half_col = (u16)(((u16)mx & 15u) << 1);
     if (((u16)mx & 16u) == 0u) {
@@ -1583,10 +1581,25 @@ static void stream_world_col(s16 mx, s16 my_start) {
         while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
         while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
         wy = (u16)wy_s;
-        hearth_globe_stream_col(wx, wy, 16u, g_stream_meta);
-        sp = g_stream_meta;
+        wy_prev = (wy == 0u) ? (u16)(HEARTH_GLOBE_H - 1u) : (u16)(wy - 1u);
+        hearth_globe_stream_col((u16)((wx - 1u) & 255u), wy_prev, 18u, g_stream_a);
+        hearth_globe_stream_col(wx,                      wy_prev, 18u, g_stream_b);
+        hearth_globe_stream_col((u16)((wx + 1u) & 255u), wy_prev, 18u, g_stream_c);
         for (k = 0u; k < 16u; k++) {
-            m = snes_world_spatial_meta(*sp++, wx, wy);
+            j = (u16)(k + 1u);
+            t = g_stream_b[j];
+            if (t == 63u) {
+                m = (u8)CM_OPQ_CANOPY_TL;
+            } else {
+                m = hearth_resolve_chrono_meta(
+                    t, 0u,
+                    g_stream_b[j - 1u], g_stream_b[j + 1u],
+                    g_stream_a[j],      g_stream_c[j],
+                    g_stream_a[j - 1u], g_stream_c[j - 1u],
+                    g_stream_a[j + 1u], g_stream_c[j + 1u],
+                    wx, wy, 1u
+                );
+            }
             dst = g_bg1_map + (u16)(half_col + row_off);
             dst[0]  = SNES_META_TL[m];
             dst[1]  = SNES_META_TR[m];
@@ -1640,9 +1653,9 @@ static void stream_world_col(s16 mx, s16 my_start) {
 }
 
 static void stream_world_row(s16 mx_start, s16 my) {
-    u16 row_off, off, k, idx, wx, wy;
+    u16 row_off, off, k, j, idx, wx, wy, wx_prev, wy_n, wy_d;
     s16 mx, mw, mh, wy_s;
-    u8 m;
+    u8 m, t;
     u16 *dst;
     const u8 *sp;
 
@@ -1673,10 +1686,27 @@ static void stream_world_row(s16 mx_start, s16 my) {
         while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
         while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
         wy = (u16)wy_s;
-        hearth_globe_stream_row(wx, wy, 18u, g_stream_meta);
-        sp = g_stream_meta;
+        wx_prev = (u16)((wx - 1u) & 255u);
+        wy_n = (wy == 0u) ? (u16)(HEARTH_GLOBE_H - 1u) : (u16)(wy - 1u);
+        wy_d = ((u16)(wy + 1u) >= (u16)HEARTH_GLOBE_H) ? 0u : (u16)(wy + 1u);
+        hearth_globe_stream_row(wx_prev, wy_n, 20u, g_stream_a);
+        hearth_globe_stream_row(wx_prev, wy,   20u, g_stream_b);
+        hearth_globe_stream_row(wx_prev, wy_d, 20u, g_stream_c);
         for (k = 0u; k < 18u; k++) {
-            m = snes_world_spatial_meta(*sp++, (u16)((wx + k) & 255u), wy);
+            j = (u16)(k + 1u);
+            t = g_stream_b[j];
+            if (t == 63u) {
+                m = (u8)CM_OPQ_CANOPY_TL;
+            } else {
+                m = hearth_resolve_chrono_meta(
+                    t, 0u,
+                    g_stream_a[j],      g_stream_c[j],
+                    g_stream_b[j - 1u], g_stream_b[j + 1u],
+                    g_stream_a[j - 1u], g_stream_a[j + 1u],
+                    g_stream_c[j - 1u], g_stream_c[j + 1u],
+                    (u16)((wx + k) & 255u), wy, 1u
+                );
+            }
             dst = g_bg1_map + off;
             dst[0]  = SNES_META_TL[m];
             dst[1]  = SNES_META_TR[m];
