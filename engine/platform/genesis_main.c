@@ -385,7 +385,7 @@ static void p16_rect(u8 x, u8 y, u8 w, u8 h, u8 col) {
     }
 }
 
-static void bake_bg_and_ui_tiles(void) {
+static void bake_bg_terrain_tiles(void) {
     /* 0: Transparent */
     p8_fill(0); upload_pix8_to_vram(VRAM_BG_BASE + GT_EMPTY);
 
@@ -730,7 +730,9 @@ static void bake_bg_and_ui_tiles(void) {
     upload_pix8_to_vram(VRAM_BG_BASE + GT_WORLD_TOWN);
     p8_fill(3); p8_rect(1, 1, 2, 6, 10); p8_rect(5, 2, 2, 5, 9); p8_rect(1, 1, 6, 1, 11);
     upload_pix8_to_vram(VRAM_BG_BASE + GT_WORLD_RUINS);
+}
 
+static void bake_ui_and_font_tiles(void) {
     /* UI Box Tiles (PAL2: 1=dark slate, 7=gold, 15=warm cream) */
     p8_fill(1); upload_pix8_to_vram(VRAM_UI_BASE + GUI_FILL);
     p8_fill(1); p8_rect(0, 0, 8, 1, 7); p8_rect(0, 1, 8, 1, 15); upload_pix8_to_vram(VRAM_UI_BASE + GUI_TOP);
@@ -838,18 +840,21 @@ static void bake_bg_and_ui_tiles(void) {
     g_pix8[2*8+5] = 5; g_pix8[5*8+2] = 5;
     upload_pix8_to_vram(VRAM_UI_BASE + GUI_LOCK_BROKEN);
 
-    /* Opaque 8x8 ASCII Font (bg=1 dark slate, fg=15 warm cream in PAL2, or fg=11/12 gold in PAL3) */
-    for (u16 ch = 0; ch < 64; ch++) {
-        p8_fill(1);
-        for (u8 y = 0; y < 7; y++) {
+    /* Fast direct-packed 8x8 ASCII Font (bg=1 dark slate, fg=15 warm cream in PAL2/PAL3) */
+    for (u16 ch = 0u; ch < 64u; ch++) {
+        u32 tile[8];
+        for (u8 y = 0u; y < 7u; y++) {
             u8 bits = GEN_FONT_5X7[ch][y];
-            for (u8 x = 0; x < 5; x++) {
-                if (bits & (1u << (4 - x))) {
-                    g_pix8[y * 8 + (x + 1)] = 15;
-                }
-            }
+            u32 row = 0x11111111u;
+            if (bits & 0x10u) row |= 0x0E000000u;
+            if (bits & 0x08u) row |= 0x00E00000u;
+            if (bits & 0x04u) row |= 0x000E0000u;
+            if (bits & 0x02u) row |= 0x0000E000u;
+            if (bits & 0x01u) row |= 0x00000E00u;
+            tile[y] = row;
         }
-        upload_pix8_to_vram(VRAM_FONT_BASE + ch);
+        tile[7] = 0x11111111u;
+        VDP_loadTileData(tile, (u16)(VRAM_FONT_BASE + ch), 1, CPU);
     }
 
     /* Sweeping 4bpp Alpine Parallax Vista tiles are baked dynamically into VRAM_VISTA_BASE
@@ -876,15 +881,48 @@ static const uint32_t ATLAS_PAL_RGB[16] = {
     0x2B629Cu  /* 15: Subtle Ocean Graticule Line */
 };
 
-/* Pre-bake full-color 24x16 (192x128 px) 4bpp Pixel-Art Evertale World Atlas into VRAM_ATLAS_BASE */
+static u8 g_atlas_baked = 0u;
+
+/* Fast zero-DIVU 24x16 (192x128 px) 4bpp Pixel-Art Evertale World Atlas baker (lazy-baked on first Atlas open) */
 static void bake_genesis_atlas_bitmap(void) {
     static u8 row3[3][HEARTH_ATLAS_W];
     static u8 below[HEARTH_ATLAS_W];
+    static u8 px_ax[192];
+    static u8 px_mod3[192];
+    static u8 px_grat[192];
+    s16 lm_px[HEARTH_GLOBE_LANDMARK_COUNT];
+    s16 lm_py[HEARTH_GLOBE_LANDMARK_COUNT];
+    u8  lm_col[HEARTH_GLOBE_LANDMARK_COUNT];
     u16 tile_idx = 0u;
+
+    /* Precompute px/3, px%3, and px%24==0 via pure additions (eliminates 98,304 68000 DIVU calls!) */
+    {
+        u8 cur_ax = 0u;
+        u8 cur_m3 = 0u;
+        u8 cur_m24 = 0u;
+        for (u16 px = 0u; px < 192u; px++) {
+            px_ax[px] = (cur_ax < HEARTH_ATLAS_W) ? cur_ax : (u8)(HEARTH_ATLAS_W - 1u);
+            px_mod3[px] = cur_m3;
+            px_grat[px] = (cur_m24 == 0u) ? 1u : 0u;
+            cur_m3++;
+            if (cur_m3 == 3u) { cur_m3 = 0u; cur_ax++; }
+            cur_m24++;
+            if (cur_m24 == 24u) { cur_m24 = 0u; }
+        }
+    }
+
+    /* Precompute landmark pixel centers once (eliminates 344,064 inner-loop MULU calls!) */
+    for (u8 i = 0u; i < HEARTH_GLOBE_LANDMARK_COUNT; i++) {
+        const HearthGlobeLandmark *lm = &HEARTH_GLOBE_LANDMARKS[i];
+        lm_px[i]  = (s16)(((u16)lm->tx * 3u) >> 2);
+        lm_py[i]  = (s16)(((u16)lm->ty * 171u) >> 8);
+        lm_col[i] = lm->enterable ? 13u : 14u;
+    }
 
     for (u16 ty = 0u; ty < GEN_ATLAS_TH; ty++) {
         u8 ay0 = (u8)(ty * 3u);
         u8 ay_next = (u8)((ay0 + 3u < HEARTH_ATLAS_H) ? (ay0 + 3u) : (HEARTH_ATLAS_H - 1u));
+        s16 ty0 = (s16)(ty << 3);
         for (u8 ax = 0u; ax < HEARTH_ATLAS_W; ax++) {
             row3[0][ax] = hearth_globe_atlas_cell(ax, ay0);
             row3[1][ax] = hearth_globe_atlas_cell(ax, (u8)(ay0 + 1u));
@@ -893,41 +931,56 @@ static void bake_genesis_atlas_bitmap(void) {
         }
 
         for (u16 tx = 0u; tx < GEN_ATLAS_TW; tx++) {
+            s16 tx0 = (s16)(tx << 3);
+            u8 hit_lm[4];
+            u8 hit_cnt = 0u;
+
+            /* Tile-level 8x8 bounding-box cull for 5x5 landmark pins (~93% of tiles skip inner loop!) */
+            for (u8 i = 0u; i < HEARTH_GLOBE_LANDMARK_COUNT; i++) {
+                s16 ldx = (s16)(lm_px[i] - tx0);
+                s16 ldy = (s16)(lm_py[i] - ty0);
+                if (ldx >= -2 && ldx <= 9 && ldy >= -2 && ldy <= 9 && hit_cnt < 4u) {
+                    hit_lm[hit_cnt++] = i;
+                }
+            }
+
             for (u8 ly = 0u; ly < 8u; ly++) {
                 u8 py = (u8)((ty << 3) + ly);
                 u8 sub = (ly < 3u) ? 0u : ((ly < 5u) ? 1u : 2u);
+                u8 py_grat = (py == 0u || py == 24u || py == 48u ||
+                              py == 72u || py == 96u || py == 120u) ? 1u : 0u;
+                u8 py_even = ((py & 1u) == 0u) ? 1u : 0u;
+                u8 is_row_seam = (ly == 3u || ly == 5u) ? 1u : 0u;
+
                 for (u8 lx = 0u; lx < 8u; lx++) {
                     u8 px = (u8)((tx << 3) + lx);
-                    u8 ax = (u8)(px / 3u);
-                    if (ax >= HEARTH_ATLAS_W) ax = HEARTH_ATLAS_W - 1u;
+                    u8 ax = px_ax[px];
                     u8 cell = row3[sub][ax];
                     u8 col = (u8)((cell < 10u ? cell : 0u) + 2u);
 
                     /* Subtle latitude/longitude graticule across deep ocean */
-                    if (cell == 0u && (((px % 24u) == 0u && ((py & 1u) == 0u)) ||
-                                       ((py % 24u) == 0u && ((px & 1u) == 0u)))) {
+                    if (cell == 0u && ((px_grat[px] && py_even) || (py_grat && ((px & 1u) == 0u)))) {
                         col = 15u;
                     }
                     /* Crisp 1px coastal shadow along south/east continent shoreline */
                     if (cell < 3u) {
-                        u8 above = (sub > 0u) ? row3[sub - 1u][ax] : cell;
-                        u8 left_c = (ax > 0u) ? row3[sub][ax - 1u] : cell;
-                        if ((ly == 3u || ly == 5u) && above >= 3u) col = 1u;
-                        else if ((px % 3u) == 0u && left_c >= 3u) col = 1u;
+                        if (is_row_seam && sub > 0u && row3[sub - 1u][ax] >= 3u) {
+                            col = 1u;
+                        } else if (px_mod3[px] == 0u && ax > 0u && row3[sub][ax - 1u] >= 3u) {
+                            col = 1u;
+                        }
                     } else if (ly == 7u && below[ax] < 3u) {
                         col = 1u;
                     }
 
-                    /* Crisp 5x5 framed landmark pins (gold = enterable town/port, cyan = vista) */
-                    for (u8 lm_i = 0u; lm_i < HEARTH_GLOBE_LANDMARK_COUNT; lm_i++) {
-                        const HearthGlobeLandmark *lm = &HEARTH_GLOBE_LANDMARKS[lm_i];
-                        s16 lpx = (s16)(((u16)lm->tx * 3u) >> 2);
-                        s16 lpy = (s16)(((u16)lm->ty * 171u) >> 8);
-                        s16 dx = (s16)px - lpx;
-                        s16 dy = (s16)py - lpy;
+                    /* Crisp 5x5 framed landmark pins (only evaluated on intersecting tiles) */
+                    for (u8 h = 0u; h < hit_cnt; h++) {
+                        u8 li = hit_lm[h];
+                        s16 dx = (s16)px - lm_px[li];
+                        s16 dy = (s16)py - lm_py[li];
                         if (dx >= -2 && dx <= 2 && dy >= -2 && dy <= 2) {
                             if (dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1) {
-                                col = lm->enterable ? 13u : 14u;
+                                col = lm_col[li];
                             } else if ((dx != -2 && dx != 2) || (dy != -2 && dy != 2)) {
                                 col = 1u;
                             }
@@ -945,6 +998,7 @@ static void bake_genesis_atlas_bitmap(void) {
             tile_idx++;
         }
     }
+    g_atlas_baked = 1u;
 }
 
 static void bake_all_sprites(void) {
@@ -2225,6 +2279,13 @@ static void upload_atlas_pal0_to_cram(TransferMethod tm) {
 static void draw_genesis_atlas_window(void) {
     u16 tile_idx = 0u;
 
+    /* Lazy-bake the 24x16 World Atlas bitmap on first open (~80ms under display off) */
+    if (!g_atlas_baked) {
+        VDP_setEnable(FALSE);
+        bake_genesis_atlas_bitmap();
+        VDP_setEnable(TRUE);
+    }
+
     upload_atlas_pal0_to_cram(DMA_QUEUE);
     VDP_clearPlane(WINDOW, TRUE);
     VDP_setWindowFullScreen();
@@ -3178,6 +3239,531 @@ static void upload_palettes_to_cram(void) {
     g_last_pal_id = ZPAL_HAMLET;
 }
 
+/* ============================================================================
+ * 7.5 RETRO SEGA GENESIS BOOT SPLASH SCREENS & STAGED COLD BOOT
+ *     - Reuses temporary tiles at VRAM_ATLAS_BASE (overwritten on first Atlas open)
+ *     - First visible splash appears in < 25ms after power-on!
+ *     - Stages heavy terrain & sprite VRAM baking in the dark beats between splashes
+ * ============================================================================ */
+#define VRAM_SPLASH_STAR0   ((u16)(VRAM_ATLAS_BASE + 0u))
+#define VRAM_SPLASH_STAR1   ((u16)(VRAM_ATLAS_BASE + 1u))
+#define VRAM_SPLASH_RULE    ((u16)(VRAM_ATLAS_BASE + 2u))
+#define VRAM_SPLASH_CORNER  ((u16)(VRAM_ATLAS_BASE + 3u))
+#define VRAM_SPLASH_ART0    ((u16)(VRAM_ATLAS_BASE + 4u))
+#define VRAM_SPLASH_ART1    ((u16)(VRAM_ATLAS_BASE + 24u))
+
+static u8 g_boot_stage = 0u;
+static u8 g_splash_buf[48u * 32u];
+
+static void gen_run_boot_stage(u8 target_stage) {
+    if (target_stage >= 1u && g_boot_stage < 1u) {
+        bake_bg_terrain_tiles();
+        init_genesis_metatiles();
+        g_boot_stage = 1u;
+    }
+    if (target_stage >= 2u && g_boot_stage < 2u) {
+        bake_all_sprites();
+        bake_env_anim_frames();
+        g_boot_stage = 2u;
+    }
+}
+
+static void gsp_clear(u8 w, u8 h) {
+    hearth_memset(g_splash_buf, 0, (size_t)w * (size_t)h);
+}
+
+static void gsp_px(u8 bw, u8 bh, s16 x, s16 y, u8 col) {
+    if (x >= 0 && y >= 0 && x < (s16)bw && y < (s16)bh) {
+        g_splash_buf[(u16)y * (u16)bw + (u16)x] = col;
+    }
+}
+
+static void gsp_rect(u8 bw, u8 bh, s16 x, s16 y, s16 w, s16 h, u8 col) {
+    for (s16 py = y; py < y + h; py++) {
+        if (py < 0 || py >= (s16)bh) continue;
+        for (s16 px = x; px < x + w; px++) {
+            if (px < 0 || px >= (s16)bw) continue;
+            g_splash_buf[(u16)py * (u16)bw + (u16)px] = col;
+        }
+    }
+}
+
+static void gen_upload_splash_rect(u8 bw, u8 tw, u8 th, u16 dst_tile) {
+    u16 tid = dst_tile;
+    for (u8 ty = 0u; ty < th; ty++) {
+        for (u8 tx = 0u; tx < tw; tx++) {
+            u32 tile[8];
+            for (u8 ly = 0u; ly < 8u; ly++) {
+                u32 row = 0u;
+                u16 base = (u16)((ty * 8u + ly) * bw + tx * 8u);
+                for (u8 lx = 0u; lx < 8u; lx++) {
+                    row = (row << 4) | (u32)(g_splash_buf[base + lx] & 0x0Fu);
+                }
+                tile[ly] = row;
+            }
+            VDP_loadTileData(tile, tid, 1, CPU);
+            tid++;
+        }
+    }
+}
+
+static void gen_stamp_splash_rect(u16 x, u16 y, u8 tw, u8 th, u16 src_tile) {
+    u16 tid = src_tile;
+    for (u8 ty = 0u; ty < th; ty++) {
+        for (u8 tx = 0u; tx < tw; tx++) {
+            VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, tid),
+                             (u16)(x + tx), (u16)(y + ty));
+            tid++;
+        }
+    }
+}
+
+static void bake_gen_splash_decor_tiles(void) {
+    /* Soft glint star */
+    p8_fill(0);
+    g_pix8[3*8+3] = 14; g_pix8[3*8+4] = 14; g_pix8[4*8+3] = 14; g_pix8[4*8+4] = 14;
+    g_pix8[2*8+3] = 10; g_pix8[5*8+4] = 10; g_pix8[3*8+2] = 10; g_pix8[4*8+5] = 10;
+    upload_pix8_to_vram(VRAM_SPLASH_STAR0);
+
+    /* Bright 4-point cross star */
+    p8_fill(0);
+    p8_rect(3, 1, 2, 6, 13); p8_rect(1, 3, 6, 2, 13);
+    p8_rect(3, 3, 2, 2, 15);
+    g_pix8[0*8+3] = 10; g_pix8[7*8+4] = 10; g_pix8[3*8+0] = 10; g_pix8[4*8+7] = 10;
+    upload_pix8_to_vram(VRAM_SPLASH_STAR1);
+
+    /* Decorative gilded hairline divider */
+    p8_fill(0);
+    p8_rect(0, 3, 8, 1, 10); p8_rect(0, 4, 8, 1, 13);
+    upload_pix8_to_vram(VRAM_SPLASH_RULE);
+
+    /* Storybook filigree corner bracket (top-left; H/V flipped for TR/BL/BR) */
+    p8_fill(0);
+    p8_rect(1, 1, 7, 1, 13); p8_rect(1, 1, 1, 7, 13);
+    p8_rect(2, 2, 6, 1, 10); p8_rect(2, 2, 1, 6, 10);
+    g_pix8[1*8+1] = 15; g_pix8[3*8+3] = 14; g_pix8[3*8+4] = 10; g_pix8[4*8+3] = 10;
+    upload_pix8_to_vram(VRAM_SPLASH_CORNER);
+}
+
+/* Splash 1 Emblem: 48x24 (6x3 tile) Metallic Cobalt & Chrome "16-BIT" Hardware Badge */
+static void bake_gen_splash1_badge(void) {
+    /* Bold 5x7 pixel glyph rows for '1','6','-','B','I','T' inside the badge */
+    static const u8 B16_GLYPH[6][7] = {
+        {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E}, /* 1 */
+        {0x0E,0x10,0x1E,0x11,0x11,0x11,0x0E}, /* 6 */
+        {0x00,0x00,0x00,0x1E,0x00,0x00,0x00}, /* - */
+        {0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E}, /* B */
+        {0x0E,0x04,0x04,0x04,0x04,0x04,0x0E}, /* I */
+        {0x1F,0x04,0x04,0x04,0x04,0x04,0x04}  /* T */
+    };
+    static const u8 B16_X[6] = { 6u, 13u, 19u, 25u, 32u, 37u };
+
+    gsp_clear(48u, 24u);
+    /* Chamfered outer chrome housing */
+    gsp_rect(48u, 24u, 3, 1, 42, 22, 2);
+    gsp_rect(48u, 24u, 2, 2, 44, 20, 2);
+    gsp_rect(48u, 24u, 1, 4, 46, 16, 2);
+    /* Chrome bevel rim (top bright, bottom steel) */
+    gsp_rect(48u, 24u, 3, 2, 42, 1, 13);
+    gsp_rect(48u, 24u, 2, 3, 44, 1, 11);
+    gsp_rect(48u, 24u, 3, 21, 42, 1, 4);
+    gsp_rect(48u, 24u, 2, 20, 44, 1, 5);
+    gsp_rect(48u, 24u, 2, 4, 1, 16, 11);
+    gsp_rect(48u, 24u, 45, 4, 1, 16, 5);
+    /* Deep cobalt-sapphire metallic face */
+    gsp_rect(48u, 24u, 3, 4, 42, 16, 3);
+    gsp_rect(48u, 24u, 4, 5, 40, 6, 4);
+    gsp_rect(48u, 24u, 4, 11, 40, 4, 6);
+    gsp_rect(48u, 24u, 4, 15, 40, 4, 3);
+    /* Electric cyan racing stripes */
+    gsp_rect(48u, 24u, 4, 5, 40, 1, 8);
+    gsp_rect(48u, 24u, 4, 18, 40, 1, 7);
+    /* Diagonal chrome gloss highlight bands */
+    for (s16 y = 5; y < 18; y++) {
+        s16 sx = (s16)(11 + (18 - y));
+        gsp_px(48u, 24u, sx,     y, 7);
+        gsp_px(48u, 24u, sx + 1, y, 8);
+        gsp_px(48u, 24u, sx + 18, y, 7);
+    }
+
+    /* Sculpted "16-BIT" text with dark drop shadow + brushed metallic gradient */
+    for (u8 g = 0u; g < 6u; g++) {
+        for (u8 gy = 0u; gy < 7u; gy++) {
+            u8 bits = B16_GLYPH[g][gy];
+            for (u8 gx = 0u; gx < 5u; gx++) {
+                if (bits & (1u << (4u - gx))) {
+                    s16 px = (s16)(B16_X[g] + gx);
+                    s16 py = (s16)(8u + gy);
+                    u8 col = (gy < 2u) ? 15u : ((gy < 4u) ? 12u : ((gy < 6u) ? 11u : 9u));
+                    gsp_px(48u, 24u, px + 1, py + 1, 2u);
+                    gsp_px(48u, 24u, px,     py,     col);
+                }
+            }
+        }
+    }
+
+    gen_upload_splash_rect(48u, 6u, 3u, VRAM_SPLASH_ART0);
+}
+
+/* Splash 2 Emblem: 32x32 (4x4 tile) Wrought-Iron Hearth Lantern (2 flickering flame frames) */
+static void bake_gen_splash2_lantern(u8 frame, u16 dst_tile) {
+    gsp_clear(32u, 32u);
+    /* Soft warm amber lantern halo */
+    gsp_rect(32u, 32u, 9,  8,  14, 16, 2);
+    gsp_rect(32u, 32u, 7,  10, 18, 12, 2);
+    gsp_rect(32u, 32u, 11, 10, 10, 12, 3);
+    /* Top ring & wrought-iron hanging loop */
+    gsp_rect(32u, 32u, 14, 1, 4, 1, 11);
+    gsp_rect(32u, 32u, 13, 2, 1, 2, 9);
+    gsp_rect(32u, 32u, 18, 2, 1, 2, 9);
+    gsp_rect(32u, 32u, 14, 3, 4, 1, 8);
+    /* Stepped iron hood & brass finial */
+    gsp_rect(32u, 32u, 12, 4, 8, 2, 8);
+    gsp_rect(32u, 32u, 13, 4, 4, 1, 11);
+    gsp_rect(32u, 32u, 9,  6, 14, 2, 7);
+    gsp_rect(32u, 32u, 10, 6, 8, 1, 10);
+    gsp_rect(32u, 32u, 7,  8, 18, 2, 8);
+    gsp_rect(32u, 32u, 8,  8, 12, 1, 11);
+    /* Glass lantern chamber */
+    gsp_rect(32u, 32u, 10, 10, 12, 14, 4);
+    gsp_rect(32u, 32u, 11, 11, 10, 12, 5);
+    /* Animated golden hearth flame */
+    if (frame == 0u) {
+        gsp_rect(32u, 32u, 15, 11, 2, 2, 12);
+        gsp_rect(32u, 32u, 14, 13, 4, 3, 13);
+        gsp_rect(32u, 32u, 13, 16, 6, 4, 14);
+        gsp_rect(32u, 32u, 14, 17, 4, 3, 15);
+        gsp_rect(32u, 32u, 14, 20, 4, 2, 13);
+    } else {
+        gsp_rect(32u, 32u, 14, 10, 2, 2, 12);
+        gsp_rect(32u, 32u, 14, 12, 4, 3, 13);
+        gsp_rect(32u, 32u, 13, 15, 6, 5, 14);
+        gsp_rect(32u, 32u, 15, 16, 3, 4, 15);
+        gsp_rect(32u, 32u, 14, 20, 4, 2, 12);
+    }
+    /* Wrought-iron side pillars & glass specular shine */
+    gsp_rect(32u, 32u, 9,  10, 2, 14, 8);
+    gsp_rect(32u, 32u, 21, 10, 2, 14, 7);
+    gsp_px(32u, 32u, 10, 11, 11); gsp_px(32u, 32u, 10, 12, 11);
+    gsp_px(32u, 32u, 12, 12, 15); gsp_px(32u, 32u, 12, 13, 14);
+    /* Stepped iron pedestal base */
+    gsp_rect(32u, 32u, 8,  24, 16, 2, 8);
+    gsp_rect(32u, 32u, 9,  24, 10, 1, 11);
+    gsp_rect(32u, 32u, 7,  26, 18, 2, 7);
+    gsp_rect(32u, 32u, 9,  28, 14, 2, 6);
+    gsp_rect(32u, 32u, 11, 28, 8,  1, 9);
+
+    gen_upload_splash_rect(32u, 4u, 4u, dst_tile);
+}
+
+/* Splash 3 Emblem: 32x32 (4x4 tile) Gilded Ruby Heart-Ember & Twin Oak-Leaf Laurel Crest */
+static void bake_gen_splash3_crest(void) {
+    gsp_clear(32u, 32u);
+    /* Twin emerald oak-leaf laurel arcs */
+    for (s16 a = 0; a < 9; a++) {
+        s16 lx = (s16)(4 + ((a < 4) ? (3 - a) : (a - 4)));
+        s16 ly = (s16)(8 + a * 2);
+        s16 rx = (s16)(27 - lx);
+        gsp_rect(32u, 32u, lx,     ly, 3, 2, 3);
+        gsp_px(32u, 32u,   lx + 1, ly, 4);
+        gsp_rect(32u, 32u, rx - 2, ly, 3, 2, 3);
+        gsp_px(32u, 32u,   rx - 1, ly, 4);
+    }
+    /* Golden ribbon tie at bottom */
+    gsp_rect(32u, 32u, 11, 26, 10, 2, 10);
+    gsp_rect(32u, 32u, 13, 25, 6,  2, 13);
+    gsp_rect(32u, 32u, 15, 25, 2,  1, 15);
+    /* Radiant golden top crown spark */
+    gsp_rect(32u, 32u, 15, 2, 2, 5, 13);
+    gsp_rect(32u, 32u, 13, 4, 6, 1, 13);
+    gsp_rect(32u, 32u, 15, 3, 2, 2, 15);
+    /* Gilded bezel around central Heart-Ember */
+    gsp_rect(32u, 32u, 10, 8,  5,  3, 10);
+    gsp_rect(32u, 32u, 17, 8,  5,  3, 10);
+    gsp_rect(32u, 32u, 9,  10, 14, 6, 10);
+    gsp_rect(32u, 32u, 10, 16, 12, 3, 10);
+    gsp_rect(32u, 32u, 12, 19, 8,  2, 10);
+    gsp_rect(32u, 32u, 14, 21, 4,  2, 10);
+    gsp_rect(32u, 32u, 15, 23, 2,  1, 13);
+    /* Faceted ruby crimson Heart-Ember core */
+    gsp_rect(32u, 32u, 11, 9,  4,  3, 6);
+    gsp_rect(32u, 32u, 17, 9,  4,  3, 6);
+    gsp_rect(32u, 32u, 10, 11, 12, 5, 7);
+    gsp_rect(32u, 32u, 11, 16, 10, 2, 6);
+    gsp_rect(32u, 32u, 13, 18, 6,  2, 6);
+    gsp_rect(32u, 32u, 15, 20, 2,  2, 5);
+    /* Glowing inner ember heart + white gem glint */
+    gsp_rect(32u, 32u, 12, 11, 3, 3, 8);
+    gsp_rect(32u, 32u, 14, 13, 4, 3, 13);
+    gsp_rect(32u, 32u, 15, 13, 2, 2, 15);
+    gsp_px(32u, 32u, 12, 10, 15);
+    gsp_px(32u, 32u, 13, 11, 14);
+
+    gen_upload_splash_rect(32u, 4u, 4u, VRAM_SPLASH_ART0);
+}
+
+static void gen_splash_upload_pals_scaled(const u32 pal0[16], const u32 pal2[16], const u32 pal3[16], u8 level) {
+    u16 c0[16], c2[16], c3[16];
+    for (u16 i = 0u; i < 16u; i++) {
+        u32 rgb0 = pal0[i];
+        u32 rgb2 = pal2[i];
+        u32 rgb3 = pal3[i];
+        if (level < 8u) {
+            u32 r0 = (((rgb0 >> 16) & 0xFFu) * level) >> 3;
+            u32 g0 = (((rgb0 >> 8)  & 0xFFu) * level) >> 3;
+            u32 b0 = (( rgb0        & 0xFFu) * level) >> 3;
+            u32 r2 = (((rgb2 >> 16) & 0xFFu) * level) >> 3;
+            u32 g2 = (((rgb2 >> 8)  & 0xFFu) * level) >> 3;
+            u32 b2 = (( rgb2        & 0xFFu) * level) >> 3;
+            u32 r3 = (((rgb3 >> 16) & 0xFFu) * level) >> 3;
+            u32 g3 = (((rgb3 >> 8)  & 0xFFu) * level) >> 3;
+            u32 b3 = (( rgb3        & 0xFFu) * level) >> 3;
+            rgb0 = (r0 << 16) | (g0 << 8) | b0;
+            rgb2 = (r2 << 16) | (g2 << 8) | b2;
+            rgb3 = (r3 << 16) | (g3 << 8) | b3;
+        }
+        c0[i] = hearth_rgb_to_genesis_bgr333(rgb0);
+        c2[i] = hearth_rgb_to_genesis_bgr333(rgb2);
+        c3[i] = hearth_rgb_to_genesis_bgr333(rgb3);
+    }
+    PAL_setColors(0,  c0, 16, DMA_QUEUE);
+    PAL_setColors(32, c2, 16, DMA_QUEUE);
+    PAL_setColors(48, c3, 16, DMA_QUEUE);
+}
+
+static void gen_splash_psg_decay_tick(void) {
+    for (u8 ch = 0u; ch < 4u; ch++) {
+        if (g_psg_env[ch] < PSG_ENVELOPE_MIN) {
+            g_psg_cnt[ch]++;
+            if (g_psg_cnt[ch] >= g_psg_decay[ch]) {
+                g_psg_cnt[ch] = 0u;
+                g_psg_env[ch]++;
+                SYS_disableInts();
+                PSG_setEnvelope(ch, g_psg_env[ch]);
+                SYS_enableInts();
+            }
+        }
+    }
+}
+
+static void gen_splash_stamp_rule(u16 x, u16 y, u16 len) {
+    for (u16 i = 0u; i < len; i++) {
+        VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, VRAM_SPLASH_RULE),
+                         (u16)(x + i), y);
+    }
+}
+
+static void gen_splash_stamp_corners(u16 x0, u16 y0, u16 x1, u16 y1) {
+    VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, VRAM_SPLASH_CORNER), x0, y0);
+    VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 1, VRAM_SPLASH_CORNER), x1, y0);
+    VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 1, 0, VRAM_SPLASH_CORNER), x0, y1);
+    VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 1, 1, VRAM_SPLASH_CORNER), x1, y1);
+}
+
+static void run_genesis_boot_splashes(void) {
+    static const u32 PAL_S1_ART[16] = {
+        0x040814u, 0x040814u, 0x0E162Cu, 0x162C66u,
+        0x224AA0u, 0x4C5C78u, 0x2862C8u, 0x3C9CE8u,
+        0x7CE4FFu, 0x7A8CA8u, 0x5278B0u, 0xB8C8E0u,
+        0xDCE8F8u, 0x8CC8FFu, 0xA8E0FFu, 0xFFFFFFu
+    };
+    static const u32 PAL_S1_TXT2[16] = {
+        0x040814u, 0x040814u, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0xD8E8FCu
+    };
+    static const u32 PAL_S1_TXT3[16] = {
+        0x040814u, 0x040814u, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0x7EE6FFu
+    };
+
+    static const u32 PAL_S2_ART[16] = {
+        0x0A0810u, 0x0A0810u, 0x24160Eu, 0x422410u,
+        0x582E12u, 0x783C14u, 0x262432u, 0x3A3848u,
+        0x525064u, 0x706C82u, 0x9C7A46u, 0xC4B49Au,
+        0xE86820u, 0xF8AE34u, 0xFFE27Au, 0xFFFBE0u
+    };
+    static const u32 PAL_S2_TXT2[16] = {
+        0x0A0810u, 0x0A0810u, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0xF2E6D0u
+    };
+    static const u32 PAL_S2_TXT3[16] = {
+        0x0A0810u, 0x0A0810u, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0xFFD060u
+    };
+
+    static const u32 PAL_S3_ART[16] = {
+        0x0C0914u, 0x0C0914u, 0x1A3C26u, 0x2C7440u,
+        0x58B464u, 0x6C1420u, 0xB42030u, 0xE23844u,
+        0xFF7C64u, 0x8A6428u, 0xC8943Cu, 0xE0B858u,
+        0xF2CE6Eu, 0xFFE488u, 0xFFF2B8u, 0xFFFFFFu
+    };
+    static const u32 PAL_S3_TXT2[16] = {
+        0x0C0914u, 0x0C0914u, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0xF8EEDCu
+    };
+    static const u32 PAL_S3_TXT3[16] = {
+        0x0C0914u, 0x0C0914u, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0xFFE27Au
+    };
+
+    u16 prev_pad = read_genesis_pad();
+    u8 skipped = 0u;
+
+    VDP_setEnable(FALSE);
+    {
+        u16 black[16];
+        for (u16 i = 0u; i < 16u; i++) black[i] = 0u;
+        PAL_setColors(0,  black, 16, CPU);
+        PAL_setColors(32, black, 16, CPU);
+        PAL_setColors(48, black, 16, CPU);
+    }
+    VDP_setBackgroundColor(0); /* PAL0[0] = dynamic splash backdrop */
+    VDP_clearPlane(BG_A, TRUE);
+    VDP_clearPlane(BG_B, TRUE);
+    VDP_clearPlane(WINDOW, TRUE);
+    VDP_setWindowFullScreen();
+    bake_gen_splash_decor_tiles();
+    VDP_setEnable(TRUE);
+
+    for (u8 sp = 0u; sp < 3u && !skipped; sp++) {
+        const u32 *p0 = (sp == 0u) ? PAL_S1_ART  : ((sp == 1u) ? PAL_S2_ART  : PAL_S3_ART);
+        const u32 *p2 = (sp == 0u) ? PAL_S1_TXT2 : ((sp == 1u) ? PAL_S2_TXT2 : PAL_S3_TXT2);
+        const u32 *p3 = (sp == 0u) ? PAL_S1_TXT3 : ((sp == 1u) ? PAL_S2_TXT3 : PAL_S3_TXT3);
+        u16 total_frames = (sp == 0u) ? 112u : ((sp == 1u) ? 116u : 122u);
+
+        /* Prepare next splash while CRAM is black (zero flicker) */
+        VDP_setEnable(FALSE);
+        VDP_clearPlane(WINDOW, TRUE);
+        if (sp == 0u) {
+            bake_gen_splash1_badge();
+            gen_stamp_splash_rect(17u, 6u, 6u, 3u, VRAM_SPLASH_ART0);
+            gen_splash_stamp_rule(9u, 11u, 22u);
+            win_text(10u, 13u, PAL3, "MEGA 16-BIT EDITION");
+            win_text(7u,  16u, PAL2, "HIGH-DEFINITION 320X224 VDP");
+            win_text(6u,  18u, PAL2, "68000 CPU * SN76489 PSG AUDIO");
+            win_text(10u, 24u, PAL2, "PRESS START TO SKIP");
+        } else if (sp == 1u) {
+            bake_gen_splash2_lantern(0u, VRAM_SPLASH_ART0);
+            bake_gen_splash2_lantern(1u, VRAM_SPLASH_ART1);
+            gen_stamp_splash_rect(18u, 5u, 4u, 4u, VRAM_SPLASH_ART0);
+            gen_splash_stamp_rule(8u, 11u, 24u);
+            win_text(8u,  13u, PAL3, "HEARTHWORKS INTERACTIVE");
+            win_text(7u,  16u, PAL2, "16-BIT STORYBOOK RPG ENGINE");
+            win_text(14u, 18u, PAL2, "BUILD " HEARTH_VERSION_STR);
+            win_text(10u, 24u, PAL2, "PRESS START TO SKIP");
+        } else {
+            bake_gen_splash3_crest();
+            gen_splash_stamp_corners(4u, 3u, 35u, 22u);
+            gen_stamp_splash_rect(18u, 5u, 4u, 4u, VRAM_SPLASH_ART0);
+            gen_splash_stamp_rule(9u, 11u, 22u);
+            win_text(13u, 13u, PAL3, "PROJECT HEARTH");
+            win_text(5u,  16u, PAL2, "TALES OF ALDERBROOK & EVERTALE");
+            win_text(6u,  18u, PAL2, "A HANDCRAFTED 16-BIT JOURNEY");
+            win_text(10u, 24u, PAL2, "PRESS START TO SKIP");
+        }
+        VDP_setEnable(TRUE);
+
+        for (u16 f = 0u; f < total_frames; f++) {
+            u16 pad = read_genesis_pad();
+            u16 edge = (u16)(pad & (u16)(~prev_pad));
+            prev_pad = pad;
+            if (edge & (PAD_START | PAD_A | PAD_B)) {
+                skipped = 1u;
+                break;
+            }
+
+            /* Smooth 8-step hardware CRAM fade-in & fade-out */
+            u8 lvl = 8u;
+            if (f < 16u) {
+                lvl = (u8)((f >> 1) + 1u);
+                if (lvl > 8u) lvl = 8u;
+            } else if (f >= (u16)(total_frames - 16u)) {
+                u16 rem = (u16)(total_frames - 1u - f);
+                lvl = (u8)(rem >> 1);
+            }
+
+            if (sp == 0u && lvl == 8u) {
+                /* Classic Mega Drive chrome metallic sheen sweep across badge highlight indices */
+                u32 p0_anim[16];
+                u8 phase = (u8)((f >> 2) & 7u);
+                for (u16 i = 0u; i < 16u; i++) p0_anim[i] = p0[i];
+                if (phase == 1u)      { p0_anim[11] = 0xFFFFFFu; p0_anim[8] = 0xB8F8FFu; }
+                else if (phase == 2u) { p0_anim[12] = 0xFFFFFFu; p0_anim[13] = 0xE8F8FFu; }
+                else if (phase == 3u) { p0_anim[7]  = 0x7CE4FFu; }
+                gen_splash_upload_pals_scaled(p0_anim, p2, p3, 8u);
+            } else if (f < 18u || f >= (u16)(total_frames - 17u)) {
+                gen_splash_upload_pals_scaled(p0, p2, p3, lvl);
+            }
+
+            /* Twinkling stars / flickering lantern animation */
+            if (sp == 0u) {
+                u16 stA = ((f & 16u) != 0u) ? VRAM_SPLASH_STAR1 : VRAM_SPLASH_STAR0;
+                u16 stB = ((f & 16u) == 0u) ? VRAM_SPLASH_STAR1 : VRAM_SPLASH_STAR0;
+                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stA), 14u, 6u);
+                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stB), 25u, 8u);
+                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stB), 13u, 9u);
+                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stA), 26u, 5u);
+                /* Iconic bright 16-bit 4-note major arpeggio chime */
+                if (f == 12u) psg_trigger_tone(0, 523u, 6, 4);
+                if (f == 18u) psg_trigger_tone(1, 659u, 6, 4);
+                if (f == 24u) psg_trigger_tone(2, 784u, 5, 5);
+                if (f == 30u) psg_trigger_tone(0, 1047u, 5, 7);
+            } else if (sp == 1u) {
+                if ((f & 7u) == 0u) {
+                    u16 ltile = ((f & 8u) != 0u) ? VRAM_SPLASH_ART1 : VRAM_SPLASH_ART0;
+                    gen_stamp_splash_rect(18u, 5u, 4u, 4u, ltile);
+                }
+                /* Warm Hearth Lantern acoustic bell triad */
+                if (f == 14u) psg_trigger_tone(0, 440u, 7, 5);
+                if (f == 22u) psg_trigger_tone(1, 554u, 7, 5);
+                if (f == 30u) psg_trigger_tone(2, 659u, 6, 6);
+            } else {
+                u16 stA = ((f & 16u) != 0u) ? VRAM_SPLASH_STAR1 : VRAM_SPLASH_STAR0;
+                u16 stB = ((f & 16u) == 0u) ? VRAM_SPLASH_STAR1 : VRAM_SPLASH_STAR0;
+                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stA), 15u, 5u);
+                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stB), 24u, 8u);
+                /* Storybook harp ascending sparkle */
+                if (f == 12u) psg_trigger_tone(0, 392u, 7, 5);
+                if (f == 19u) psg_trigger_tone(1, 494u, 7, 5);
+                if (f == 26u) psg_trigger_tone(2, 587u, 6, 6);
+                if (f == 33u) psg_trigger_tone(0, 784u, 6, 7);
+            }
+
+            gen_splash_psg_decay_tick();
+            SYS_doVBlankProcess();
+        }
+
+        /* Ensure screen is completely dark before staging the next VRAM bake */
+        gen_splash_upload_pals_scaled(p0, p2, p3, 0u);
+        SYS_doVBlankProcess();
+
+        /* Hide terrain & sprite baking cleanly inside the dark beats between splashes! */
+        if (!skipped) {
+            VDP_setEnable(FALSE);
+            if (sp == 0u) {
+                gen_run_boot_stage(1u); /* Terrain tiles + metatile LUT (~45ms) */
+            } else if (sp == 1u) {
+                gen_run_boot_stage(2u); /* Hardware sprites + env animations (~90ms) */
+            }
+            VDP_setEnable(TRUE);
+        }
+    }
+
+    /* Silence splash PSG chimes & finish any remaining boot stages if user skipped early */
+    PSG_reset();
+    for (u8 ch = 0u; ch < 4u; ch++) {
+        g_psg_env[ch] = PSG_ENVELOPE_MIN;
+        g_psg_cnt[ch] = 0u;
+    }
+    g_last_bgm_id = 255u;
+
+    VDP_setEnable(FALSE);
+    gen_run_boot_stage(2u);
+    VDP_clearPlane(WINDOW, TRUE);
+    g_win_layout = 255u;
+    VDP_setEnable(TRUE);
+}
+
 int main(bool hard_reset) {
     (void)hard_reset;
 
@@ -3190,19 +3776,24 @@ int main(bool hard_reset) {
     VDP_setScrollingMode(HSCROLL_PLANE, VSCROLL_PLANE);
     VDP_resetSprites();
 
+    /* Fast-boot minimal UI + Font (~15ms), then jump straight into retro Genesis splash screens! */
+    VDP_setEnable(FALSE);
+    bake_ui_and_font_tiles();
+    VDP_setEnable(TRUE);
+
+    run_genesis_boot_splashes();
+
+    /* Restore main game CRAM palettes (Atlas stays lazy-baked until player opens World Atlas!) */
     upload_palettes_to_cram();
     VDP_setBackgroundColor(33); /* PAL2[1] warm slate backdrop */
-
-    bake_bg_and_ui_tiles();
-    init_genesis_metatiles();
-    bake_genesis_atlas_bitmap();
-    bake_all_sprites();
-    bake_env_anim_frames();
 
     hearth_init(&g_hearth);
     g_hearth.tuning.ppu_mode = PPU_GENESIS_320x224;
     {
-        const HearthPpuPacket *boot_ppu = hearth_step_60hz(&g_hearth, 0u);
+        /* Seed prev_pad so skipping boot splashes never leaks a button edge into Opening Cinema */
+        uint16_t init_pad = read_genesis_pad();
+        g_hearth.prev_pad = init_pad;
+        const HearthPpuPacket *boot_ppu = hearth_step_60hz(&g_hearth, init_pad);
         g_last_map_rev = g_hearth.map_revision;
         upload_zone_pal0_to_cram(boot_ppu->terrain_pal_id, CPU);
         VDP_setEnable(FALSE);
