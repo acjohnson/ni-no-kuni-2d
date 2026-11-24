@@ -2268,7 +2268,7 @@ static void draw_genesis_atlas_footer(void) {
 }
 
 static void upload_atlas_pal0_to_cram(TransferMethod tm) {
-    u16 cram[16];
+    static u16 cram[16];
     for (u16 c = 0; c < 16u; c++) {
         cram[c] = hearth_rgb_to_genesis_bgr333(ATLAS_PAL_RGB[c]);
     }
@@ -3219,7 +3219,7 @@ static uint16_t read_genesis_pad(void) {
 }
 
 static void upload_zone_pal0_to_cram(u8 pal_id, TransferMethod tm) {
-    u16 cram[16];
+    static u16 cram[16];
     u8 pid = (pal_id < ZPAL_COUNT) ? pal_id : 0u;
     for (u16 c = 0; c < 16u; c++) {
         cram[c] = hearth_rgb_to_genesis_bgr333(HEARTH_ZONE_PALETTES_RGB[pid][c]);
@@ -3503,7 +3503,10 @@ static void bake_gen_splash3_crest(void) {
 }
 
 static void gen_splash_upload_pals_scaled(const u32 pal0[16], const u32 pal2[16], const u32 pal3[16], u8 level) {
-    u16 c0[16], c2[16], c3[16];
+    /* Persistent WRAM buffers required by SGDK DMA_QUEUE (stack buffers corrupt during VBlank!) */
+    static u16 c0[16];
+    static u16 c2[16];
+    static u16 c3[16];
     for (u16 i = 0u; i < 16u; i++) {
         u32 rgb0 = pal0[i];
         u32 rgb2 = pal2[i];
@@ -3684,25 +3687,29 @@ static void run_genesis_boot_splashes(void) {
 
             if (sp == 0u && lvl == 8u) {
                 /* Classic Mega Drive chrome metallic sheen sweep across badge highlight indices */
-                u32 p0_anim[16];
-                u8 phase = (u8)((f >> 2) & 7u);
-                for (u16 i = 0u; i < 16u; i++) p0_anim[i] = p0[i];
-                if (phase == 1u)      { p0_anim[11] = 0xFFFFFFu; p0_anim[8] = 0xB8F8FFu; }
-                else if (phase == 2u) { p0_anim[12] = 0xFFFFFFu; p0_anim[13] = 0xE8F8FFu; }
-                else if (phase == 3u) { p0_anim[7]  = 0x7CE4FFu; }
-                gen_splash_upload_pals_scaled(p0_anim, p2, p3, 8u);
+                if ((f & 3u) == 0u) {
+                    u32 p0_anim[16];
+                    u8 phase = (u8)((f >> 2) & 7u);
+                    for (u16 i = 0u; i < 16u; i++) p0_anim[i] = p0[i];
+                    if (phase == 1u)      { p0_anim[11] = 0xFFFFFFu; p0_anim[8] = 0xB8F8FFu; }
+                    else if (phase == 2u) { p0_anim[12] = 0xFFFFFFu; p0_anim[13] = 0xE8F8FFu; }
+                    else if (phase == 3u) { p0_anim[7]  = 0x7CE4FFu; }
+                    gen_splash_upload_pals_scaled(p0_anim, p2, p3, 8u);
+                }
             } else if (f < 18u || f >= (u16)(total_frames - 17u)) {
                 gen_splash_upload_pals_scaled(p0, p2, p3, lvl);
             }
 
             /* Twinkling stars / flickering lantern animation */
             if (sp == 0u) {
-                u16 stA = ((f & 16u) != 0u) ? VRAM_SPLASH_STAR1 : VRAM_SPLASH_STAR0;
-                u16 stB = ((f & 16u) == 0u) ? VRAM_SPLASH_STAR1 : VRAM_SPLASH_STAR0;
-                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stA), 14u, 6u);
-                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stB), 25u, 8u);
-                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stB), 13u, 9u);
-                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stA), 26u, 5u);
+                if ((f & 15u) == 0u) {
+                    u16 stA = ((f & 16u) != 0u) ? VRAM_SPLASH_STAR1 : VRAM_SPLASH_STAR0;
+                    u16 stB = ((f & 16u) == 0u) ? VRAM_SPLASH_STAR1 : VRAM_SPLASH_STAR0;
+                    VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stA), 14u, 6u);
+                    VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stB), 25u, 8u);
+                    VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stB), 13u, 9u);
+                    VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stA), 26u, 5u);
+                }
                 /* Iconic bright 16-bit 4-note major arpeggio chime */
                 if (f == 12u) psg_trigger_tone(0, 523u, 6, 4);
                 if (f == 18u) psg_trigger_tone(1, 659u, 6, 4);
@@ -3718,10 +3725,12 @@ static void run_genesis_boot_splashes(void) {
                 if (f == 22u) psg_trigger_tone(1, 554u, 7, 5);
                 if (f == 30u) psg_trigger_tone(2, 659u, 6, 6);
             } else {
-                u16 stA = ((f & 16u) != 0u) ? VRAM_SPLASH_STAR1 : VRAM_SPLASH_STAR0;
-                u16 stB = ((f & 16u) == 0u) ? VRAM_SPLASH_STAR1 : VRAM_SPLASH_STAR0;
-                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stA), 15u, 5u);
-                VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stB), 24u, 8u);
+                if ((f & 15u) == 0u) {
+                    u16 stA = ((f & 16u) != 0u) ? VRAM_SPLASH_STAR1 : VRAM_SPLASH_STAR0;
+                    u16 stB = ((f & 16u) == 0u) ? VRAM_SPLASH_STAR1 : VRAM_SPLASH_STAR0;
+                    VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stA), 15u, 5u);
+                    VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL0, 1, 0, 0, stB), 24u, 8u);
+                }
                 /* Storybook harp ascending sparkle */
                 if (f == 12u) psg_trigger_tone(0, 392u, 7, 5);
                 if (f == 19u) psg_trigger_tone(1, 494u, 7, 5);
