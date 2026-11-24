@@ -23,24 +23,24 @@
 static HearthState g_hearth;
 
 /* ============================================================================
- * VRAM TILE INDEX ALLOCATION (All strictly below TILE_FONT_INDEX = 1440!)
+ * VRAM TILE INDEX ALLOCATION (Strictly below SGDK 64x64 HSCROLL=1344 & SAT=1376!)
  *   BG terrain + 16x16 metatile halves + opaque canopies: 16..111  (96 tiles)
  *   UI boxes + fishing gauge + battle lock badges:       112..135  (24 tiles)
  *   16x16 Hardware Sprites (61 slots x 4 tiles):         136..379  (244 tiles)
  *   Opaque 5x7 ASCII Font (64 glyphs):                   380..443  (64 tiles)
- *   Full-Color 24x16 Pixel-Art World Atlas:              444..827  (384 tiles)
- *   Cinema CG (<= 480 lossless tiles) / Shared Vista:    828..1307 (480 tiles)
- *   Tall 16x24 Sprites (Rowan + 13 Adult NPCs x 6):     1308..1391 (84 tiles)
- *   Headroom below TILE_FONT_INDEX (1440):               48 tiles free!
+ *   Shared Full-Screen/Vista Block (mutually exclusive): 444..923  (480 tiles)
+ *     - Boot Splashes (40t) / Cinema CG (<=480t) / Vista (<=256t) / World Atlas (384t)
+ *   Tall 16x24 Sprites (Rowan + 13 Adult NPCs x 6):      924..1007 (84 tiles)
+ *   Headroom below 64x64 HSCROLL (0xA800 = tile 1344):   336 tiles (10.7 KB) free!
  * ============================================================================ */
 #define VRAM_BG_BASE       ((u16)(TILE_USER_INDEX))
 #define VRAM_UI_BASE       ((u16)(VRAM_BG_BASE + 96u))
 #define VRAM_SPR_BASE      ((u16)(VRAM_UI_BASE + 24u))
 #define VRAM_FONT_BASE     ((u16)(VRAM_SPR_BASE + 244u))
 #define VRAM_ATLAS_BASE    ((u16)(VRAM_FONT_BASE + 64u))
-#define VRAM_CG_BASE       ((u16)(VRAM_ATLAS_BASE + 384u))
-#define VRAM_VISTA_BASE    VRAM_CG_BASE
-#define VRAM_TALL_SPR_BASE ((u16)(VRAM_CG_BASE + 480u))
+#define VRAM_CG_BASE       VRAM_ATLAS_BASE
+#define VRAM_VISTA_BASE    VRAM_ATLAS_BASE
+#define VRAM_TALL_SPR_BASE ((u16)(VRAM_ATLAS_BASE + 480u))
 
 #define GEN_ATLAS_TW    24u
 #define GEN_ATLAS_TH    16u
@@ -882,6 +882,7 @@ static const uint32_t ATLAS_PAL_RGB[16] = {
 };
 
 static u8 g_atlas_baked = 0u;
+static u8 g_vista_vram_dirty = 1u;
 
 /* Fast zero-DIVU 24x16 (192x128 px) 4bpp Pixel-Art Evertale World Atlas baker (lazy-baked on first Atlas open) */
 static void bake_genesis_atlas_bitmap(void) {
@@ -999,6 +1000,7 @@ static void bake_genesis_atlas_bitmap(void) {
         }
     }
     g_atlas_baked = 1u;
+    g_vista_vram_dirty = 1u; /* Shares 480-tile block with Alpine Parallax Vista */
 }
 
 static void bake_all_sprites(void) {
@@ -1656,7 +1658,6 @@ static u16 g_bg1_tl[64], g_bg1_tr[64], g_bg1_bl[64], g_bg1_br[64];
 static u16 g_ov_tl[8],   g_ov_tr[8],   g_ov_bl[8],   g_ov_br[8];
 static u16 g_opq_tl[8],  g_opq_tr[8],  g_opq_bl[8],  g_opq_br[8];
 static u16 g_vista_map[8][32];
-static u8  g_vista_vram_dirty = 1u;
 
 static u16 map_bg1_to_vram_tile(u8 t) {
     switch (t) {
@@ -1939,6 +1940,7 @@ static void bake_genesis_parallax_vista(void) {
         }
     }
     g_vista_vram_dirty = 0u;
+    g_atlas_baked = 0u; /* Shares 480-tile block with World Atlas */
 }
 
 static void draw_genesis_parallax_vista(void) {
@@ -2135,7 +2137,8 @@ static void draw_intro_backdrop(u8 scene) {
     PAL_setColors(16, CINEMA_ROM_PALS[p][1], 16, CPU);
     PAL_setColors(48, CINEMA_ROM_PALS[p][2], 16, CPU);
     g_cinema_pals_active = 1u;
-    g_vista_vram_dirty = 1u; /* Cinema CG shares VRAM_CG_BASE -> re-bake parallax vista on exit */
+    g_vista_vram_dirty = 1u; /* Cinema CG shares 480-tile block -> re-bake vista/atlas on demand */
+    g_atlas_baked = 0u;
     VDP_loadTileData(CINEMA_GEN_TILE_PTRS[p], VRAM_CG_BASE, CINEMA_ROM_TILE_COUNTS[p], CPU);
 
     /* Center 32x15 multi-palette 16-bit pixel-art CG plate on 40x28 Genesis screen (x=4..35, y=2..16) */
@@ -3840,6 +3843,13 @@ int main(bool hard_reset) {
 
         if (scene_mode != 2u && !g_hearth.atlas_open && ppu->terrain_pal_id != g_last_pal_id) {
             upload_zone_pal0_to_cram(ppu->terrain_pal_id, DMA_QUEUE);
+        }
+        if (scene_mode == 0u && !g_hearth.atlas_open && g_vista_vram_dirty &&
+            !g_hearth.is_world_map && ppu->has_mountain_vista) {
+            /* Restore Alpine Parallax Vista tiles if World Atlas just closed in a mountain zone */
+            VDP_setEnable(FALSE);
+            draw_genesis_parallax_vista();
+            VDP_setEnable(TRUE);
         }
 
         if (scene_mode != g_last_scene_mode || map_changed ||

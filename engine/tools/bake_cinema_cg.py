@@ -45,7 +45,7 @@ ROM_PLATES = [
     ("BEDROOM_COMFORT",      "pixel_cg_comfort_1795404215947.jpg"),
     ("PIP_WINDOW",           "pixel_cg_pip_win_1795404215326.jpg"),
     ("ATTIC_KEEPSAKE",       "pixel_cg_attic_1795404216431.jpg"),
-    ("PIP_DREAM_RETURN",     "pixel_cg_pip_dream_1795404215951.jpg"),
+    ("PIP_DREAM_RETURN",     "pixel_cg_pip_dream_sill_1795526954906.jpg"),
     ("HOLLOW_OAK_AWAKENS",   "pixel_cg_oak_wake_v2_1795404236718.jpg"),
     ("EVERTALE_WORLD_VISTA", "pixel_cg_world_vista_1795404215399.jpg"),
 ]
