@@ -90,7 +90,7 @@ BASE_FOLIAGE = [
 ]
 BASE_WATER = [
     0x000000, 0x1E4B82, 0x337BB8, 0x6EC2E4, 0x12305A, 0x3D475C, 0x768298,
-    0xDCE6EE, 0x232E44, 0x1E4438, 0x3F7252, 0x688296, 0x44ACBE, 0x9AC6DC,
+    0xDCE6EE, 0x232E44, 0x2E623C, 0x58964C, 0x688296, 0x44ACBE, 0x9AC6DC,
     0xE4F2F8, 0xFAFEFF,
 ]
 BASE_ARCH = [
@@ -149,7 +149,7 @@ def build_zone_palettes():
     ]
     alder_wat = [
         0x000000, 0x204A76, 0x3A7CAE, 0x82C4E4, 0x143052, 0x3C4252, 0x70788A,
-        0xDCE2EA, 0x242A3A, 0x1E3C32, 0x3A6248, 0x627488, 0x489CB4, 0x9EC2D8,
+        0xDCE2EA, 0x242A3A, 0x3E5234, 0x6E7842, 0x627488, 0x489CB4, 0x9EC2D8,
         0xE4EEF6, 0xF8FCFF,
     ]
     alder_arch = [
@@ -449,53 +449,56 @@ META_NAMES = [
     "T_WORLD_HILL", "T_WORLD_CASTLE", "T_WORLD_TOWN", "T_WORLD_RUINS", "T_WORLD_SHALLOW",
     "T_WORLD_SAND", "T_WORLD_SNOW", "T_WORLD_LAVA", "T_WORLD_JUNGLE", "T_WORLD_CORAL",
     "T_WORLD_TECH", "T_PALM_TREE", "T_DOCK_PIER",
-    # 63..72: Overhead BG2 canopies, eaves & shrine arch (exact match with O_CANOPY_TL..O_OAK_CROWN)
+    # 63..74: Overhead BG2 canopies, eaves & shrine arch (exact match with O_CANOPY_TL..O_MAPLE_TOP)
     "CM_OV_CANOPY_TL", "CM_OV_CANOPY_TR", "CM_OV_CANOPY_BL", "CM_OV_CANOPY_BR",
     "CM_OV_ROOF_EAVE", "CM_OV_SHRINE_ARCH", "CM_OV_MAPLE_TL", "CM_OV_MAPLE_TR",
-    "CM_OV_PINE_TOP", "CM_OV_OAK_CROWN",
-    # 73..88: Organic Spatial Ground Variations (eliminates wallpaper tiling!)
+    "CM_OV_PINE_TOP", "CM_OV_OAK_CROWN", "CM_OV_MAPLE_MID", "CM_OV_MAPLE_TOP",
+    # 75..90: Organic Spatial Ground Variations (eliminates wallpaper tiling!)
     "CM_GRASS_V1", "CM_GRASS_V2", "CM_GRASS_V3",
     "CM_AUTUMN_V1", "CM_AUTUMN_V2",
     "CM_COBBLE_V1", "CM_COBBLE_V2", "CM_COBBLE_V3",
     "CM_DIRT_V1", "CM_ROCKY_V1", "CM_WOOD_FLOOR_V1", "CM_SAND_V1",
     "CM_SNOW_V1", "CM_JUNGLE_V1", "CM_SHRINE_V1", "CM_OCEAN_V1",
-    # 89..104: Rounded Shorelines & Feathered Organic Path/Plaza Transitions
+    # 91..106: Rounded Shorelines & Feathered Organic Path/Plaza Transitions
     "CM_SHORE_N", "CM_SHORE_S", "CM_SHORE_W", "CM_SHORE_E",
     "CM_SHORE_NW", "CM_SHORE_NE", "CM_SHORE_SW", "CM_SHORE_SE",
     "CM_COBBLE_EDGE_N", "CM_COBBLE_EDGE_S", "CM_COBBLE_EDGE_W", "CM_COBBLE_EDGE_E",
     "CM_DIRT_EDGE_N", "CM_DIRT_EDGE_S", "CM_DIRT_EDGE_W", "CM_DIRT_EDGE_E",
-    # 105..114: Cast Ground Shadows & Canopy Dapple
+    # 107..116: Cast Ground Shadows & Canopy Dapple
     "CM_GRASS_SHAD_N", "CM_GRASS_SHAD_W", "CM_COBBLE_SHAD_N", "CM_COBBLE_SHAD_W",
     "CM_DIRT_SHAD_N", "CM_AUTUMN_SHAD_N", "CM_ROCKY_SHAD_N", "CM_WOOD_SHAD_N",
     "CM_GRASS_DAPPLE", "CM_AUTUMN_DAPPLE",
-    # 115..128: Seamless Ground-Composited Props (ZERO green boxes on stone/pier/dirt!)
+    # 117..130: Seamless Ground-Composited Props (ZERO green boxes on stone/pier/dirt!)
     "CM_LAMP_COBBLE", "CM_SIGN_COBBLE", "CM_FLOWERBED_COBBLE", "CM_BUSH_COBBLE",
     "CM_FENCE_COBBLE", "CM_LAMP_PIER", "CM_SIGN_PIER", "CM_BOULDER_PIER",
     "CM_LAMP_AUTUMN", "CM_SIGN_AUTUMN", "CM_BOULDER_AUTUMN",
     "CM_LAMP_DIRT", "CM_SIGN_DIRT", "CM_PIER_WATER_EDGE",
-    # 129..137: Battle Backdrops, Evertale Coastlines & Empty Vista Sky
+    # 131..139: Battle Backdrops, Evertale Coastlines & Empty Vista Sky
     "CM_BATTLE_SKY_MEADOW", "CM_BATTLE_SKY_SHRINE", "CM_BATTLE_GND_MEADOW", "CM_BATTLE_GND_SHRINE",
     "CM_WORLD_COAST_N", "CM_WORLD_COAST_S", "CM_WORLD_COAST_W", "CM_WORLD_COAST_E",
     "CM_EMPTY",
-    # 138..147: Opaque-Backed Overhead Canopies & Eaves (SNES BG1 & Genesis Parallax BG_A — zero sky bleed!)
+    # 140..151: Opaque-Backed Overhead Canopies & Eaves (SNES BG1 & Genesis Parallax BG_A — zero sky bleed!)
     "CM_OPQ_CANOPY_TL", "CM_OPQ_CANOPY_TR", "CM_OPQ_CANOPY_BL", "CM_OPQ_CANOPY_BR",
     "CM_OPQ_ROOF_EAVE", "CM_OPQ_SHRINE_ARCH", "CM_OPQ_MAPLE_TL", "CM_OPQ_MAPLE_TR",
-    "CM_OPQ_PINE_TOP", "CM_OPQ_OAK_CROWN",
-    # 148..151: Local Water Inner Peninsula Diagonal Corners (eliminates 90-degree land spikes!)
+    "CM_OPQ_PINE_TOP", "CM_OPQ_OAK_CROWN", "CM_OPQ_MAPLE_MID", "CM_OPQ_MAPLE_TOP",
+    # 152..155: Local Water Inner Peninsula Diagonal Corners (eliminates 90-degree land spikes!)
     "CM_SHORE_INW", "CM_SHORE_INE", "CM_SHORE_ISW", "CM_SHORE_ISE",
-    # 152..159: World Map Turquoise Shallow Outer Corners & Inner Peninsula Tips
+    # 156..163: World Map Turquoise Shallow Outer Corners & Inner Peninsula Tips
     "CM_WORLD_COAST_NW", "CM_WORLD_COAST_NE", "CM_WORLD_COAST_SW", "CM_WORLD_COAST_SE",
     "CM_WORLD_COAST_INW", "CM_WORLD_COAST_INE", "CM_WORLD_COAST_ISW", "CM_WORLD_COAST_ISE",
-    # 160..171: World Map Deep Ocean Direct Coastlines (all 12 curved shapes!)
+    # 164..175: World Map Deep Ocean Direct Coastlines (all 12 curved shapes!)
     "CM_OCEAN_COAST_N", "CM_OCEAN_COAST_S", "CM_OCEAN_COAST_W", "CM_OCEAN_COAST_E",
     "CM_OCEAN_COAST_NW", "CM_OCEAN_COAST_NE", "CM_OCEAN_COAST_SW", "CM_OCEAN_COAST_SE",
     "CM_OCEAN_COAST_INW", "CM_OCEAN_COAST_INE", "CM_OCEAN_COAST_ISW", "CM_OCEAN_COAST_ISE",
-    # 172..179: Rounded Cobblestone & Dirt Path Curved Corners
+    # 176..183: Rounded Cobblestone & Dirt Path Curved Corners
     "CM_COBBLE_CORNER_NW", "CM_COBBLE_CORNER_NE", "CM_COBBLE_CORNER_SW", "CM_COBBLE_CORNER_SE",
     "CM_DIRT_CORNER_NW", "CM_DIRT_CORNER_NE", "CM_DIRT_CORNER_SW", "CM_DIRT_CORNER_SE",
-    # 180..187: Organic Sand/Beach-to-Grass Feathered Biome Transitions (Edges + Corners!)
+    # 184..191: Organic Sand/Beach-to-Grass Feathered Biome Transitions (Edges + Corners!)
     "CM_SAND_GRASS_N", "CM_SAND_GRASS_S", "CM_SAND_GRASS_W", "CM_SAND_GRASS_E",
     "CM_SAND_GRASS_NW", "CM_SAND_GRASS_NE", "CM_SAND_GRASS_SW", "CM_SAND_GRASS_SE",
+    # 192..197: Cozy Cottage Interior Furnishings, Cutaway Wall Cap & 2-Tile Bed Footboard
+    "CM_LAMP_WOOD", "CM_FLOWERBED_WOOD", "CM_COUNTER_WOOD", "CM_LECTERN_WOOD",
+    "CM_INTERIOR_CAP", "CM_BED_FOOT",
 ]
 META_IDX = {name: i for i, name in enumerate(META_NAMES)}
 
@@ -736,16 +739,15 @@ def make_tall_grass(frame=0):
     return t
 
 def make_autumn_grass(variant=0):
+    """Calm, painterly golden-olive autumn meadow with sparse delicate fallen maple leaves."""
     t = make_grass(variant & 3)
-    # Warm fallen crimson & golden maple leaves scattered organically on mountain turf
-    leaves = [
-        [(3, 3, 13, 12), (11, 5, 12, 10), (6, 11, 13, 8), (13, 13, 12, 13)],
-        [(5, 2, 12, 10), (12, 8, 13, 12), (2, 12, 13, 8), (9, 14, 12, 10)],
-        [(2, 5, 13, 12), (9, 3, 12, 10), (13, 11, 13, 8), (5, 13, 12, 13)],
-    ][variant % 3]
-    for lx, ly, c1, c2 in leaves:
-        t.p(lx, ly + 1, 7)
-        t.p(lx, ly, c1); t.p(lx + 1, ly, c2); t.p(lx, ly - 1, c2)
+    # Variant 0 stays clean & restful; variants 1 & 2 scatter 1-2 delicate fallen leaves (no noisy dot grid!)
+    if variant == 1:
+        t.p(4, 5, 13); t.p(5, 5, 12); t.p(4, 6, 8)
+        t.p(12, 11, 12); t.p(13, 11, 10)
+    elif variant == 2:
+        t.p(11, 3, 13); t.p(12, 3, 12)
+        t.p(3, 12, 12); t.p(4, 12, 13); t.p(3, 13, 8)
     return t
 
 def make_dirt(variant=0):
@@ -777,29 +779,29 @@ def make_dirt(variant=0):
     return t
 
 def make_rocky_path(variant=0):
-    """Mountain crushed-granite trail with organic embedded flagstones."""
+    """Organic flat mountain granite flagstones with soft mortar (harmonizes with cobblestone edges)."""
     t = Tile16(TPAL_ARCH, 3)
     t.stamp([
-        "3333334433333233",
-        "3344444443322233",
-        "3344544433233333",
-        "3334443332334433",
-        "3223333223344443",
-        "2333322333345443",
-        "3344323333334433",
-        "3444433322333332",
-        "3454433233322322",
-        "3344332333443233",
-        "3333223344444333",
-        "3223333344544333",
-        "2333443334443322",
-        "3334444333333233",
-        "3334544332233333",
-        "3333443323333333",
+        "3344444323444432",
+        "3444444434445443",
+        "3445444434444443",
+        "3444444323444432",
+        "2344433222333322",
+        "2223222344444322",
+        "4432234445444433",
+        "4443344444444443",
+        "4543344444444332",
+        "3432234444332223",
+        "2223322222234444",
+        "3444443234444544",
+        "4454444344444443",
+        "4444444344444432",
+        "3444433234443322",
+        "2333222222322223",
     ])
     if variant == 1:
         t = t.flip_h()
-        t.p(3, 5, 15); t.p(12, 11, 15)  # subtle alpine moss in crevice
+        t.p(2, 5, 15); t.p(11, 10, 15)  # subtle alpine moss in stone crevice
     return t
 
 def make_cobble(variant=0):
@@ -899,16 +901,20 @@ def make_water(frame=0, deep=False, shallow=False, rapids=False):
     for y in range(16):
         for x in range(16):
             if rapids:
-                ry = (y - frame * 4) & 15
-                w = math.sin((x * 0.78) + ry * 0.39)
-                if (x in (2, 3, 10, 11) and ry in (1, 2, 3, 9, 10)) or (x in (6, 7) and ry in (5, 6, 7, 13, 14)):
-                    t.p(x, y, 15 if ((ry + x) & 1) else 14)
-                elif w > 0.55:
-                    t.p(x, y, 13 if ((x + ry) & 1) else 3)
-                elif w < -0.55:
-                    t.p(x, y, 4)
+                # Flowing cerulean mountain brook with gentle sunlit riffles (seamless with T_WATER!)
+                px = (x + shift) & 15
+                rib = math.sin(px * (math.pi / 8.0) + math.sin(y * (math.pi / 4.0)) * 0.7) + math.sin(y * (math.pi / 4.0)) * 0.5
+                if rib < -0.78:
+                    t.p(x, y, 1)
+                elif rib > 0.92:
+                    t.p(x, y, 15 if ((x + frame) & 1) else 14)
+                elif rib > 0.42:
+                    t.p(x, y, 13 if ((x + y) & 1) else 12)
                 else:
-                    t.p(x, y, 2 if ((x + y) & 3) else 1)
+                    t.p(x, y, 2)
+                wx = (x + shift + (y // 4) * 5) & 15
+                if (y in (3, 11) and wx in (4, 5, 6)) or (y in (7, 15) and wx in (11, 12)):
+                    t.p(x, y, 15 if (wx == 5 or wx == 11) else 14)
             elif deep:
                 # Sweeping seamless 16x16 ocean swells (curved wave arcs, zero repeating flat bars!)
                 px = (x + shift) & 15
@@ -1224,37 +1230,46 @@ def make_pier_water_edge(frame=0):
     return t
 
 def make_wood_floor(variant=0):
-    """Warm honey-cedar cottage floorboards with beveled seams & subtle sunlit grain."""
+    """Calm, warm honey-cedar cottage floorboards with soft recessed seams & gentle woodgrain."""
     t = Tile16(TPAL_ARCH, 8)
-    for y0 in (0, 4, 8, 12):
-        t.hline(0, y0, 16, 6)
-        t.hline(0, y0 + 1, 16, 9 if ((y0 >> 2) + variant) & 1 else 8)
+    for idx, y0 in enumerate((0, 4, 8, 12)):
+        t.hline(0, y0, 16, 7)       # soft warm plank seam (no harsh black zebra stripe!)
+        t.hline(0, y0 + 1, 16, 8)
         t.hline(0, y0 + 2, 16, 8)
-        t.hline(0, y0 + 3, 16, 7)
-        seam = ((y0 * 5) + (variant * 7) + 3) & 15
-        t.vline(seam, y0, 4, 6)
+        t.hline(0, y0 + 3, 16, 8)
+        seam = ((idx * 7) + (variant * 5) + 4) & 15
+        t.vline(seam, y0, 4, 7)
         t.p((seam + 1) & 15, y0 + 1, 9)
-        t.p((seam + 6) & 15, y0 + 2, 7)
+        t.p((seam + 2) & 15, y0 + 1, 9)
+        t.p((seam + 9) & 15, y0 + 2, 9 if ((idx + variant) & 1) else 7)
     return t
 
 def make_hearth_rug():
-    """Woven burgundy & antique-gold storybook cottage hearth rug with tasseled trim."""
+    """Seamless woven Persian burgundy & antique-gold diamond tapestry (tiles cleanly at any size!)."""
     t = Tile16(TPAL_ACCENT, 3)
-    t.rect(0, 0, 16, 16, 2)
-    t.rect(1, 1, 14, 14, 12)  # antique gold inner border
-    t.rect(2, 2, 12, 12, 3)   # rich burgundy pile
-    t.rect(4, 4, 8, 8, 4)
-    # Woven diamond medallion center
+    # Rich crimson-burgundy weave with subtle tonal warp
+    for y in range(16):
+        for x in range(16):
+            t.p(x, y, 3 if ((x + y) & 1) == 0 else 2)
+    # Continuous interlocking antique-gold diamond lattice & sunlit medallion center
     t.stamp([
-        "....c...",
-        "...c5c..",
-        "..c5f5c.",
-        "...c5c..",
-        "....c...",
-    ], 4, 5)
-    # Soft cream tassels along left & right edges
-    for y in range(1, 15, 2):
-        t.p(0, y, 15); t.p(15, y, 15)
+        ".......cc.......",
+        "......c55c......",
+        ".....c4334c.....",
+        "....c434434c....",
+        "...c434cc434c...",
+        "..c434c55c434c..",
+        ".c434c5ff5c434c.",
+        "c5343c5ff5c3435c",
+        "c5343c5ff5c3435c",
+        ".c434c5ff5c434c.",
+        "..c434c55c434c..",
+        "...c434cc434c...",
+        "....c434434c....",
+        ".....c4334c.....",
+        "......c55c......",
+        ".......cc.......",
+    ], 0, 0)
     return t
 
 def make_roof_top():
@@ -1313,10 +1328,10 @@ def make_wall_wood():
     t = Tile16(TPAL_ARCH, 9)
     # Cast shadow from overhanging roof eave along top 2px
     t.hline(0, 0, 16, 6); t.hline(0, 1, 16, 8)
-    # Warm textured cream plaster with subtle shading
-    for y in range(2, 12):
-        for x in range(16):
-            t.p(x, y, 9 if ((x + y) & 3) else 8)
+    # Smooth sunlit cream plaster with gentle warmth along timber edges (zero diagonal stripes!)
+    t.rect(2, 2, 12, 10, 9)
+    t.hline(2, 5, 12, 8); t.hline(2, 11, 12, 8)
+    t.p(4, 3, 8); t.p(11, 9, 8)
     # Dark cedar timber framing (left/right posts + cross-beam)
     t.rect(0, 0, 2, 12, 6); t.vline(1, 1, 10, 7)
     t.rect(14, 0, 2, 12, 6); t.vline(14, 1, 10, 7)
@@ -1390,20 +1405,31 @@ def make_windmill_roof():
     return t
 
 def make_interior_wall():
-    """Cozy cedar-beamed cottage interior wall with wainscoted wainscoting."""
+    """Cozy smooth cream-plaster cottage wall with warm cedar wainscoting (zero diagonal stripes!)."""
     t = Tile16(TPAL_ARCH, 9)
-    t.hline(0, 0, 16, 6); t.hline(0, 1, 16, 7)
-    for y in range(2, 9):
-        for x in range(16):
-            t.p(x, y, 9 if ((x + y) & 3) else 8)
-    # Wainscoting wood rail & vertical cedar panels
+    t.hline(0, 0, 16, 6); t.hline(0, 1, 16, 7); t.hline(0, 2, 16, 8)
+    # Smooth warm plaster upper half
+    t.rect(0, 3, 16, 6, 9)
+    t.hline(0, 8, 16, 8)
+    # Wainscoting chair rail & vertical cedar tongue-and-groove panels
     t.hline(0, 9, 16, 6); t.hline(0, 10, 16, 8)
     for x in range(0, 16, 4):
-        t.vline(x, 10, 6, 6)
+        t.vline(x, 10, 5, 6)
         t.vline(x + 1, 11, 4, 8)
         t.vline(x + 2, 11, 4, 7)
         t.vline(x + 3, 11, 4, 7)
     t.hline(0, 15, 16, 1)
+    return t
+
+def make_interior_cap():
+    """Rich dark walnut cutaway roof-beam cap framing cottage interiors (Chrono Trigger 3D room depth!)."""
+    t = Tile16(TPAL_ARCH, 1)
+    t.rect(0, 0, 16, 16, 1)
+    # Subtle dark cedar-rafter texture so cutaway framing feels cozy rather than harsh void
+    for y in (3, 11):
+        t.hline(0, y, 16, 6)
+    for x in (4, 12):
+        t.p(x, 3, 1); t.p(x, 11, 1)
     return t
 
 def make_fireplace(frame=0):
@@ -1428,21 +1454,40 @@ def make_fireplace(frame=0):
     return t
 
 def make_bed_quilt():
-    """Rowan's cozy cedar-framed bed with stitched crimson & golden patchwork quilt!"""
+    """Upper half of Rowan's cozy cedar-framed bed: headboard, plump pillow & upper stitched quilt."""
     t = Tile16(TPAL_ACCENT, 10)
-    # Wooden headboard & posts
+    # Cedar headboard & corner posts
     t.rect(1, 0, 14, 4, 10); t.hline(2, 1, 12, 11); t.hline(2, 2, 12, 12)
-    # Plump white pillow
+    t.vline(1, 0, 16, 10); t.vline(14, 0, 16, 10)
+    # Plump cream pillow with soft shading
     t.rect(3, 3, 10, 4, 9); t.rect(4, 4, 8, 2, 15)
-    # Stitched patchwork quilt (burgundy, gold & sky blue squares!)
-    t.rect(2, 7, 12, 7, 3)
-    for qy in (7, 10):
+    # Turned-down sheet fold
+    t.hline(2, 7, 12, 9); t.hline(2, 8, 12, 15)
+    # Stitched patchwork quilt continuing smoothly to bottom edge (joins CM_BED_FOOT!)
+    t.rect(2, 9, 12, 7, 3)
+    for qy in (9, 12, 15):
         for qx in (2, 5, 8, 11):
-            col = 4 if ((qx + qy) & 1) else 7
+            col = 4 if (((qx + qy) // 3) & 1) else 7
+            t.rect(qx, qy, 3, min(3, 16 - qy), col)
+            if qy + 1 < 16:
+                t.p(qx + 1, qy + 1, 12 if col == 4 else 8)
+    return t
+
+def make_bed_foot():
+    """Lower half of Rowan's 2-tile bed: stitched patchwork quilt & carved cedar footboard."""
+    t = Tile16(TPAL_ACCENT, 10)
+    t.vline(1, 0, 16, 10); t.vline(14, 0, 16, 10)
+    # Patchwork quilt flowing seamlessly from upper bed tile
+    t.rect(2, 0, 12, 13, 3)
+    for qy in (0, 3, 6, 9):
+        for qx in (2, 5, 8, 11):
+            col = 4 if (((qx + qy) // 3) & 1) else 7
             t.rect(qx, qy, 3, 3, col)
             t.p(qx + 1, qy + 1, 12 if col == 4 else 8)
-    # Footboard
-    t.rect(1, 14, 14, 2, 10); t.hline(2, 14, 12, 11)
+    t.hline(2, 12, 12, 2)  # soft quilt fold shadow above footboard
+    # Carved cedar footboard & bottom ground shadow
+    t.rect(1, 13, 14, 2, 10); t.hline(2, 13, 12, 12)
+    t.hline(1, 15, 14, 1)
     return t
 
 def make_attic_chest():
@@ -1459,25 +1504,25 @@ def make_attic_chest():
     return t
 
 def make_cliff_wall():
-    """Layered Chrono Trigger granite cliff face with vertical fissures & warm sunlit facets."""
+    """Bold stratified Chrono Trigger alpine granite cliff face with vertical fissures & lit ledges."""
     t = Tile16(TPAL_WATER, 5)
     t.stamp([
-        "5566665556665555",
-        "5667666566766555",
-        "5666665566665565",
-        "8566655856655566",
-        "8556558855558566",
-        "5555588555588555",
-        "5665555666555565",
-        "6676556676655666",
-        "6666556666555666",
-        "5665585665585565",
-        "5555885555885555",
-        "8558855558855585",
-        "5566556655566555",
-        "5666566765666655",
-        "5565556655566558",
-        "8855885588855888",
+        "6667766566776655",
+        "6677666567766658",
+        "5666665566665558",
+        "5566555856655558",
+        "8555558855555888",
+        "5566655566665566",
+        "6677665667766676",
+        "6666665666666665",
+        "5666558566655665",
+        "5555588555558558",
+        "8855885555888588",
+        "5666655666665565",
+        "6677666677666666",
+        "5666665666665665",
+        "5566558566558558",
+        "8855888855888888",
     ])
     return t
 
@@ -1602,14 +1647,21 @@ def paint_tree_trunk(t, autumn=False, pine=False, palm=False):
         # Crown fronds peeking at top
         t.hline(2, 0, 12, 4); t.hline(1, 1, 14, 3); t.hline(4, 2, 8, 5)
     elif pine:
-        # Layered alpine spruce boughs sweeping down to mossy trunk
+        # Seamless lower half of 16x32 alpine spruce (joins O_PINE_TOP w=12 cleanly at y=0!)
         t.rect(6, 10, 4, 4, 7); t.vline(7, 10, 4, 8)
-        for row, w in [(0, 4), (1, 6), (2, 8), (3, 10), (4, 12), (5, 10), (6, 12), (7, 14), (8, 14), (9, 12), (10, 10)]:
+        for row, w in [(0, 12), (1, 14), (2, 14), (3, 12), (4, 14), (5, 16), (6, 16), (7, 14), (8, 12), (9, 10)]:
             x0 = 8 - w // 2
             for x in range(x0, x0 + w):
-                col = 5 if (x < x0 + w // 2 and row in (0, 2, 4, 6, 8)) else (3 if x < x0 + w - 2 else 2)
-                if row in (3, 7, 10): col = 2
+                if row in (3, 7, 9):
+                    col = 1 if (x == x0 or x == x0 + w - 1) else 2
+                elif x < 7:
+                    col = 5 if (row in (0, 1, 4, 5)) else 4
+                elif x < 10:
+                    col = 4 if (row in (1, 5)) else 3
+                else:
+                    col = 2
                 t.p(x, row, col)
+        t.p(4, 1, 6); t.p(3, 5, 6)
     else:
         # Gnarled Chrono/Mana oak or maple trunk with sunlit bark ridges & flared roots
         t.rect(5, 0, 6, 12, 7)
@@ -1729,14 +1781,62 @@ def paint_shrine_pillar(t):
     t.rect(2, 13, 12, 2, 6); t.hline(2, 14, 12, 8)
     t.p(7, 6, 12); t.p(8, 6, 15); t.p(7, 7, 15); t.p(8, 7, 12)
 
+def paint_indoor_lamp(t):
+    """Cozy indoor brass-and-cedar table/floor lamp with warm parchment shade on honey floorboards."""
+    t.hline(5, 14, 6, 6); t.hline(6, 15, 4, 6)  # soft floor shadow
+    # Turned cedar pedestal base & brass stem
+    t.rect(5, 12, 6, 2, 6); t.hline(6, 12, 4, 7)
+    t.vline(7, 7, 6, 6); t.vline(8, 7, 6, 13)
+    # Warm glowing parchment lampshade with brass finial
+    t.rect(4, 3, 8, 4, 13)
+    t.rect(5, 2, 6, 1, 12)
+    t.rect(5, 3, 6, 3, 14)
+    t.hline(4, 6, 8, 12)
+    t.hline(4, 2, 1, 6); t.hline(11, 2, 1, 6)
+    t.p(7, 1, 13); t.p(8, 1, 13)
+
+def paint_indoor_planter(t):
+    """Cozy indoor carved cedar herb-and-blossom chest planter on honey floorboards."""
+    t.hline(1, 14, 14, 6)
+    t.rect(2, 7, 12, 7, 6)
+    t.rect(3, 8, 10, 5, 7)
+    t.hline(3, 8, 10, 9); t.hline(3, 12, 10, 6)
+    # Potted indoor herbs & blossoms (zero grass box!)
+    t.rect(3, 4, 10, 4, 15)
+    t.disc(5.5, 4.5, 2.5, 2.0, 15); t.disc(10.5, 4.5, 2.5, 2.0, 15)
+    for fx, fy, fc in [(4, 3, 12), (7, 2, 14), (10, 3, 13), (6, 5, 14), (11, 5, 12)]:
+        t.p(fx, fy, fc); t.p(fx + 1, fy, fc)
+
+def paint_indoor_counter(t):
+    """Polished cedar bakery/depot shop counter on honey floorboards."""
+    t.hline(0, 13, 16, 1)
+    t.rect(0, 3, 16, 10, 6)
+    t.hline(0, 4, 16, 9); t.hline(0, 5, 16, 8); t.hline(0, 6, 16, 6)
+    t.rect(0, 7, 16, 5, 7)
+    for px in (0, 8):
+        t.vline(px, 7, 5, 6); t.vline(px + 1, 7, 5, 8)
+
+def paint_indoor_lectern(t):
+    """Carved wooden study lectern & open book stand on honey floorboards."""
+    t.hline(4, 14, 8, 6)
+    t.rect(6, 9, 4, 5, 6); t.vline(7, 9, 5, 7)
+    t.rect(2, 3, 12, 6, 6)
+    t.rect(3, 4, 10, 4, 9)  # open parchment pages
+    t.vline(7, 4, 4, 6); t.vline(8, 4, 4, 8)
+    t.hline(4, 5, 2, 2); t.hline(10, 5, 2, 2); t.hline(4, 7, 2, 2); t.hline(10, 7, 2, 2)
+
 # ------------------------------------------------------------------------------
-# LUSH PAINTERLY OVERHEAD TREE CANOPIES (BG2 — ORGANIC SCALLOPED SILHOUETTES!)
+# LUSH PAINTERLY OVERHEAD TREE CANOPIES (BG2 — SEAMLESS CHRONO TRIGGER SILHOUETTES!)
 # ------------------------------------------------------------------------------
 def make_canopy_quad(quad, maple=False):
-    """Voluminous Chrono/Mana multi-tile tree crown quadrant (TL/TR/BL/BR) with organic leaf clusters."""
+    """
+    Seamless Chrono Trigger / Trials of Mana multi-tile tree crown side lobes:
+      - Oak (maple=False): TL/TR/BL/BR fuse seamlessly onto solid O_OAK_CROWN (48x32 lush crown!)
+      - Maple (maple=True): TL/TR fuse seamlessly onto O_MAPLE_MID + O_MAPLE_TOP (48x44 dome!)
+    NO dark outline pixels along internal seam edges so canopies read as ONE unified volume!
+    """
     pal = TPAL_ACCENT if maple else TPAL_FOLIAGE
     t = Tile16(pal, 0, prio=1)
-    # Color indices: outline/deep, dark leaf, mid leaf, sunlit leaf, bright tip
     c0, c1, c2, c3, c4 = (1, 2, 3, 4, 5) if maple else (1, 2, 3, 4, 6)
     c3b = 4 if maple else 5
 
@@ -1745,47 +1845,126 @@ def make_canopy_quad(quad, maple=False):
     if quad == 'BR':
         return make_canopy_quad('BL', maple).flip_h()
 
-    if quad == 'TL':
-        # Rounded top-left crown puff clusters (leaves open corner at top-left so trees aren't boxes!)
-        puffs = [(12, 12, 7.5), (13, 6, 5.5), (6, 12, 5.2), (8, 7, 4.8)]
+    if maple:
+        # Full billowing left crimson-amber lobe of the Autumn Maple!
+        # Top curves smoothly up to (15, 0) where it meets O_MAPLE_TOP; right edge x=14..15 is solid y=0..14!
+        puffs = [(15, 7, 8.2), (10, 8, 6.8), (6, 9, 5.2), (14, 11, 5.4), (15, 3, 5.2)]
         for cx, cy, r in puffs:
             t.disc(cx, cy, r, r, c0)
         for cx, cy, r in puffs:
             t.disc(cx, cy, r - 1.0, r - 1.0, c1)
-        for cx, cy, r in [(12, 11, 6.2), (12, 5.5, 4.4), (6.5, 11, 4.0), (8.2, 6.8, 3.8)]:
+        # Solid right-seam fill so TL joins O_MAPLE_MID cleanly with ZERO seam line
+        t.rect(12, 1, 4, 13, c2)
+        for cx, cy, r in [(14, 6.5, 6.6), (9.5, 7.5, 5.4), (6.5, 8.5, 4.0), (14, 10.0, 4.2)]:
             t.disc(cx, cy, r, r, c2)
-        for cx, cy, r in [(11.5, 9.5, 4.5), (12.0, 4.5, 3.2), (7.5, 6.0, 2.8), (6.2, 10.2, 2.4)]:
+        for cx, cy, r in [(13.5, 5.0, 4.6), (9.5, 6.0, 3.8), (6.8, 7.2, 2.6)]:
             t.disc(cx, cy, r, r, c3b)
-        for x, y in [(11, 3), (12, 3), (7, 5), (8, 5), (11, 8), (12, 8), (6, 9), (14, 7)]:
+        for x, y in [(13, 2), (14, 2), (9, 4), (10, 4), (6, 6), (12, 7), (14, 5)]:
             t.p(x, y, c4)
-    else:  # 'BL' — lower canopy skirt with shaded under-leaves!
-        puffs = [(12, 4, 7.5), (6, 5, 5.5), (11, 10, 5.2), (5, 9, 4.0)]
+        # Shaded crimson underside rim
+        for x in range(4, 16):
+            if t.px[14][x] != 0:
+                t.p(x, 14, c0 if x < 12 else c1)
+        return t
+
+    if quad == 'TL':
+        # Seamless upper-left Oak lobe: solid along right x=14..15 (y=1..15) and bottom y=14..15 (x=4..15)
+        puffs = [(14, 12, 8.5), (14, 6, 6.2), (7, 12, 6.0), (9, 7, 5.2)]
         for cx, cy, r in puffs:
             t.disc(cx, cy, r, r, c0)
         for cx, cy, r in puffs:
             t.disc(cx, cy, r - 1.0, r - 1.0, c1)
-        for cx, cy, r in [(12, 3.5, 6.0), (6.5, 4.5, 4.2), (11, 8.2, 3.8)]:
+        t.rect(11, 2, 5, 14, c2)
+        t.rect(6, 11, 10, 5, c2)
+        for cx, cy, r in [(13.5, 11, 6.8), (13.5, 5.5, 4.8), (7.5, 11, 4.6), (9.0, 6.8, 4.0)]:
             t.disc(cx, cy, r, r, c2)
-        for cx, cy, r in [(11.5, 2.5, 4.0), (6.5, 3.8, 2.6)]:
+        for cx, cy, r in [(12.5, 9.5, 4.8), (13.0, 4.5, 3.4), (8.2, 6.0, 2.8), (7.2, 10.0, 2.6)]:
             t.disc(cx, cy, r, r, c3b)
-        for x, y in [(11, 1), (12, 2), (6, 3)]:
+        for x, y in [(12, 3), (13, 3), (8, 5), (9, 5), (12, 8), (13, 8), (7, 9), (14, 6)]:
+            t.p(x, y, c4)
+    else:  # 'BL' — lower-left Oak bough skirt: solid along top y=0..2 (x=4..15) and right x=14..15 (y=0..12)
+        puffs = [(14, 4, 8.5), (7, 4, 6.0), (13, 9, 5.4), (6, 8, 4.2)]
+        for cx, cy, r in puffs:
+            t.disc(cx, cy, r, r, c0)
+        for cx, cy, r in puffs:
+            t.disc(cx, cy, r - 1.0, r - 1.0, c1)
+        t.rect(11, 0, 5, 12, c2)
+        t.rect(6, 0, 10, 5, c2)
+        for cx, cy, r in [(13.5, 3.5, 6.4), (7.5, 4.0, 4.6), (12.5, 7.5, 4.0)]:
+            t.disc(cx, cy, r, r, c2)
+        for cx, cy, r in [(12.5, 2.5, 4.2), (7.5, 3.2, 2.6)]:
+            t.disc(cx, cy, r, r, c3b)
+        for x, y in [(12, 1), (13, 2), (7, 2)]:
             t.p(x, y, c4)
     return t
 
 def make_pine_top():
+    """Tapered upper spire of 16x32 alpine spruce (widens smoothly from tip w=2 to w=12 at y=15)."""
     t = Tile16(TPAL_FOLIAGE, 0, prio=1)
-    for row, w in [(1, 2), (2, 4), (3, 4), (4, 6), (5, 8), (6, 6), (7, 8), (8, 10), (9, 12), (10, 10), (11, 12), (12, 14), (13, 14), (14, 12), (15, 10)]:
+    for row, w in [(1, 2), (2, 2), (3, 4), (4, 4), (5, 6), (6, 6), (7, 8), (8, 6), (9, 8), (10, 10), (11, 10), (12, 8), (13, 10), (14, 12), (15, 12)]:
         x0 = 8 - w // 2
         for x in range(x0, x0 + w):
-            c = 5 if (x < 8 and row in (1, 2, 4, 7, 11)) else (4 if x < 9 else (3 if x < x0 + w - 1 else 2))
-            if row in (5, 9, 13, 15): c = 2
+            if row in (7, 11, 15):
+                c = 1 if (x == x0 or x == x0 + w - 1) else 2
+            elif x < 7:
+                c = 5 if (row in (1, 3, 5, 9, 13)) else 4
+            elif x < 9:
+                c = 4 if (row in (2, 6, 10, 14)) else 3
+            else:
+                c = 2
             t.p(x, row, c)
-    t.p(7, 1, 6); t.p(7, 4, 6); t.p(6, 8, 6)
+    t.p(7, 1, 6); t.p(6, 5, 6); t.p(5, 10, 6); t.p(4, 14, 6)
     return t
 
 def make_oak_crown():
-    t = make_canopy_quad('TL', False)
-    t.overlay_from(make_canopy_quad('TR', False))
+    """100% solid billowy sunlit emerald oak canopy center (joins TL/TR/BL/BR with ZERO seams!)."""
+    t = Tile16(TPAL_FOLIAGE, 2, prio=1)
+    for cx, cy, r in [(4, 5, 5.5), (12, 5, 5.5), (8, 10, 6.2), (3, 13, 4.8), (13, 13, 4.8)]:
+        t.disc(cx, cy, r, r * 0.9, 3)
+    for cx, cy, r in [(4, 4, 3.8), (11, 4, 3.8), (8, 8.5, 4.4), (3, 11.5, 3.0), (12, 11.5, 3.0)]:
+        t.disc(cx, cy, r, r * 0.85, 4)
+    for cx, cy, r in [(4, 3, 2.2), (11, 3, 2.2), (7.5, 7.5, 2.6)]:
+        t.disc(cx, cy, r, r * 0.8, 5)
+    for x, y in [(3, 2), (4, 2), (10, 2), (11, 2), (7, 6), (8, 6), (3, 10), (12, 10)]:
+        t.p(x, y, 6)
+    return t
+
+def make_maple_mid():
+    """Solid billowing crimson-orange Autumn Maple heart connecting TOP, TL, TR & TRUNK seamlessly!"""
+    t = Tile16(TPAL_ACCENT, 2, prio=1)
+    # Full sunlit crimson-gold center puffs across y=0..14
+    t.rect(0, 0, 16, 14, 3)
+    for cx, cy, r in [(4, 4, 5.2), (12, 4, 5.2), (8, 8, 6.0), (3, 11, 4.4), (13, 11, 4.4)]:
+        t.disc(cx, cy, r, r * 0.88, 3)
+    for cx, cy, r in [(4, 3.5, 3.4), (11.5, 3.5, 3.4), (8, 6.8, 4.2), (3.5, 9.5, 2.6), (12, 9.5, 2.6)]:
+        t.disc(cx, cy, r, r * 0.8, 4)
+    for x, y in [(3, 2), (4, 2), (11, 2), (12, 2), (7, 5), (8, 5), (9, 5), (4, 8), (11, 8)]:
+        t.p(x, y, 5)
+    # Shaded deep-crimson under-canopy rim resting directly over T_MAPLE_TRUNK
+    t.hline(0, 13, 16, 2)
+    t.hline(0, 14, 16, 1)
+    t.hline(0, 15, 16, 0)
+    for x in (2, 3, 7, 8, 12, 13):
+        t.p(x, 14, 2); t.p(x, 15, 1)
+    return t
+
+def make_maple_top():
+    """Rounded sunlit golden-crimson Autumn Maple crown peak curving seamlessly into O_MAPLE_MID!"""
+    t = Tile16(TPAL_ACCENT, 0, prio=1)
+    puffs = [(7.5, 13.5, 8.2), (4.5, 12.5, 5.4), (10.5, 12.5, 5.4), (7.5, 9.0, 5.8)]
+    for cx, cy, r in puffs:
+        t.disc(cx, cy, r, r * 0.86, 1)
+    for cx, cy, r in puffs:
+        t.disc(cx, cy, r - 1.0, (r - 1.0) * 0.86, 2)
+    # Solid bottom row y=14..15 across x=0..15 so it joins O_MAPLE_MID with ZERO seam!
+    t.rect(1, 13, 14, 3, 3)
+    t.p(0, 14, 2); t.p(0, 15, 3); t.p(15, 14, 2); t.p(15, 15, 3)
+    for cx, cy, r in [(7.5, 12.5, 6.8), (4.5, 11.8, 4.2), (10.5, 11.8, 4.2), (7.5, 8.5, 4.6)]:
+        t.disc(cx, cy, r, r * 0.85, 3)
+    for cx, cy, r in [(7.5, 7.6, 3.4), (5.0, 10.6, 2.8), (10.2, 10.6, 2.8), (7.5, 11.5, 3.6)]:
+        t.disc(cx, cy, r, r * 0.8, 4)
+    for x, y in [(6, 5), (7, 5), (8, 5), (4, 9), (10, 9), (7, 10), (8, 10)]:
+        t.p(x, y, 5)
     return t
 
 # ------------------------------------------------------------------------------
@@ -2223,6 +2402,8 @@ def build_all_metatiles(frame=0):
     M["CM_OV_MAPLE_TR"]    = make_canopy_quad('TR', True)
     M["CM_OV_PINE_TOP"]    = make_pine_top()
     M["CM_OV_OAK_CROWN"]   = make_oak_crown()
+    M["CM_OV_MAPLE_MID"]   = make_maple_mid()
+    M["CM_OV_MAPLE_TOP"]   = make_maple_top()
 
     # Spatial Ground Variations
     M["CM_GRASS_V1"]      = make_grass(1)
@@ -2267,7 +2448,7 @@ def build_all_metatiles(frame=0):
     t = make_grass(0); t.dapple_canopy(); M["CM_GRASS_DAPPLE"] = t
     t = make_autumn_grass(0); t.dapple_canopy(); M["CM_AUTUMN_DAPPLE"] = t
 
-    # Seamless Ground-Composited Props (ZERO green boxes on Cobblestone / Pier / Autumn / Dirt!)
+    # Seamless Ground-Composited Props (ZERO green boxes on Cobblestone / Pier / Autumn / Dirt / Wood!)
     t = make_cobble(0); paint_lantern(t, TPAL_ARCH); M["CM_LAMP_COBBLE"] = t
     t = make_cobble(0); paint_signpost(t, TPAL_ARCH); M["CM_SIGN_COBBLE"] = t
     t = make_cobble(0); paint_flower_bed(t, TPAL_ARCH); M["CM_FLOWERBED_COBBLE"] = t
@@ -2286,6 +2467,14 @@ def build_all_metatiles(frame=0):
     t = make_dirt(0); paint_signpost(t, TPAL_FOLIAGE); M["CM_SIGN_DIRT"] = t
     M["CM_PIER_WATER_EDGE"] = make_pier_water_edge(frame)
 
+    # Cozy Cottage & Shop Indoor Furnishings, Cutaway Wall Cap & 2-Tile Bed Footboard
+    t = make_wood_floor(0); paint_indoor_lamp(t); M["CM_LAMP_WOOD"] = t
+    t = make_wood_floor(0); paint_indoor_planter(t); M["CM_FLOWERBED_WOOD"] = t
+    t = make_wood_floor(0); paint_indoor_counter(t); M["CM_COUNTER_WOOD"] = t
+    t = make_wood_floor(0); paint_indoor_lectern(t); M["CM_LECTERN_WOOD"] = t
+    M["CM_INTERIOR_CAP"] = make_interior_cap()
+    M["CM_BED_FOOT"]     = make_bed_foot()
+
     # Battle Backdrops, All 12 Evertale Shallow & Deep Ocean Coastlines & Empty
     M["CM_BATTLE_SKY_MEADOW"] = make_battle_sky(False)
     M["CM_BATTLE_SKY_SHRINE"] = make_battle_sky(True)
@@ -2296,17 +2485,19 @@ def build_all_metatiles(frame=0):
         M[f"CM_OCEAN_COAST_{e}"] = make_world_coast(e, frame, deep_ocean=True)
     M["CM_EMPTY"] = Tile16(TPAL_FOLIAGE, 0)
 
-    # 138..147: Opaque-backed overhead canopies & eaves (for SNES BG1 & Genesis Parallax mode!)
+    # Opaque-backed overhead canopies & eaves (for SNES BG1 & Genesis Parallax mode!)
     def make_opq_canopy(ov_tile, bg_tile, prio=1):
         out_t = bg_tile.clone()
         out_t.prio = prio
         if ov_tile.qpal[0] == out_t.qpal[0]:
             out_t.overlay_from(ov_tile)
         else:
-            out_t = Tile16(ov_tile.qpal[0], 6, prio=prio)
+            # Organic dappled moss turf in TPAL_ACCENT (indices 6,7,8 = deep/mid/lit sage in Alderbrook!)
+            out_t = Tile16(ov_tile.qpal[0], 7, prio=prio)
             for y in range(16):
                 for x in range(16):
-                    out_t.p(x, y, 7 if ((x + y) & 3) else 6)
+                    h = ((x * 5 + y * 3) ^ (x >> 1)) & 7
+                    out_t.p(x, y, 8 if h == 0 else (6 if h in (3, 6) else 7))
             out_t.overlay_from(ov_tile)
         return out_t
 
@@ -2323,6 +2514,8 @@ def build_all_metatiles(frame=0):
     M["CM_OPQ_MAPLE_TR"]    = M["CM_OPQ_MAPLE_TL"].flip_h()
     M["CM_OPQ_PINE_TOP"]    = make_opq_canopy(M["CM_OV_PINE_TOP"], dapple_g)
     M["CM_OPQ_OAK_CROWN"]   = make_opq_canopy(M["CM_OV_OAK_CROWN"], dapple_g)
+    M["CM_OPQ_MAPLE_MID"]   = make_opq_canopy(M["CM_OV_MAPLE_MID"], dapple_g)
+    M["CM_OPQ_MAPLE_TOP"]   = make_opq_canopy(M["CM_OV_MAPLE_TOP"], dapple_g)
 
     return [M[name] for name in META_NAMES]
 
@@ -2504,28 +2697,51 @@ def compile_console_bank(frames_meta, max_tiles, is_genesis=False):
                 qlist.append((tid, pal, 0, 0, prio))
         meta_quads.append(qlist)
 
-    # Step 3: If over hardware VRAM budget, fold the closest non-animated tiles gracefully!
+    # Step 3: If over hardware VRAM budget, fold the GLOBALLY closest non-animated tile pairs!
+    # This preserves distinctive indoor furniture, canopies & corners while merging only near-identical
+    # grass/stone/water sub-variants (typical Hamming distance <= 6 px out of 64!).
     if len(static_tiles) > max_tiles:
-        # Compute Hamming distance between static tiles above anim_count and fold closest pairs
         remap = list(range(len(static_tiles)))
         active = list(range(1 + anim_count, len(static_tiles)))
-        while len(active) + 1 + anim_count > max_tiles:
-            best_d = 999
-            best_pair = None
-            # Compare last-added tile (least critical variant) against earlier tiles
-            cand = active[-1]
-            qc = static_tiles[cand]
-            for other in active[:-1]:
-                qo = static_tiles[other]
-                d = sum(1 for a, b in zip(qc, qo) if a != b)
-                if d < best_d:
-                    best_d = d
-                    best_pair = (cand, other)
-                    if d <= 2:
+        # Precompute nearest neighbor (dist, other_idx) for each active tile
+        def find_nearest(ti, pool):
+            qi = static_tiles[ti]
+            bd = 999
+            bo = -1
+            for oj in pool:
+                if oj == ti:
+                    continue
+                qo = static_tiles[oj]
+                d = 0
+                for a, b in zip(qi, qo):
+                    if a != b:
+                        d += 1
+                        if d >= bd:
+                            break
+                if d < bd:
+                    bd = d
+                    bo = oj
+                    if bd <= 1:
                         break
-            c_idx, o_idx = best_pair
-            remap[c_idx] = o_idx
-            active.pop()
+            return bd, bo
+
+        nn = {ti: find_nearest(ti, active) for ti in active}
+        max_folded_d = 0
+        while len(active) + 1 + anim_count > max_tiles:
+            # Pick active tile with smallest Hamming distance to another surviving active tile
+            best_t = min(active, key=lambda ti: nn[ti][0])
+            bd, bo = nn[best_t]
+            if bd > max_folded_d:
+                max_folded_d = bd
+            # Fold the higher-index tile into the lower-index tile
+            drop, keep_t = (best_t, bo) if best_t > bo else (bo, best_t)
+            remap[drop] = keep_t
+            active.remove(drop)
+            del nn[drop]
+            # Recompute nearest neighbor only for tiles whose partner was dropped
+            for ti in active:
+                if nn[ti][1] == drop:
+                    nn[ti] = find_nearest(ti, active)
 
         # Compact surviving tile indices
         keep = list(range(0, 1 + anim_count)) + active
@@ -2619,7 +2835,7 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("}")
     out.append("")
     out.append("static uint8_t hearth_is_water_like(uint8_t t) {")
-    out.append("    return (t == T_WATER || t == T_FORD || t == T_WORLD_OCEAN || t == T_WORLD_SHALLOW) ? 1u : 0u;")
+    out.append("    return (t == T_WATER || t == T_FORD || t == T_RAPIDS || t == T_WORLD_OCEAN || t == T_WORLD_SHALLOW) ? 1u : 0u;")
     out.append("}")
     out.append("")
     out.append("static uint8_t hearth_is_grass_like(uint8_t t) {")
@@ -2627,29 +2843,34 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("            t == T_TALL_GRASS || t == T_AUTUMN_GRASS) ? 1u : 0u;")
     out.append("}")
     out.append("")
-    out.append("/* Infer dominant walkable ground underneath a prop (eliminates green-box props on stone/pier!) */")
+    out.append("/* Infer dominant walkable ground underneath a prop (eliminates green-box props indoors & on stone/pier/sand!) */")
     out.append("static uint8_t hearth_infer_prop_ground(uint8_t tn, uint8_t ts, uint8_t tw, uint8_t te) {")
-    out.append("    uint8_t cob = 0u, pier = 0u, aut = 0u, dirt = 0u;")
-    out.append("    if (tn == T_COBBLE) cob++;")
-    out.append("    if (ts == T_COBBLE) cob++;")
-    out.append("    if (tw == T_COBBLE) cob++;")
-    out.append("    if (te == T_COBBLE) cob++;")
+    out.append("    uint8_t wood = 0u, cob = 0u, pier = 0u, aut = 0u, dirt = 0u;")
+    out.append("    if (tn == T_WOOD_FLOOR || tn == T_HEARTH_RUG) wood++;")
+    out.append("    if (ts == T_WOOD_FLOOR || ts == T_HEARTH_RUG) wood++;")
+    out.append("    if (tw == T_WOOD_FLOOR || tw == T_HEARTH_RUG) wood++;")
+    out.append("    if (te == T_WOOD_FLOOR || te == T_HEARTH_RUG) wood++;")
     out.append("    if (tn == T_DOCK_PIER || tn == T_BRIDGE) pier++;")
     out.append("    if (ts == T_DOCK_PIER || ts == T_BRIDGE) pier++;")
     out.append("    if (tw == T_DOCK_PIER || tw == T_BRIDGE) pier++;")
     out.append("    if (te == T_DOCK_PIER || te == T_BRIDGE) pier++;")
-    out.append("    if (tn == T_AUTUMN_GRASS || tn == T_ROCKY_PATH) aut++;")
-    out.append("    if (ts == T_AUTUMN_GRASS || ts == T_ROCKY_PATH) aut++;")
-    out.append("    if (tw == T_AUTUMN_GRASS || tw == T_ROCKY_PATH) aut++;")
-    out.append("    if (te == T_AUTUMN_GRASS || te == T_ROCKY_PATH) aut++;")
-    out.append("    if (tn == T_DIRT) dirt++;")
-    out.append("    if (ts == T_DIRT) dirt++;")
-    out.append("    if (tw == T_DIRT) dirt++;")
-    out.append("    if (te == T_DIRT) dirt++;")
+    out.append("    if (tn == T_COBBLE || tn == T_ROCKY_PATH || tn == T_SHRINE_FLOOR || tn == T_SHRINE_RUNE) cob++;")
+    out.append("    if (ts == T_COBBLE || ts == T_ROCKY_PATH || ts == T_SHRINE_FLOOR || ts == T_SHRINE_RUNE) cob++;")
+    out.append("    if (tw == T_COBBLE || tw == T_ROCKY_PATH || tw == T_SHRINE_FLOOR || tw == T_SHRINE_RUNE) cob++;")
+    out.append("    if (te == T_COBBLE || te == T_ROCKY_PATH || te == T_SHRINE_FLOOR || te == T_SHRINE_RUNE) cob++;")
+    out.append("    if (tn == T_AUTUMN_GRASS) aut++;")
+    out.append("    if (ts == T_AUTUMN_GRASS) aut++;")
+    out.append("    if (tw == T_AUTUMN_GRASS) aut++;")
+    out.append("    if (te == T_AUTUMN_GRASS) aut++;")
+    out.append("    if (tn == T_DIRT || tn == T_WORLD_SAND || tn == T_WORLD_BEACH) dirt++;")
+    out.append("    if (ts == T_DIRT || ts == T_WORLD_SAND || ts == T_WORLD_BEACH) dirt++;")
+    out.append("    if (tw == T_DIRT || tw == T_WORLD_SAND || tw == T_WORLD_BEACH) dirt++;")
+    out.append("    if (te == T_DIRT || te == T_WORLD_SAND || te == T_WORLD_BEACH) dirt++;")
+    out.append("    if (wood >= 1u) return 5u; /* Cozy Cottage / Shop Wood Floor */")
     out.append("    if (pier >= 1u) return 2u; /* Pier/Timber */")
-    out.append("    if (cob >= 1u)  return 1u; /* Cobblestone */")
+    out.append("    if (cob >= 1u)  return 1u; /* Cobblestone / Mountain Stone / Shrine */")
     out.append("    if (aut >= 1u)  return 3u; /* Autumn Meadow */")
-    out.append("    if (dirt >= 2u) return 4u; /* Dirt Path */")
+    out.append("    if (dirt >= 1u) return 4u; /* Dirt Road / Desert Sand */")
     out.append("    return 0u; /* Lush Meadow Grass */")
     out.append("}")
     out.append("")
@@ -2665,10 +2886,16 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("                                          uint16_t mx, uint16_t my, uint8_t is_world) {")
     out.append("    uint8_t v = (uint8_t)(((mx * 3u + my * 5u) ^ (mx >> 1)) & 3u);")
     out.append("    uint8_t gnd;")
-    out.append("    /* 1. Seamless Ground-Composited Props (ZERO green boxes on Cobblestone/Pier/Autumn/Dirt!) */")
+    out.append("    /* 1. Seamless Ground-Composited Props & Cozy Indoor Furniture */")
     out.append("    if (t == T_LANTERN_POST || t == T_SIGNPOST || t == T_FLOWER_BED || t == T_BUSH || t == T_FENCE || t == T_BOULDER) {")
     out.append("        gnd = hearth_infer_prop_ground(tn, ts, tw, te);")
-    out.append("        if (gnd == 1u) { /* Cobblestone plaza */")
+    out.append("        if (gnd == 5u) { /* Cottage / Shop Wood Floorboard Interior */")
+    out.append("            if (t == T_LANTERN_POST) return (uint8_t)CM_LAMP_WOOD;")
+    out.append("            if (t == T_FLOWER_BED)   return (uint8_t)CM_FLOWERBED_WOOD;")
+    out.append("            if (t == T_BUSH)         return (uint8_t)CM_FLOWERBED_WOOD;")
+    out.append("            if (t == T_FENCE)        return (uint8_t)CM_COUNTER_WOOD;")
+    out.append("            if (t == T_SIGNPOST)     return (uint8_t)CM_LECTERN_WOOD;")
+    out.append("        } else if (gnd == 1u) { /* Cobblestone / Stone Path / Shrine */")
     out.append("            if (t == T_LANTERN_POST) return (uint8_t)CM_LAMP_COBBLE;")
     out.append("            if (t == T_SIGNPOST)     return (uint8_t)CM_SIGN_COBBLE;")
     out.append("            if (t == T_FLOWER_BED)   return (uint8_t)CM_FLOWERBED_COBBLE;")
@@ -2682,18 +2909,25 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("            if (t == T_LANTERN_POST) return (uint8_t)CM_LAMP_AUTUMN;")
     out.append("            if (t == T_SIGNPOST)     return (uint8_t)CM_SIGN_AUTUMN;")
     out.append("            if (t == T_BOULDER)      return (uint8_t)CM_BOULDER_AUTUMN;")
-    out.append("        } else if (gnd == 4u) { /* Dirt Road */")
+    out.append("        } else if (gnd == 4u) { /* Dirt Road / Desert Sand */")
     out.append("            if (t == T_LANTERN_POST) return (uint8_t)CM_LAMP_DIRT;")
     out.append("            if (t == T_SIGNPOST)     return (uint8_t)CM_SIGN_DIRT;")
     out.append("        }")
     out.append("        return t;")
+    out.append("    }")
+    out.append("    /* 1b. Cutaway Interior Wall Caps & 2-Tile Bed Footboard */")
+    out.append("    if (t == T_INTERIOR_WALL && (ts == T_INTERIOR_WALL || ts == T_MTN_SKY)) {")
+    out.append("        return (uint8_t)CM_INTERIOR_CAP;")
+    out.append("    }")
+    out.append("    if (t == T_BED_QUILT && tn == T_BED_QUILT) {")
+    out.append("        return (uint8_t)CM_BED_FOOT;")
     out.append("    }")
     out.append("    /* 2. Timber Pier South Water-Piling Edge */")
     out.append("    if (t == T_DOCK_PIER && hearth_is_water_like(ts)) {")
     out.append("        return (uint8_t)CM_PIER_WATER_EDGE;")
     out.append("    }")
     out.append("    /* 3. Full 8-Neighbor Rounded Shorelines & Coastlines (ALL 12 Shapes: Outer, Cardinal & Inner!) */")
-    out.append("    if (t == T_WATER || t == T_FORD || t == T_WORLD_SHALLOW || t == T_WORLD_OCEAN) {")
+    out.append("    if (t == T_WATER || t == T_FORD || t == T_RAPIDS || t == T_WORLD_SHALLOW || t == T_WORLD_OCEAN) {")
     out.append("        uint8_t ln  = hearth_is_shore_land(tn, is_world);")
     out.append("        uint8_t ls  = hearth_is_shore_land(ts, is_world);")
     out.append("        uint8_t lw  = hearth_is_shore_land(tw, is_world);")
@@ -2821,7 +3055,19 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("            return (v & 1u) ? (uint8_t)CM_DIRT_V1 : T_DIRT;")
     out.append("        }")
     out.append("        if (t == T_ROCKY_PATH) {")
+    out.append("            uint8_t gn = hearth_is_grass_like(tn);")
+    out.append("            uint8_t gs = hearth_is_grass_like(ts);")
+    out.append("            uint8_t gw = hearth_is_grass_like(tw);")
+    out.append("            uint8_t ge = hearth_is_grass_like(te);")
     out.append("            if (hearth_is_solid_caster(tn)) return (uint8_t)CM_ROCKY_SHAD_N;")
+    out.append("            if (gn && gw) return (uint8_t)CM_COBBLE_CORNER_NW;")
+    out.append("            if (gn && ge) return (uint8_t)CM_COBBLE_CORNER_NE;")
+    out.append("            if (gs && gw) return (uint8_t)CM_COBBLE_CORNER_SW;")
+    out.append("            if (gs && ge) return (uint8_t)CM_COBBLE_CORNER_SE;")
+    out.append("            if (gn) return (uint8_t)CM_COBBLE_EDGE_N;")
+    out.append("            if (gs) return (uint8_t)CM_COBBLE_EDGE_S;")
+    out.append("            if (gw) return (uint8_t)CM_COBBLE_EDGE_W;")
+    out.append("            if (ge) return (uint8_t)CM_COBBLE_EDGE_E;")
     out.append("            return (v & 1u) ? (uint8_t)CM_ROCKY_V1 : T_ROCKY_PATH;")
     out.append("        }")
     out.append("        if (t == T_WOOD_FLOOR) {")
@@ -3046,23 +3292,29 @@ def emit_web_ts(zone_pals, frames_meta):
         "  return t === 14 || t === 15 || t === 16 || t === 19 || t === 20 || t === 29 || t === 45 || t === 43;",
         "}",
         "function isWaterLike(t: number): boolean {",
-        "  return t === 6 || t === 7 || t === 46 || t === 54;",
+        "  return t === 6 || t === 7 || t === 34 || t === 46 || t === 54;",
         "}",
         "function isGrassLike(t: number): boolean {",
         "  return t === 0 || t === 1 || t === 2 || t === 3 || t === 32;",
         "}",
         "function inferPropGround(tn: number, ts: number, tw: number, te: number): number {",
-        "  let cob = 0, pier = 0, aut = 0, dirt = 0;",
-        "  if (tn === 5) cob++; if (ts === 5) cob++; if (tw === 5) cob++; if (te === 5) cob++;",
+        "  let wood = 0, cob = 0, pier = 0, aut = 0, dirt = 0;",
+        "  if (tn === 38 || tn === 39) wood++; if (ts === 38 || ts === 39) wood++;",
+        "  if (tw === 38 || tw === 39) wood++; if (te === 38 || te === 39) wood++;",
         "  if (tn === 62 || tn === 8) pier++; if (ts === 62 || ts === 8) pier++;",
         "  if (tw === 62 || tw === 8) pier++; if (te === 62 || te === 8) pier++;",
-        "  if (tn === 32 || tn === 33) aut++; if (ts === 32 || ts === 33) aut++;",
-        "  if (tw === 32 || tw === 33) aut++; if (te === 32 || te === 33) aut++;",
-        "  if (tn === 4) dirt++; if (ts === 4) dirt++; if (tw === 4) dirt++; if (te === 4) dirt++;",
+        "  if (tn === 5 || tn === 33 || tn === 22 || tn === 23) cob++;",
+        "  if (ts === 5 || ts === 33 || ts === 22 || ts === 23) cob++;",
+        "  if (tw === 5 || tw === 33 || tw === 22 || tw === 23) cob++;",
+        "  if (te === 5 || te === 33 || te === 22 || te === 23) cob++;",
+        "  if (tn === 32) aut++; if (ts === 32) aut++; if (tw === 32) aut++; if (te === 32) aut++;",
+        "  if (tn === 4 || tn === 55 || tn === 47) dirt++; if (ts === 4 || ts === 55 || ts === 47) dirt++;",
+        "  if (tw === 4 || tw === 55 || tw === 47) dirt++; if (te === 4 || te === 55 || te === 47) dirt++;",
+        "  if (wood >= 1) return 5;",
         "  if (pier >= 1) return 2;",
         "  if (cob >= 1) return 1;",
         "  if (aut >= 1) return 3;",
-        "  if (dirt >= 2) return 4;",
+        "  if (dirt >= 1) return 4;",
         "  return 0;",
         "}",
         "function isShoreLand(t: number, isWorld: boolean): boolean {",
@@ -3080,7 +3332,12 @@ def emit_web_ts(zone_pals, frames_meta):
         "  const v = (((mx * 3 + my * 5) ^ (mx >> 1)) & 3);",
         "  if (t === 26 || t === 25 || t === 27 || t === 13 || t === 11 || t === 31) {",
         "    const gnd = inferPropGround(tn, ts, tw, te);",
-        "    if (gnd === 1) {",
+        "    if (gnd === 5) {",
+        "      if (t === 26) return CM_LAMP_WOOD;",
+        "      if (t === 27 || t === 13) return CM_FLOWERBED_WOOD;",
+        "      if (t === 11) return CM_COUNTER_WOOD;",
+        "      if (t === 25) return CM_LECTERN_WOOD;",
+        "    } else if (gnd === 1) {",
         "      if (t === 26) return CM_LAMP_COBBLE;",
         "      if (t === 25) return CM_SIGN_COBBLE;",
         "      if (t === 27) return CM_FLOWERBED_COBBLE;",
@@ -3100,8 +3357,10 @@ def emit_web_ts(zone_pals, frames_meta):
         "    }",
         "    return t;",
         "  }",
+        "  if (t === 45 && (ts === 45 || ts === 28)) return CM_INTERIOR_CAP;",
+        "  if (t === 41 && tn === 41) return CM_BED_FOOT;",
         "  if (t === 62 && isWaterLike(ts)) return CM_PIER_WATER_EDGE;",
-        "  if (t === 6 || t === 7 || t === 54 || t === 46) {",
+        "  if (t === 6 || t === 7 || t === 34 || t === 54 || t === 46) {",
         "    const ln  = isShoreLand(tn, isWorld);",
         "    const ls  = isShoreLand(ts, isWorld);",
         "    const lw  = isShoreLand(tw, isWorld);",
@@ -3227,7 +3486,19 @@ def emit_web_ts(zone_pals, frames_meta):
         "      return (v & 1) ? CM_DIRT_V1 : 4;",
         "    }",
         "    if (t === 33) {",
+        "      const gn = isGrassLike(tn);",
+        "      const gs = isGrassLike(ts);",
+        "      const gw = isGrassLike(tw);",
+        "      const ge = isGrassLike(te);",
         "      if (isSolidCaster(tn)) return CM_ROCKY_SHAD_N;",
+        "      if (gn && gw) return CM_COBBLE_CORNER_NW;",
+        "      if (gn && ge) return CM_COBBLE_CORNER_NE;",
+        "      if (gs && gw) return CM_COBBLE_CORNER_SW;",
+        "      if (gs && ge) return CM_COBBLE_CORNER_SE;",
+        "      if (gn) return CM_COBBLE_EDGE_N;",
+        "      if (gs) return CM_COBBLE_EDGE_S;",
+        "      if (gw) return CM_COBBLE_EDGE_W;",
+        "      if (ge) return CM_COBBLE_EDGE_E;",
         "      return (v & 1) ? CM_ROCKY_V1 : 33;",
         "    }",
         "    if (t === 38) {",
@@ -3253,8 +3524,8 @@ def main():
     gen_pals  = build_genesis_palettes(zone_pals)
     frames_meta = [build_all_metatiles(f) for f in range(4)]
 
-    snes_tiles, snes_anim, snes_meta = compile_console_bank(frames_meta, max_tiles=476, is_genesis=False)
-    gen_tiles,  gen_anim,  gen_meta  = compile_console_bank(frames_meta, max_tiles=392, is_genesis=True)
+    snes_tiles, snes_anim, snes_meta = compile_console_bank(frames_meta, max_tiles=512, is_genesis=False)
+    gen_tiles,  gen_anim,  gen_meta  = compile_console_bank(frames_meta, max_tiles=399, is_genesis=True)
 
     emit_snes_asm(snes_tiles, snes_anim)
     emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_meta, gen_tiles, gen_anim, gen_meta)

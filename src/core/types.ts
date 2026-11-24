@@ -205,6 +205,8 @@ export const O_MAPLE_TL = 7;
 export const O_MAPLE_TR = 8;
 export const O_PINE_TOP = 9;
 export const O_OAK_CROWN = 10;
+export const O_MAPLE_MID = 11;
+export const O_MAPLE_TOP = 12;
 
 export const COL_WALKABLE = 0;
 export const COL_SOLID = 1;

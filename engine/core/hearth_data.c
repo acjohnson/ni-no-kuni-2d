@@ -310,26 +310,23 @@ static void fill_rect(uint8_t *bg1, uint8_t *col, int x0, int y0, int w, int h, 
 static void place_tree(uint8_t *bg1, uint8_t *bg2, uint8_t *col, int tx, int ty) {
     set_bg1(bg1, col, tx, ty, T_TREE_TRUNK, COL_SOLID);
     set_bg2(bg2, tx - 1, ty - 2, O_CANOPY_TL);
-    set_bg2(bg2, tx,     ty - 2, O_CANOPY_TR);
+    set_bg2(bg2, tx,     ty - 2, O_OAK_CROWN);
     set_bg2(bg2, tx + 1, ty - 2, O_CANOPY_TR);
     set_bg2(bg2, tx - 1, ty - 1, O_CANOPY_BL);
-    set_bg2(bg2, tx,     ty - 1, O_CANOPY_BR);
+    set_bg2(bg2, tx,     ty - 1, O_OAK_CROWN);
     set_bg2(bg2, tx + 1, ty - 1, O_CANOPY_BR);
 }
 
 static void place_autumn_maple(uint8_t *bg1, uint8_t *bg2, uint8_t *col, int tx, int ty) {
     set_bg1(bg1, col, tx, ty, T_MAPLE_TRUNK, COL_SOLID);
-    set_bg2(bg2, tx - 1, ty - 2, O_MAPLE_TL);
-    set_bg2(bg2, tx,     ty - 2, O_MAPLE_TR);
-    set_bg2(bg2, tx + 1, ty - 2, O_MAPLE_TR);
+    set_bg2(bg2, tx,     ty - 2, O_MAPLE_TOP);
     set_bg2(bg2, tx - 1, ty - 1, O_MAPLE_TL);
-    set_bg2(bg2, tx,     ty - 1, O_MAPLE_TR);
+    set_bg2(bg2, tx,     ty - 1, O_MAPLE_MID);
     set_bg2(bg2, tx + 1, ty - 1, O_MAPLE_TR);
 }
 
 static void place_alpine_pine(uint8_t *bg1, uint8_t *bg2, uint8_t *col, int tx, int ty) {
     set_bg1(bg1, col, tx, ty, T_PINE_TRUNK, COL_SOLID);
-    set_bg2(bg2, tx, ty - 2, O_PINE_TOP);
     set_bg2(bg2, tx, ty - 1, O_PINE_TOP);
 }
 

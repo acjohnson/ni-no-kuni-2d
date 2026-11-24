@@ -1538,7 +1538,7 @@ static void bake_world_tile_cache(void) {
             idx = (u16)(row_off + mx);
             t  = p1[idx];
             ov = p2[idx];
-            if (ov != 0u && ov <= (u8)O_OAK_CROWN) {
+            if (ov != 0u && ov <= (u8)O_MAPLE_TOP) {
                 g_world_meta[idx] = (u8)(CM_OPQ_CANOPY_TL + (ov - 1u));
             } else if (has_vista && t == (u8)T_MTN_SKY) {
                 g_world_meta[idx] = (u8)CM_EMPTY;

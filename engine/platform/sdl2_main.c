@@ -3256,7 +3256,7 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
                 } else {
                     ov = st->map_bg2[ty * mw + tx];
                 }
-                if (ov != O_NONE && ov <= O_OAK_CROWN) {
+                if (ov != O_NONE && ov <= O_MAPLE_TOP) {
                     draw_chrono_meta16(tx * HEARTH_TILE_SIZE - cam_x,
                                        ty * HEARTH_TILE_SIZE - cam_y,
                                        (uint8_t)(CM_OV_CANOPY_TL + (ov - 1u)), 0u);
@@ -3359,11 +3359,16 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
                          st->party[0].hp, st->party[0].max_hp,
                          st->party[0].mp, (unsigned)st->guilders);
             }
-            draw_text(8, 7, hud, 0xFFF4EEDCu, false);
             const char *zn = (st->is_world_map && st->world_region_id < REGION_COUNT)
                            ? HEARTH_REGION_NAMES[st->world_region_id]
                            : (ppu->zone_name ? ppu->zone_name : "EVERTALE");
             int zw = (int)strlen(zn) * 6;
+            int max_chars = (w - zw - 22) / 6;
+            if (max_chars < 0) max_chars = 0;
+            if (max_chars < (int)sizeof(hud) && (int)strlen(hud) > max_chars) {
+                hud[max_chars] = '\0';
+            }
+            draw_text(8, 7, hud, 0xFFF4EEDCu, false);
             draw_text(w - zw - 8, 7, zn, 0xFFFFF1A8u, false);
         }
 

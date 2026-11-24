@@ -90,7 +90,9 @@ enum {
     O_MAPLE_TL    = 7,
     O_MAPLE_TR    = 8,
     O_PINE_TOP    = 9,
-    O_OAK_CROWN   = 10
+    O_OAK_CROWN   = 10,
+    O_MAPLE_MID   = 11,
+    O_MAPLE_TOP   = 12
 };
 
 /* Collision Codes */

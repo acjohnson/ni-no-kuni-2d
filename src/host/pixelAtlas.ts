@@ -12,7 +12,9 @@ import {
   O_CANOPY_BR,
   O_CANOPY_TL,
   O_CANOPY_TR,
+  O_MAPLE_MID,
   O_MAPLE_TL,
+  O_MAPLE_TOP,
   O_MAPLE_TR,
   O_OAK_CROWN,
   O_PINE_TOP,
@@ -33,7 +35,9 @@ import {
   CM_OV_CANOPY_BR,
   CM_OV_CANOPY_TL,
   CM_OV_CANOPY_TR,
+  CM_OV_MAPLE_MID,
   CM_OV_MAPLE_TL,
+  CM_OV_MAPLE_TOP,
   CM_OV_MAPLE_TR,
   CM_OV_OAK_CROWN,
   CM_OV_PINE_TOP,
@@ -284,6 +288,8 @@ export class PixelAtlas {
     bindOv(O_MAPLE_TR, CM_OV_MAPLE_TR);
     bindOv(O_PINE_TOP, CM_OV_PINE_TOP);
     bindOv(O_OAK_CROWN, CM_OV_OAK_CROWN);
+    bindOv(O_MAPLE_MID, CM_OV_MAPLE_MID);
+    bindOv(O_MAPLE_TOP, CM_OV_MAPLE_TOP);
   }
 
   /* ========================================================================

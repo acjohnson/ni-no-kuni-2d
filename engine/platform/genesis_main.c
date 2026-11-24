@@ -1359,7 +1359,7 @@ static void resolve_metatile_attrs(s16 mx, s16 my, u8 use_parallax,
         *a_tr = gen_meta_attr(GEN_META_TR[m1]);
         *a_bl = gen_meta_attr(GEN_META_BL[m1]);
         *a_br = gen_meta_attr(GEN_META_BR[m1]);
-        if (bg2 != 0u && bg2 <= (u8)O_OAK_CROWN) {
+        if (bg2 != 0u && bg2 <= (u8)O_MAPLE_TOP) {
             u8 mo = (u8)(CM_OV_CANOPY_TL + (bg2 - 1u));
             *b_tl = gen_meta_attr(GEN_META_TL[mo]);
             *b_tr = gen_meta_attr(GEN_META_TR[mo]);
@@ -1386,7 +1386,7 @@ static void resolve_metatile_attrs(s16 mx, s16 my, u8 use_parallax,
             if (use_parallax) {
                 /* BG_B holds 60fps sweeping alpine mountains; BG_A renders foreground & canopies */
                 if (bg1 == (u8)T_MTN_SKY) {
-                    if (bg2 != 0u && bg2 <= (u8)O_OAK_CROWN) {
+                    if (bg2 != 0u && bg2 <= (u8)O_MAPLE_TOP) {
                         u8 mo = (u8)(CM_OV_CANOPY_TL + (bg2 - 1u));
                         *a_tl = gen_meta_attr(GEN_META_TL[mo]);
                         *a_tr = gen_meta_attr(GEN_META_TR[mo]);
@@ -1395,7 +1395,7 @@ static void resolve_metatile_attrs(s16 mx, s16 my, u8 use_parallax,
                     } else {
                         *a_tl = emp; *a_tr = emp; *a_bl = emp; *a_br = emp;
                     }
-                } else if (bg2 != 0u && bg2 <= (u8)O_OAK_CROWN) {
+                } else if (bg2 != 0u && bg2 <= (u8)O_MAPLE_TOP) {
                     u8 mo = (u8)(CM_OPQ_CANOPY_TL + (bg2 - 1u));
                     *a_tl = gen_meta_attr(GEN_META_TL[mo]);
                     *a_tr = gen_meta_attr(GEN_META_TR[mo]);
@@ -1413,7 +1413,7 @@ static void resolve_metatile_attrs(s16 mx, s16 my, u8 use_parallax,
                 *a_tr = gen_meta_attr(GEN_META_TR[m1]);
                 *a_bl = gen_meta_attr(GEN_META_BL[m1]);
                 *a_br = gen_meta_attr(GEN_META_BR[m1]);
-                if (bg2 != 0u && bg2 <= (u8)O_OAK_CROWN) {
+                if (bg2 != 0u && bg2 <= (u8)O_MAPLE_TOP) {
                     u8 mo = (u8)(CM_OV_CANOPY_TL + (bg2 - 1u));
                     *b_tl = gen_meta_attr(GEN_META_TL[mo]);
                     *b_tr = gen_meta_attr(GEN_META_TR[mo]);
