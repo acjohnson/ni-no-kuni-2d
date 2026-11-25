@@ -214,8 +214,7 @@ static u16 g_dma_stage_cnt  = 0u;
 
 static void gen_queue_rom_tiles_dma(const u32 *src, u16 dst_tile, u16 count) {
     while (count > 0u) {
-        uintptr_t addr = (uintptr_t)src;
-        u32 bank_off = (u32)(addr & 0x1FFFFu);
+        u32 bank_off = (u32)((unsigned long)src & 0x1FFFFUL);
         u32 rem_bytes = 0x20000u - bank_off;
         u16 safe_tiles = (u16)(rem_bytes >> 5);
         if (safe_tiles == 0u) {
