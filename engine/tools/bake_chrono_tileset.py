@@ -2743,24 +2743,25 @@ def compile_console_bank(frames_meta, max_tiles, is_genesis=False):
                 if nn[ti][1] == drop:
                     nn[ti] = find_nearest(ti, active)
 
-        # Compact surviving tile indices
+        # Compact surviving tile indices (never mutate remap in-place while chasing fold chains!)
         keep = list(range(0, 1 + anim_count)) + active
         new_id = {}
         new_tiles = []
         for old in keep:
             new_id[old] = len(new_tiles)
             new_tiles.append(static_tiles[old])
+        final_remap = [0] * len(remap)
         for i in range(len(remap)):
             r = i
             while remap[r] != r:
                 r = remap[r]
-            remap[i] = new_id[r]
+            final_remap[i] = new_id[r]
 
         static_tiles = new_tiles
         for mid in range(len(meta_quads)):
             for qidx in range(4):
                 tid, pal, hf, vf, prio = meta_quads[mid][qidx]
-                meta_quads[mid][qidx] = (remap[tid], pal, hf, vf, prio)
+                meta_quads[mid][qidx] = (final_remap[tid], pal, hf, vf, prio)
 
     return static_tiles, anim_seqs, meta_quads
 

@@ -35,7 +35,9 @@ static HearthState g_hearth;
  *   Tall 16x24 Sprites (Rowan + 13 Adult NPCs x 6):       1228..1311 (84 tiles)
  *   Headroom below 64x64 HSCROLL (0xA800 = tile 1344):     32 tiles (1.0 KB) free!
  * ============================================================================ */
-#define VRAM_BG_BASE       ((u16)(TILE_USER_INDEX))
+/* Pin strictly to tile 16 (0x0200) independent of SGDK LEGACY_FONT_LOCATION so tiles
+ * 16..1311 (0x0200..0xA3FF) NEVER overlap 64x64 HSCROLL (0xA800 = 1344) or SAT (0xAC00 = 1376)! */
+#define VRAM_BG_BASE       16u
 #define VRAM_BG_MOTE_TILE  ((u16)(VRAM_BG_BASE + GEN_CHRONO_TILE_COUNT))
 #define VRAM_UI_BASE       ((u16)(VRAM_BG_BASE + 400u))
 #define VRAM_SPR_BASE      ((u16)(VRAM_UI_BASE + 24u))
@@ -44,6 +46,37 @@ static HearthState g_hearth;
 #define VRAM_CG_BASE       VRAM_ATLAS_BASE
 #define VRAM_VISTA_BASE    VRAM_ATLAS_BASE
 #define VRAM_TALL_SPR_BASE ((u16)(VRAM_ATLAS_BASE + 480u))
+
+/* Nestable atomic VDP bulk-upload guard: prevents _VINT from clobbering VDP control latches
+ * during multi-millisecond CPU tile/plane/CRAM uploads and restores autoInc=2 after VRAM fills. */
+static u8 g_vdp_bulk_depth = 0u;
+
+static void gen_vdp_begin_bulk(void) {
+    if (g_vdp_bulk_depth == 0u) {
+        VDP_waitDMACompletion();
+        SYS_disableInts();
+        VDP_setEnable(FALSE);
+        VDP_setAutoInc(2);
+    }
+    g_vdp_bulk_depth++;
+}
+
+static void gen_vdp_end_bulk(void) {
+    if (g_vdp_bulk_depth > 0u) {
+        g_vdp_bulk_depth--;
+        if (g_vdp_bulk_depth == 0u) {
+            VDP_waitDMACompletion();
+            VDP_setAutoInc(2);
+            VDP_setEnable(TRUE);
+            SYS_enableInts();
+        }
+    }
+}
+
+static void gen_clear_plane(VDPPlane plane) {
+    VDP_clearPlane(plane, TRUE);
+    VDP_setAutoInc(2);
+}
 
 #define GEN_ATLAS_TW    24u
 #define GEN_ATLAS_TH    16u
@@ -281,8 +314,14 @@ static void p16_rect(u8 x, u8 y, u8 w, u8 h, u8 col) {
 }
 
 static void bake_bg_terrain_tiles(void) {
-    /* Instant ROM upload of all 392 pre-baked 16-bit Chrono/Mana 4bpp terrain tiles */
-    VDP_loadTileData((const u32 *)GEN_CHRONO_TILES, VRAM_BG_BASE, GEN_CHRONO_TILE_COUNT, CPU);
+    /* Chunked ROM upload of all pre-baked 16-bit Chrono/Mana 4bpp terrain tiles */
+    VDP_setAutoInc(2);
+    for (u16 off = 0u; off < GEN_CHRONO_TILE_COUNT; off = (u16)(off + 16u)) {
+        u16 cnt = (u16)(GEN_CHRONO_TILE_COUNT - off);
+        if (cnt > 16u) cnt = 16u;
+        VDP_loadTileData((const u32 *)&GEN_CHRONO_TILES[(u32)off * 8u],
+                         (u16)(VRAM_BG_BASE + off), cnt, CPU);
+    }
 
     /* Crisp 8x8 organic drifting petal / maple leaf / firefly mote for hardware SAT atmosphere */
     p8_fill(0);
@@ -1198,9 +1237,9 @@ static u8 gen_vista_pine_y(u16 px) {
  * Uses PAL3 Chrono sky/snow/rock indices (2..4 sky, 5 snow/clouds, 6..9 rock, 1/10 foothills)
  * so the skyline shifts seamlessly across Morning, Afternoon, Dusk & Night! */
 static void bake_genesis_parallax_vista(void) {
-    u8 mtn_y_lut[256];
-    u8 mtn_lit_lut[256];
-    u8 pine_y_lut[256];
+    static u8 mtn_y_lut[256];
+    static u8 mtn_lit_lut[256];
+    static u8 pine_y_lut[256];
 
     for (u16 px = 0u; px < 256u; px++) {
         u8 lit = 0u;
@@ -1304,20 +1343,19 @@ static void bake_genesis_parallax_vista(void) {
 }
 
 static void draw_genesis_parallax_vista(void) {
-    u16 row_buf[64];
     if (g_vista_vram_dirty) {
         bake_genesis_parallax_vista();
     }
-    /* Stamp seamless 64x32 sweeping 4bpp alpine skyline onto BG_B (PAL3) via bulk row bursts */
+    /* Stamp seamless 64x64 sweeping 4bpp alpine skyline onto BG_B (PAL3) via proven VDP_setTileMapXY */
+    VDP_setAutoInc(2);
     for (u16 y = 0u; y < 8u; y++) {
         for (u16 x = 0u; x < 32u; x++) {
             u16 attr = TILE_ATTR_FULL(PAL3, 0, 0, 0, g_vista_map[y][x]);
-            row_buf[x]       = attr;
-            row_buf[x + 32u] = attr;
+            VDP_setTileMapXY(BG_B, attr, x, y);
+            VDP_setTileMapXY(BG_B, attr, (u16)(x + 32u), y);
         }
-        VDP_setTileMapDataRow(BG_B, row_buf, y, 0, 64, CPU);
     }
-    VDP_fillTileMapRect(BG_B, TILE_ATTR_FULL(PAL3, 0, 0, 0, (u16)(VRAM_VISTA_BASE + 3u)), 0, 8, 64, 24);
+    VDP_fillTileMapRect(BG_B, TILE_ATTR_FULL(PAL3, 0, 0, 0, (u16)(VRAM_VISTA_BASE + 3u)), 0, 8, 64, 56);
 }
 
 static void resolve_metatile_attrs(s16 mx, s16 my, u8 use_parallax,
@@ -1457,27 +1495,18 @@ static u8  g_last_pal3_mode = 255;
 static u8  g_last_map_rev = 255;
 static u8  g_cinema_pals_active = 0;
 
-static void write_plane_row_wrap(VDPPlane plane, const u16 row64[64], u16 ty, u16 tx_start, u16 count) {
-    u16 first = (u16)(64u - tx_start);
-    if (first >= count) {
-        VDP_setTileMapDataRow(plane, &row64[tx_start], ty, tx_start, count, CPU);
-    } else {
-        VDP_setTileMapDataRow(plane, &row64[tx_start], ty, tx_start, first, CPU);
-        VDP_setTileMapDataRow(plane, &row64[0], ty, 0u, (u16)(count - first), CPU);
-    }
-}
-
 static void draw_full_world_viewport(s16 cam_x, s16 cam_y) {
-    u16 row_a0[64], row_a1[64], row_b0[64], row_b1[64];
     s16 mx0 = (s16)((cam_x >> 4) - 2);
     s16 my0 = (s16)((cam_y >> 4) - 2);
     u8 use_parallax = (!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista) ? 1u : 0u;
-    u16 tx_start = (u16)((mx0 * 2) & 63);
+    u16 emp = gen_meta_attr(GEN_META_TL[CM_EMPTY]);
 
     if (use_parallax) {
         draw_genesis_parallax_vista();
+    } else {
+        gen_clear_plane(BG_B);
     }
-    /* Bulk row-buffered viewport fill (36-72 VDP row bursts instead of 3,456 VDP_setTileMapXY calls!) */
+    VDP_setAutoInc(2);
     for (s16 dy = 0; dy < 18; dy++) {
         s16 my = (s16)(my0 + dy);
         u16 ty0 = (u16)((my * 2) & 63);
@@ -1486,15 +1515,21 @@ static void draw_full_world_viewport(s16 cam_x, s16 cam_y) {
             s16 mx = (s16)(mx0 + dx);
             u16 tx0 = (u16)((mx * 2) & 63);
             u16 tx1 = (u16)((tx0 + 1u) & 63);
+            u16 a_tl, a_tr, a_bl, a_br;
+            u16 b_tl = emp, b_tr = emp, b_bl = emp, b_br = emp;
             resolve_metatile_attrs(mx, my, use_parallax,
-                &row_a0[tx0], &row_a0[tx1], &row_a1[tx0], &row_a1[tx1],
-                &row_b0[tx0], &row_b0[tx1], &row_b1[tx0], &row_b1[tx1]);
-        }
-        write_plane_row_wrap(BG_A, row_a0, ty0, tx_start, 48u);
-        write_plane_row_wrap(BG_A, row_a1, ty1, tx_start, 48u);
-        if (!use_parallax) {
-            write_plane_row_wrap(BG_B, row_b0, ty0, tx_start, 48u);
-            write_plane_row_wrap(BG_B, row_b1, ty1, tx_start, 48u);
+                &a_tl, &a_tr, &a_bl, &a_br,
+                &b_tl, &b_tr, &b_bl, &b_br);
+            VDP_setTileMapXY(BG_A, a_tl, tx0, ty0);
+            VDP_setTileMapXY(BG_A, a_tr, tx1, ty0);
+            VDP_setTileMapXY(BG_A, a_bl, tx0, ty1);
+            VDP_setTileMapXY(BG_A, a_br, tx1, ty1);
+            if (!use_parallax && (b_tl != emp || b_tr != emp || b_bl != emp || b_br != emp)) {
+                VDP_setTileMapXY(BG_B, b_tl, tx0, ty0);
+                VDP_setTileMapXY(BG_B, b_tr, tx1, ty0);
+                VDP_setTileMapXY(BG_B, b_bl, tx0, ty1);
+                VDP_setTileMapXY(BG_B, b_br, tx1, ty1);
+            }
         }
     }
     g_last_cam_mx = (s16)(cam_x >> 4);
@@ -1507,7 +1542,9 @@ static void stream_world_viewport(s16 cam_x, s16 cam_y) {
     if (cmx == g_last_cam_mx && cmy == g_last_cam_my) return;
     if ((cmx - g_last_cam_mx) > 3 || (g_last_cam_mx - cmx) > 3 ||
         (cmy - g_last_cam_my) > 3 || (g_last_cam_my - cmy) > 3) {
+        gen_vdp_begin_bulk();
         draw_full_world_viewport(cam_x, cam_y);
+        gen_vdp_end_bulk();
         return;
     }
     while (g_last_cam_mx < cmx) {
@@ -1529,9 +1566,9 @@ static void stream_world_viewport(s16 cam_x, s16 cam_y) {
 }
 
 static void draw_battle_backdrop(u8 biome) {
-    u16 row0[40], row1[40];
     u8 dark_arena = (biome == BIOME_SHRINE || biome == BIOME_SEWER || biome == BIOME_BOARHOLD) ? 1u : 0u;
-    VDP_clearPlane(BG_B, TRUE);
+    gen_clear_plane(BG_B);
+    gen_clear_plane(BG_A);
     for (u16 my = 0u; my < 14u; my++) {
         u8 m = (my < 5u) ? (u8)(dark_arena ? CM_BATTLE_SKY_SHRINE : CM_BATTLE_SKY_MEADOW)
                          : (u8)(dark_arena ? CM_BATTLE_GND_SHRINE : CM_BATTLE_GND_MEADOW);
@@ -1539,14 +1576,16 @@ static void draw_battle_backdrop(u8 biome) {
         u16 tr = gen_meta_attr(GEN_META_TR[m]);
         u16 bl = gen_meta_attr(GEN_META_BL[m]);
         u16 br = gen_meta_attr(GEN_META_BR[m]);
+        u16 ty0 = (u16)(my * 2u);
+        u16 ty1 = (u16)(ty0 + 1u);
         for (u16 mx = 0u; mx < 20u; mx++) {
-            row0[mx * 2u]      = tl;
-            row0[mx * 2u + 1u] = tr;
-            row1[mx * 2u]      = bl;
-            row1[mx * 2u + 1u] = br;
+            u16 tx0 = (u16)(mx * 2u);
+            u16 tx1 = (u16)(tx0 + 1u);
+            VDP_setTileMapXY(BG_A, tl, tx0, ty0);
+            VDP_setTileMapXY(BG_A, tr, tx1, ty0);
+            VDP_setTileMapXY(BG_A, bl, tx0, ty1);
+            VDP_setTileMapXY(BG_A, br, tx1, ty1);
         }
-        VDP_setTileMapDataRow(BG_A, row0, (u16)(my * 2u), 0, 40, CPU);
-        VDP_setTileMapDataRow(BG_A, row1, (u16)(my * 2u + 1u), 0, 40, CPU);
     }
     VDP_setHorizontalScrollVSync(BG_A, 0);
     VDP_setVerticalScrollVSync(BG_A, 0);
@@ -1558,8 +1597,8 @@ static void draw_intro_backdrop(u8 scene) {
     u8 p = (scene < CINEMA_ROM_PLATE_COUNT) ? scene : 0u;
     const uint16_t *mp = CINEMA_ROM_MAP_PTRS[p];
 
-    VDP_clearPlane(BG_B, TRUE);
-    VDP_clearPlane(BG_A, TRUE);
+    gen_clear_plane(BG_B);
+    gen_clear_plane(BG_A);
 
     /* Pier Solar-style 45-color multi-palette Cinema CG (PAL0 + PAL1 + PAL3; PAL2 stays WINDOW UI!)
      * Transfer via CPU while display is disabled to guarantee zero 68000 128KB DMA boundary wraps! */
@@ -1712,15 +1751,16 @@ static void upload_atlas_pal0_to_cram(TransferMethod tm) {
 static void draw_genesis_atlas_window(void) {
     u16 tile_idx = 0u;
 
-    /* Lazy-bake the 24x16 World Atlas bitmap on first open (~80ms under display off) */
+    /* Lazy-bake the 24x16 World Atlas bitmap on first open (~80ms under display off + ints masked) */
     if (!g_atlas_baked) {
-        VDP_setEnable(FALSE);
+        gen_vdp_begin_bulk();
         bake_genesis_atlas_bitmap();
-        VDP_setEnable(TRUE);
+        gen_vdp_end_bulk();
     }
 
     upload_atlas_pal0_to_cram(DMA_QUEUE);
-    VDP_clearPlane(WINDOW, TRUE);
+    gen_clear_plane(WINDOW);
+    VDP_setWindowHPos(FALSE, 0);
     VDP_setWindowFullScreen();
     win_fill_box(1, 0, 38, 27);
     win_text(10, 1, PAL3, "EVERTALE WORLD ATLAS");
@@ -1750,14 +1790,21 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
     else want_layout = 0;
 
     if (want_layout != g_win_layout) {
+        u8 masked = (g_vdp_bulk_depth == 0u) ? 1u : 0u;
         g_win_layout = want_layout;
         g_last_title_cursor = 255;
         g_last_atlas_sig = 0xFFFFu;
         if (want_layout == 7) {
+            if (masked) { VDP_waitDMACompletion(); SYS_disableInts(); }
             draw_genesis_atlas_window();
+            VDP_setAutoInc(2);
+            if (masked) { SYS_enableInts(); }
             return;
-        } else if (want_layout == 1) {
-            VDP_clearPlane(WINDOW, TRUE);
+        }
+        if (masked) { VDP_waitDMACompletion(); SYS_disableInts(); }
+        gen_clear_plane(WINDOW);
+        VDP_setWindowHPos(FALSE, 0);
+        if (want_layout == 1) {
             VDP_setWindowFullScreen();
             win_fill_box(2, 2, 36, 24);
             win_text(13, 4,  PAL3, "PROJECT HEARTH");
@@ -1776,6 +1823,8 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
             VDP_setWindowOnBottom(8);
             win_fill_box(0, 20, 40, 8);
         }
+        VDP_setAutoInc(2);
+        if (masked) { SYS_enableInts(); }
         g_hud_tick = 0;
     }
 
@@ -3079,7 +3128,7 @@ static void run_genesis_boot_splashes(void) {
     u16 prev_pad = read_genesis_pad();
     u8 skipped = 0u;
 
-    VDP_setEnable(FALSE);
+    gen_vdp_begin_bulk();
     {
         u16 black[16];
         for (u16 i = 0u; i < 16u; i++) black[i] = 0u;
@@ -3088,12 +3137,13 @@ static void run_genesis_boot_splashes(void) {
         PAL_setColors(48, black, 16, CPU);
     }
     VDP_setBackgroundColor(0); /* PAL0[0] = dynamic splash backdrop */
-    VDP_clearPlane(BG_A, TRUE);
-    VDP_clearPlane(BG_B, TRUE);
-    VDP_clearPlane(WINDOW, TRUE);
+    gen_clear_plane(BG_A);
+    gen_clear_plane(BG_B);
+    gen_clear_plane(WINDOW);
+    VDP_setWindowHPos(FALSE, 0);
     VDP_setWindowFullScreen();
     bake_gen_splash_decor_tiles();
-    VDP_setEnable(TRUE);
+    gen_vdp_end_bulk();
 
     for (u8 sp = 0u; sp < 3u && !skipped; sp++) {
         const u32 *p0 = (sp == 0u) ? PAL_S1_ART  : ((sp == 1u) ? PAL_S2_ART  : PAL_S3_ART);
@@ -3101,9 +3151,9 @@ static void run_genesis_boot_splashes(void) {
         const u32 *p3 = (sp == 0u) ? PAL_S1_TXT3 : ((sp == 1u) ? PAL_S2_TXT3 : PAL_S3_TXT3);
         u16 total_frames = (sp == 0u) ? 112u : ((sp == 1u) ? 116u : 122u);
 
-        /* Prepare next splash while CRAM is black (zero flicker) */
-        VDP_setEnable(FALSE);
-        VDP_clearPlane(WINDOW, TRUE);
+        /* Prepare next splash while CRAM is black & interrupts masked (zero flicker) */
+        gen_vdp_begin_bulk();
+        gen_clear_plane(WINDOW);
         if (sp == 0u) {
             bake_gen_splash1_badge();
             gen_stamp_splash_rect(17u, 6u, 6u, 3u, VRAM_SPLASH_ART0);
@@ -3131,7 +3181,7 @@ static void run_genesis_boot_splashes(void) {
             win_text(6u,  18u, PAL2, "A HANDCRAFTED 16-BIT JOURNEY");
             win_text(10u, 24u, PAL2, "PRESS START TO SKIP");
         }
-        VDP_setEnable(TRUE);
+        gen_vdp_end_bulk();
 
         for (u16 f = 0u; f < total_frames; f++) {
             u16 pad = read_genesis_pad();
@@ -3215,13 +3265,13 @@ static void run_genesis_boot_splashes(void) {
 
         /* Hide terrain & sprite baking cleanly inside the dark beats between splashes! */
         if (!skipped) {
-            VDP_setEnable(FALSE);
+            gen_vdp_begin_bulk();
             if (sp == 0u) {
                 gen_run_boot_stage(1u); /* Terrain tiles + metatile LUT (~45ms) */
             } else if (sp == 1u) {
                 gen_run_boot_stage(2u); /* Hardware sprites + env animations (~90ms) */
             }
-            VDP_setEnable(TRUE);
+            gen_vdp_end_bulk();
         }
     }
 
@@ -3233,11 +3283,12 @@ static void run_genesis_boot_splashes(void) {
     }
     g_last_bgm_id = 255u;
 
-    VDP_setEnable(FALSE);
+    gen_vdp_begin_bulk();
     gen_run_boot_stage(2u);
-    VDP_clearPlane(WINDOW, TRUE);
+    gen_clear_plane(WINDOW);
     g_win_layout = 255u;
-    VDP_setEnable(TRUE);
+    g_vista_vram_dirty = 1u; /* Splash artwork shared VRAM_VISTA_BASE -> always re-bake vista! */
+    gen_vdp_end_bulk();
 }
 
 int main(bool hard_reset) {
@@ -3253,15 +3304,11 @@ int main(bool hard_reset) {
     VDP_resetSprites();
 
     /* Fast-boot minimal UI + Font (~15ms), then jump straight into retro Genesis splash screens! */
-    VDP_setEnable(FALSE);
+    gen_vdp_begin_bulk();
     bake_ui_and_font_tiles();
-    VDP_setEnable(TRUE);
+    gen_vdp_end_bulk();
 
     run_genesis_boot_splashes();
-
-    /* Restore main game CRAM palettes (Atlas stays lazy-baked until player opens World Atlas!) */
-    upload_palettes_to_cram();
-    VDP_setBackgroundColor(33); /* PAL2[1] warm slate backdrop */
 
     hearth_init(&g_hearth);
     g_hearth.tuning.ppu_mode = PPU_GENESIS_320x224;
@@ -3274,14 +3321,19 @@ int main(bool hard_reset) {
                          g_hearth.mode == MODE_CUTSCENE || g_hearth.mode == MODE_SHOP) ? 1u : 0u;
         g_last_map_rev = g_hearth.map_revision;
         bake_genesis_zone_metas();
+
+        /* Atomic boot-to-title VDP setup: CRAM, vista, viewport, scroll & WINDOW UI all under bulk lock */
+        gen_vdp_begin_bulk();
+        upload_palettes_to_cram();
+        VDP_setBackgroundColor(33); /* PAL2[1] warm slate backdrop */
         upload_zone_pal0_to_cram(boot_ppu->terrain_pal_id, boot_tpal3, CPU);
-        VDP_setEnable(FALSE);
         if (g_hearth.mode == MODE_INTRO) {
             g_last_scene_mode = 2u;
             g_last_intro_scene = g_hearth.intro.scene;
             draw_intro_backdrop(g_hearth.intro.scene);
         } else {
             g_last_scene_mode = 0u;
+            gen_clear_plane(BG_A);
             draw_full_world_viewport(boot_ppu->cam_x, boot_ppu->cam_y);
             VDP_setHorizontalScrollVSync(BG_A, (s16)(-boot_ppu->cam_x));
             VDP_setVerticalScrollVSync(BG_A,   (s16)( boot_ppu->cam_y));
@@ -3293,8 +3345,9 @@ int main(bool hard_reset) {
                 VDP_setVerticalScrollVSync(BG_B,   (s16)( boot_ppu->cam_y));
             }
         }
-        VDP_setEnable(TRUE);
         update_window_ui(boot_ppu);
+        gen_vdp_end_bulk();
+
         render_sprites(boot_ppu);
         SYS_doVBlankProcess();
     }
@@ -3310,28 +3363,20 @@ int main(bool hard_reset) {
         u8 want_tpal3 = ((g_hearth.mode == MODE_TITLE || g_hearth.mode == MODE_EXPLORE ||
                           g_hearth.mode == MODE_CUTSCENE || g_hearth.mode == MODE_SHOP) &&
                          !g_hearth.atlas_open) ? 1u : 0u;
+        u8 did_scene_transition = 0u;
 
-        if (scene_mode != 2u && !g_hearth.atlas_open &&
-            (ppu->terrain_pal_id != g_last_pal_id || want_tpal3 != g_last_pal3_mode)) {
-            upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, DMA_QUEUE);
-        }
-        if (scene_mode == 0u && !g_hearth.atlas_open && g_vista_vram_dirty &&
-            !g_hearth.is_world_map && ppu->has_mountain_vista) {
-            /* Restore Alpine Parallax Vista tiles if World Atlas just closed in a mountain zone */
-            VDP_setEnable(FALSE);
-            draw_genesis_parallax_vista();
-            VDP_setEnable(TRUE);
-        }
-
+        /* 1. Handle full scene/map transitions FIRST under atomic bulk lock (before any DMA_QUEUE calls!) */
         if (scene_mode != g_last_scene_mode || map_changed ||
             (scene_mode == 2u && g_hearth.intro.scene != g_last_intro_scene)) {
+            u8 prev_scene = g_last_scene_mode;
             g_last_scene_mode = scene_mode;
             g_last_intro_scene = g_hearth.intro.scene;
             g_last_map_rev = g_hearth.map_revision;
+            did_scene_transition = 1u;
             if (map_changed) {
                 bake_genesis_zone_metas();
             }
-            VDP_setEnable(FALSE);
+            gen_vdp_begin_bulk();
             if (scene_mode == 2u) {
                 g_last_pal_id = 255u; /* Force zone PAL0+PAL3 restore upon leaving cinema */
                 g_last_pal3_mode = 255u;
@@ -3349,14 +3394,36 @@ int main(bool hard_reset) {
                     g_cinema_pals_active = 0u;
                 }
                 upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, CPU);
+                if (prev_scene != 0u || map_changed) {
+                    gen_clear_plane(BG_A);
+                }
                 draw_full_world_viewport(ppu->cam_x, ppu->cam_y);
+                g_last_env_frame = 255u;
             }
-            VDP_setEnable(TRUE);
+            update_window_ui(ppu);
+            gen_vdp_end_bulk();
         }
 
+        /* 2. Restore Alpine Parallax Vista tiles if World Atlas just closed in a mountain zone */
+        if (!did_scene_transition && scene_mode == 0u && !g_hearth.atlas_open &&
+            g_vista_vram_dirty && !g_hearth.is_world_map && ppu->has_mountain_vista) {
+            gen_vdp_begin_bulk();
+            draw_genesis_parallax_vista();
+            gen_vdp_end_bulk();
+        }
+
+        /* 3. Incremental VBlank DMA_QUEUE palette updates (time-of-day / atlas close / battle flash) */
+        if (scene_mode != 2u && !g_hearth.atlas_open &&
+            (ppu->terrain_pal_id != g_last_pal_id || want_tpal3 != g_last_pal3_mode)) {
+            upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, DMA_QUEUE);
+        }
+
+        /* 4. Per-frame incremental scrolling, environmental animations & VSync scroll latch */
         if (scene_mode == 0u) {
             stream_world_viewport(ppu->cam_x, ppu->cam_y);
-            tick_env_animations(g_hearth.frame_count);
+            if (g_hearth.mode != MODE_TITLE && !g_hearth.atlas_open) {
+                tick_env_animations(g_hearth.frame_count);
+            }
             /* VSync scroll updates latch atomically in VBlank -> 0% screen tearing */
             VDP_setHorizontalScrollVSync(BG_A, (s16)(-(ppu->cam_x - ppu->shake_x)));
             VDP_setVerticalScrollVSync(BG_A,   (s16)( (ppu->cam_y - ppu->shake_y)));
@@ -3376,7 +3443,9 @@ int main(bool hard_reset) {
             VDP_setVerticalScrollVSync(BG_A,   (s16)ppu->shake_y);
         }
 
-        update_window_ui(ppu);
+        if (!did_scene_transition) {
+            update_window_ui(ppu);
+        }
         render_sprites(ppu);
 
         for (uint8_t i = 0; i < ppu->sfx_count; i++) {
