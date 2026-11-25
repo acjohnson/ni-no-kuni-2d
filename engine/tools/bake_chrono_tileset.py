@@ -2530,7 +2530,7 @@ def build_all_metatiles(frame=0):
 GEN_MAP_FOLIAGE_TO_P0 = [0, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 14, 13, 15, 14, 2]
 GEN_MAP_ARCH_TO_P0    = [0, 1, 6, 7, 8, 9, 6, 7, 8, 9, 10, 11, 12, 13, 14, 3]
 GEN_MAP_ARCH_TO_P3    = [0, 1, 6, 7, 8, 9, 1, 6, 8, 9, 11, 12, 13, 14, 15, 4]
-GEN_MAP_WATER_TO_P3   = [0, 2, 3, 4, 1, 6, 7, 9, 10, 1, 6, 14, 4, 9, 15, 5]
+GEN_MAP_WATER_TO_P3   = [0, 2, 3, 4, 1, 6, 7, 9, 10, 1, 6, 14, 3, 4, 15, 5]
 GEN_MAP_ACCENT_TO_P3  = [0, 1, 11, 12, 13, 14, 2, 3, 4, 5, 6, 7, 14, 14, 15, 5]
 
 def remap_quad_for_genesis(q8, qpal):
