@@ -150,6 +150,12 @@ const BIOME_MAP: readonly BattleBiome[] = [
   'BOARHOLD',
   'DESERT',
   'PARADISE',
+  'FOREST',
+  'TOWN',
+  'INTERIOR',
+  'SEA',
+  'FROST',
+  'VOLCANO',
 ];
 
 const BGM_MAP: readonly BgmTrackId[] = [

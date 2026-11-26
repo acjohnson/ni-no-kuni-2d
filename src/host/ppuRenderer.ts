@@ -6,6 +6,7 @@
  */
 
 import {
+  BattleBiome,
   BattleEnemyState,
   FP_ONE,
   LockKind,
@@ -22,6 +23,13 @@ import {
   VIEW_TILE_W,
   WorldMapData,
 } from '../core/types';
+import {
+  BATTLE_BG_ASSETS,
+  BATTLE_BG_H,
+  BATTLE_BG_TH,
+  BATTLE_BG_TW,
+  BATTLE_BG_W,
+} from './battleBgData';
 import { resolveChronoMeta } from './chronoTilesetData';
 import { PixelAtlas } from './pixelAtlas';
 
@@ -30,6 +38,9 @@ export class SoftwarePpuRenderer {
   private scratchCtx: CanvasRenderingContext2D;
   private darkCanvas: HTMLCanvasElement;
   private darkCtx: CanvasRenderingContext2D;
+  private battleBgCanvas: HTMLCanvasElement;
+  private battleBgCtx: CanvasRenderingContext2D;
+  private battleBgKey = '';
 
   constructor() {
     this.scratchCanvas = document.createElement('canvas');
@@ -40,6 +51,10 @@ export class SoftwarePpuRenderer {
     this.darkCanvas.width = 320;
     this.darkCanvas.height = 224;
     this.darkCtx = this.darkCanvas.getContext('2d')!;
+    this.battleBgCanvas = document.createElement('canvas');
+    this.battleBgCanvas.width = BATTLE_BG_W;
+    this.battleBgCanvas.height = BATTLE_BG_H;
+    this.battleBgCtx = this.battleBgCanvas.getContext('2d')!;
   }
 
   public render(
@@ -1007,186 +1022,183 @@ export class SoftwarePpuRenderer {
   /* ========================================================================
    * IN-PLACE SEAMLESS 16-BIT BATTLE ARENA PIPELINE
    * ======================================================================== */
+  private ensureBattleBgDecoded(biome: BattleBiome, tod: number): void {
+    const clampedTod = Math.max(0, Math.min(3, tod | 0));
+    const key = `${biome}_${clampedTod}`;
+    if (this.battleBgKey === key) return;
+    this.battleBgKey = key;
+
+    const asset = BATTLE_BG_ASSETS[biome] ?? BATTLE_BG_ASSETS.MEADOW;
+    const rawTilesStr = atob(asset.tilesB64);
+    const rawMapStr = atob(asset.mapB64);
+    const palsHex = asset.palettes[clampedTod] ?? asset.palettes[1];
+
+    // Pre-parse 4 x 16 RGB palettes once per scene/ToD switch
+    const palRgb = new Uint8Array(4 * 16 * 3);
+    for (let p = 0; p < 4; p++) {
+      for (let c = 0; c < 16; c++) {
+        const hex = palsHex[p][c];
+        const off = (p * 16 + c) * 3;
+        palRgb[off] = parseInt(hex.slice(1, 3), 16);
+        palRgb[off + 1] = parseInt(hex.slice(3, 5), 16);
+        palRgb[off + 2] = parseInt(hex.slice(5, 7), 16);
+      }
+    }
+
+    const img = this.battleBgCtx.createImageData(BATTLE_BG_W, BATTLE_BG_H);
+    const out = img.data;
+    for (let ty = 0; ty < BATTLE_BG_TH; ty++) {
+      for (let tx = 0; tx < BATTLE_BG_TW; tx++) {
+        const mi = (ty * BATTLE_BG_TW + tx) * 2;
+        const w = rawMapStr.charCodeAt(mi) | (rawMapStr.charCodeAt(mi + 1) << 8);
+        const tid = w & 0x0fff;
+        const pal = (w >> 12) & 3;
+        const hf = (w >> 14) & 1;
+        const vf = (w >> 15) & 1;
+        const tBase = tid * 32;
+        for (let ly = 0; ly < 8; ly++) {
+          const sy = vf ? 7 - ly : ly;
+          const rowOut = ((ty * 8 + ly) * BATTLE_BG_W + tx * 8) * 4;
+          for (let lx = 0; lx < 8; lx++) {
+            const sx = hf ? 7 - lx : lx;
+            const b = rawTilesStr.charCodeAt(tBase + sy * 4 + (sx >> 1));
+            const ci = (sx & 1) === 0 ? (b >> 4) & 0x0f : b & 0x0f;
+            const po = (pal * 16 + ci) * 3;
+            const doff = rowOut + lx * 4;
+            out[doff] = palRgb[po];
+            out[doff + 1] = palRgb[po + 1];
+            out[doff + 2] = palRgb[po + 2];
+            out[doff + 3] = 255;
+          }
+        }
+      }
+    }
+    this.battleBgCtx.putImageData(img, 0, 0);
+  }
+
+  private renderBattleAtmosphere(
+    ctx: CanvasRenderingContext2D,
+    biome: BattleBiome,
+    tod: number,
+    width: number,
+    frameCount: number
+  ): void {
+    // Live 60fps biome-specific 16-bit ambient particles & subtle specular shimmer (y=0..158)
+    const count = 14;
+    for (let i = 0; i < count; i++) {
+      const s1 = (i * 53 + 17) & 255;
+      const s2 = (i * 97 + 41) & 255;
+
+      if (biome === 'FROST') {
+        // Gently swaying falling snowflakes
+        const px = (s1 * 2 + Math.floor(Math.sin(frameCount * 0.04 + i) * 7) + (frameCount >> 2)) % width;
+        const py = (s2 + (frameCount >> 1) + i * 11) % 154;
+        ctx.fillStyle = (i & 1) === 0 ? '#F4FCFF' : '#B8E4FA';
+        ctx.fillRect(px < 0 ? px + width : px, py, (i % 3 === 0) ? 2 : 1, 1);
+      } else if (biome === 'VOLCANO' || biome === 'BOARHOLD' || biome === 'INTERIOR') {
+        // Rising glowing embers / fireplace sparks
+        const maxCount = biome === 'INTERIOR' ? 6 : count;
+        if (i >= maxCount) continue;
+        const baseX = biome === 'INTERIOR'
+          ? (width >> 1) - 14 + (s1 % 28)
+          : (s1 * 2 + Math.floor(Math.sin(frameCount * 0.06 + i) * 6)) % width;
+        const py = biome === 'INTERIOR'
+          ? 84 - ((frameCount + s2) % 34)
+          : 152 - ((frameCount + s2) % 148);
+        const bright = ((frameCount >> 2) + i) & 1;
+        ctx.fillStyle = bright ? '#FFE278' : '#F4762C';
+        ctx.fillRect(baseX < 0 ? baseX + width : baseX, py, 2, 2);
+      } else if (biome === 'SHRINE') {
+        // Rising luminous cyan waystone spirit wisps
+        const px = (s1 * 2 + Math.floor(Math.sin(frameCount * 0.04 + i) * 8)) % width;
+        const py = 146 - (((frameCount >> 1) + s2) % 120);
+        if (((frameCount + i * 13) & 31) < 22) {
+          ctx.fillStyle = (i & 1) === 0 ? '#9CF8FF' : '#4CC8E8';
+          ctx.fillRect(px < 0 ? px + width : px, py, 2, 2);
+        }
+      } else if (biome === 'SEWER') {
+        // Dripping water beads + emerald canal sparkle
+        if (i < 6) {
+          const px = 20 + ((s1 * 3) % Math.max(1, width - 40));
+          const py = 24 + ((frameCount * 2 + s2) % 74);
+          ctx.fillStyle = '#7CE4C8';
+          ctx.fillRect(px, py, 1, 3);
+        } else {
+          const px = (s1 * 2 + (frameCount >> 1)) % width;
+          const py = 89 + (i % 9);
+          if (((frameCount >> 3) + i) & 1) {
+            ctx.fillStyle = '#8CF2D4';
+            ctx.fillRect(px, py, 4, 1);
+          }
+        }
+      } else if (biome === 'DESERT') {
+        // Wind-blown golden sand streaks
+        const px = (s1 * 3 + frameCount * 2) % width;
+        const py = 74 + (s2 % 78);
+        ctx.fillStyle = tod === 3 ? '#7B8CB2' : '#FCE4A2';
+        ctx.fillRect(px, py, 4, 1);
+      } else if (biome === 'SEA' || biome === 'PARADISE') {
+        // Sunlit/moonlit water specular glints & sea spray
+        const px = (s1 * 2 + (frameCount >> 2)) % width;
+        const py = (biome === 'SEA' ? 66 : 60) + (s2 % 34);
+        if (((frameCount >> 3) + i) % 3 === 0) {
+          ctx.fillStyle = tod === 3 ? '#A8D4FA' : '#FFFFFF';
+          ctx.fillRect(px, py, 4, 1);
+        }
+      } else if (biome === 'FOREST') {
+        // Falling autumn/emerald canopy leaves
+        const px = (s1 * 2 + Math.floor(Math.sin(frameCount * 0.05 + i) * 9) + (frameCount >> 2)) % width;
+        const py = (s2 + (frameCount >> 1)) % 148;
+        ctx.fillStyle = tod === 3 ? '#7CE8A8' : (i & 1 ? '#F2A444' : '#7EC864');
+        ctx.fillRect(px < 0 ? px + width : px, py, 2, 2);
+      } else if (biome === 'TOWN') {
+        // Warm floating lantern motes / dusk fireflies
+        const px = (s1 * 2 + Math.floor(Math.sin(frameCount * 0.03 + i) * 6)) % width;
+        const py = 46 + ((s2 + (frameCount >> 2)) % 100);
+        if (tod >= 2 || (i & 1) === 0) {
+          ctx.fillStyle = tod >= 2 ? '#FFE478' : '#FFF4C8';
+          ctx.fillRect(px < 0 ? px + width : px, py, 2, 1);
+        }
+      } else {
+        // MEADOW: Drifting wildflower petals (or glowing fireflies at night!)
+        const px = (s1 * 2 + (frameCount >> 1) + Math.floor(Math.sin(frameCount * 0.04 + i) * 5)) % width;
+        const py = (s2 + (frameCount >> 2)) % 146;
+        if (tod === 3) {
+          if (((frameCount + i * 17) & 31) < 18) {
+            ctx.fillStyle = '#E8FF88';
+            ctx.fillRect(px < 0 ? px + width : px, py, 2, 2);
+          }
+        } else {
+          ctx.fillStyle = (i & 1) === 0 ? '#FFF6D6' : '#F6A8B0';
+          ctx.fillRect(px < 0 ? px + width : px, py, 2, 1);
+        }
+      }
+    }
+  }
+
   private renderBattleScene(
     ctx: CanvasRenderingContext2D,
     packet: PpuFramePacket,
     atlas: PixelAtlas,
     party: PartyMemberState[]
   ): void {
-    const { width, height, frameCount, battle } = packet;
+    const { width, height, frameCount, battle, timeOfDay } = packet;
     const biome = battle.biome;
-    const isShrine = biome === 'SHRINE';
-    const isSewer = biome === 'SEWER';
-    const isBoarhold = biome === 'BOARHOLD';
-    const isDesert = biome === 'DESERT';
-    const isParadise = biome === 'PARADISE';
 
-    // 1. Layered 16-bit Sky & Horizon Backdrop (cohesive with world biome!)
-    const skyBands = isSewer
-      ? ['#0C141A', '#13212A', '#1B2E38', '#233B44']
-      : isBoarhold
-        ? ['#241418', '#422024', '#68302A', '#924834']
-        : isDesert
-          ? ['#346AA6', '#66A0D4', '#E6B87A', '#F6D79A']
-          : isParadise
-            ? ['#2A8CD4', '#4EB8E8', '#84DCF4', '#C6F4FA']
-            : isShrine
-              ? ['#1D2236', '#28314C', '#384666', '#4E5D7B']
-              : ['#5AA0D8', '#7BBCE8', '#A6D7F2', '#DCEFC8'];
-    const bandH = 19;
-    skyBands.forEach((col, i) => {
-      ctx.fillStyle = col;
-      ctx.fillRect(0, i * bandH, width, bandH + 1);
-    });
+    // 1. Hand-Pixelated 60-Color 16-Bit 3/4 Isometric Battle Stage (rows 0..159)
+    this.ensureBattleBgDecoded(biome, timeOfDay);
+    const srcX = width < BATTLE_BG_W ? (BATTLE_BG_W - width) >> 1 : 0;
+    ctx.drawImage(this.battleBgCanvas, srcX, 0, width, BATTLE_BG_H, 0, 0, width, BATTLE_BG_H);
 
-    if (isSewer) {
-      // Arched sewer vault bricks & glowing lantern sconces
-      ctx.fillStyle = '#16252E';
-      for (let x = 0; x < width; x += 64) {
-        ctx.fillRect(x, 0, 14, 78);
-        ctx.fillStyle = '#2B424D';
-        ctx.fillRect(x + 2, 0, 4, 78);
-        ctx.fillStyle = '#F5C45A';
-        ctx.fillRect(x + 4, 28, 6, 8);
-        ctx.fillStyle = '#16252E';
-      }
-    } else if (isBoarhold) {
-      // Fortress crenellations & torchlight braziers
-      ctx.fillStyle = '#342426';
-      ctx.fillRect(0, 44, width, 34);
-      for (let x = 0; x < width; x += 24) {
-        ctx.fillRect(x, 34, 14, 12);
-      }
-      ctx.fillStyle = '#E88838';
-      ctx.fillRect(46, 26, 6, 8);
-      ctx.fillRect(width - 54, 26, 6, 8);
-    } else if (isDesert) {
-      // Blazing desert sun & golden Babana dunes
-      ctx.fillStyle = '#FFF5C4';
-      ctx.fillRect(width - 68, 10, 18, 18);
-      ctx.fillStyle = '#D4924A';
-      for (let x = 0; x < width; x += 4) {
-        const h = Math.round(14 + Math.sin(x * 0.025) * 8 + Math.cos(x * 0.04) * 4);
-        ctx.fillRect(x, 76 - h, 4, h + 12);
-      }
-    } else if (isParadise) {
-      // Turquoise lagoon horizon & sunlit coral archipelago
-      ctx.fillStyle = '#F6FCFF';
-      for (let i = 0; i < 4; i++) {
-        const cx = ((i * 92 + Math.floor(frameCount * 0.14)) % (width + 64)) - 32;
-        ctx.fillRect(cx, 12 + (i & 1) * 10, 32, 6);
-      }
-      ctx.fillStyle = '#228EC4';
-      ctx.fillRect(0, 58, width, 20);
-      ctx.fillStyle = '#5AE0F2';
-      ctx.fillRect(0, 68, width, 10);
-    } else {
-      // Drifting pixel clouds
-      ctx.fillStyle = isShrine ? '#495472' : '#F4F7EE';
-      for (let i = 0; i < 4; i++) {
-        const cx = ((i * 96 + Math.floor(frameCount * 0.15)) % (width + 64)) - 32;
-        const cy = 14 + (i % 2) * 14;
-        ctx.fillRect(cx, cy, 34, 7);
-        ctx.fillRect(cx + 6, cy - 4, 20, 5);
-      }
-
-      // Distant rolling hills silhouette + windmill / shrine monoliths
-      ctx.fillStyle = isShrine ? '#2A3548' : '#4A884E';
-      for (let x = 0; x < width; x += 4) {
-        const h = Math.round(14 + Math.sin(x * 0.03) * 6 + Math.cos(x * 0.015) * 5);
-        ctx.fillRect(x, 76 - h, 4, h + 12);
-      }
-
-      if (isShrine) {
-        ctx.fillStyle = '#3E4656';
-        ctx.fillRect(40, 34, 14, 48);
-        ctx.fillRect(width - 62, 30, 16, 52);
-        ctx.fillStyle = '#748094';
-        ctx.fillRect(42, 36, 4, 44);
-        ctx.fillRect(width - 60, 32, 5, 48);
-      } else {
-        ctx.fillStyle = '#6A7586';
-        ctx.fillRect(width - 78, 36, 16, 36);
-        ctx.fillStyle = '#3B5998';
-        ctx.fillRect(width - 80, 30, 20, 8);
-        const sails = atlas.getSprite('windmill_blades', 0, 0);
-        ctx.save();
-        ctx.translate(width - 70, 36);
-        ctx.rotate(((frameCount * 0.8) * Math.PI) / 180);
-        ctx.drawImage(sails, -12, -12, 24, 24);
-        ctx.restore();
-      }
+    // Grounded dark framing beneath stage (behind bottom command box rows 160..height)
+    if (height > BATTLE_BG_H) {
+      ctx.fillStyle = '#0D101A';
+      ctx.fillRect(0, BATTLE_BG_H, width, height - BATTLE_BG_H);
     }
 
-    // 2. Ground Battle Stage Plane
-    const groundY = 76;
-    ctx.fillStyle = isSewer
-      ? '#21333B'
-      : isBoarhold
-        ? '#584440'
-        : isDesert
-          ? '#D8A252'
-          : isParadise
-            ? '#E6CFA0'
-            : isShrine
-              ? '#3D4555'
-              : '#5EA055';
-    ctx.fillRect(0, groundY, width, height - groundY);
+    // 2. Dynamic Biome Ambient Particles & Atmospheric Shimmer
+    this.renderBattleAtmosphere(ctx, biome, timeOfDay, width, frameCount);
 
-    // Textured perspective strips & biome floor landmarks
-    if (isSewer) {
-      // Glowing moss-green water canal across top of arena
-      ctx.fillStyle = '#1E645C';
-      ctx.fillRect(0, groundY + 4, width, 16);
-      ctx.fillStyle = (frameCount >> 4) & 1 ? '#58C4A0' : '#3C9E82';
-      ctx.fillRect(0, groundY + 10, width, 2);
-      ctx.fillStyle = '#33464E';
-      ctx.fillRect(0, groundY + 24, width, 66);
-      ctx.fillStyle = '#172329';
-      ctx.fillRect(0, 166, width, height - 166);
-    } else if (isBoarhold) {
-      ctx.fillStyle = '#7A5B50';
-      ctx.fillRect(0, groundY + 16, width, 70);
-      ctx.fillStyle = '#A86E42';
-      ctx.fillRect(0, groundY + 16, width, 3);
-      ctx.fillRect(0, groundY + 84, width, 3);
-      ctx.fillStyle = '#3A2828';
-      ctx.fillRect(0, 166, width, height - 166);
-    } else if (isDesert) {
-      ctx.fillStyle = '#E8BE6E';
-      ctx.fillRect(0, groundY + 10, width, 64);
-      ctx.fillStyle = '#F6D892';
-      ctx.fillRect(0, groundY + 18, width, 4);
-      ctx.fillStyle = '#B87A3A';
-      ctx.fillRect(0, 164, width, height - 164);
-    } else if (isParadise) {
-      ctx.fillStyle = '#48C4DC';
-      ctx.fillRect(0, groundY, width, 18);
-      ctx.fillStyle = '#F4E2B6';
-      ctx.fillRect(0, groundY + 18, width, 68);
-      ctx.fillStyle = '#C9A874';
-      ctx.fillRect(0, 164, width, height - 164);
-    } else if (isShrine) {
-      ctx.fillStyle = '#535E72';
-      ctx.fillRect(0, groundY + 14, width, 74);
-      ctx.strokeStyle = (frameCount >> 4) & 1 ? '#5AD2F4' : '#A6D7F2';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.ellipse(width * 0.5, 128, 76, 26, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = '#2B3140';
-      ctx.fillRect(0, 168, width, height - 168);
-    } else {
-      ctx.fillStyle = '#74B461';
-      ctx.fillRect(0, groundY + 4, width, 16);
-      ctx.fillStyle = '#C89B62';
-      ctx.fillRect(0, 102, width, 54);
-      ctx.fillStyle = '#DFBA84';
-      ctx.fillRect(0, 106, width, 4);
-      ctx.fillRect(0, 148, width, 3);
-      ctx.fillStyle = '#3B7542';
-      ctx.fillRect(0, 162, width, height - 162);
-    }
 
     // 3. Draw Rowan in Rear Support Stance when a Familiar is active!
     if (battle.activeSlot !== 0) {

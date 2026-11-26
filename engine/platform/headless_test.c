@@ -661,6 +661,69 @@ int main(void) {
         printf("[PASS] Milestone 5: Bouncy Wingless Pip, 8 Enterable Buildings & All 5 Side Quests\n");
     }
 
+    /* 11. Milestone 6: 12 Context-Aware Hand-Pixelated Battle Biomes (Zones, Interiors, Sea, All 7 Continents) */
+    {
+        uint16_t seen_biomes = 0u;
+
+        hearth_enter_zone(&g_st, ZONE_HAMLET, 12, 12);
+        CHECK(hearth_resolve_battle_biome(&g_st) == BIOME_MEADOW, "Hamlet resolves to BIOME_MEADOW");
+        seen_biomes |= (uint16_t)(1u << hearth_resolve_battle_biome(&g_st));
+
+        hearth_enter_zone(&g_st, ZONE_HOLLOW_GLADE, 15, 16);
+        CHECK(hearth_resolve_battle_biome(&g_st) == BIOME_SHRINE, "Hollow Glade resolves to BIOME_SHRINE");
+        seen_biomes |= (uint16_t)(1u << hearth_resolve_battle_biome(&g_st));
+
+        hearth_enter_zone(&g_st, ZONE_SEWERS, 20, 20);
+        CHECK(hearth_resolve_battle_biome(&g_st) == BIOME_SEWER, "Sunken Sewers resolves to BIOME_SEWER");
+        seen_biomes |= (uint16_t)(1u << hearth_resolve_battle_biome(&g_st));
+
+        hearth_enter_zone(&g_st, ZONE_BOARHOLD, 15, 14);
+        CHECK(hearth_resolve_battle_biome(&g_st) == BIOME_BOARHOLD, "Boarhold Citadel resolves to BIOME_BOARHOLD");
+        seen_biomes |= (uint16_t)(1u << hearth_resolve_battle_biome(&g_st));
+
+        hearth_enter_zone(&g_st, ZONE_BABANA_OASIS, 20, 16);
+        CHECK(hearth_resolve_battle_biome(&g_st) == BIOME_DESERT, "Babana Oasis resolves to BIOME_DESERT");
+        seen_biomes |= (uint16_t)(1u << hearth_resolve_battle_biome(&g_st));
+
+        hearth_enter_zone(&g_st, ZONE_CORAL_COVE, 20, 14);
+        CHECK(hearth_resolve_battle_biome(&g_st) == BIOME_PARADISE, "Suncrest Coral Cove resolves to BIOME_PARADISE");
+        seen_biomes |= (uint16_t)(1u << hearth_resolve_battle_biome(&g_st));
+
+        hearth_enter_zone(&g_st, ZONE_WHISPERING_WOODS, 14, 18);
+        CHECK(hearth_resolve_battle_biome(&g_st) == BIOME_FOREST, "Whispering Woods resolves to BIOME_FOREST");
+        seen_biomes |= (uint16_t)(1u << hearth_resolve_battle_biome(&g_st));
+
+        hearth_enter_zone(&g_st, ZONE_SUNHILL_MARKET, 20, 18);
+        CHECK(hearth_resolve_battle_biome(&g_st) == BIOME_TOWN, "Sunhill Market resolves to BIOME_TOWN");
+        seen_biomes |= (uint16_t)(1u << hearth_resolve_battle_biome(&g_st));
+
+        hearth_enter_zone(&g_st, ZONE_ALDER_BAKERY, 16, 12);
+        CHECK(hearth_resolve_battle_biome(&g_st) == BIOME_INTERIOR, "Town interior resolves to BIOME_INTERIOR");
+        seen_biomes |= (uint16_t)(1u << hearth_resolve_battle_biome(&g_st));
+
+        /* Globe continents + open sea raft check */
+        hearth_enter_zone(&g_st, ZONE_EVERTALE_WORLD, 128, 22); /* Frostmere */
+        g_st.active_vehicle = VEH_FOOT;
+        CHECK(hearth_resolve_battle_biome(&g_st) == BIOME_FROST, "Frostmere globe continent resolves to BIOME_FROST");
+        seen_biomes |= (uint16_t)(1u << hearth_resolve_battle_biome(&g_st));
+
+        g_st.hero_fx = TO_FP(32 * 16 + 8);
+        g_st.hero_fy = TO_FP(62 * 16 + 8); /* Cinderpeak */
+        CHECK(hearth_resolve_battle_biome(&g_st) == BIOME_VOLCANO, "Cinderpeak globe continent resolves to BIOME_VOLCANO");
+        seen_biomes |= (uint16_t)(1u << hearth_resolve_battle_biome(&g_st));
+
+        g_st.active_vehicle = VEH_RAFT;
+        CHECK(hearth_resolve_battle_biome(&g_st) == BIOME_SEA, "Active Cedar Raft resolves to BIOME_SEA");
+        seen_biomes |= (uint16_t)(1u << hearth_resolve_battle_biome(&g_st));
+
+        /* Verify BIOME_AUTO inside hearth_start_battle resolves dynamically to current region */
+        g_st.active_vehicle = VEH_FOOT;
+        hearth_start_battle(&g_st, ENCOUNTER_MEADOW_PACK, BIOME_AUTO, -1);
+        CHECK(g_st.battle.biome == BIOME_VOLCANO, "hearth_start_battle(BIOME_AUTO) resolves to Cinderpeak Volcano");
+        CHECK(seen_biomes == ((1u << BIOME_COUNT) - 1u), "All 12 distinct battle backdrop biomes verified");
+        printf("[PASS] Milestone 6: All 12 Context-Aware Battle Biomes & BIOME_AUTO Resolution\n");
+    }
+
     printf("ALL PURE C99 CORE TESTS PASSED!\n");
     return 0;
 }

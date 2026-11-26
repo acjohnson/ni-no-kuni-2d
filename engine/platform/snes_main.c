@@ -27,6 +27,8 @@
 #include "hearth_hero24.h"
 #define HEARTH_INCLUDE_SNES_TERRAIN 1
 #include "hearth_terrain_rom.h"
+#define HEARTH_INCLUDE_SNES_BATTLE_BG 1
+#include "battle_bg_rom.h"
 
 extern char SOUNDBANK__;
 extern char rowan_snes_tiles;
@@ -143,9 +145,11 @@ static u8  g_env_frame        = 255;
 static u8  g_prev_oam_cnt     = 0;
 static s16 g_last_cam_mx      = -999;
 static s16 g_last_cam_my      = -999;
-static u8  g_last_scene_kind  = 255;
-static u8  g_last_intro_scene = 255;
-static u8  g_last_pal_id      = 255;
+static u8  g_last_scene_kind   = 255;
+static u8  g_last_intro_scene  = 255;
+static u8  g_last_battle_biome = 255;
+static u8  g_last_battle_tod   = 255;
+static u8  g_last_pal_id       = 255;
 static u8  g_pal_dirty        = 0;
 static u8  g_last_map_rev     = 255;
 static u8  g_ui_layout        = 255;
@@ -1827,23 +1831,82 @@ static void stream_world_bg1(s16 cam_x, s16 cam_y) {
     }
 }
 
-static void build_battle_bg1(u8 biome) {
-    u16 my, mx, off;
-    u8 dark_arena, m;
-    u16 *dst;
+static u8 *snes_bbg_tiles_ptr(u8 b) {
+    switch (b) {
+        case 1u:  return (u8 *)&bbg_1_tiles;
+        case 2u:  return (u8 *)&bbg_2_tiles;
+        case 3u:  return (u8 *)&bbg_3_tiles;
+        case 4u:  return (u8 *)&bbg_4_tiles;
+        case 5u:  return (u8 *)&bbg_5_tiles;
+        case 6u:  return (u8 *)&bbg_6_tiles;
+        case 7u:  return (u8 *)&bbg_7_tiles;
+        case 8u:  return (u8 *)&bbg_8_tiles;
+        case 9u:  return (u8 *)&bbg_9_tiles;
+        case 10u: return (u8 *)&bbg_10_tiles;
+        case 11u: return (u8 *)&bbg_11_tiles;
+        default:  return (u8 *)&bbg_0_tiles;
+    }
+}
 
-    dark_arena = (biome == BIOME_SHRINE || biome == BIOME_SEWER || biome == BIOME_BOARHOLD) ? 1u : 0u;
-    for (my = 0u; my < 16u; my++) {
-        m = (my < 5u) ? (u8)(dark_arena ? CM_BATTLE_SKY_SHRINE : CM_BATTLE_SKY_MEADOW)
-                      : (u8)(dark_arena ? CM_BATTLE_GND_SHRINE : CM_BATTLE_GND_MEADOW);
-        for (mx = 0u; mx < 16u; mx++) {
-            off = (u16)((my << 6) + (mx << 1));
-            dst = g_bg1_map + off;
-            dst[0]  = SNES_META_TL[m];
-            dst[1]  = SNES_META_TR[m];
-            dst[32] = SNES_META_BL[m];
-            dst[33] = SNES_META_BR[m];
-        }
+static const u16 *snes_bbg_map_ptr(u8 b) {
+    switch (b) {
+        case 1u:  return (const u16 *)&bbg_1_map;
+        case 2u:  return (const u16 *)&bbg_2_map;
+        case 3u:  return (const u16 *)&bbg_3_map;
+        case 4u:  return (const u16 *)&bbg_4_map;
+        case 5u:  return (const u16 *)&bbg_5_map;
+        case 6u:  return (const u16 *)&bbg_6_map;
+        case 7u:  return (const u16 *)&bbg_7_map;
+        case 8u:  return (const u16 *)&bbg_8_map;
+        case 9u:  return (const u16 *)&bbg_9_map;
+        case 10u: return (const u16 *)&bbg_10_map;
+        case 11u: return (const u16 *)&bbg_11_map;
+        default:  return (const u16 *)&bbg_0_map;
+    }
+}
+
+static u8 *snes_bbg_pal_ptr(u8 b) {
+    switch (b) {
+        case 1u:  return (u8 *)&bbg_1_pal;
+        case 2u:  return (u8 *)&bbg_2_pal;
+        case 3u:  return (u8 *)&bbg_3_pal;
+        case 4u:  return (u8 *)&bbg_4_pal;
+        case 5u:  return (u8 *)&bbg_5_pal;
+        case 6u:  return (u8 *)&bbg_6_pal;
+        case 7u:  return (u8 *)&bbg_7_pal;
+        case 8u:  return (u8 *)&bbg_8_pal;
+        case 9u:  return (u8 *)&bbg_9_pal;
+        case 10u: return (u8 *)&bbg_10_pal;
+        case 11u: return (u8 *)&bbg_11_pal;
+        default:  return (u8 *)&bbg_0_pal;
+    }
+}
+
+static void upload_battle_bg_force_blank(u8 biome, u8 tod) {
+    u8 b = (biome < BATTLE_BG_COUNT) ? biome : 0u;
+    u8 t = (tod < 4u) ? tod : 1u;
+    u16 byte_len = (u16)(BATTLE_SNES_TILE_COUNTS[b] << 5);
+    dmaCopyVram(snes_bbg_tiles_ptr(b),
+                (u16)(VRAM_BG1_GFX + ((u16)VRAM_CG_TILE_BASE << 4)),
+                byte_len);
+    hearth_memset(g_tile32, 0u, 32u);
+    dmaCopyVram(g_tile32, (u16)(VRAM_BG1_GFX + ((u16)VRAM_CG_EMPTY_TILE << 4)), 32u);
+    /* 60-color 4-palette Time-of-Day CGRAM upload (BG PAL0..PAL3, preserving UI PAL4..PAL7!) */
+    dmaCopyCGram(snes_bbg_pal_ptr(b) + ((u16)t << 7), 0u, 128u);
+}
+
+static void build_battle_bg1(u8 biome) {
+    u8 b = (biome < BATTLE_BG_COUNT) ? biome : 0u;
+    const u16 *mp = snes_bbg_map_ptr(b);
+    u16 empty_e = SNES_TILE(VRAM_CG_EMPTY_TILE, 0u, 0u);
+    u16 i;
+
+    for (i = 0u; i < 1024u; i++) {
+        g_bg1_map[i] = empty_e;
+    }
+    /* Map 32x20 hand-pixelated 3/4 isometric battle stage onto BG1 rows 0..19 (y=0..159) */
+    for (i = 0u; i < BATTLE_BG_SNES_LEN; i++) {
+        g_bg1_map[i] = mp[i];
     }
     g_bg1_dirty_l = 1;
     g_bg1_dirty_r = 0;
@@ -2801,28 +2864,57 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             }
         }
 
-        /* 60fps Hardware Drifting Biome Atmosphere Particles (8x8 OBJ: leaves, petals, fireflies, snow) */
-        if (g_hearth.mode == MODE_EXPLORE && count < 118u) {
+        /* 60fps Hardware Drifting Biome Atmosphere Particles (8x8 OBJ: leaves, petals, embers, snow) */
+        if ((g_hearth.mode == MODE_EXPLORE || g_hearth.mode == MODE_BATTLE) && count < 118u) {
             u8 ap, p_pal, pid;
             u16 fc16;
-            pid = ppu->terrain_pal_id;
             fc16 = (u16)g_hearth.frame_count;
-            p_pal = (pid == 1u || pid == 6u || pid == 16u) ? 0x30u
-                  : (pid == 14u) ? 0x34u
-                  : (pid == 7u || pid == 8u || pid == 3u || pid == 5u) ? 0x36u : 0x32u;
-            for (ap = 0u; ap < 6u; ap++) {
-                u16 seed = (u16)((ap * 43u + 17u) & 255u);
-                s16 ax, ay;
-                if (pid == 7u || pid == 8u || pid == 3u || pid == 5u) {
-                    if (((fc16 + (u16)(ap * 19u)) & 31u) >= 20u) continue;
-                    ax = (s16)(((seed * 3u + (fc16 >> 2) - (u16)(ppu->cam_x >> 1)) & 255u));
-                    ay = (s16)((((seed * 5u + ((fc16 >> 3) ^ (u16)(ap << 3)) - (u16)(ppu->cam_y >> 1)) & 127u) + 24u));
-                } else {
-                    ax = (s16)(((seed * 5u + (fc16 >> 1) - (u16)(ppu->cam_x >> 1)) & 255u));
-                    ay = (s16)((((seed * 3u + ((fc16 * (u16)(1u + (ap & 1u))) >> 2) - (u16)(ppu->cam_y >> 1)) & 191u) + 16u));
+            if (g_hearth.mode == MODE_BATTLE) {
+                u8 bb = g_hearth.battle.biome;
+                u8 rises = (bb == BIOME_VOLCANO || bb == BIOME_BOARHOLD) ? 1u : 0u;
+                u8 bobs  = (bb == BIOME_SHRINE || bb == BIOME_FOREST || bb == BIOME_SEWER ||
+                            g_hearth.time_of_day == TOD_NIGHT) ? 1u : 0u;
+                p_pal = (bb == BIOME_VOLCANO || bb == BIOME_BOARHOLD) ? 0x30u
+                      : (bb == BIOME_FROST || bb == BIOME_SEA) ? 0x34u
+                      : (bb == BIOME_SHRINE || bb == BIOME_SEWER || g_hearth.time_of_day == TOD_NIGHT) ? 0x36u
+                      : 0x32u;
+                for (ap = 0u; ap < 6u; ap++) {
+                    u16 seed = (u16)((ap * 43u + 19u) & 255u);
+                    s16 ax, ay;
+                    if (bobs) {
+                        if (((fc16 + (u16)(ap * 19u)) & 31u) >= 22u) continue;
+                        ax = (s16)((seed * 3u + (fc16 >> 2)) & 255u);
+                        ay = (s16)(((seed * 5u + ((fc16 >> 3) ^ (u16)(ap << 3))) & 127u) + 12u);
+                    } else if (rises) {
+                        ax = (s16)((seed * 5u + (fc16 >> 2)) & 255u);
+                        ay = (s16)(140 - (s16)(((seed * 3u + ((fc16 * (u16)(1u + (ap & 1u))) >> 2)) & 127u)));
+                    } else {
+                        ax = (s16)((seed * 5u + (fc16 >> 1)) & 255u);
+                        ay = (s16)(((seed * 3u + ((fc16 * (u16)(1u + (ap & 1u))) >> 2)) & 127u) + 10u);
+                    }
+                    if (ax < 248 && ay >= 6 && ay < 148) {
+                        EMIT_SNES_OAM(ax, ay, 0x42u, p_pal, 0u);
+                    }
                 }
-                if (ax < 248 && ay < 208) {
-                    EMIT_SNES_OAM(ax, ay, 0x42u, p_pal, 0u);
+            } else {
+                pid = ppu->terrain_pal_id;
+                p_pal = (pid == 1u || pid == 6u || pid == 16u) ? 0x30u
+                      : (pid == 14u) ? 0x34u
+                      : (pid == 7u || pid == 8u || pid == 3u || pid == 5u) ? 0x36u : 0x32u;
+                for (ap = 0u; ap < 6u; ap++) {
+                    u16 seed = (u16)((ap * 43u + 17u) & 255u);
+                    s16 ax, ay;
+                    if (pid == 7u || pid == 8u || pid == 3u || pid == 5u) {
+                        if (((fc16 + (u16)(ap * 19u)) & 31u) >= 20u) continue;
+                        ax = (s16)(((seed * 3u + (fc16 >> 2) - (u16)(ppu->cam_x >> 1)) & 255u));
+                        ay = (s16)((((seed * 5u + ((fc16 >> 3) ^ (u16)(ap << 3)) - (u16)(ppu->cam_y >> 1)) & 127u) + 24u));
+                    } else {
+                        ax = (s16)(((seed * 5u + (fc16 >> 1) - (u16)(ppu->cam_x >> 1)) & 255u));
+                        ay = (s16)((((seed * 3u + ((fc16 * (u16)(1u + (ap & 1u))) >> 2) - (u16)(ppu->cam_y >> 1)) & 191u) + 16u));
+                    }
+                    if (ax < 248 && ay < 208) {
+                        EMIT_SNES_OAM(ax, ay, 0x42u, p_pal, 0u);
+                    }
                 }
             }
         }
@@ -3665,7 +3757,7 @@ int main(void) {
         }
         scene_switched = 0;
 
-        if (scene_kind != 2u && ppu->terrain_pal_id != g_last_pal_id) {
+        if (scene_kind == 0u && ppu->terrain_pal_id != g_last_pal_id) {
             g_last_pal_id = ppu->terrain_pal_id;
             g_pal_dirty = 1u;
         }
@@ -3680,14 +3772,20 @@ int main(void) {
         }
 
         if (scene_kind != g_last_scene_kind ||
-            (scene_kind == 2u && g_hearth.intro.scene != g_last_intro_scene)) {
-            if (g_last_scene_kind == 2u && scene_kind != 2u) {
+            (scene_kind == 2u && g_hearth.intro.scene != g_last_intro_scene) ||
+            (scene_kind == 1u && (g_hearth.battle.biome != g_last_battle_biome ||
+                                  g_hearth.time_of_day != g_last_battle_tod))) {
+            if ((g_last_scene_kind == 2u || g_last_scene_kind == 1u) && scene_kind == 0u) {
                 g_last_pal_id = ppu->terrain_pal_id;
                 g_pal_dirty = 1u;
-                g_full_pal_dirty = 1u; /* Restore BG PAL0..PAL3 overwritten by 60-color CG! */
+                g_full_pal_dirty = 1u; /* Restore BG1 terrain & BG PAL0..PAL3 overwritten by 60-color CG/Battle BG! */
             }
             g_last_scene_kind = scene_kind;
             g_last_intro_scene = g_hearth.intro.scene;
+            if (scene_kind == 1u) {
+                g_last_battle_biome = g_hearth.battle.biome;
+                g_last_battle_tod   = g_hearth.time_of_day;
+            }
             scene_switched = 1;
             if (scene_kind == 2u) {
                 build_intro_bg1(g_hearth.intro.scene);
@@ -3721,6 +3819,10 @@ int main(void) {
             setScreenOff();
             if (scene_kind == 2u) {
                 upload_cinema_cg_force_blank(g_hearth.intro.scene);
+                g_pal_dirty = 0u;
+                g_full_pal_dirty = 0u;
+            } else if (scene_kind == 1u) {
+                upload_battle_bg_force_blank(g_hearth.battle.biome, g_hearth.time_of_day);
                 g_pal_dirty = 0u;
                 g_full_pal_dirty = 0u;
             } else if (g_full_pal_dirty) {

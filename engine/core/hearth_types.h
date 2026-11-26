@@ -309,14 +309,22 @@ typedef enum {
     STORY_IRONFANG_DEFEATED = 5  /* Boarhold Arc Boss beaten -> Chapter 1 Finale */
 } HearthStoryStage;
 
-/* Battle Biomes & Lock Elements */
+/* Battle Biomes (12 Context-Matched 16-Bit 3/4 Isometric Arenas) & Lock Elements */
 typedef enum {
     BIOME_MEADOW   = 0,
     BIOME_SHRINE   = 1,
     BIOME_SEWER    = 2,
     BIOME_BOARHOLD = 3,
     BIOME_DESERT   = 4,
-    BIOME_PARADISE = 5
+    BIOME_PARADISE = 5,
+    BIOME_FOREST   = 6,
+    BIOME_TOWN     = 7,
+    BIOME_INTERIOR = 8,
+    BIOME_SEA      = 9,
+    BIOME_FROST    = 10,
+    BIOME_VOLCANO  = 11,
+    BIOME_COUNT    = 12,
+    BIOME_AUTO     = 255
 } HearthBiome;
 
 typedef enum {

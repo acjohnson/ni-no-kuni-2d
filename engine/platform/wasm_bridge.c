@@ -499,11 +499,11 @@ void wasm_start_cutscene_demo(void) {
 
 WASM_EXPORT(wasm_start_quick_battle)
 void wasm_start_quick_battle(uint32_t preset) {
-    uint8_t biome = (uint8_t)BIOME_MEADOW;
+    uint8_t biome = (uint8_t)BIOME_AUTO;
     if (preset == ENCOUNTER_SHRINE_BOSS) biome = (uint8_t)BIOME_SHRINE;
-    else if (preset == ENCOUNTER_SEWER_PACK || preset == ENCOUNTER_SEWER_BOSS) biome = (uint8_t)BIOME_SEWER;
-    else if (preset == ENCOUNTER_BOAR_GUARD || preset == ENCOUNTER_IRONFANG_BOSS) biome = (uint8_t)BIOME_BOARHOLD;
-    else if (preset == ENCOUNTER_DESERT_SCORPION || preset == ENCOUNTER_SANDWORM_BOSS) biome = (uint8_t)BIOME_DESERT;
+    else if (preset == ENCOUNTER_SEWER_BOSS) biome = (uint8_t)BIOME_SEWER;
+    else if (preset == ENCOUNTER_IRONFANG_BOSS) biome = (uint8_t)BIOME_BOARHOLD;
+    else if (preset == ENCOUNTER_SANDWORM_BOSS) biome = (uint8_t)BIOME_DESERT;
     g_state.ppu.sfx_count = 0;
     hearth_start_battle(&g_state, (uint8_t)preset, biome, -1);
     append_ppu_sfx();

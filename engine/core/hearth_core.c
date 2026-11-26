@@ -600,6 +600,21 @@ static void populate_globe_enemies_for_region(HearthState *st, uint8_t reg) {
         set_field_enemy(&st->field_enemies[1], "Dune Scorpion",  SPR_ENEMY_SCORPION, ENCOUNTER_DESERT_SCORPION, BIOME_DESERT, false, 142, 142, DIR_DOWN,  55);
         set_field_enemy(&st->field_enemies[2], "Dune Scorpion",  SPR_ENEMY_SCORPION, ENCOUNTER_DESERT_SCORPION, BIOME_DESERT, false, 146, 158, DIR_LEFT,  80);
         set_field_enemy(&st->field_enemies[3], "Giant Sandworm", SPR_ENEMY_SANDWORM, ENCOUNTER_SANDWORM_BOSS,   BIOME_DESERT, true,  124, 160, DIR_RIGHT,  0);
+    } else if (reg == REGION_PARADISE) {
+        set_field_enemy(&st->field_enemies[0], "Reef Slime",     SPR_ENEMY_SLIME,    ENCOUNTER_MEADOW_PACK,     BIOME_PARADISE, false, 48, 148, DIR_RIGHT, 30);
+        set_field_enemy(&st->field_enemies[1], "Coral Moth",     SPR_ENEMY_DUSK_MOTH,ENCOUNTER_GLADE_DUO,       BIOME_PARADISE, false, 58, 146, DIR_LEFT,  60);
+    } else if (reg == REGION_FROSTMERE) {
+        set_field_enemy(&st->field_enemies[0], "Frostcap",       SPR_ENEMY_GLOOMCAP, ENCOUNTER_MEADOW_PACK,     BIOME_FROST,    false, 122, 24, DIR_RIGHT, 30);
+        set_field_enemy(&st->field_enemies[1], "Glacier Imp",    SPR_ENEMY_THORNLING,ENCOUNTER_GLADE_DUO,       BIOME_FROST,    false, 134, 24, DIR_LEFT,  60);
+    } else if (reg == REGION_CANOPY) {
+        set_field_enemy(&st->field_enemies[0], "Canopy Imp",     SPR_ENEMY_THORNLING,ENCOUNTER_GLADE_DUO,       BIOME_FOREST,   false, 206, 128, DIR_RIGHT, 30);
+        set_field_enemy(&st->field_enemies[1], "Jungle Moth",    SPR_ENEMY_DUSK_MOTH,ENCOUNTER_MEADOW_PACK,     BIOME_FOREST,   false, 218, 126, DIR_LEFT,  60);
+    } else if (reg == REGION_VOLCANO) {
+        set_field_enemy(&st->field_enemies[0], "Cinder Guard",   SPR_ENEMY_BOAR,     ENCOUNTER_BOAR_GUARD,      BIOME_VOLCANO,  false, 30,  64, DIR_RIGHT, 30);
+        set_field_enemy(&st->field_enemies[1], "Magma Slime",    SPR_ENEMY_SLIME,    ENCOUNTER_SEWER_PACK,      BIOME_VOLCANO,  false, 38,  62, DIR_LEFT,  60);
+    } else if (reg == REGION_AETHERIS) {
+        set_field_enemy(&st->field_enemies[0], "Citadel Sentry", SPR_ENEMY_BOAR,     ENCOUNTER_BOAR_GUARD,      BIOME_BOARHOLD, false, 214, 64, DIR_RIGHT, 30);
+        set_field_enemy(&st->field_enemies[1], "Arcane Moth",    SPR_ENEMY_DUSK_MOTH,ENCOUNTER_GLADE_DUO,       BIOME_BOARHOLD, false, 226, 62, DIR_LEFT,  60);
     } else if (reg == REGION_HEARTLAND) {
         set_field_enemy(&st->field_enemies[0], "Gloomcap",   SPR_ENEMY_GLOOMCAP,  ENCOUNTER_MEADOW_PACK, BIOME_MEADOW, false,  88,  92, DIR_LEFT,  30);
         set_field_enemy(&st->field_enemies[1], "Thornling",  SPR_ENEMY_THORNLING, ENCOUNTER_GLADE_DUO,   BIOME_MEADOW, false, 118,  86, DIR_DOWN,  55);
@@ -625,7 +640,7 @@ static void update_globe_region_streaming(HearthState *st, bool show_banner) {
         st->terrain_pal_id = region_to_pal(reg);
         st->bgm_id = region_to_bgm(reg);
         if (show_banner) st->zone_banner_frames = 100;
-        if (reg != st->globe_enemy_region && (reg == REGION_HEARTLAND || reg == REGION_DESERT)) {
+        if (reg != st->globe_enemy_region) {
             populate_globe_enemies_for_region(st, reg);
         }
     }
@@ -2064,12 +2079,61 @@ static void populate_battle_preset(HearthBattleState *b, uint8_t preset, int8_t 
     }
 }
 
+uint8_t hearth_resolve_battle_biome(const HearthState *st) {
+    uint8_t z = st->zone_id;
+    if (z == ZONE_EVERTALE_WORLD) {
+        uint16_t tx = (uint16_t)((uint16_t)WRAP_GLOBE_PX_X(FP_PX(st->hero_fx)) >> 4);
+        uint16_t ty = (uint16_t)((uint16_t)wrap_globe_px_y(FP_PX(st->hero_fy)) >> 4);
+        uint8_t bg1 = 0u, bg2 = 0u, col = 0u, reg = 0u;
+        hearth_globe_cell(tx, ty, &bg1, &bg2, &col, &reg);
+        if (st->active_vehicle == VEH_RAFT ||
+            bg1 == T_WORLD_OCEAN || bg1 == T_WORLD_SHALLOW) {
+            return (reg == REGION_PARADISE && bg1 == T_WORLD_SHALLOW)
+                ? (uint8_t)BIOME_PARADISE : (uint8_t)BIOME_SEA;
+        }
+        if (bg1 == T_WORLD_SNOW || reg == REGION_FROSTMERE) return (uint8_t)BIOME_FROST;
+        if (bg1 == T_WORLD_LAVA || reg == REGION_VOLCANO)   return (uint8_t)BIOME_VOLCANO;
+        if (bg1 == T_WORLD_SAND || reg == REGION_DESERT)    return (uint8_t)BIOME_DESERT;
+        if (bg1 == T_WORLD_BEACH || bg1 == T_WORLD_CORAL || reg == REGION_PARADISE) {
+            return (uint8_t)BIOME_PARADISE;
+        }
+        if (bg1 == T_WORLD_FOREST || bg1 == T_WORLD_JUNGLE || reg == REGION_CANOPY) {
+            return (uint8_t)BIOME_FOREST;
+        }
+        if (bg1 == T_WORLD_TECH || reg == REGION_AETHERIS)  return (uint8_t)BIOME_BOARHOLD;
+        if (bg1 == T_WORLD_TOWN || bg1 == T_WORLD_CASTLE)   return (uint8_t)BIOME_TOWN;
+        if (bg1 == T_WORLD_PEAK || bg1 == T_WORLD_RUINS)    return (uint8_t)BIOME_SHRINE;
+        return (uint8_t)BIOME_MEADOW;
+    }
+    if (z == ZONE_ROWAN_HOME || (z >= ZONE_ALDER_DEPOT && z <= ZONE_BABANA_TENT)) {
+        return (uint8_t)BIOME_INTERIOR;
+    }
+    if (z == ZONE_ALDERBROOK || z == ZONE_SUNHILL_MARKET ||
+        z == ZONE_WHISKERBURGH || z == ZONE_CASTLE_GATE) {
+        return (uint8_t)BIOME_TOWN;
+    }
+    if (z == ZONE_WHISPERING_WOODS || z == ZONE_BRAMBLE_EDGE) {
+        return (uint8_t)BIOME_FOREST;
+    }
+    if (z == ZONE_HOLLOW_GLADE) return (uint8_t)BIOME_SHRINE;
+    if (z == ZONE_SEWERS)       return (uint8_t)BIOME_SEWER;
+    if (z == ZONE_BOARHOLD)     return (uint8_t)BIOME_BOARHOLD;
+    if (z == ZONE_BABANA_OASIS) return (uint8_t)BIOME_DESERT;
+    if (z == ZONE_CORAL_COVE || z == ZONE_TIMBER_PIER) return (uint8_t)BIOME_PARADISE;
+    if (z == ZONE_SUNKEN_RUINS) return (uint8_t)BIOME_SEA;
+    return (uint8_t)BIOME_MEADOW;
+}
+
 void hearth_start_battle(HearthState *st, uint8_t preset, uint8_t biome, int8_t field_idx) {
     uint16_t w, h;
     uint8_t lim;
     int16_t right_base, left_base;
     HearthBattleState *b;
     int i;
+
+    if (biome == (uint8_t)BIOME_AUTO || biome >= (uint8_t)BIOME_COUNT) {
+        biome = hearth_resolve_battle_biome(st);
+    }
 
     get_ppu_dims(st, &w, &h, &lim);
     right_base = (w == 256) ? 188 : 236;
@@ -3674,7 +3738,8 @@ static bool step_enemy_chase(HearthState *st, HearthFieldEnemy *e, int idx, int1
 
     doct = (adx > ady) ? (int16_t)(adx + (ady >> 1)) : (int16_t)(ady + (adx >> 1));
     if (doct < 16) {
-        hearth_start_battle(st, e->preset, e->biome, (int8_t)idx);
+        uint8_t resolved_biome = e->is_boss ? e->biome : (uint8_t)BIOME_AUTO;
+        hearth_start_battle(st, e->preset, resolved_biome, (int8_t)idx);
         return true;
     }
     return false;

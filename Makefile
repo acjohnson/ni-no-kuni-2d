@@ -40,9 +40,11 @@ ROM_CG_HDR      := $(PLAT_DIR)/cinema_cg_rom.h
 HERO24_HDR      := $(PLAT_DIR)/hearth_hero24.h
 ROWAN_GEN_HDR   := $(PLAT_DIR)/rowan_gen_rom.h
 TERRAIN_ROM_HDR := $(PLAT_DIR)/hearth_terrain_rom.h
+BATTLE_BG_ROM_HDR := $(PLAT_DIR)/battle_bg_rom.h
 SNES_CG_ASM     := $(PLAT_DIR)/cinema_cg_snes.asm
 SNES_ROWAN_ASM  := $(PLAT_DIR)/rowan_snes_rom.asm
 SNES_TERRAIN_ASM := $(PLAT_DIR)/hearth_terrain_snes.asm
+SNES_BATTLE_BG_ASM := $(PLAT_DIR)/battle_bg_snes.asm
 TEST_SRC        := $(PLAT_DIR)/headless_test.c
 GENESIS_SRC     := $(PLAT_DIR)/genesis_main.c
 SNES_SRC        := $(PLAT_DIR)/snes_main.c
@@ -116,7 +118,7 @@ all: $(HOST_TARGET)
 # ------------------------------------------------------------------------------
 linux: $(BUILD_DIR)/linux/$(APP_NAME)
 
-$(BUILD_DIR)/linux/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_HDR) $(HERO24_HDR) $(TERRAIN_ROM_HDR)
+$(BUILD_DIR)/linux/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_HDR) $(HERO24_HDR) $(TERRAIN_ROM_HDR) $(BATTLE_BG_ROM_HDR)
 	$(call PRINT_BUILD_BANNER,linux-sdl2)
 	@if [ -z "$(SDL2_CFLAGS)" ] && [ ! -f /usr/include/SDL2/SDL.h ]; then \
 		echo "ERROR: SDL2 development headers not found."; \
@@ -135,7 +137,7 @@ $(BUILD_DIR)/linux/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_
 # ------------------------------------------------------------------------------
 macos: $(BUILD_DIR)/macos/$(APP_NAME)
 
-$(BUILD_DIR)/macos/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_HDR) $(HERO24_HDR) $(TERRAIN_ROM_HDR)
+$(BUILD_DIR)/macos/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_HDR) $(HERO24_HDR) $(TERRAIN_ROM_HDR) $(BATTLE_BG_ROM_HDR)
 	$(call PRINT_BUILD_BANNER,macos-sdl2)
 	@if [ -z "$(SDL2_CFLAGS)" ]; then \
 		echo "ERROR: SDL2 not found. Install via Homebrew: brew install sdl2 pkg-config"; \
@@ -150,7 +152,7 @@ $(BUILD_DIR)/macos/$(APP_NAME): $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_
 # ------------------------------------------------------------------------------
 windows: $(BUILD_DIR)/windows/$(APP_NAME).exe
 
-$(BUILD_DIR)/windows/$(APP_NAME).exe: $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_HDR) $(HERO24_HDR) $(TERRAIN_ROM_HDR)
+$(BUILD_DIR)/windows/$(APP_NAME).exe: $(CORE_SRCS) $(CORE_HDRS) $(SDL2_SRC) $(SDL2_CG_HDR) $(HERO24_HDR) $(TERRAIN_ROM_HDR) $(BATTLE_BG_ROM_HDR)
 	$(call PRINT_BUILD_BANNER,windows-x64)
 	@command -v $(MINGW_CC) >/dev/null 2>&1 || { \
 		echo "ERROR: $(MINGW_CC) not found. Install with: sudo apt install -y mingw-w64"; \
@@ -188,10 +190,10 @@ $(BUILD_DIR)/test/$(APP_NAME)_core_test: $(CORE_SRCS) $(CORE_HDRS) $(TEST_SRC)
 # ------------------------------------------------------------------------------
 # 5. SEGA GENESIS / MEGA DRIVE ROM (Implicit Docker SGDK — Zero Manual Setup!)
 # ------------------------------------------------------------------------------
-genesis-stage: $(CORE_SRCS) $(CORE_HDRS) $(GENESIS_SRC) $(ROM_CG_HDR) $(HERO24_HDR) $(ROWAN_GEN_HDR) $(TERRAIN_ROM_HDR)
+genesis-stage: $(CORE_SRCS) $(CORE_HDRS) $(GENESIS_SRC) $(ROM_CG_HDR) $(HERO24_HDR) $(ROWAN_GEN_HDR) $(TERRAIN_ROM_HDR) $(BATTLE_BG_ROM_HDR)
 	@rm -rf $(BUILD_DIR)/genesis/src $(BUILD_DIR)/genesis/out
 	@mkdir -p $(BUILD_DIR)/genesis/src $(BUILD_DIR)/genesis/res $(BUILD_DIR)/genesis/inc
-	@cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) $(HERO24_HDR) $(ROWAN_GEN_HDR) $(TERRAIN_ROM_HDR) $(BUILD_DIR)/genesis/src/
+	@cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) $(HERO24_HDR) $(ROWAN_GEN_HDR) $(TERRAIN_ROM_HDR) $(BATTLE_BG_ROM_HDR) $(BUILD_DIR)/genesis/src/
 	@cp $(GENESIS_SRC) $(BUILD_DIR)/genesis/src/main.c
 
 genesis: genesis-stage
@@ -217,7 +219,7 @@ genesis: genesis-stage
 # ------------------------------------------------------------------------------
 # 6. SUPER NINTENDO (SNES) ROM (FastROM + SPC700 Audio + Auto-Fetched PVSnesLib)
 # ------------------------------------------------------------------------------
-snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(HERO24_HDR) $(TERRAIN_ROM_HDR) $(SNES_CG_ASM) $(SNES_ROWAN_ASM) $(SNES_TERRAIN_ASM) $(SNES_AUDIO_GEN)
+snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(HERO24_HDR) $(TERRAIN_ROM_HDR) $(BATTLE_BG_ROM_HDR) $(SNES_CG_ASM) $(SNES_ROWAN_ASM) $(SNES_TERRAIN_ASM) $(SNES_BATTLE_BG_ASM) $(SNES_AUDIO_GEN)
 	$(call PRINT_BUILD_BANNER,snes-fastrom)
 	@set -e; \
 	PV_ROOT=""; \
@@ -253,14 +255,14 @@ snes: $(CORE_SRCS) $(CORE_HDRS) $(SNES_SRC) $(ROM_CG_HDR) $(HERO24_HDR) $(TERRAI
 	mkdir -p "$(BUILD_DIR)/snes/src" "$(BUILD_DIR)/snes/res"; \
 	$(CC) -std=c99 -O2 $(SNES_AUDIO_GEN) -o "$(BUILD_DIR)/snes/gen_snes_audio"; \
 	"$(BUILD_DIR)/snes/gen_snes_audio" "$(BUILD_DIR)/snes/res"; \
-	cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) $(HERO24_HDR) $(TERRAIN_ROM_HDR) "$(BUILD_DIR)/snes/src/"; \
+	cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) $(HERO24_HDR) $(TERRAIN_ROM_HDR) $(BATTLE_BG_ROM_HDR) "$(BUILD_DIR)/snes/src/"; \
 	cp $(SNES_SRC) "$(BUILD_DIR)/snes/src/main.c"; \
 	DATA_OBJ="data.obj"; \
 	if grep -qE '^[^#]*(SRC|dir)[^#]*\*\.asm' "$$PV_ROOT/devkitsnes/snes_rules" 2>/dev/null; then \
-		cat $(SNES_CG_ASM) $(SNES_ROWAN_ASM) $(SNES_TERRAIN_ASM) > "$(BUILD_DIR)/snes/src/data.asm"; \
+		cat $(SNES_CG_ASM) $(SNES_ROWAN_ASM) $(SNES_TERRAIN_ASM) $(SNES_BATTLE_BG_ASM) > "$(BUILD_DIR)/snes/src/data.asm"; \
 		DATA_OBJ="src/data.obj"; \
 	else \
-		cat $(SNES_CG_ASM) $(SNES_ROWAN_ASM) $(SNES_TERRAIN_ASM) > "$(BUILD_DIR)/snes/data.asm"; \
+		cat $(SNES_CG_ASM) $(SNES_ROWAN_ASM) $(SNES_TERRAIN_ASM) $(SNES_BATTLE_BG_ASM) > "$(BUILD_DIR)/snes/data.asm"; \
 	fi; \
 	printf '%s\n' \
 		'export FASTROM := 1' \

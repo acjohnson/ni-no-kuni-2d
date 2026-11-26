@@ -31,6 +31,8 @@
 #include "hearth_hero24.h"
 #define HEARTH_INCLUDE_SDL2_TERRAIN 1
 #include "hearth_terrain_rom.h"
+#define HEARTH_INCLUDE_SDL2_BATTLE_BG 1
+#include "battle_bg_rom.h"
 
 /* ============================================================================
  * 1. VIRTUAL PPU FRAMEBUFFER & PIXEL HELPERS
@@ -39,6 +41,9 @@
 #define FB_MAX_H 224
 
 static uint32_t g_fb[FB_MAX_W * FB_MAX_H];
+static uint32_t g_battle_bg_fb[320 * 160];
+static uint8_t  g_battle_bg_cached_biome = 255u;
+static uint8_t  g_battle_bg_cached_tod   = 255u;
 static uint32_t g_pal_argb[4][16];
 static uint32_t g_chrono_pal_argb[4][16];
 static int8_t   g_chrono_anim_lut[CHRONO_META_COUNT];
@@ -2262,64 +2267,128 @@ static void render_battle_vfx(const HearthState *st, const HearthPpuPacket *ppu)
     }
 }
 
+static void ensure_sdl2_battle_bg_decoded(uint8_t biome, uint8_t tod) {
+    uint8_t b = (biome < BATTLE_BG_COUNT) ? biome : 0u;
+    uint8_t t = (tod < 4u) ? tod : 1u;
+    if (g_battle_bg_cached_biome == b && g_battle_bg_cached_tod == t) return;
+    g_battle_bg_cached_biome = b;
+    g_battle_bg_cached_tod = t;
+
+    const uint8_t  *tiles = BATTLE_HI_TILE_PTRS[b];
+    const uint16_t *map   = BATTLE_HI_MAP_PTRS[b];
+
+    for (uint32_t ty = 0u; ty < BATTLE_BG_GEN_TH; ty++) {
+        for (uint32_t tx = 0u; tx < BATTLE_BG_GEN_TW; tx++) {
+            uint16_t w = map[ty * BATTLE_BG_GEN_TW + tx];
+            uint32_t tid = (uint32_t)(w & 0x0FFFu);
+            uint32_t pal = (uint32_t)((w >> 12) & 3u);
+            uint32_t hf  = (uint32_t)((w >> 14) & 1u);
+            uint32_t vf  = (uint32_t)((w >> 15) & 1u);
+            const uint8_t *tptr = tiles + tid * 32u;
+            const uint32_t *palp = BATTLE_HI_PALS[b][t][pal];
+            for (uint32_t ly = 0u; ly < 8u; ly++) {
+                uint32_t sy = vf ? (7u - ly) : ly;
+                uint32_t *dst = g_battle_bg_fb + (ty * 8u + ly) * 320u + tx * 8u;
+                for (uint32_t lx = 0u; lx < 8u; lx++) {
+                    uint32_t sx = hf ? (7u - lx) : lx;
+                    uint8_t byte = tptr[sy * 4u + (sx >> 1)];
+                    uint8_t ci = ((sx & 1u) == 0u) ? (uint8_t)((byte >> 4) & 0x0Fu) : (uint8_t)(byte & 0x0Fu);
+                    dst[lx] = palp[ci];
+                }
+            }
+        }
+    }
+}
+
+static void render_sdl2_battle_atmosphere(uint8_t biome, uint8_t tod, int w, uint32_t fc) {
+    for (int i = 0; i < 14; i++) {
+        int s1 = (i * 53 + 17) & 255;
+        int s2 = (i * 97 + 41) & 255;
+        int sw = (int)HEARTH_SIN64[((int)(fc >> 2) + i * 7) & 63] >> 4;
+
+        if (biome == BIOME_FROST) {
+            int px = (s1 * 2 + sw + (int)(fc >> 2)) % w;
+            int py = (s2 + (int)(fc >> 1) + i * 11) % 154;
+            if (px < 0) px += w;
+            fill_rect_px(px, py, (i % 3 == 0) ? 2 : 1, 1, (i & 1) ? 0xFFB8E4FAu : 0xFFF4FCFFu);
+        } else if (biome == BIOME_VOLCANO || biome == BIOME_BOARHOLD || biome == BIOME_INTERIOR) {
+            if (biome == BIOME_INTERIOR && i >= 6) continue;
+            int px = (biome == BIOME_INTERIOR) ? ((w >> 1) - 14 + (s1 % 28)) : ((s1 * 2 + sw) % w);
+            int py = (biome == BIOME_INTERIOR) ? (84 - (int)((fc + (uint32_t)s2) % 34u))
+                                               : (152 - (int)((fc + (uint32_t)s2) % 148u));
+            if (px < 0) px += w;
+            fill_rect_px(px, py, 2, 2, (((fc >> 2) + (uint32_t)i) & 1u) ? 0xFFFFE278u : 0xFFF4762Cu);
+        } else if (biome == BIOME_SHRINE) {
+            if (((fc + (uint32_t)(i * 13)) & 31u) < 22u) {
+                int px = (s1 * 2 + sw) % w;
+                int py = 146 - (int)(((fc >> 1) + (uint32_t)s2) % 120u);
+                if (px < 0) px += w;
+                fill_rect_px(px, py, 2, 2, (i & 1) ? 0xFF4CC8E8u : 0xFF9CF8FFu);
+            }
+        } else if (biome == BIOME_SEWER) {
+            if (i < 6) {
+                int px = 20 + ((s1 * 3) % (w - 40));
+                int py = 24 + (int)((fc * 2u + (uint32_t)s2) % 74u);
+                fill_rect_px(px, py, 1, 3, 0xFF7CE4C8u);
+            } else if (((fc >> 3) + (uint32_t)i) & 1u) {
+                int px = (s1 * 2 + (int)(fc >> 1)) % w;
+                int py = 89 + (i % 9);
+                fill_rect_px(px, py, 4, 1, 0xFF8CF2D4u);
+            }
+        } else if (biome == BIOME_DESERT) {
+            int px = (s1 * 3 + (int)(fc * 2u)) % w;
+            int py = 74 + (s2 % 78);
+            fill_rect_px(px, py, 4, 1, (tod == 3u) ? 0xFF7B8CB2u : 0xFFFCE4A2u);
+        } else if (biome == BIOME_SEA || biome == BIOME_PARADISE) {
+            if ((((fc >> 3) + (uint32_t)i) % 3u) == 0u) {
+                int px = (s1 * 2 + (int)(fc >> 2)) % w;
+                int py = ((biome == BIOME_SEA) ? 66 : 60) + (s2 % 34);
+                fill_rect_px(px, py, 4, 1, (tod == 3u) ? 0xFFA8D4FAu : 0xFFFFFFFFu);
+            }
+        } else if (biome == BIOME_FOREST) {
+            int px = (s1 * 2 + sw + (int)(fc >> 2)) % w;
+            int py = (s2 + (int)(fc >> 1)) % 148;
+            if (px < 0) px += w;
+            fill_rect_px(px, py, 2, 2, (tod == 3u) ? 0xFF7CE8A8u : ((i & 1) ? 0xFFF2A444u : 0xFF7EC864u));
+        } else if (biome == BIOME_TOWN) {
+            if (tod >= 2u || (i & 1) == 0) {
+                int px = (s1 * 2 + sw) % w;
+                int py = 46 + (int)(((uint32_t)s2 + (fc >> 2)) % 100u);
+                if (px < 0) px += w;
+                fill_rect_px(px, py, 2, 1, (tod >= 2u) ? 0xFFFFE478u : 0xFFFFF4C8u);
+            }
+        } else {
+            int px = (s1 * 2 + (int)(fc >> 1) + sw) % w;
+            int py = (s2 + (int)(fc >> 2)) % 146;
+            if (px < 0) px += w;
+            if (tod == 3u) {
+                if (((fc + (uint32_t)(i * 17)) & 31u) < 18u) fill_rect_px(px, py, 2, 2, 0xFFE8FF88u);
+            } else {
+                fill_rect_px(px, py, 2, 1, (i & 1) ? 0xFFF6A8B0u : 0xFFFFF6D6u);
+            }
+        }
+    }
+}
+
 static void render_battle_scene(const HearthState *st, const HearthPpuPacket *ppu) {
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
     uint8_t biome = st->battle.biome;
-    bool shrine   = (biome == BIOME_SHRINE);
-    bool sewer    = (biome == BIOME_SEWER);
-    bool boar     = (biome == BIOME_BOARHOLD);
-    bool desert   = (biome == BIOME_DESERT);
-    bool paradise = (biome == BIOME_PARADISE);
+    uint8_t tod   = st->time_of_day;
+    int src_x0 = (w < 320) ? ((320 - w) >> 1) : 0;
 
-    /* Sky / Cavern / Citadel / Desert / Paradise gradient */
-    for (int y = 0; y < 96; y++) {
-        uint32_t col;
-        if (sewer) {
-            col = (y < 32) ? 0xFF0A1418u : (y < 64) ? 0xFF12262Cu : 0xFF1B3A3Cu;
-        } else if (boar) {
-            col = (y < 32) ? 0xFF28121Cu : (y < 64) ? 0xFF48202Cu : 0xFF723438u;
-        } else if (shrine) {
-            col = (y < 32) ? 0xFF1B1932u : (y < 64) ? 0xFF28264Bu : 0xFF3A3562u;
-        } else if (desert) {
-            col = (y < 32) ? 0xFFE08C3Au : (y < 64) ? 0xFFF2B85Cu : 0xFFFFE29Cu;
-        } else if (paradise) {
-            col = (y < 32) ? 0xFF2896D8u : (y < 64) ? 0xFF56C6E8u : 0xFFA8F0F8u;
-        } else {
-            col = (y < 32) ? 0xFF4D9CD0u : (y < 64) ? 0xFF77BBE6u : 0xFFBEE7F8u;
-        }
-        fill_rect_px(0, y, w, 1, col);
+    /* 1. Hand-Pixelated 60-Color 16-Bit 3/4 Isometric Battle Stage (rows 0..159) */
+    ensure_sdl2_battle_bg_decoded(biome, tod);
+    for (int y = 0; y < 160 && y < h; y++) {
+        memcpy(&g_fb[y * FB_MAX_W], &g_battle_bg_fb[y * 320 + src_x0], (size_t)w * sizeof(uint32_t));
+    }
+    if (h > 160) {
+        fill_rect_px(0, 160, w, h - 160, 0xFF0D101Au);
     }
 
-    /* Distant rolling hills / dunes / coral horizon */
-    for (int x = 0; x < w; x++) {
-        int hill = 82 + (HEARTH_SIN64[(x >> 2) & 63] >> 4);
-        uint32_t hcol = sewer ? 0xFF102022u : boar ? 0xFF321820u : shrine ? 0xFF232538u
-                      : desert ? 0xFFD29A48u : paradise ? 0xFF3AAEC4u : 0xFF4A884Eu;
-        fill_rect_px(x, hill, 1, 96 - hill, hcol);
-    }
+    /* 2. Dynamic Biome Ambient Particles & Atmospheric Shimmer */
+    render_sdl2_battle_atmosphere(biome, tod, w, ppu->frame_count);
 
-    /* Battleground stage floor */
-    uint32_t floor_col = sewer ? 0xFF2A3E42u : boar ? 0xFF5A4C52u : shrine ? 0xFF4C5868u
-                       : desert ? 0xFFE8C26Eu : paradise ? 0xFFF2DDA6u : 0xFF74B461u;
-    uint32_t trim_col  = sewer ? 0xFF44B888u : boar ? 0xFFE07A48u : shrine ? 0xFF8591A0u
-                       : desert ? 0xFFF8DF98u : paradise ? 0xFF7ADCF0u : 0xFFA8D678u;
-    fill_rect_px(0, 96, w, h - 96, floor_col);
-    fill_rect_px(0, 96, w, 3, trim_col);
-    if (sewer) {
-        fill_ellipse_alpha(w / 2, 136, 95, 18, 0xFF38A878u, 70);
-    } else if (boar) {
-        draw_circle_outline(w / 2, 136, 46, 0xFFE8A048u);
-    } else if (shrine) {
-        draw_circle_outline(w / 2, 134, 44, pal_col(3, 15));
-        draw_circle_outline(w / 2, 134, 30, pal_col(0, 11));
-    } else if (desert) {
-        fill_ellipse_alpha(w / 2, 136, 95, 20, 0xFFD4A04Cu, 110);
-    } else if (paradise) {
-        fill_ellipse_alpha(w / 2, 136, 95, 20, 0xFF52C4D8u, 85);
-    } else {
-        fill_ellipse_alpha(w / 2, 136, 95, 22, pal_col(0, 3), 90);
-    }
 
     /* Ni No Kuni Soul-Arc Swap Beam */
     if (st->battle.phase == BPHASE_SWAP_ARC) {

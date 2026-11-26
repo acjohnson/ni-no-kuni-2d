@@ -193,6 +193,7 @@ void hearth_toggle_atlas(HearthState *st);
 void hearth_designer_cycle_vehicle(HearthState *st);
 void hearth_designer_warp_region(HearthState *st, uint8_t region_id);
 void hearth_start_cutscene(HearthState *st, const HearthCutsceneOp *script);
+uint8_t hearth_resolve_battle_biome(const HearthState *st);
 void hearth_start_battle(HearthState *st, uint8_t preset, uint8_t biome, int8_t field_idx);
 void hearth_open_shop(HearthState *st, uint8_t shop_id);
 void hearth_start_fishing(HearthState *st);

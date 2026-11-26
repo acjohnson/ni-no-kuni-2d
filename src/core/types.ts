@@ -81,7 +81,19 @@ export type BgmTrackId =
   | 'VOLCANO'
   | 'TECH';
 
-export type BattleBiome = 'MEADOW' | 'SHRINE' | 'SEWER' | 'BOARHOLD' | 'DESERT' | 'PARADISE';
+export type BattleBiome =
+  | 'MEADOW'
+  | 'SHRINE'
+  | 'SEWER'
+  | 'BOARHOLD'
+  | 'DESERT'
+  | 'PARADISE'
+  | 'FOREST'
+  | 'TOWN'
+  | 'INTERIOR'
+  | 'SEA'
+  | 'FROST'
+  | 'VOLCANO';
 
 export type EncounterPreset =
   | 'MEADOW_PACK'

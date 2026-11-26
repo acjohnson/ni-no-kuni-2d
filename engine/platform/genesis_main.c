@@ -20,6 +20,8 @@
 #include "rowan_gen_rom.h"
 #define HEARTH_INCLUDE_GENESIS_TERRAIN 1
 #include "hearth_terrain_rom.h"
+#define HEARTH_INCLUDE_GENESIS_BATTLE_BG 1
+#include "battle_bg_rom.h"
 
 /* Placed statically in Sega Genesis 64KB 68000 Work RAM (zero malloc!) */
 static HearthState g_hearth;
@@ -1616,6 +1618,8 @@ static s16 g_last_cam_mx = -999;
 static s16 g_last_cam_my = -999;
 static u8  g_last_scene_mode = 255;
 static u8  g_last_intro_scene = 255;
+static u8  g_last_battle_biome = 255;
+static u8  g_last_battle_tod = 255;
 static u8  g_last_pal_id = 255;
 static u8  g_last_pal3_mode = 255;
 static u8  g_last_map_rev = 255;
@@ -1694,32 +1698,51 @@ static void stream_world_viewport(s16 cam_x, s16 cam_y) {
     }
 }
 
-static void draw_battle_backdrop(u8 biome) {
-    u8 dark_arena = (biome == BIOME_SHRINE || biome == BIOME_SEWER || biome == BIOME_BOARHOLD) ? 1u : 0u;
+static void draw_battle_backdrop(u8 biome, u8 tod) {
+    /* Must ONLY be called outside bulk lock (g_vdp_bulk_depth == 0) so DMA_QUEUE flushes cleanly! */
+    static u16 cram3[16];
+    u8 b = (biome < BATTLE_BG_COUNT) ? biome : 0u;
+    u8 t = (tod < 4u) ? tod : 1u;
+    const u16 *mp = BATTLE_GEN_MAP_PTRS[b];
+
+    gen_vdp_begin_bulk();
     gen_clear_plane(BG_B);
     gen_clear_plane(BG_A);
-    for (u16 my = 0u; my < 14u; my++) {
-        u8 m = (my < 5u) ? (u8)(dark_arena ? CM_BATTLE_SKY_SHRINE : CM_BATTLE_SKY_MEADOW)
-                         : (u8)(dark_arena ? CM_BATTLE_GND_SHRINE : CM_BATTLE_GND_MEADOW);
-        u16 tl = gen_meta_attr(GEN_META_TL[m]);
-        u16 tr = gen_meta_attr(GEN_META_TR[m]);
-        u16 bl = gen_meta_attr(GEN_META_BL[m]);
-        u16 br = gen_meta_attr(GEN_META_BR[m]);
-        u16 ty0 = (u16)(my * 2u);
-        u16 ty1 = (u16)(ty0 + 1u);
-        for (u16 mx = 0u; mx < 20u; mx++) {
-            u16 tx0 = (u16)(mx * 2u);
-            u16 tx1 = (u16)(tx0 + 1u);
-            VDP_setTileMapXY(BG_A, tl, tx0, ty0);
-            VDP_setTileMapXY(BG_A, tr, tx1, ty0);
-            VDP_setTileMapXY(BG_A, bl, tx0, ty1);
-            VDP_setTileMapXY(BG_A, br, tx1, ty1);
+    gen_vdp_end_bulk();
+
+    /* 128KB-boundary-safe VBlank DMA_QUEUE upload of 3/4 Isometric Battle Stage (<= 360 tiles) */
+    g_vista_vram_dirty = 1u; /* Shares 480-tile block with Vista/Atlas/CG -> re-bake on demand */
+    g_atlas_baked = 0u;
+    gen_upload_rom_tiles_dma(BATTLE_GEN_TILE_PTRS[b], VRAM_CG_BASE, BATTLE_GEN_TILE_COUNTS[b]);
+
+    gen_vdp_begin_bulk();
+    /* Load 15-color RGB333 (biome, ToD) palette into PAL0; restore PAL3 Enemy/VFX colors (PAL1/PAL2 untouched!) */
+    for (u16 c = 0u; c < 16u; c++) {
+        cram3[c] = hearth_rgb_to_genesis_bgr333(HEARTH_PALETTES_RGB[3][c]);
+    }
+    PAL_setColors(0,  BATTLE_GEN_PAL0[b][t], 16, CPU);
+    PAL_setColors(48, cram3, 16, CPU);
+    g_last_pal_id = 255u;
+    g_last_pal3_mode = 255u;
+
+    /* Map full 40x20 hand-pixelated 3/4 isometric battle stage onto BG_A rows 0..19 (y=0..159) */
+    for (u16 ty = 0u; ty < BATTLE_BG_GEN_TH; ty++) {
+        for (u16 tx = 0u; tx < BATTLE_BG_GEN_TW; tx++) {
+            u16 w = mp[(u16)(ty * BATTLE_BG_GEN_TW + tx)];
+            u16 vf = (u16)((w >> 12) & 1u);
+            u16 hf = (u16)((w >> 11) & 1u);
+            u16 tid = (u16)(w & 0x07FFu);
+            VDP_setTileMapXY(BG_A,
+                             TILE_ATTR_FULL(PAL0, 0, vf, hf, (u16)(VRAM_CG_BASE + tid)),
+                             tx, ty);
         }
     }
+
     VDP_setHorizontalScrollVSync(BG_A, 0);
     VDP_setVerticalScrollVSync(BG_A, 0);
     VDP_setHorizontalScrollVSync(BG_B, 0);
     VDP_setVerticalScrollVSync(BG_B, 0);
+    gen_vdp_end_bulk();
 }
 
 static void draw_intro_backdrop(u8 scene) {
@@ -2455,31 +2478,59 @@ static void render_sprites(const HearthPpuPacket *ppu) {
         }
     }
 
-    /* 60fps Living Biome Atmosphere Hardware Motes (Petals, Autumn Maple Leaves, Fireflies, Snow) */
-    if (g_hearth.mode == MODE_EXPLORE && !g_hearth.atlas_open && g_win_layout == 0u &&
-        ppu->terrain_pal_id != ZPAL_COTTAGE_INTERIOR &&
-        ppu->terrain_pal_id != ZPAL_SEWERS &&
-        ppu->terrain_pal_id != ZPAL_BOARHOLD) {
+    /* 60fps Living Biome Atmosphere Hardware Motes (Petals, Leaves, Embers, Snow, Fireflies) */
+    if ((g_hearth.mode == MODE_EXPLORE && !g_hearth.atlas_open && g_win_layout == 0u &&
+         ppu->terrain_pal_id != ZPAL_COTTAGE_INTERIOR &&
+         ppu->terrain_pal_id != ZPAL_SEWERS &&
+         ppu->terrain_pal_id != ZPAL_BOARHOLD) ||
+        g_hearth.mode == MODE_BATTLE) {
         static const u16 MOTE_SEED_X[6] = { 28u, 86u, 148u, 206u, 264u, 304u };
         static const u16 MOTE_SEED_Y[6] = { 22u, 74u, 118u, 46u, 152u, 186u };
         u16 fc = (u16)g_hearth.frame_count;
-        u8 is_night = (ppu->terrain_pal_id == ZPAL_AUTUMN_NIGHT || ppu->terrain_pal_id == ZPAL_SHADOW) ? 1u : 0u;
-        u16 mpal = (ppu->terrain_pal_id == ZPAL_ALDERBROOK || ppu->terrain_pal_id == ZPAL_AUTUMN_DUSK ||
-                    ppu->terrain_pal_id == ZPAL_VOLCANO) ? PAL0 : PAL3;
-        for (u8 k = 0u; k < 6u && count < 68u; k++) {
-            u16 drift_x = (u16)(MOTE_SEED_X[k] + (fc >> 1) + ((u16)k * 17u));
-            u16 drift_y = is_night
-                ? (u16)(MOTE_SEED_Y[k] + (((fc >> 2) + k * 5u) & 15u))
-                : (u16)(MOTE_SEED_Y[k] + (fc >> 2) + ((u16)k * 13u));
-            s16 px = (s16)((drift_x - (u16)(ppu->cam_x >> 1)) & 0x1FFu);
-            s16 py = (s16)(12 + (s16)((drift_y - (u16)(ppu->cam_y >> 1)) & 255u));
-            if (px >= 320) px = (s16)(px - 320);
-            if (py >= 216) py = (s16)(py - 204);
-            if (px >= 0 && px < 312 && py >= 12 && py < 216) {
-                u8 hf = (u8)(((fc >> 4) + k) & 1u);
-                VDP_setSpriteFull(count, px, py, SPRITE_SIZE(1, 1),
-                    TILE_ATTR_FULL(mpal, 1, 0, hf, VRAM_BG_MOTE_TILE), (u8)(count + 1u));
-                count++;
+        if (g_hearth.mode == MODE_BATTLE) {
+            u8 bb = g_hearth.battle.biome;
+            u8 rises = (bb == BIOME_VOLCANO || bb == BIOME_BOARHOLD) ? 1u : 0u;
+            u8 bobs  = (bb == BIOME_SHRINE || bb == BIOME_FOREST || bb == BIOME_SEWER ||
+                        g_hearth.time_of_day == TOD_NIGHT) ? 1u : 0u;
+            u16 mpal = (bb == BIOME_VOLCANO || bb == BIOME_BOARHOLD || bb == BIOME_DESERT) ? PAL3 : PAL1;
+            for (u8 k = 0u; k < 6u && count < 68u; k++) {
+                u16 drift_x = (u16)(MOTE_SEED_X[k] + (fc >> 1) + ((u16)k * 19u));
+                s16 px = (s16)(drift_x & 0x1FFu);
+                s16 py;
+                if (bobs) {
+                    py = (s16)(12 + (s16)((MOTE_SEED_Y[k] + (((fc >> 2) + k * 5u) & 15u)) & 127u));
+                } else if (rises) {
+                    py = (s16)(142 - (s16)((MOTE_SEED_Y[k] + (fc >> 2) + ((u16)k * 13u)) & 127u));
+                } else {
+                    py = (s16)(8 + (s16)((MOTE_SEED_Y[k] + (fc >> 2) + ((u16)k * 13u)) & 127u));
+                }
+                if (px >= 320) px = (s16)(px - 320);
+                if (px >= 0 && px < 312 && py >= 8 && py < 148) {
+                    u8 hf = (u8)(((fc >> 4) + k) & 1u);
+                    VDP_setSpriteFull(count, px, py, SPRITE_SIZE(1, 1),
+                        TILE_ATTR_FULL(mpal, 1, 0, hf, VRAM_BG_MOTE_TILE), (u8)(count + 1u));
+                    count++;
+                }
+            }
+        } else {
+            u8 is_night = (ppu->terrain_pal_id == ZPAL_AUTUMN_NIGHT || ppu->terrain_pal_id == ZPAL_SHADOW) ? 1u : 0u;
+            u16 mpal = (ppu->terrain_pal_id == ZPAL_ALDERBROOK || ppu->terrain_pal_id == ZPAL_AUTUMN_DUSK ||
+                        ppu->terrain_pal_id == ZPAL_VOLCANO) ? PAL0 : PAL3;
+            for (u8 k = 0u; k < 6u && count < 68u; k++) {
+                u16 drift_x = (u16)(MOTE_SEED_X[k] + (fc >> 1) + ((u16)k * 17u));
+                u16 drift_y = is_night
+                    ? (u16)(MOTE_SEED_Y[k] + (((fc >> 2) + k * 5u) & 15u))
+                    : (u16)(MOTE_SEED_Y[k] + (fc >> 2) + ((u16)k * 13u));
+                s16 px = (s16)((drift_x - (u16)(ppu->cam_x >> 1)) & 0x1FFu);
+                s16 py = (s16)(12 + (s16)((drift_y - (u16)(ppu->cam_y >> 1)) & 255u));
+                if (px >= 320) px = (s16)(px - 320);
+                if (py >= 216) py = (s16)(py - 204);
+                if (px >= 0 && px < 312 && py >= 12 && py < 216) {
+                    u8 hf = (u8)(((fc >> 4) + k) & 1u);
+                    VDP_setSpriteFull(count, px, py, SPRITE_SIZE(1, 1),
+                        TILE_ATTR_FULL(mpal, 1, 0, hf, VRAM_BG_MOTE_TILE), (u8)(count + 1u));
+                    count++;
+                }
             }
         }
     }
@@ -3553,7 +3604,9 @@ int main(bool hard_reset) {
 
         /* 1. Handle full scene/map transitions FIRST (tile DMAs outside bulk, plane/CRAM inside bulk!) */
         if (scene_mode != g_last_scene_mode || map_changed ||
-            (scene_mode == 2u && g_hearth.intro.scene != g_last_intro_scene)) {
+            (scene_mode == 2u && g_hearth.intro.scene != g_last_intro_scene) ||
+            (scene_mode == 1u && (g_hearth.battle.biome != g_last_battle_biome ||
+                                  g_hearth.time_of_day != g_last_battle_tod))) {
             u8 prev_scene = g_last_scene_mode;
             g_last_scene_mode = scene_mode;
             g_last_intro_scene = g_hearth.intro.scene;
@@ -3571,13 +3624,16 @@ int main(bool hard_reset) {
                 update_window_ui(ppu);
                 gen_vdp_end_bulk();
             } else if (scene_mode == 1u) {
-                gen_vdp_begin_bulk();
+                g_last_battle_biome = g_hearth.battle.biome;
+                g_last_battle_tod   = g_hearth.time_of_day;
                 if (g_cinema_pals_active) {
+                    gen_vdp_begin_bulk();
                     upload_palettes_to_cram();
                     g_cinema_pals_active = 0u;
+                    gen_vdp_end_bulk();
                 }
-                upload_zone_pal0_to_cram(ppu->terrain_pal_id, 0u, CPU);
-                draw_battle_backdrop(g_hearth.battle.biome);
+                draw_battle_backdrop(g_hearth.battle.biome, g_hearth.time_of_day);
+                gen_vdp_begin_bulk();
                 update_window_ui(ppu);
                 gen_vdp_end_bulk();
             } else {
@@ -3625,8 +3681,8 @@ int main(bool hard_reset) {
             gen_vdp_end_bulk();
         }
 
-        /* 3. Incremental VBlank DMA_QUEUE palette updates (time-of-day / atlas close / battle flash) */
-        if (scene_mode != 2u && !g_hearth.atlas_open &&
+        /* 3. Incremental VBlank DMA_QUEUE palette updates (overworld time-of-day / atlas close) */
+        if (scene_mode == 0u && !g_hearth.atlas_open &&
             (ppu->terrain_pal_id != g_last_pal_id || want_tpal3 != g_last_pal3_mode)) {
             upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, DMA_QUEUE);
         }
