@@ -2251,16 +2251,32 @@ def make_world_jungle(variant=0):
     return t
 
 def make_world_coral(frame=0):
+    """
+    Seamless translucent tropical coral reef embedded directly in TPAL_WATER shallow waves!
+    Outer 2px margin is untouched make_water(frame, shallow=True) for 0.0-diff border blending
+    in every biome (Suncrest Paradise, Babana Shallows, Evertale Globe, SNES & Genesis).
+    """
     t = make_water(frame, shallow=True)
-    t.qpal = [TPAL_ACCENT, TPAL_ACCENT, TPAL_ACCENT, TPAL_ACCENT]
-    t.rect(0, 0, 16, 16, 7)
-    for y in range(16):
-        for x in range(16):
-            if ((x + frame * 2 + y * 3) & 7) == 0: t.p(x, y, 8)
-    for cx, cy in [(4, 6), (11, 10), (7, 12)]:
-        t.disc(cx, cy, 2.6, 2.2, 3)
-        t.disc(cx - 0.4, cy - 0.5, 1.5, 1.3, 4)
-        t.p(cx - 1, cy - 1, 5)
+    # 1. Soft submerged underwater shadow halo beneath the reef heads (deep cerulean/sapphire)
+    for cx, cy, rx, ry in [(5.6, 6.8, 3.0, 2.3), (10.6, 10.2, 2.9, 2.3), (6.5, 11.6, 2.4, 1.9)]:
+        t.disc(cx, cy, rx, ry, 2)
+    for cx, cy, rx, ry in [(5.8, 7.2, 1.8, 1.4), (10.8, 10.6, 1.7, 1.3)]:
+        t.disc(cx, cy, rx, ry, 1)
+    # 2. Swaying emerald sea-fan / kelp fronds tucked behind the reef outcrops
+    sway = 1 if (frame in (1, 2)) else 0
+    for kx, ky in [(3, 4), (4, 3), (12, 7), (11, 6), (4, 10)]:
+        t.p(kx, ky, 9)
+        t.p(min(13, kx + sway), max(2, ky - 1), 10)
+    # 3. Sculpted 3D warm terracotta/golden brain-coral & staghorn mounds (strictly interior x,y in 2..13)
+    for cx, cy, rx, ry in [(5.0, 5.8, 2.5, 2.0), (10.0, 9.2, 2.4, 2.0), (6.0, 10.8, 2.0, 1.6)]:
+        t.disc(cx, cy, rx, ry, 5)                   # warm umber/terracotta reef base
+        t.disc(cx - 0.3, cy - 0.3, rx * 0.72, ry * 0.72, 6)  # lit terracotta-ochre dome
+        t.disc(cx - 0.6, cy - 0.6, rx * 0.42, ry * 0.42, 11) # sunlit golden coral crest
+        t.p(int(round(cx - 1.0)), int(round(cy - 1.0)), 7)   # ivory/pearl coral tip highlight
+    # 4. Gentle lapping foam & sunlit caustic sparkles along upper-left reef rims
+    glint = 15 if (frame & 1) else 14
+    for fx, fy in [(3, 5), (6, 4), (8, 8), (11, 8), (5, 12)]:
+        t.p(fx, fy, glint)
     return t
 
 def make_world_tech():
@@ -2952,13 +2968,19 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("            t == T_TALL_GRASS || t == T_AUTUMN_GRASS) ? 1u : 0u;")
     out.append("}")
     out.append("")
-    out.append("/* Infer dominant walkable ground underneath a prop (eliminates green-box props indoors & on stone/pier/sand!) */")
+    out.append("/* Infer dominant walkable ground underneath a prop (majority vote eliminates mismatched boxes!) */")
     out.append("static uint8_t hearth_infer_prop_ground(uint8_t tn, uint8_t ts, uint8_t tw, uint8_t te) {")
-    out.append("    uint8_t wood = 0u, cob = 0u, pier = 0u, aut = 0u, dirt = 0u, sand = 0u;")
+    out.append("    uint8_t wood = 0u, cob = 0u, pier = 0u, aut = 0u, dirt = 0u, sand = 0u, grass = 0u;")
+    out.append("    uint8_t best = 0u, best_cnt;")
     out.append("    if (tn == T_WOOD_FLOOR || tn == T_HEARTH_RUG) wood++;")
     out.append("    if (ts == T_WOOD_FLOOR || ts == T_HEARTH_RUG) wood++;")
     out.append("    if (tw == T_WOOD_FLOOR || tw == T_HEARTH_RUG) wood++;")
     out.append("    if (te == T_WOOD_FLOOR || te == T_HEARTH_RUG) wood++;")
+    out.append("    if (wood >= 1u) return 5u; /* Cozy Cottage / Shop Wood Floor */")
+    out.append("    if (tn == T_GRASS || tn == T_GRASS_ALT || tn == T_FLOWERS || tn == T_TALL_GRASS) grass++;")
+    out.append("    if (ts == T_GRASS || ts == T_GRASS_ALT || ts == T_FLOWERS || ts == T_TALL_GRASS) grass++;")
+    out.append("    if (tw == T_GRASS || tw == T_GRASS_ALT || tw == T_FLOWERS || tw == T_TALL_GRASS) grass++;")
+    out.append("    if (te == T_GRASS || te == T_GRASS_ALT || te == T_FLOWERS || te == T_TALL_GRASS) grass++;")
     out.append("    if (tn == T_DOCK_PIER || tn == T_BRIDGE) pier++;")
     out.append("    if (ts == T_DOCK_PIER || ts == T_BRIDGE) pier++;")
     out.append("    if (tw == T_DOCK_PIER || tw == T_BRIDGE) pier++;")
@@ -2979,13 +3001,13 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("    if (ts == T_DIRT) dirt++;")
     out.append("    if (tw == T_DIRT) dirt++;")
     out.append("    if (te == T_DIRT) dirt++;")
-    out.append("    if (wood >= 1u) return 5u; /* Cozy Cottage / Shop Wood Floor */")
-    out.append("    if (pier >= 1u) return 2u; /* Pier/Timber */")
-    out.append("    if (cob >= 1u)  return 1u; /* Cobblestone / Mountain Stone / Shrine */")
-    out.append("    if (aut >= 1u)  return 3u; /* Autumn Meadow */")
-    out.append("    if (sand >= 1u) return 6u; /* Coastal Beach / Desert Sand */")
-    out.append("    if (dirt >= 1u) return 4u; /* Dirt Road */")
-    out.append("    return 0u; /* Lush Meadow Grass */")
+    out.append("    best_cnt = grass;")
+    out.append("    if (dirt > best_cnt || (dirt == best_cnt && dirt > 0u)) { best = 4u; best_cnt = dirt; }")
+    out.append("    if (sand > best_cnt || (sand == best_cnt && sand > 0u)) { best = 6u; best_cnt = sand; }")
+    out.append("    if (aut  > best_cnt || (aut  == best_cnt && aut  > 0u)) { best = 3u; best_cnt = aut;  }")
+    out.append("    if (cob  > best_cnt || (cob  == best_cnt && cob  > 0u)) { best = 1u; best_cnt = cob;  }")
+    out.append("    if (pier > best_cnt || (pier == best_cnt && pier > 0u)) { best = 2u; best_cnt = pier; }")
+    out.append("    return best;")
     out.append("}")
     out.append("")
     out.append("static uint8_t hearth_is_shore_land(uint8_t t, uint8_t is_world) {")
@@ -3123,7 +3145,7 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("        return (uint8_t)CM_PIER_WATER_EDGE;")
     out.append("    }")
     out.append("    /* 3. Full 8-Neighbor Rounded Shorelines, Directional Rivers & Coastlines */")
-    out.append("    if (t == T_WATER || t == T_FORD || t == T_RAPIDS || t == T_WORLD_SHALLOW || t == T_WORLD_OCEAN) {")
+    out.append("    if (t == T_WATER || t == T_FORD || t == T_RAPIDS || t == T_WORLD_SHALLOW || t == T_WORLD_OCEAN || t == T_WORLD_CORAL) {")
     out.append("        uint8_t ln  = hearth_is_shore_land(tn, is_world);")
     out.append("        uint8_t ls  = hearth_is_shore_land(ts, is_world);")
     out.append("        uint8_t lw  = hearth_is_shore_land(tw, is_world);")
@@ -3134,7 +3156,7 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("        uint8_t lse = hearth_is_shore_land(tse, is_world);")
     out.append("        if (ln || ls || lw || le || lnw || lne || lsw || lse) {")
     out.append("            uint8_t use_ocean = (t == T_WORLD_OCEAN) ? 1u : 0u;")
-    out.append("            uint8_t use_sandy = (is_world || (t == T_WORLD_SHALLOW && !hearth_is_grass_like(tn) && !hearth_is_grass_like(ts) && !hearth_is_grass_like(tw) && !hearth_is_grass_like(te))) ? 1u : 0u;")
+    out.append("            uint8_t use_sandy = (is_world || ((t == T_WORLD_SHALLOW || t == T_WORLD_CORAL) && !hearth_is_grass_like(tn) && !hearth_is_grass_like(ts) && !hearth_is_grass_like(tw) && !hearth_is_grass_like(te))) ? 1u : 0u;")
     out.append("            if (use_ocean) {")
     out.append("                if (ln && lw) return (uint8_t)CM_OCEAN_COAST_NW;")
     out.append("                if (ln && le) return (uint8_t)CM_OCEAN_COAST_NE;")
@@ -3500,9 +3522,14 @@ def emit_web_ts(zone_pals, frames_meta):
         "  return t === 0 || t === 1 || t === 2 || t === 3 || t === 32;",
         "}",
         "function inferPropGround(tn: number, ts: number, tw: number, te: number): number {",
-        "  let wood = 0, cob = 0, pier = 0, aut = 0, dirt = 0, sand = 0;",
+        "  let wood = 0, cob = 0, pier = 0, aut = 0, dirt = 0, sand = 0, grass = 0;",
         "  if (tn === 38 || tn === 39) wood++; if (ts === 38 || ts === 39) wood++;",
         "  if (tw === 38 || tw === 39) wood++; if (te === 38 || te === 39) wood++;",
+        "  if (wood >= 1) return 5;",
+        "  if (tn === 0 || tn === 1 || tn === 2 || tn === 3) grass++;",
+        "  if (ts === 0 || ts === 1 || ts === 2 || ts === 3) grass++;",
+        "  if (tw === 0 || tw === 1 || tw === 2 || tw === 3) grass++;",
+        "  if (te === 0 || te === 1 || te === 2 || te === 3) grass++;",
         "  if (tn === 62 || tn === 8) pier++; if (ts === 62 || ts === 8) pier++;",
         "  if (tw === 62 || tw === 8) pier++; if (te === 62 || te === 8) pier++;",
         "  if (tn === 5 || tn === 33 || tn === 22 || tn === 23) cob++;",
@@ -3513,13 +3540,13 @@ def emit_web_ts(zone_pals, frames_meta):
         "  if (tn === 55 || tn === 47) sand++; if (ts === 55 || ts === 47) sand++;",
         "  if (tw === 55 || tw === 47) sand++; if (te === 55 || te === 47) sand++;",
         "  if (tn === 4) dirt++; if (ts === 4) dirt++; if (tw === 4) dirt++; if (te === 4) dirt++;",
-        "  if (wood >= 1) return 5;",
-        "  if (pier >= 1) return 2;",
-        "  if (cob >= 1) return 1;",
-        "  if (aut >= 1) return 3;",
-        "  if (sand >= 1) return 6;",
-        "  if (dirt >= 1) return 4;",
-        "  return 0;",
+        "  let best = 0, bestCnt = grass;",
+        "  if (dirt > bestCnt || (dirt === bestCnt && dirt > 0)) { best = 4; bestCnt = dirt; }",
+        "  if (sand > bestCnt || (sand === bestCnt && sand > 0)) { best = 6; bestCnt = sand; }",
+        "  if (aut  > bestCnt || (aut  === bestCnt && aut  > 0)) { best = 3; bestCnt = aut;  }",
+        "  if (cob  > bestCnt || (cob  === bestCnt && cob  > 0)) { best = 1; bestCnt = cob;  }",
+        "  if (pier > bestCnt || (pier === bestCnt && pier > 0)) { best = 2; bestCnt = pier; }",
+        "  return best;",
         "}",
         "function isShoreLand(t: number, isWorld: boolean): boolean {",
         "  if (isWaterLike(t) || t === 59) return false;",
@@ -3638,7 +3665,7 @@ def emit_web_ts(zone_pals, frames_meta):
         "  if (t === 41 && tn === 41) return CM_BED_FOOT;",
         "  if (!isWorld && t === 8 && isNsBridge) return CM_BRIDGE_NS;",
         "  if (t === 62 && isWaterLike(ts)) return CM_PIER_WATER_EDGE;",
-        "  if (t === 6 || t === 7 || t === 34 || t === 54 || t === 46) {",
+        "  if (t === 6 || t === 7 || t === 34 || t === 54 || t === 46 || t === 59) {",
         "    const ln  = isShoreLand(tn, isWorld);",
         "    const ls  = isShoreLand(ts, isWorld);",
         "    const lw  = isShoreLand(tw, isWorld);",
@@ -3649,7 +3676,7 @@ def emit_web_ts(zone_pals, frames_meta):
         "    const lse = isShoreLand(tse, isWorld);",
         "    if (ln || ls || lw || le || lnw || lne || lsw || lse) {",
         "      const useOcean = t === 46;",
-        "      const useSandy = isWorld || (t === 54 && !isGrassLike(tn) && !isGrassLike(ts) && !isGrassLike(tw) && !isGrassLike(te));",
+        "      const useSandy = isWorld || ((t === 54 || t === 59) && !isGrassLike(tn) && !isGrassLike(ts) && !isGrassLike(tw) && !isGrassLike(te));",
         "      if (useOcean) {",
         "        if (ln && lw) return CM_OCEAN_COAST_NW;",
         "        if (ln && le) return CM_OCEAN_COAST_NE;",

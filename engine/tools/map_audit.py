@@ -73,7 +73,32 @@ COL_WALKABLE, COL_SOLID, COL_TALL_GRASS = 0, 1, 2
 COL_SHALLOW, COL_WATER, COL_LAVA = 3, 4, 5
 
 WATER_TILES = {T_WATER, T_FORD, T_RAPIDS, T_WORLD_OCEAN, T_WORLD_SHALLOW}
+AQUATIC_TILES = WATER_TILES | {T_WORLD_CORAL}
 GRASS_LIKE = {T_GRASS, T_GRASS_ALT, T_FLOWERS, T_TALL_GRASS, T_AUTUMN_GRASS}
+PROP_TILES = {
+    T_LANTERN_POST, T_SIGNPOST, T_FLOWER_BED, T_BUSH, T_FENCE,
+    T_BOULDER, T_TREE_TRUNK, T_MAPLE_TRUNK, T_PINE_TRUNK, T_PALM_TREE,
+}
+WALKABLE_GROUND = {
+    T_GRASS, T_GRASS_ALT, T_FLOWERS, T_TALL_GRASS, T_AUTUMN_GRASS, T_DIRT,
+    T_COBBLE, T_ROCKY_PATH, T_SHRINE_FLOOR, T_SHRINE_RUNE, T_WOOD_FLOOR,
+    T_HEARTH_RUG, T_WORLD_BEACH, T_WORLD_SAND, T_WORLD_SNOW, T_WORLD_JUNGLE,
+    T_WORLD_TECH, T_DOCK_PIER, T_BRIDGE,
+}
+
+
+def ground_family(t):
+    if t in (T_GRASS, T_GRASS_ALT, T_FLOWERS, T_TALL_GRASS): return "GRASS"
+    if t == T_AUTUMN_GRASS: return "AUTUMN"
+    if t == T_DIRT: return "DIRT"
+    if t in (T_COBBLE, T_ROCKY_PATH, T_SHRINE_FLOOR, T_SHRINE_RUNE): return "STONE"
+    if t in (T_WOOD_FLOOR, T_HEARTH_RUG): return "WOOD"
+    if t in (T_WORLD_BEACH, T_WORLD_SAND): return "SAND"
+    if t == T_WORLD_SNOW: return "SNOW"
+    if t == T_WORLD_JUNGLE: return "JUNGLE"
+    if t == T_WORLD_TECH: return "TECH"
+    if t in (T_DOCK_PIER, T_BRIDGE): return "PIER"
+    return None
 
 # Expected collision classes for semantic parity check
 EXPECT_WALKABLE = {
@@ -306,6 +331,56 @@ def expected_shore_edges_from_meta(meta_name):
     return edges
 
 
+def tile_border_rgb_diff(tA, tB, zp, direction):
+    """Compute mean per-channel RGB difference along shared 16-pixel border ('E' or 'S')."""
+    diff = 0.0
+    if direction == "E":
+        for py in range(16):
+            qy = 2 if py >= 8 else 0
+            cA = zp[tA.qpal[qy + 1]][tA.px[py * 16 + 15]]
+            cB = zp[tB.qpal[qy]][tB.px[py * 16 + 0]]
+            diff += abs(cA[0] - cB[0]) + abs(cA[1] - cB[1]) + abs(cA[2] - cB[2])
+    else:  # 'S'
+        for px in range(16):
+            qx = 1 if px >= 8 else 0
+            cA = zp[tA.qpal[2 + qx]][tA.px[15 * 16 + px]]
+            cB = zp[tB.qpal[qx]][tB.px[0 * 16 + px]]
+            diff += abs(cA[0] - cB[0]) + abs(cA[1] - cB[1]) + abs(cA[2] - cB[2])
+    return diff / (16.0 * 3.0)
+
+
+PROP_CORNER_COORDS = (
+    (0, 0), (1, 0), (14, 0), (15, 0),
+    (0, 15), (1, 15), (14, 15), (15, 15),
+)
+
+
+def tile_mean_rgb(tile, zp, coords=None):
+    """Mean (r, g, b) across given pixel coordinates or full 16x16 tile."""
+    sr = sg = sb = 0.0
+    if coords is None:
+        n = 256.0
+        for py in range(16):
+            qy = 2 if py >= 8 else 0
+            sp_l = zp[tile.qpal[qy]]
+            sp_r = zp[tile.qpal[qy + 1]]
+            row = py * 16
+            for px in range(8):
+                r, g, b = sp_l[tile.px[row + px]]
+                sr += r; sg += g; sb += b
+            for px in range(8, 16):
+                r, g, b = sp_r[tile.px[row + px]]
+                sr += r; sg += g; sb += b
+    else:
+        n = float(len(coords))
+        for px, py in coords:
+            qy = 2 if py >= 8 else 0
+            qx = 1 if px >= 8 else 0
+            r, g, b = zp[tile.qpal[qy + qx]][tile.px[py * 16 + px]]
+            sr += r; sg += g; sb += b
+    return (sr / n, sg / n, sb / n)
+
+
 # ============================================================================
 # Render a Tilemap Region to RGB Bytearray
 # ============================================================================
@@ -509,22 +584,31 @@ def audit_local_zone(zone, cells, all_zones_by_id, inbound_spawns, meta_names, m
                 add_issue("ERROR", "COLLISION", "WATER_WALKABLE", x, y,
                           f"Deep water/rapids {T_NAMES.get(bg1, bg1)} marked COL_WALKABLE")
 
-            # Pass 3a: Water Bank Mask Completeness & Vertical/Horizontal River Orientation
-            if bg1 in WATER_TILES:
+            # Pass 3a: Water & Aquatic Feature Bank Mask Completeness + Vertical/Horizontal River Orientation
+            if bg1 in AQUATIC_TILES:
                 ln = is_shore_land(tn, False) if y > 0 else False
                 ls = is_shore_land(ts, False) if y < h - 1 else False
                 lw = is_shore_land(tw, False) if x > 0 else False
                 le = is_shore_land(te, False) if x < w - 1 else False
-                needed = set()
-                if ln: needed.add("N")
-                if ls: needed.add("S")
-                if lw: needed.add("W")
-                if le: needed.add("E")
-                drawn = expected_shore_edges_from_meta(mname)
-                if needed and not needed.issubset(drawn):
-                    missing = "".join(sorted(needed - drawn))
-                    add_issue("ERROR", "AUTOTILE", "MISSING_RIVER_BANK", x, y,
-                              f"Water tile needs banks {''.join(sorted(needed))} but {mname} only draws {''.join(sorted(drawn)) or 'NONE'} (missing {missing})")
+                lnw = is_shore_land(cell(x - 1, y - 1)[0], False) if (x > 0 and y > 0) else False
+                lne = is_shore_land(cell(x + 1, y - 1)[0], False) if (x < w - 1 and y > 0) else False
+                lsw = is_shore_land(cell(x - 1, y + 1)[0], False) if (x > 0 and y < h - 1) else False
+                lse = is_shore_land(cell(x + 1, y + 1)[0], False) if (x < w - 1 and y < h - 1) else False
+                if bg1 == T_WORLD_CORAL:
+                    if (ln or ls or lw or le or lnw or lne or lsw or lse) and ("SHORE_" not in mname and "COAST_" not in mname):
+                        add_issue("ERROR", "AUTOTILE", "AQUATIC_FEATURE_ON_SHORE", x, y,
+                                  f"Aquatic feature {T_NAMES[bg1]} touches land without a shoreline transition (resolved to {mname})")
+                else:
+                    needed = set()
+                    if ln: needed.add("N")
+                    if ls: needed.add("S")
+                    if lw: needed.add("W")
+                    if le: needed.add("E")
+                    drawn = expected_shore_edges_from_meta(mname)
+                    if needed and not needed.issubset(drawn):
+                        missing = "".join(sorted(needed - drawn))
+                        add_issue("ERROR", "AUTOTILE", "MISSING_RIVER_BANK", x, y,
+                                  f"Water tile needs banks {''.join(sorted(needed))} but {mname} only draws {''.join(sorted(drawn)) or 'NONE'} (missing {missing})")
 
                 # Narrow vertical N-S river channel (length >= 5 tiles, shore land within 3 tiles W & E)
                 land_w3 = any(x >= d and is_shore_land(cell(x - d, y)[0], False) for d in (1, 2, 3))
@@ -643,49 +727,77 @@ def audit_local_zone(zone, cells, all_zones_by_id, inbound_spawns, meta_names, m
                         add_issue("ERROR", "OVERLAY", "FLOATING_OAK_CROWN", x, y,
                                   "O_OAK_CROWN has no T_HOLLOW_OAK or T_TREE_TRUNK anchor below")
 
-    # Pass 4: Pixel-Level Border Seam Continuity Check (continuous water-water & shore-water seams)
+    # Pass 4: Pixel-Level Border Seam Continuity Check (water-water, aquatic-feature & prop-ground seams)
     t0_arr = meta_tiles[0]
+    zp = pal_rgb[pal_id]
+    mean_rgb_cache = {}
+
+    def get_mean_rgb(mid, corners_only=False):
+        key = (mid, corners_only)
+        res = mean_rgb_cache.get(key)
+        if res is None:
+            res = tile_mean_rgb(t0_arr[mid], zp, PROP_CORNER_COORDS if corners_only else None)
+            mean_rgb_cache[key] = res
+        return res
+
     for y in range(h):
         for x in range(w):
             bg1, _, _, meta = cells[y * w + x]
-            if bg1 not in WATER_TILES:
-                continue
             mname = meta_names[meta]
-            drawn = expected_shore_edges_from_meta(mname)
-            tA = t0_arr[meta]
-            zp = pal_rgb[pal_id]
-            # Check East neighbor if BOTH are water and neither has a bank along the shared E/W boundary
-            if x + 1 < w and cells[y * w + (x + 1)][0] in WATER_TILES:
-                rmeta = cells[y * w + (x + 1)][3]
-                rdrawn = expected_shore_edges_from_meta(meta_names[rmeta])
-                if "E" not in drawn and "W" not in rdrawn and bg1 == cells[y * w + (x + 1)][0]:
-                    tB = t0_arr[rmeta]
-                    diff = 0.0
-                    for py in range(16):
-                        qy = 2 if py >= 8 else 0
-                        cA = zp[tA.qpal[qy + 1]][tA.px[py * 16 + 15]]
-                        cB = zp[tB.qpal[qy]][tB.px[py * 16 + 0]]
-                        diff += abs(cA[0] - cB[0]) + abs(cA[1] - cB[1]) + abs(cA[2] - cB[2])
-                    avg_diff = diff / (16.0 * 3.0)
-                    if avg_diff > 48.0:
-                        add_issue("WARNING", "SEAM", "WATER_EDGE_SEAM", x, y,
-                                  f"Harsh E/W pixel seam ({avg_diff:.1f}) between {mname} and {meta_names[rmeta]}")
-            # Check South neighbor
-            if y + 1 < h and cells[(y + 1) * w + x][0] in WATER_TILES:
-                dmeta = cells[(y + 1) * w + x][3]
-                ddrawn = expected_shore_edges_from_meta(meta_names[dmeta])
-                if "S" not in drawn and "N" not in ddrawn and bg1 == cells[(y + 1) * w + x][0]:
-                    tB = t0_arr[dmeta]
-                    diff = 0.0
-                    for px in range(16):
-                        qx = 1 if px >= 8 else 0
-                        cA = zp[tA.qpal[2 + qx]][tA.px[15 * 16 + px]]
-                        cB = zp[tB.qpal[qx]][tB.px[0 * 16 + px]]
-                        diff += abs(cA[0] - cB[0]) + abs(cA[1] - cB[1]) + abs(cA[2] - cB[2])
-                    avg_diff = diff / (16.0 * 3.0)
-                    if avg_diff > 48.0:
-                        add_issue("WARNING", "SEAM", "WATER_EDGE_SEAM", x, y,
-                                  f"Harsh N/S pixel seam ({avg_diff:.1f}) between {mname} and {meta_names[dmeta]}")
+            if bg1 in AQUATIC_TILES:
+                drawn = expected_shore_edges_from_meta(mname)
+                tA = t0_arr[meta]
+                # Check East neighbor if BOTH are aquatic and neither draws a bank along E/W
+                if x + 1 < w and cells[y * w + (x + 1)][0] in AQUATIC_TILES:
+                    rbg1, _, _, rmeta = cells[y * w + (x + 1)]
+                    rdrawn = expected_shore_edges_from_meta(meta_names[rmeta])
+                    if "E" not in drawn and "W" not in rdrawn:
+                        if bg1 == T_WORLD_CORAL or rbg1 == T_WORLD_CORAL:
+                            if bg1 != rbg1:
+                                avg_diff = tile_border_rgb_diff(tA, t0_arr[rmeta], zp, "E")
+                                if avg_diff > 36.0:
+                                    add_issue("ERROR", "SEAM", "WATER_FEATURE_SEAM", x, y,
+                                              f"Unblended E/W aquatic feature seam ({avg_diff:.1f}) between {mname} and {meta_names[rmeta]}")
+                        elif bg1 == rbg1:
+                            avg_diff = tile_border_rgb_diff(tA, t0_arr[rmeta], zp, "E")
+                            if avg_diff > 48.0:
+                                add_issue("WARNING", "SEAM", "WATER_EDGE_SEAM", x, y,
+                                          f"Harsh E/W pixel seam ({avg_diff:.1f}) between {mname} and {meta_names[rmeta]}")
+                # Check South neighbor
+                if y + 1 < h and cells[(y + 1) * w + x][0] in AQUATIC_TILES:
+                    dbg1, _, _, dmeta = cells[(y + 1) * w + x]
+                    ddrawn = expected_shore_edges_from_meta(meta_names[dmeta])
+                    if "S" not in drawn and "N" not in ddrawn:
+                        if bg1 == T_WORLD_CORAL or dbg1 == T_WORLD_CORAL:
+                            if bg1 != dbg1:
+                                avg_diff = tile_border_rgb_diff(tA, t0_arr[dmeta], zp, "S")
+                                if avg_diff > 36.0:
+                                    add_issue("ERROR", "SEAM", "WATER_FEATURE_SEAM", x, y,
+                                              f"Unblended N/S aquatic feature seam ({avg_diff:.1f}) between {mname} and {meta_names[dmeta]}")
+                        elif bg1 == dbg1:
+                            avg_diff = tile_border_rgb_diff(tA, t0_arr[dmeta], zp, "S")
+                            if avg_diff > 48.0:
+                                add_issue("WARNING", "SEAM", "WATER_EDGE_SEAM", x, y,
+                                          f"Harsh N/S pixel seam ({avg_diff:.1f}) between {mname} and {meta_names[dmeta]}")
+            elif bg1 in PROP_TILES:
+                fam_nbs = {}
+                for nx, ny in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
+                    if 0 <= nx < w and 0 <= ny < h:
+                        nb = cells[ny * w + nx]
+                        fam = ground_family(nb[0])
+                        if fam is not None:
+                            fam_nbs.setdefault(fam, []).append(nb)
+                if fam_nbs:
+                    ranked = sorted(fam_nbs.items(), key=lambda kv: len(kv[1]), reverse=True)
+                    top_fam, top_list = ranked[0]
+                    second_cnt = len(ranked[1][1]) if len(ranked) > 1 else 0
+                    if len(top_list) >= 2 and len(top_list) > second_cnt:
+                        prop_rgb = get_mean_rgb(meta, True)
+                        gnd_rgb = get_mean_rgb(top_list[0][3], False)
+                        cdiff = (abs(prop_rgb[0] - gnd_rgb[0]) + abs(prop_rgb[1] - gnd_rgb[1]) + abs(prop_rgb[2] - gnd_rgb[2])) / 3.0
+                        if cdiff > 45.0:
+                            add_issue("WARNING", "SEAM", "PROP_BORDER_SEAM", x, y,
+                                      f"Prop {mname} outer corner RGB differs from surrounding {top_fam} ({T_NAMES[top_list[0][0]]}) by {cdiff:.1f}")
 
     return issues
 
@@ -794,6 +906,17 @@ def audit_globe(globe_info, cells, meta_names, meta_tiles, pal_rgb, water_flows)
                           f"Landmark '{lm['name']}' unreachable by Foot/Raft from Heartland Timber Pier", lm["region"])
 
     # --- PASS 2, 3, 4 on all 49,152 Globe Cells ---
+    t0_arr = meta_tiles[0]
+    globe_mean_cache = {}
+
+    def get_globe_mean_rgb(pal_id, mid, corners_only=False):
+        key = (pal_id, mid, corners_only)
+        res = globe_mean_cache.get(key)
+        if res is None:
+            res = tile_mean_rgb(t0_arr[mid], pal_rgb[pal_id], PROP_CORNER_COORDS if corners_only else None)
+            globe_mean_cache[key] = res
+        return res
+
     for y in range(h):
         yn = (y - 1) % h
         ys = (y + 1) % h
@@ -802,6 +925,8 @@ def audit_globe(globe_info, cells, meta_names, meta_tiles, pal_rgb, water_flows)
             xe = (x + 1) % w
             bg1, bg2, col, meta, reg = cells[y * w + x]
             mname = meta_names[meta]
+            pal_id = REGION_TO_ZPAL.get(reg, 10)
+            zp = pal_rgb[pal_id]
 
             # Pass 2: Collision <-> Visual Parity
             if bg1 in EXPECT_WALKABLE and col == COL_SOLID:
@@ -811,26 +936,39 @@ def audit_globe(globe_info, cells, meta_names, meta_tiles, pal_rgb, water_flows)
                 add_issue("ERROR", "COLLISION", "SOLID_TILE_WALKABLE", x, y,
                           f"Globe solid tile {T_NAMES.get(bg1, bg1)} marked COL_WALKABLE", reg)
 
-            # Pass 3: Coastline bank completeness & opposing flow
-            if bg1 in WATER_TILES:
+            # Pass 3 & 4: Coastline bank completeness, aquatic feature overlap, opposing flow & pixel seams
+            if bg1 in AQUATIC_TILES:
                 tn = cells[yn * w + x][0]
                 ts = cells[ys * w + x][0]
                 tw = cells[y * w + xw][0]
                 te = cells[y * w + xe][0]
+                tnw = cells[yn * w + xw][0]
+                tne = cells[yn * w + xe][0]
+                tsw = cells[ys * w + xw][0]
+                tse = cells[ys * w + xe][0]
                 ln = is_shore_land(tn, True)
                 ls = is_shore_land(ts, True)
                 lw = is_shore_land(tw, True)
                 le = is_shore_land(te, True)
-                needed = set()
-                if ln: needed.add("N")
-                if ls: needed.add("S")
-                if lw: needed.add("W")
-                if le: needed.add("E")
+                lnw = is_shore_land(tnw, True)
+                lne = is_shore_land(tne, True)
+                lsw = is_shore_land(tsw, True)
+                lse = is_shore_land(tse, True)
                 drawn = expected_shore_edges_from_meta(mname)
-                if needed and not needed.issubset(drawn):
-                    missing = "".join(sorted(needed - drawn))
-                    add_issue("ERROR", "AUTOTILE", "MISSING_COAST_EDGE", x, y,
-                              f"Globe coast needs {''.join(sorted(needed))} but {mname} draws {''.join(sorted(drawn)) or 'NONE'} (missing {missing})", reg)
+                if bg1 == T_WORLD_CORAL:
+                    if (ln or ls or lw or le or lnw or lne or lsw or lse) and ("SHORE_" not in mname and "COAST_" not in mname):
+                        add_issue("ERROR", "AUTOTILE", "AQUATIC_FEATURE_ON_SHORE", x, y,
+                                  f"Globe aquatic feature {T_NAMES[bg1]} touches land without a coastline transition (resolved to {mname})", reg)
+                else:
+                    needed = set()
+                    if ln: needed.add("N")
+                    if ls: needed.add("S")
+                    if lw: needed.add("W")
+                    if le: needed.add("E")
+                    if needed and not needed.issubset(drawn):
+                        missing = "".join(sorted(needed - drawn))
+                        add_issue("ERROR", "AUTOTILE", "MISSING_COAST_EDGE", x, y,
+                                  f"Globe coast needs {''.join(sorted(needed))} but {mname} draws {''.join(sorted(drawn)) or 'NONE'} (missing {missing})", reg)
 
                 # Opposing flow with E neighbor (sample only E/S to avoid double counting)
                 if meta in water_flows:
@@ -841,6 +979,59 @@ def audit_globe(globe_info, cells, meta_names, meta_tiles, pal_rgb, water_flows)
                         if (vx != 0 and rvx != 0 and vx * rvx < 0) or (vy != 0 and rvy != 0 and vy * rvy < 0):
                             add_issue("ERROR", "FLOW", "OPPOSING_COAST_FLOW", x, y,
                                       f"Opposing water animation: {mname} (v={vx},{vy}) next to {meta_names[rmeta]} (v={rvx},{rvy})", reg)
+
+                # Pass 4 on Globe: E & S pixel border seam checks (within same biome palette)
+                tA = t0_arr[meta]
+                rcell = cells[y * w + xe]
+                if rcell[0] in AQUATIC_TILES and rcell[4] == reg:
+                    rmeta = rcell[3]
+                    rdrawn = expected_shore_edges_from_meta(meta_names[rmeta])
+                    if "E" not in drawn and "W" not in rdrawn:
+                        if bg1 == T_WORLD_CORAL or rcell[0] == T_WORLD_CORAL:
+                            if bg1 != rcell[0]:
+                                avg_diff = tile_border_rgb_diff(tA, t0_arr[rmeta], zp, "E")
+                                if avg_diff > 36.0:
+                                    add_issue("ERROR", "SEAM", "WATER_FEATURE_SEAM", x, y,
+                                              f"Unblended E/W aquatic feature seam ({avg_diff:.1f}) between {mname} and {meta_names[rmeta]}", reg)
+                        elif bg1 == rcell[0]:
+                            avg_diff = tile_border_rgb_diff(tA, t0_arr[rmeta], zp, "E")
+                            if avg_diff > 48.0:
+                                add_issue("WARNING", "SEAM", "WATER_EDGE_SEAM", x, y,
+                                          f"Harsh E/W globe water seam ({avg_diff:.1f}) between {mname} and {meta_names[rmeta]}", reg)
+                dcell = cells[ys * w + x]
+                if dcell[0] in AQUATIC_TILES and dcell[4] == reg:
+                    dmeta = dcell[3]
+                    ddrawn = expected_shore_edges_from_meta(meta_names[dmeta])
+                    if "S" not in drawn and "N" not in ddrawn:
+                        if bg1 == T_WORLD_CORAL or dcell[0] == T_WORLD_CORAL:
+                            if bg1 != dcell[0]:
+                                avg_diff = tile_border_rgb_diff(tA, t0_arr[dmeta], zp, "S")
+                                if avg_diff > 36.0:
+                                    add_issue("ERROR", "SEAM", "WATER_FEATURE_SEAM", x, y,
+                                              f"Unblended N/S aquatic feature seam ({avg_diff:.1f}) between {mname} and {meta_names[dmeta]}", reg)
+                        elif bg1 == dcell[0]:
+                            avg_diff = tile_border_rgb_diff(tA, t0_arr[dmeta], zp, "S")
+                            if avg_diff > 48.0:
+                                add_issue("WARNING", "SEAM", "WATER_EDGE_SEAM", x, y,
+                                          f"Harsh N/S globe water seam ({avg_diff:.1f}) between {mname} and {meta_names[dmeta]}", reg)
+            elif bg1 in PROP_TILES:
+                fam_nbs = {}
+                for nb in (cells[yn * w + x], cells[ys * w + x], cells[y * w + xw], cells[y * w + xe]):
+                    if nb[4] == reg:
+                        fam = ground_family(nb[0])
+                        if fam is not None:
+                            fam_nbs.setdefault(fam, []).append(nb)
+                if fam_nbs:
+                    ranked = sorted(fam_nbs.items(), key=lambda kv: len(kv[1]), reverse=True)
+                    top_fam, top_list = ranked[0]
+                    second_cnt = len(ranked[1][1]) if len(ranked) > 1 else 0
+                    if len(top_list) >= 2 and len(top_list) > second_cnt:
+                        prop_rgb = get_globe_mean_rgb(pal_id, meta, True)
+                        gnd_rgb = get_globe_mean_rgb(pal_id, top_list[0][3], False)
+                        cdiff = (abs(prop_rgb[0] - gnd_rgb[0]) + abs(prop_rgb[1] - gnd_rgb[1]) + abs(prop_rgb[2] - gnd_rgb[2])) / 3.0
+                        if cdiff > 45.0:
+                            add_issue("WARNING", "SEAM", "PROP_BORDER_SEAM", x, y,
+                                      f"Globe prop {mname} outer corner RGB differs from surrounding {top_fam} ({T_NAMES[top_list[0][0]]}) by {cdiff:.1f}", reg)
 
             # Pass 5: BG2 Overlay Anchor on Globe
             if bg2 == O_OAK_CROWN:
