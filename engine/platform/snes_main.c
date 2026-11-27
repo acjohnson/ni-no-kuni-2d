@@ -1558,7 +1558,8 @@ static void bake_world_tile_cache(void) {
                 tsw = p1[(u16)(s_off + mx_l)];
                 tse = p1[(u16)(s_off + mx_r)];
                 g_world_meta[idx] = hearth_resolve_chrono_meta(t, ov, tn, ts, tw, te,
-                                                               tnw, tne, tsw, tse, mx, my, 0u);
+                                                               tnw, tne, tsw, tse, mx, my,
+                                                               hearth_local_tile_flags(p1, mx, my, mw, mh));
             }
         }
     }

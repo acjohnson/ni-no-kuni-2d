@@ -108,7 +108,7 @@ NODE_IMAGE      ?= node:22-slim
 WEB_PORT        ?= 5173
 WEB_CACHE_DIR   := $(CURDIR)/$(TOOLCHAIN_DIR)/web
 
-.PHONY: all linux macos windows genesis genesis-stage snes wasm web web-run core-test run deps-ubuntu clean distclean help
+.PHONY: all linux macos windows genesis genesis-stage snes wasm web web-run core-test map-audit run deps-ubuntu clean distclean help
 
 # Default target builds for the current machine
 all: $(HOST_TARGET)
@@ -186,6 +186,16 @@ core-test: $(BUILD_DIR)/test/$(APP_NAME)_core_test
 $(BUILD_DIR)/test/$(APP_NAME)_core_test: $(CORE_SRCS) $(CORE_HDRS) $(TEST_SRC)
 	@mkdir -p $(BUILD_DIR)/test
 	$(CC) $(CFLAGS_STRICT) $(CORE_SRCS) $(TEST_SRC) -o $@
+
+# ------------------------------------------------------------------------------
+# 4b. STANDALONE 6-PASS WORLD, AUTOTILE & PIXEL-SEAM AUDIT + ANNOTATED PNGs
+# ------------------------------------------------------------------------------
+map-audit: $(CORE_SRCS) $(CORE_HDRS) $(TERRAIN_ROM_HDR) engine/tools/map_audit_dump.c engine/tools/map_audit.py
+	$(call PRINT_BUILD_BANNER,map-audit)
+	@mkdir -p $(BUILD_DIR)/map_audit/raw
+	$(CC) $(CFLAGS_COMMON) -Wno-unused-function $(CORE_SRCS) engine/tools/map_audit_dump.c -o $(BUILD_DIR)/map_audit/map_audit_dump
+	@$(BUILD_DIR)/map_audit/map_audit_dump $(BUILD_DIR)/map_audit/raw
+	@python3 engine/tools/map_audit.py $(BUILD_DIR)/map_audit/raw $(BUILD_DIR)/map_audit
 
 # ------------------------------------------------------------------------------
 # 5. SEGA GENESIS / MEGA DRIVE ROM (Implicit Docker SGDK — Zero Manual Setup!)
@@ -459,6 +469,7 @@ help:
 	@echo "  make              Build native executable for this OS ($(HOST_BIN))"
 	@echo "  make run          Build and launch the native game window"
 	@echo "  make core-test    Compile & run strict C89/C99 core verification suite"
+	@echo "  make map-audit    Run standalone 6-pass world/autotile/seam audit + annotated PNGs"
 	@echo "  make linux        Build Linux amd64 native SDL2 executable"
 	@echo "  make windows      Cross-compile Windows x64 .exe (auto-fetches SDL2 MinGW)"
 	@echo "  make genesis      Build Sega Genesis ROM (.bin) via Docker SGDK automatically"

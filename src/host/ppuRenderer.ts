@@ -30,7 +30,7 @@ import {
   BATTLE_BG_TW,
   BATTLE_BG_W,
 } from './battleBgData';
-import { resolveChronoMeta } from './chronoTilesetData';
+import { getLocalTileFlags, resolveChronoMeta } from './chronoTilesetData';
 import { PixelAtlas } from './pixelAtlas';
 
 export class SoftwarePpuRenderer {
@@ -222,7 +222,7 @@ export class SoftwarePpuRenderer {
             tse,
             c,
             r,
-            false
+            getLocalTileFlags(bg1, c, r, mapW, mapH)
           );
           const img = atlas.getBg1Tile(metaId, animTick);
           ctx.drawImage(img, sx, sy, TILE_SIZE, TILE_SIZE);

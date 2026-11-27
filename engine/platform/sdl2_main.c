@@ -3293,9 +3293,12 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
                     tsw = st->map_bg1[ty_d * mw + tx_l];
                     tse = st->map_bg1[ty_d * mw + tx_r];
                 }
+                uint8_t meta_flags = st->is_world_map
+                    ? 1u
+                    : hearth_local_tile_flags(st->map_bg1, mx_u, my_u, (uint16_t)mw, (uint16_t)mh);
                 uint8_t meta = hearth_resolve_chrono_meta(tile, ov_here, tn, ts, tw, te,
                                                           tnw, tne, tsw, tse,
-                                                          mx_u, my_u, st->is_world_map ? 1u : 0u);
+                                                          mx_u, my_u, meta_flags);
                 draw_chrono_meta16(tx * HEARTH_TILE_SIZE - cam_x,
                                    ty * HEARTH_TILE_SIZE - cam_y, meta, anim_f);
             }

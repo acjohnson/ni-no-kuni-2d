@@ -491,7 +491,7 @@ static void build_zone_alderbrook(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     set_bg1(bg1, col, 27, 13, T_FLOWER_BED,   COL_SOLID);
     set_bg1(bg1, col, 18, 14, T_SIGNPOST,     COL_SOLID);
 
-    /* Winding Mountain Stream with Whitewater Rapids curving across the lower valley! */
+    /* Winding Mountain Stream with Whitewater Rapids curving smoothly across the lower valley! */
     for (x = 2; x < HEARTH_MAP_W - 2; x++) {
         if (x < 12)      sy = 19;
         else if (x < 18) sy = 20;
@@ -500,20 +500,25 @@ static void build_zone_alderbrook(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
         else             sy = 21;
         set_bg1(bg1, col, x, sy,     ((x & 1) == 0) ? T_RAPIDS : T_WATER, COL_WATER);
         set_bg1(bg1, col, x, sy + 1, ((x & 1) != 0) ? T_RAPIDS : T_WATER, COL_WATER);
+        /* 2-column smooth bend elbows so river banks curve without N/S seam discontinuities */
+        if (x == 11) set_bg1(bg1, col, x, 21, T_WATER, COL_WATER);
+        if (x == 12) set_bg1(bg1, col, x, 19, T_WATER, COL_WATER);
+        if (x == 17) set_bg1(bg1, col, x, 22, T_WATER, COL_WATER);
+        if (x == 18) set_bg1(bg1, col, x, 20, T_WATER, COL_WATER);
+        if (x == 25) set_bg1(bg1, col, x, 20, T_WATER, COL_WATER);
+        if (x == 26) set_bg1(bg1, col, x, 22, T_WATER, COL_WATER);
+        if (x == 32) set_bg1(bg1, col, x, 22, T_WATER, COL_WATER);
+        if (x == 33) set_bg1(bg1, col, x, 20, T_WATER, COL_WATER);
     }
 
-    /* Two Sturdy Timber Footbridges spanning the Winding Brook */
+    /* Two Sturdy N-S Timber Footbridges spanning the Winding Brook (walkable open approaches!) */
     for (x = 15; x <= 16; x++) {
-        set_bg1(bg1, col, x, 19, T_BRIDGE_RAIL_N, COL_SOLID);
         set_bg1(bg1, col, x, 20, T_BRIDGE, COL_WALKABLE);
         set_bg1(bg1, col, x, 21, T_BRIDGE, COL_WALKABLE);
-        set_bg1(bg1, col, x, 22, T_BRIDGE_RAIL_S, COL_SOLID);
     }
     for (x = 29; x <= 30; x++) {
-        set_bg1(bg1, col, x, 19, T_BRIDGE_RAIL_N, COL_SOLID);
         set_bg1(bg1, col, x, 20, T_BRIDGE, COL_WALKABLE);
         set_bg1(bg1, col, x, 21, T_BRIDGE, COL_WALKABLE);
-        set_bg1(bg1, col, x, 22, T_BRIDGE_RAIL_S, COL_SOLID);
     }
 
     /* Alderbrook Creek Fishing Pier at (22, 20) jutting south into the mountain brook */
@@ -528,6 +533,7 @@ static void build_zone_alderbrook(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     set_bg1(bg1, col, 39, 11, T_STONE_STAIRS, COL_WALKABLE);
     set_bg1(bg1, col, 41, 9,  T_ROCKY_PATH,   COL_WALKABLE);
     set_bg1(bg1, col, 42, 9,  T_ROCKY_PATH,   COL_WALKABLE);
+    set_bg1(bg1, col, 42, 10, T_CLIFF_LEDGE,  COL_SOLID);
     set_bg1(bg1, col, 40, 8,  T_LANTERN_POST, COL_SOLID);
     set_bg1(bg1, col, 40, 10, T_LANTERN_POST, COL_SOLID);
 
@@ -558,7 +564,7 @@ static void build_zone_whispering_woods(uint8_t *bg1, uint8_t *bg2, uint8_t *col
         {4, 14}, {17, 13}, {27, 12}, {39, 13}, {40, 23}, {10, 24}
     };
     static const int8_t boulders[][2] = {
-        {8, 13}, {15, 16}, {18, 19}, {24, 12}, {28, 18},
+        {8, 13}, {15, 16}, {20, 19}, {24, 12}, {28, 18},
         {32, 16}, {36, 12}, {34, 22}, {7, 19}, {13, 14}
     };
 
@@ -589,25 +595,27 @@ static void build_zone_whispering_woods(uint8_t *bg1, uint8_t *bg2, uint8_t *col
         set_bg1(bg1, col, x, HEARTH_MAP_H - 2, T_CLIFF_LEDGE, COL_SOLID);
     }
 
-    /* Foaming Mountain Rapids cascading diagonally from north ridge to south valley */
+    /* Foaming 3-Tile-Wide Mountain Rapids cascading smoothly from north ridge to south valley */
     for (y = 5; y < HEARTH_MAP_H - 2; y++) {
         rx = 23 - ((y - 5) >> 1);
+        if (y == HEARTH_MAP_H - 3) rx = 14; /* Flush termination against southern cliff ledge */
         set_bg1(bg1, col, rx,     y, ((y & 1) == 0) ? T_RAPIDS : T_WATER, COL_WATER);
         set_bg1(bg1, col, rx + 1, y, ((y & 1) != 0) ? T_RAPIDS : T_WATER, COL_WATER);
+        set_bg1(bg1, col, rx + 2, y, ((y & 1) == 0) ? T_RAPIDS : T_WATER, COL_WATER);
     }
 
     /* Winding Rocky Switchback Trail from SW Entry (2,21) -> Bridge -> 3 Shrines -> NE Pass (37,5) */
     fill_rect(bg1, col, 2,  20, 12, 3, T_ROCKY_PATH, COL_WALKABLE);
-    fill_rect(bg1, col, 11, 15,  9, 6, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 11, 15,  5, 6, T_ROCKY_PATH, COL_WALKABLE);
     fill_rect(bg1, col, 10, 10,  5, 6, T_ROCKY_PATH, COL_WALKABLE); /* Jasper's Camp Clearing */
-    fill_rect(bg1, col, 17, 15, 17, 2, T_ROCKY_PATH, COL_WALKABLE); /* Rapids Log Bridge Crossing */
+    fill_rect(bg1, col, 15, 15, 19, 2, T_ROCKY_PATH, COL_WALKABLE); /* Rapids Log Bridge Crossing */
     fill_rect(bg1, col, 32,  9,  6, 8, T_ROCKY_PATH, COL_WALKABLE);
     fill_rect(bg1, col, 36,  4,  3, 6, T_ROCKY_PATH, COL_WALKABLE); /* High Pass to Hollow Glade */
     set_bg1(bg1, col, 37, 4, T_STONE_STAIRS, COL_WALKABLE);
     set_bg1(bg1, col, 37, 5, T_STONE_STAIRS, COL_WALKABLE);
 
-    /* Rustic Timber Bridge over Forest Rapids (x=17..20, y=15..16) */
-    for (x = 17; x <= 20; x++) {
+    /* Rustic Timber Bridge over Forest Rapids (x=17..21, y=15..16) */
+    for (x = 17; x <= 21; x++) {
         set_bg1(bg1, col, x, 14, T_BRIDGE_RAIL_N, COL_SOLID);
         set_bg1(bg1, col, x, 15, T_BRIDGE,        COL_WALKABLE);
         set_bg1(bg1, col, x, 16, T_BRIDGE,        COL_WALKABLE);
@@ -684,8 +692,8 @@ static void build_zone_hollow_glade(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
         set_bg1(bg1, col, x, HEARTH_MAP_H - 2, T_CLIFF_LEDGE, COL_SOLID);
     }
 
-    /* South Entry Stairway from Whispering Woods (x=20..22, y=24..26) */
-    fill_rect(bg1, col, 20, 18, 3, 9, T_ROCKY_PATH, COL_WALKABLE);
+    /* South Entry Stairway from Whispering Woods (x=20..22, y=24..27) */
+    fill_rect(bg1, col, 20, 18, 3, 10, T_ROCKY_PATH, COL_WALKABLE);
     set_bg1(bg1, col, 20, 24, T_STONE_STAIRS, COL_WALKABLE);
     set_bg1(bg1, col, 21, 24, T_STONE_STAIRS, COL_WALKABLE);
     set_bg1(bg1, col, 22, 24, T_STONE_STAIRS, COL_WALKABLE);
@@ -1049,31 +1057,31 @@ static const char GLOBE_MACRO_ROWS[HEARTH_ATLAS_H][HEARTH_ATLAS_W + 1] = {
 /* 11 */ "~~~~VVvvvvVVV~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TTttttttTT~",
 /* 12 */ "~~~VVvvlvvvvVV~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TTttttttttT~",
 /* 13 */ "~~VVvvvlvvVVvvV~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TTttTTttttttT",
-/* 14 */ "~~VvvvlllvvvvvV~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TTttttttttttTT",
-/* 15 */ "~~VvvvllvvvVVvV~~~~~~mmmmmmmmmmmmmmmmmm~~~~~~~~~~~TttttttttttttT",
-/* 16 */ "~~VVvvllvvvvvvV~~~~mggggggggggggggggggggm~~~~~~~~~TttttTTttttttT",
+/* 14 */ "~~vvvvlllvvvvvv~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TTttttttttttTT",
+/* 15 */ "~~vvvvllvvvVVvv~~~~~~mmmmmmmmmmmmmmmmmm~~~~~~~~~~~tttttttttttttt",
+/* 16 */ "~~VVvvllvvvvvvv~~~~mggggggggggggggggggggm~~~~~~~~~tttttTTttttttt",
 /* 17 */ "~~~VvvllvvvvvVV~~~bggggggghhhhhhhggggggggb~~~~~~~~TTttttttttttTT",
 /* 18 */ "~~~VVvvlvvvvVV~~~bggggggggghhhhhggggggggggb~~~~~~~~TTttttttttTT~",
-/* 19 */ "~~~~VVvvvvVVV~~~bgggggfffggggggggggfgggggggb~~~~~~~~~TTttttTT~~~",
-/* 20 */ "~~~~~VVVVVV~~~~~bggggggggghhhhhhhggggggggggb~~~~~~~~~~~TTTT~~~~~",
+/* 19 */ "~~~~VVvvvvvvV~~~bgggggfffggggggggggfgggggggb~~~~~~~~~TTtttttt~~~",
+/* 20 */ "~~~~~VVvvVV~~~~~bggggggggghhhhhhhggggggggggb~~~~~~~~~~~TttT~~~~~",
 /* 21 */ "~~~~~~~~~~~~~~~~bggggggggghhhhhhhggggfffgggb~~~~~~~~~~~~~~~~~~~~",
 /* 22 */ "~~~~~~~~~~~~~~~~bgggggggggggggggggggffffgggb~~~~~~~~~~~~~~~~~~~~",
 /* 23 */ "~~~~~~~~~~~~~~~~bgggggggggggggggggggffffgggb~~~~~~~~~~~~~~~~~~~~",
 /* 24 */ "~~~~~~~~~~~~~~~~bggggggggggggggggggggggggggb~~~~~~~~~~~~~~~~~~~~",
-/* 25 */ "~~~~~~~~~~~~~~~~bggggggggggggfffgggggggggggb~~~~~~~~JJJJJJJJ~~~~",
+/* 25 */ "~~~~~~~~~~~~~~~~bggggggggggggfffgggggggggggb~~~~~~~~JJjjjjJJ~~~~",
 /* 26 */ "~~~~~~~~~~~~~~~~bggggggggggggfffgggggggggggb~~~~~~JJjjjjjjjjJJ~~",
 /* 27 */ "~~~~~~~~~~~~~~~~bfgggggggggggggggggggggggggb~~~~~JjjjjJJjjjjjjJ~",
 /* 28 */ "~~~~~~~~~~~~~~~~~bbbbbbbbbbbbbbbbbbbbbbbbbb~~~~~JJjjjjjjjjJJjjJ~",
-/* 29 */ "~~~~~~~~~~~~~~~~~~~~ssssssssssssssss~~~~~~~~~~~~JjjjJJjjjjjjjjJ~",
-/* 30 */ "~~~~~~~~~~~~~~~~~ssssssssssssssssssss~~~~~~~~~~~JjjjjjjjjjjjjjJ~",
-/* 31 */ "~~~~~~~~~~~~~~sssssssssssssssssssssssss~~~~~~~~~JjjjjjjJJjjjjjJ~",
-/* 32 */ "~~~~~~~~~~~sssssspppppppsssssssbbbbbbsss~~~~~~~~JjjjjjjjjjjjjjJ~",
-/* 33 */ "~~~~~~~~pppppprrrpppppppprssssbddddddbbb~~~~~~~~JjjjJJjjjjjjjjJ~",
-/* 34 */ "~~~~~~ppppppppprpppppppppprssbddddddddddb~~~~~~~JJjjjjjjjjJJjjJ~",
+/* 29 */ "~~~~~~~~~~~~~~~~~~~~ssssssssssssssss~~~~~~~~~~~~jjjjJJjjjjjjjjJ~",
+/* 30 */ "~~~~~~~~~~~~~~~~~ssssssssssssssssssss~~~~~~~~~~~jjjjjjjjjjjjjjj~",
+/* 31 */ "~~~~~~~~~~~~~~sssssssssssssssssssssssss~~~~~~~~~jjjjjjjJJjjjjjj~",
+/* 32 */ "~~~~~~~~~~~sssssspppppppsssssssbbbbbbsss~~~~~~~~jjjjjjjjjjjjjjj~",
+/* 33 */ "~~~~~~~~pppppprrrpppppppprssssbddddddbbb~~~~~~~~jjjjJJjjjjjjjjj~",
+/* 34 */ "~~~~~~ppppppppprpppppppppprssbddddddddddb~~~~~~~jjjjjjjjjjJJjjJ~",
 /* 35 */ "~~~~~ppppppppppppppppppppprrbddddddddddddb~~~~~~~JjjjjjjjjjjjjJ~",
 /* 36 */ "~~~~pppppppppppppppppppppprrdddddddddddddd~~~~~~~JJjjjJJjjjjjJJ~",
 /* 37 */ "~~~~pppppppppppppppppppprrrrdddddddddddddd~~~~~~~~~JJjjjjjjjJJ~~",
-/* 38 */ "~~~~ppppppppppppppppppprrrrbdddddooooddddd~~~~~~~~~~~JJJJJJJ~~~~",
+/* 38 */ "~~~~ppppppppppppppppppprrrrbdddddooooddddd~~~~~~~~~~~JjjjjjJ~~~~",
 /* 39 */ "~~~~~pppppppppppppppppprsssbdddddooooddddd~~~~~~~~~~~~~~~~~~~~~~",
 /* 40 */ "~~~~~~pppppppppppppppppr~~~bdddddddddddddb~~~~~~~~~~~~~~~~~~~~~~",
 /* 41 */ "~~~~~~~~pppppppppppppp~~~~~~bdddddddddddb~~~~~~~~~~~~~~~~~~~~~~~",
@@ -1344,7 +1352,7 @@ static void globe_apply_outer_landmarks(uint16_t x, uint16_t y, uint8_t *p_bg1, 
     } else if (y >= 124u && y <= 128u) {
         if (x >= 210u && x <= 214u) {
             *p_bg1 = T_WORLD_JUNGLE; *p_col = COL_WALKABLE;
-            if (x >= 211u && x <= 213u && y == 125u) { *p_bg1 = T_DOCK_PIER; *p_col = COL_SOLID; }
+            if (x >= 211u && x <= 213u && y == 125u) { *p_bg1 = T_DOCK_PIER; *p_col = COL_WALKABLE; }
         }
     }
 }
@@ -1711,7 +1719,7 @@ static void build_zone_babana_oasis(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
         set_bg1(bg1, col, x, 1, T_CLIFF_LEDGE, COL_SOLID);
         if (x < 19 || x > 24) {
             set_bg1(bg1, col, x, HEARTH_MAP_H - 1, T_CLIFF_WALL, COL_SOLID);
-            set_bg1(bg1, col, x, HEARTH_MAP_H - 2, T_CLIFF_WALL, COL_SOLID);
+            set_bg1(bg1, col, x, HEARTH_MAP_H - 2, T_CLIFF_LEDGE, COL_SOLID);
         }
     }
     for (y = 0; y < HEARTH_MAP_H; y++) {
@@ -1722,7 +1730,7 @@ static void build_zone_babana_oasis(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     }
     /* Lush Emerald Oasis Ring & Shimmering Spring */
     fill_rect(bg1, col, 11, 6,  22, 13, T_GRASS, COL_WALKABLE);
-    fill_rect(bg1, col, 17, 9,  10, 5,  T_WORLD_SHALLOW, COL_WATER);
+    fill_rect(bg1, col, 17, 9,  10, 5,  T_WATER, COL_WATER);
     fill_rect(bg1, col, 20, 18, 4,  10, T_COBBLE, COL_WALKABLE);
     /* Desert Pavilion & Babana Market */
     place_cottage(bg1, bg2, col, 7,  6);
@@ -1771,7 +1779,7 @@ static void build_zone_sunhill_market(uint8_t *bg1, uint8_t *bg2, uint8_t *col) 
     }
     for (x = 0; x < HEARTH_MAP_W; x++) {
         set_bg1(bg1, col, x, HEARTH_MAP_H - 1, T_CLIFF_WALL, COL_SOLID);
-        set_bg1(bg1, col, x, HEARTH_MAP_H - 2, T_CLIFF_WALL, COL_SOLID);
+        set_bg1(bg1, col, x, HEARTH_MAP_H - 2, T_CLIFF_LEDGE, COL_SOLID);
     }
 
     /* Upper Fountain Terrace (y=6..12) + Carved Stone Stairs + Lower Market Plaza (y=14..23) */
@@ -1827,9 +1835,9 @@ static void build_zone_castle_gate(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     set_bg2(bg2, 21, 9, O_SHRINE_ARCH);
     set_bg2(bg2, 22, 9, O_SHRINE_ARCH);
 
-    /* Sparkling Royal Moat & Wide Limestone Drawbridge */
-    fill_rect(bg1, col, 2, 16, 40, 4, T_WATER, COL_WATER);
+    /* Sparkling Royal Moat & Wide N-S Limestone Drawbridge */
     fill_rect(bg1, col, 18, 10, 8, 18, T_COBBLE, COL_WALKABLE);
+    fill_rect(bg1, col, 2, 16, 40, 4, T_WATER, COL_WATER);
     for (y = 16; y <= 19; y++) {
         for (x = 19; x <= 24; x++) {
             set_bg1(bg1, col, x, y, T_BRIDGE, COL_WALKABLE);
