@@ -96,6 +96,9 @@ const TOD_ADD_B = [32, 0, 16, 36] as const;
 
 function isEmissive4Pal(palId: number, subPal: number, idx: number): boolean {
   if ((subPal === 2 || subPal === 3) && (idx === 13 || idx === 14)) return true;
+  if (palId === 10 && subPal === 3) {
+    if ((idx >= 4 && idx <= 5) || (idx >= 8 && idx <= 9) || (idx >= 13 && idx <= 15)) return true;
+  }
   if (palId === 16) {
     if (subPal === 0 && (idx === 12 || idx === 13)) return true;
     if (subPal === 3 && ((idx >= 2 && idx <= 5) || (idx >= 12 && idx <= 15))) return true;

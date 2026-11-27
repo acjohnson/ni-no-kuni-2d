@@ -504,6 +504,12 @@ META_NAMES = [
     "CM_BOULDER_COBBLE", "CM_BOULDER_SAND", "CM_PALM_GRASS",
     # 204: Unlit Stone Shrine Lantern (Whispering Woods dark lantern before Rowan lights it!)
     "CM_LAMP_UNLIT",
+    # 205..216: World Map Deep Ocean <-> Shallow Water Curved Shoal Transitions (all 12 shapes!)
+    "CM_SHOAL_N", "CM_SHOAL_S", "CM_SHOAL_W", "CM_SHOAL_E",
+    "CM_SHOAL_NW", "CM_SHOAL_NE", "CM_SHOAL_SW", "CM_SHOAL_SE",
+    "CM_SHOAL_INW", "CM_SHOAL_INE", "CM_SHOAL_ISW", "CM_SHOAL_ISE",
+    # 217..218: Biome-Matched World Mountain Peaks (Frostmere Snow & Cinderpeak Basalt under unified world palette!)
+    "CM_PEAK_SNOW", "CM_PEAK_VOLCANO",
 ]
 META_IDX = {name: i for i, name in enumerate(META_NAMES)}
 
@@ -980,20 +986,22 @@ def make_water(frame=0, deep=False, shallow=False, rapids=False, vertical=False,
                     elif (y == 3 and wx == 2) or (y == 11 and wx == 10):
                         t.p(x, y, 2)
             elif shallow:
-                # Translucent tropical turquoise shallows with smooth horizontal wavelets (ZERO polka-dot grid!)
+                # Translucent tropical turquoise lagoon with gentle horizontal sunlit wavelets (ZERO vertical stripes!)
                 px = (x + shift) & 15
-                rib = math.sin(px * (math.pi / 8.0) + math.sin(y * (math.pi / 4.0)) * 0.75) + math.sin(y * (math.pi / 4.0)) * 0.45
-                if rib > 1.02:
-                    t.p(x, y, 14 if ((px + y) & 1) else 13)
-                elif rib > 0.35:
-                    t.p(x, y, 13)         # bright crystal aqua sunlit ripple
-                elif rib < -0.78:
-                    t.p(x, y, 3)          # deeper cerulean shallow trough
+                band  = math.sin((y + 0.5) * (math.pi / 4.0) + math.sin(px * (math.pi / 8.0)) * 0.75)
+                swell = math.sin(px * (math.pi / 8.0) + math.cos(y * (math.pi / 4.0)) * 0.65)
+                val   = band * 0.72 + swell * 0.28
+                if val > 0.78:
+                    t.p(x, y, 13)         # crisp sunlit aqua wavelet crest
+                elif val > 0.42 and ((px + y) & 1):
+                    t.p(x, y, 13)         # soft dithered shimmer shoulder
+                elif val < -0.74:
+                    t.p(x, y, 3)          # gentle mid-cerulean ripple trough
                 else:
-                    t.p(x, y, 12)         # vivid turquoise lagoon base
-                wx = (px + (y // 8) * 6) & 15
-                if (y == 4 and wx in (4, 5)) or (y == 12 and wx in (12, 13)):
-                    t.p(x, y, 14)
+                    t.p(x, y, 12)         # vivid translucent turquoise lagoon body
+                wx = (px + (y // 8) * 7) & 15
+                if (y == 3 and wx in (4, 5)) or (y == 11 and wx in (11, 12)):
+                    t.p(x, y, 14 if (wx == (4 if y == 3 else 11)) else 13)
             else:
                 # Vivid creek/lake water with flowing S-curved ribbons & sunlit dapples
                 px = (x + shift) & 15
@@ -1191,6 +1199,71 @@ def make_world_coast(edge, frame=0, deep_ocean=False):
                 edge_damp = math.sin(sx * math.pi / 15.0) * math.sin(sy * math.pi / 15.0)
                 r = math.hypot(float(sx), float(sy)) + math.sin((sx - sy) * 0.5) * 0.25 * edge_damp
                 paint_coast_pixel(x, y, r - 4.5, is_north_drop=(not flip_y and sy > sx))
+    return t
+
+def make_world_shoal(edge, frame=0):
+    """
+    Smooth curved bathymetry drop-off where Evertale Deep Ocean (T_WORLD_OCEAN)
+    meets Turquoise Shallows (T_WORLD_SHALLOW / T_WORLD_CORAL).
+    Uses boundary-exact periodic curves matching T_WORLD_SHALLOW at the outer rim
+    and grading seamlessly through turquoise (12) -> cerulean (3) -> sapphire (2)
+    into deep ocean swells across all 12 edge/corner orientations.
+    """
+    t = make_water(frame, deep=True)
+    shal = make_water(frame, shallow=True)
+    flip_x = edge in ('E', 'NE', 'SE', 'INE', 'ISE')
+    flip_y = edge in ('S', 'SW', 'SE', 'ISW', 'ISE')
+    base_e = {
+        'S': 'N', 'E': 'W',
+        'NE': 'NW', 'SW': 'NW', 'SE': 'NW',
+        'INE': 'INW', 'ISW': 'INW', 'ISE': 'INW',
+    }.get(edge, edge)
+
+    def paint_shoal_pixel(x, y, d):
+        if d < 0.0:
+            t.p(x, y, shal.px[y][x])
+        elif d < 1.7:
+            # Translucent turquoise-to-cerulean drop-off rim with soft animated shimmer
+            if d < 0.75:
+                t.p(x, y, 12 if ((x + y) & 1) else shal.px[y][x])
+            else:
+                t.p(x, y, 3 if ((x + y + frame) & 1) else 12)
+        elif d < 3.4:
+            # Mid-depth sunlit cerulean shelf
+            t.p(x, y, 2 if (d >= 2.4 and ((x + y) & 1)) else 3)
+        elif d < 5.0:
+            # Deepening sapphire slope fading smoothly into deep ocean body
+            if (x + y) & 1:
+                t.p(x, y, 2)
+
+    if base_e == 'N':
+        curve = [3.6, 4.2, 4.7, 4.9, 4.7, 4.2, 3.8, 3.5, 3.7, 4.2, 4.7, 4.9, 4.6, 4.2, 3.8, 3.6]
+        for x in range(16):
+            for y in range(16):
+                sy = (15 - y) if flip_y else y
+                paint_shoal_pixel(x, y, sy - curve[x])
+    elif base_e == 'W':
+        curve = [3.6, 4.2, 4.7, 4.9, 4.6, 4.1, 3.7, 3.5, 3.7, 4.3, 4.7, 4.9, 4.6, 4.1, 3.8, 3.6]
+        for y in range(16):
+            for x in range(16):
+                sx = (15 - x) if flip_x else x
+                paint_shoal_pixel(x, y, sx - curve[y])
+    elif base_e == 'NW':
+        for y in range(16):
+            for x in range(16):
+                sx = (15 - x) if flip_x else x
+                sy = (15 - y) if flip_y else y
+                edge_damp = math.sin(sx * math.pi / 15.0) * math.sin(sy * math.pi / 15.0)
+                r = math.hypot(15.0 - sx, 15.0 - sy) + math.sin((sx - sy) * 0.42) * 0.35 * edge_damp
+                paint_shoal_pixel(x, y, 11.4 - r)
+    elif base_e == 'INW':
+        for y in range(16):
+            for x in range(16):
+                sx = (15 - x) if flip_x else x
+                sy = (15 - y) if flip_y else y
+                edge_damp = math.sin(sx * math.pi / 15.0) * math.sin(sy * math.pi / 15.0)
+                r = math.hypot(float(sx), float(sy)) + math.sin((sx - sy) * 0.5) * 0.25 * edge_damp
+                paint_shoal_pixel(x, y, r - 3.6)
     return t
 
 def make_bridge():
@@ -2081,12 +2154,21 @@ def make_world_beach():
     t.p(11, 12, 8); t.p(11, 11, 9); t.p(12, 11, 11)
     return t
 
-def make_world_peak():
-    """Snow-capped storybook mountain range with warm sunlit western slope & cool eastern shadow."""
-    t = Tile16(TPAL_WATER, 9)
-    for y in range(16):
-        for x in range(16):
-            t.p(x, y, 10 if ((x * 3 + y * 5) & 3) else 9)
+def make_world_peak(biome="grass"):
+    """Snow-capped storybook mountain range with biome-matched foothills (grass, snow, or volcanic basalt)."""
+    if biome == "snow":
+        t = make_world_snow(0)
+    elif biome == "volcano":
+        t = Tile16(TPAL_WATER, 5)
+        for y in range(16):
+            for x in range(16):
+                v = (x * 3 + y * 5) & 7
+                t.p(x, y, 6 if v in (1, 5) else (8 if v == 0 else 5))
+    else:
+        t = Tile16(TPAL_WATER, 9)
+        for y in range(16):
+            for x in range(16):
+                t.p(x, y, 10 if ((x * 3 + y * 5) & 3) else 9)
     peaks = [(5, 4, 8), (11, 2, 10)]
     for px, py, h in peaks:
         for dy in range(h + 4):
@@ -2096,18 +2178,43 @@ def make_world_peak():
             for dx in range(-hw, hw + 1):
                 x = px + dx
                 if not (0 <= x < 16): continue
-                if dy <= 2:
-                    t.p(x, y, 15 if dx <= 0 else 13)  # bright sunlit snowcap & cool ice shadow
-                elif dy == 3 and ((x + dy) & 1):
-                    t.p(x, y, 7)
-                elif dx < 0:
-                    t.p(x, y, 7 if (dx == -1 and dy < 6) else (6 if (dx > -hw) else 5))
-                elif dx == 0:
-                    t.p(x, y, 7 if (dy < 6) else 6)
+                if biome == "volcano":
+                    # Dramatic jagged dark volcanic basalt peaks with warm ash crests (zero snowcap!)
+                    if dy <= 1:
+                        t.p(x, y, 7 if dx <= 0 else 6)
+                    elif dy == 2 and ((x + dy) & 1):
+                        t.p(x, y, 6)
+                    elif dx < 0:
+                        t.p(x, y, 6 if (dx >= -2 and dy < 7) else 5)
+                    elif dx == 0:
+                        t.p(x, y, 6 if (dy < 6) else 5)
+                    else:
+                        t.p(x, y, 8 if (dx > 1) else 5)
+                elif biome == "snow":
+                    # Crisp glacial mountain peaks rising directly out of Frostmere snowdrifts
+                    if dy <= 3:
+                        t.p(x, y, 15 if dx <= 0 else 13)
+                    elif dy == 4 and ((x + dy) & 1):
+                        t.p(x, y, 13)
+                    elif dx < 0:
+                        t.p(x, y, 14 if (dx == -1 and dy < 7) else (6 if (dx > -hw) else 5))
+                    elif dx == 0:
+                        t.p(x, y, 13 if (dy < 6) else 6)
+                    else:
+                        t.p(x, y, 5 if (dx < hw) else 8)
                 else:
-                    t.p(x, y, 5 if (dx < hw) else 8)
+                    if dy <= 2:
+                        t.p(x, y, 15 if dx <= 0 else 13)  # bright sunlit snowcap & cool ice shadow
+                    elif dy == 3 and ((x + dy) & 1):
+                        t.p(x, y, 7)
+                    elif dx < 0:
+                        t.p(x, y, 7 if (dx == -1 and dy < 6) else (6 if (dx > -hw) else 5))
+                    elif dx == 0:
+                        t.p(x, y, 7 if (dy < 6) else 6)
+                    else:
+                        t.p(x, y, 5 if (dx < hw) else 8)
     # Soft cast shadow base along foothills for grounded 3D perspective
-    t.hline(1, 15, 14, 8)
+    t.hline(1, 15, 14, 13 if biome == "snow" else 8)
     return t
 
 def make_world_forest():
@@ -2280,9 +2387,9 @@ def make_world_tech():
     t = Tile16(TPAL_ACCENT, 10)
     t.rect(1, 1, 14, 14, 11)
     t.hline(1, 1, 14, 12); t.vline(1, 1, 14, 12)
-    t.hline(2, 7, 12, 3); t.hline(2, 8, 12, 4)
-    t.vline(7, 2, 12, 3); t.vline(8, 2, 12, 4)
-    t.rect(6, 6, 4, 4, 13); t.rect(7, 7, 2, 2, 15)
+    t.hline(2, 7, 12, 7); t.hline(2, 8, 12, 8)
+    t.vline(7, 2, 12, 7); t.vline(8, 2, 12, 8)
+    t.rect(6, 6, 4, 4, 8); t.rect(7, 7, 2, 2, 9)
     return t
 
 def make_mtn_sky():
@@ -2427,6 +2534,9 @@ ANIM_META_NAMES = [
     "CM_OCEAN_COAST_N", "CM_OCEAN_COAST_S", "CM_OCEAN_COAST_W", "CM_OCEAN_COAST_E",
     "CM_OCEAN_COAST_NW", "CM_OCEAN_COAST_NE", "CM_OCEAN_COAST_SW", "CM_OCEAN_COAST_SE",
     "CM_OCEAN_COAST_INW", "CM_OCEAN_COAST_INE", "CM_OCEAN_COAST_ISW", "CM_OCEAN_COAST_ISE",
+    "CM_SHOAL_N", "CM_SHOAL_S", "CM_SHOAL_W", "CM_SHOAL_E",
+    "CM_SHOAL_NW", "CM_SHOAL_NE", "CM_SHOAL_SW", "CM_SHOAL_SE",
+    "CM_SHOAL_INW", "CM_SHOAL_INE", "CM_SHOAL_ISW", "CM_SHOAL_ISE",
     "CM_PIER_WATER_EDGE",
 ]
 
@@ -2495,7 +2605,9 @@ def build_all_metatiles(frame=0):
 
     M["T_WORLD_OCEAN"]   = make_water(frame, deep=True)
     M["T_WORLD_BEACH"]   = make_world_beach()
-    M["T_WORLD_PEAK"]    = make_world_peak()
+    M["T_WORLD_PEAK"]    = make_world_peak("grass")
+    M["CM_PEAK_SNOW"]    = make_world_peak("snow")
+    M["CM_PEAK_VOLCANO"] = make_world_peak("volcano")
     M["T_WORLD_FOREST"]  = make_world_forest()
     M["T_WORLD_HILL"]    = make_world_hill()
     M["T_WORLD_CASTLE"]  = make_world_castle()
@@ -2596,10 +2708,11 @@ def build_all_metatiles(frame=0):
     M["CM_INTERIOR_CAP"] = make_interior_cap()
     M["CM_BED_FOOT"]     = make_bed_foot()
 
-    # All 12 Evertale Shallow & Deep Ocean Coastlines & Empty
+    # All 12 Evertale Shallow & Deep Ocean Coastlines + Deep-to-Shallow Shoal Transitions & Empty
     for e in ('N', 'S', 'W', 'E', 'NW', 'NE', 'SW', 'SE', 'INW', 'INE', 'ISW', 'ISE'):
         M[f"CM_WORLD_COAST_{e}"] = make_world_coast(e, frame, deep_ocean=False)
         M[f"CM_OCEAN_COAST_{e}"] = make_world_coast(e, frame, deep_ocean=True)
+        M[f"CM_SHOAL_{e}"]       = make_world_shoal(e, frame)
     M["CM_EMPTY"] = Tile16(TPAL_FOLIAGE, 0)
 
     # Directional N-S Vertical Rivers, Narrow Channels, N-S Bridge & Ground-Matched Props
@@ -2985,6 +3098,10 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("    return (t == T_WATER || t == T_FORD || t == T_RAPIDS || t == T_WORLD_OCEAN || t == T_WORLD_SHALLOW) ? 1u : 0u;")
     out.append("}")
     out.append("")
+    out.append("static uint8_t hearth_is_shallow_water(uint8_t t) {")
+    out.append("    return (t == T_WORLD_SHALLOW || t == T_WORLD_CORAL) ? 1u : 0u;")
+    out.append("}")
+    out.append("")
     out.append("static uint8_t hearth_is_grass_like(uint8_t t) {")
     out.append("    return (t == T_GRASS || t == T_GRASS_ALT || t == T_FLOWERS ||")
     out.append("            t == T_TALL_GRASS || t == T_AUTUMN_GRASS) ? 1u : 0u;")
@@ -3117,6 +3234,13 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("    uint8_t gnd;")
     out.append("    /* 1. Seamless Ground-Composited Props, Palms & Cozy Indoor Furniture */")
     out.append("    if (t == T_LANTERN_UNLIT) return (uint8_t)CM_LAMP_UNLIT;")
+    out.append("    if (t == T_WORLD_PEAK) {")
+    out.append("        if ((is_world && my < 40u) || tn == T_WORLD_SNOW || ts == T_WORLD_SNOW || tw == T_WORLD_SNOW || te == T_WORLD_SNOW)")
+    out.append("            return (uint8_t)CM_PEAK_SNOW;")
+    out.append("        if (is_world && mx < 68u && my >= 36u && my < 90u)")
+    out.append("            return (uint8_t)CM_PEAK_VOLCANO;")
+    out.append("        return T_WORLD_PEAK;")
+    out.append("    }")
     out.append("    if (t == T_PALM_TREE) {")
     out.append("        uint8_t gc = (uint8_t)(hearth_is_grass_like(tn) + hearth_is_grass_like(ts) + hearth_is_grass_like(tw) + hearth_is_grass_like(te));")
     out.append("        uint8_t sc = (uint8_t)(((tn == T_WORLD_BEACH || tn == T_WORLD_SAND) ? 1u : 0u) +")
@@ -3183,10 +3307,16 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("        uint8_t lne = hearth_is_shore_land(tne, is_world);")
     out.append("        uint8_t lsw = hearth_is_shore_land(tsw, is_world);")
     out.append("        uint8_t lse = hearth_is_shore_land(tse, is_world);")
-    out.append("        if (ln || ls || lw || le || lnw || lne || lsw || lse) {")
-    out.append("            uint8_t use_ocean = (t == T_WORLD_OCEAN) ? 1u : 0u;")
-    out.append("            uint8_t use_sandy = (is_world || ((t == T_WORLD_SHALLOW || t == T_WORLD_CORAL) && !hearth_is_grass_like(tn) && !hearth_is_grass_like(ts) && !hearth_is_grass_like(tw) && !hearth_is_grass_like(te))) ? 1u : 0u;")
-    out.append("            if (use_ocean) {")
+    out.append("        if (t == T_WORLD_OCEAN) {")
+    out.append("            uint8_t sn  = hearth_is_shallow_water(tn);")
+    out.append("            uint8_t ss  = hearth_is_shallow_water(ts);")
+    out.append("            uint8_t sw  = hearth_is_shallow_water(tw);")
+    out.append("            uint8_t se  = hearth_is_shallow_water(te);")
+    out.append("            uint8_t snw = hearth_is_shallow_water(tnw);")
+    out.append("            uint8_t sne = hearth_is_shallow_water(tne);")
+    out.append("            uint8_t ssw = hearth_is_shallow_water(tsw);")
+    out.append("            uint8_t sse = hearth_is_shallow_water(tse);")
+    out.append("            if (ln || ls || lw || le) {")
     out.append("                if (ln && lw) return (uint8_t)CM_OCEAN_COAST_NW;")
     out.append("                if (ln && le) return (uint8_t)CM_OCEAN_COAST_NE;")
     out.append("                if (ls && lw) return (uint8_t)CM_OCEAN_COAST_SW;")
@@ -3195,11 +3325,31 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("                if (ls) return (uint8_t)CM_OCEAN_COAST_S;")
     out.append("                if (lw) return (uint8_t)CM_OCEAN_COAST_W;")
     out.append("                if (le) return (uint8_t)CM_OCEAN_COAST_E;")
-    out.append("                if (lnw) return (uint8_t)CM_OCEAN_COAST_INW;")
-    out.append("                if (lne) return (uint8_t)CM_OCEAN_COAST_INE;")
-    out.append("                if (lsw) return (uint8_t)CM_OCEAN_COAST_ISW;")
-    out.append("                if (lse) return (uint8_t)CM_OCEAN_COAST_ISE;")
-    out.append("            } else if (use_sandy) {")
+    out.append("            }")
+    out.append("            if (sn || ss || sw || se) {")
+    out.append("                if (sn && sw) return (uint8_t)CM_SHOAL_NW;")
+    out.append("                if (sn && se) return (uint8_t)CM_SHOAL_NE;")
+    out.append("                if (ss && sw) return (uint8_t)CM_SHOAL_SW;")
+    out.append("                if (ss && se) return (uint8_t)CM_SHOAL_SE;")
+    out.append("                if (sn) return (uint8_t)CM_SHOAL_N;")
+    out.append("                if (ss) return (uint8_t)CM_SHOAL_S;")
+    out.append("                if (sw) return (uint8_t)CM_SHOAL_W;")
+    out.append("                if (se) return (uint8_t)CM_SHOAL_E;")
+    out.append("            }")
+    out.append("            if (lnw) return (uint8_t)CM_OCEAN_COAST_INW;")
+    out.append("            if (lne) return (uint8_t)CM_OCEAN_COAST_INE;")
+    out.append("            if (lsw) return (uint8_t)CM_OCEAN_COAST_ISW;")
+    out.append("            if (lse) return (uint8_t)CM_OCEAN_COAST_ISE;")
+    out.append("            if (snw) return (uint8_t)CM_SHOAL_INW;")
+    out.append("            if (sne) return (uint8_t)CM_SHOAL_INE;")
+    out.append("            if (ssw) return (uint8_t)CM_SHOAL_ISW;")
+    out.append("            if (sse) return (uint8_t)CM_SHOAL_ISE;")
+    out.append("            if (v & 1u) return (uint8_t)CM_OCEAN_V1;")
+    out.append("            return t;")
+    out.append("        }")
+    out.append("        if (ln || ls || lw || le || lnw || lne || lsw || lse) {")
+    out.append("            uint8_t use_sandy = (is_world || ((t == T_WORLD_SHALLOW || t == T_WORLD_CORAL) && !hearth_is_grass_like(tn) && !hearth_is_grass_like(ts) && !hearth_is_grass_like(tw) && !hearth_is_grass_like(te))) ? 1u : 0u;")
+    out.append("            if (use_sandy) {")
     out.append("                if (ln && lw) return (uint8_t)CM_WORLD_COAST_NW;")
     out.append("                if (ln && le) return (uint8_t)CM_WORLD_COAST_NE;")
     out.append("                if (ls && lw) return (uint8_t)CM_WORLD_COAST_SW;")
@@ -3233,7 +3383,6 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("            if (t == T_RAPIDS) return (uint8_t)CM_RAPIDS_V;")
     out.append("            if (t == T_WATER)  return (uint8_t)CM_WATER_V;")
     out.append("        }")
-    out.append("        if (t == T_WORLD_OCEAN && (v & 1u)) return (uint8_t)CM_OCEAN_V1;")
     out.append("        return t;")
     out.append("    }")
     out.append("    /* 4. Organic Rounded Sand/Beach-to-Grass Biome Transitions (World + Local Coastal Zones!) */")
@@ -3659,6 +3808,11 @@ def emit_web_ts(zone_pals, frames_meta):
         "  const isNsBridge = (flags & 4) !== 0;",
         "  const v = (((mx * 3 + my * 5) ^ (mx >> 1)) & 3);",
         "  if (t === 63) return CM_LAMP_UNLIT;",
+        "  if (t === 48) {",
+        "    if ((isWorld && my < 40) || tn === 56 || ts === 56 || tw === 56 || te === 56) return CM_PEAK_SNOW;",
+        "    if (isWorld && mx < 68 && my >= 36 && my < 90) return CM_PEAK_VOLCANO;",
+        "    return 48;",
+        "  }",
         "  if (t === 61) {",
         "    const gc = (isGrassLike(tn) ? 1 : 0) + (isGrassLike(ts) ? 1 : 0) + (isGrassLike(tw) ? 1 : 0) + (isGrassLike(te) ? 1 : 0);",
         "    const sc = ((tn === 47 || tn === 55) ? 1 : 0) + ((ts === 47 || ts === 55) ? 1 : 0) + ((tw === 47 || tw === 55) ? 1 : 0) + ((te === 47 || te === 55) ? 1 : 0);",
@@ -3710,10 +3864,16 @@ def emit_web_ts(zone_pals, frames_meta):
         "    const lne = isShoreLand(tne, isWorld);",
         "    const lsw = isShoreLand(tsw, isWorld);",
         "    const lse = isShoreLand(tse, isWorld);",
-        "    if (ln || ls || lw || le || lnw || lne || lsw || lse) {",
-        "      const useOcean = t === 46;",
-        "      const useSandy = isWorld || ((t === 54 || t === 59) && !isGrassLike(tn) && !isGrassLike(ts) && !isGrassLike(tw) && !isGrassLike(te));",
-        "      if (useOcean) {",
+        "    if (t === 46) {",
+        "      const sn  = tn === 54 || tn === 59;",
+        "      const ss  = ts === 54 || ts === 59;",
+        "      const sw  = tw === 54 || tw === 59;",
+        "      const se  = te === 54 || te === 59;",
+        "      const snw = tnw === 54 || tnw === 59;",
+        "      const sne = tne === 54 || tne === 59;",
+        "      const ssw = tsw === 54 || tsw === 59;",
+        "      const sse = tse === 54 || tse === 59;",
+        "      if (ln || ls || lw || le) {",
         "        if (ln && lw) return CM_OCEAN_COAST_NW;",
         "        if (ln && le) return CM_OCEAN_COAST_NE;",
         "        if (ls && lw) return CM_OCEAN_COAST_SW;",
@@ -3722,11 +3882,31 @@ def emit_web_ts(zone_pals, frames_meta):
         "        if (ls) return CM_OCEAN_COAST_S;",
         "        if (lw) return CM_OCEAN_COAST_W;",
         "        if (le) return CM_OCEAN_COAST_E;",
-        "        if (lnw) return CM_OCEAN_COAST_INW;",
-        "        if (lne) return CM_OCEAN_COAST_INE;",
-        "        if (lsw) return CM_OCEAN_COAST_ISW;",
-        "        if (lse) return CM_OCEAN_COAST_ISE;",
-        "      } else if (useSandy) {",
+        "      }",
+        "      if (sn || ss || sw || se) {",
+        "        if (sn && sw) return CM_SHOAL_NW;",
+        "        if (sn && se) return CM_SHOAL_NE;",
+        "        if (ss && sw) return CM_SHOAL_SW;",
+        "        if (ss && se) return CM_SHOAL_SE;",
+        "        if (sn) return CM_SHOAL_N;",
+        "        if (ss) return CM_SHOAL_S;",
+        "        if (sw) return CM_SHOAL_W;",
+        "        if (se) return CM_SHOAL_E;",
+        "      }",
+        "      if (lnw) return CM_OCEAN_COAST_INW;",
+        "      if (lne) return CM_OCEAN_COAST_INE;",
+        "      if (lsw) return CM_OCEAN_COAST_ISW;",
+        "      if (lse) return CM_OCEAN_COAST_ISE;",
+        "      if (snw) return CM_SHOAL_INW;",
+        "      if (sne) return CM_SHOAL_INE;",
+        "      if (ssw) return CM_SHOAL_ISW;",
+        "      if (sse) return CM_SHOAL_ISE;",
+        "      if (v & 1) return CM_OCEAN_V1;",
+        "      return t;",
+        "    }",
+        "    if (ln || ls || lw || le || lnw || lne || lsw || lse) {",
+        "      const useSandy = isWorld || ((t === 54 || t === 59) && !isGrassLike(tn) && !isGrassLike(ts) && !isGrassLike(tw) && !isGrassLike(te));",
+        "      if (useSandy) {",
         "        if (ln && lw) return CM_WORLD_COAST_NW;",
         "        if (ln && le) return CM_WORLD_COAST_NE;",
         "        if (ls && lw) return CM_WORLD_COAST_SW;",
@@ -3760,7 +3940,6 @@ def emit_web_ts(zone_pals, frames_meta):
         "      if (t === 34) return CM_RAPIDS_V;",
         "      if (t === 6) return CM_WATER_V;",
         "    }",
-        "    if (t === 46 && (v & 1)) return CM_OCEAN_V1;",
         "    return t;",
         "  }",
         "  if (t === 47 || t === 55) {",

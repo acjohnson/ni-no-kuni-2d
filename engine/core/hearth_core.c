@@ -100,15 +100,8 @@ static int16_t world_dy(const HearthState *st, int16_t a, int16_t b) {
     return HS.is_world_map ? wrap_delta_y(d) : d;
 }
 
-static uint8_t region_to_pal(uint8_t reg) {
-    if (reg == REGION_DESERT)    return (uint8_t)ZPAL_DESERT;
-    if (reg == REGION_PARADISE)  return (uint8_t)ZPAL_PARADISE;
-    if (reg == REGION_FROSTMERE) return (uint8_t)ZPAL_FROST;
-    if (reg == REGION_CANOPY)    return (uint8_t)ZPAL_JUNGLE;
-    if (reg == REGION_VOLCANO)   return (uint8_t)ZPAL_VOLCANO;
-    if (reg == REGION_AETHERIS)  return (uint8_t)ZPAL_TECH;
-    return (uint8_t)ZPAL_EVERTALE_WORLD;
-}
+/* Evertale World Map uses a single unified palette (ZPAL_EVERTALE_WORLD) across all 7 continents
+ * so sailing/flying between islands never snaps screen colors mid-travel! */
 
 static uint8_t region_to_bgm(uint8_t reg) {
     if (reg == REGION_DESERT)    return (uint8_t)BGM_DESERT;
@@ -511,6 +504,10 @@ void hearth_tod_grade_params(uint16_t tod_phase, HearthTodGrade *out) {
 bool hearth_tod_is_emissive_4pal(uint8_t pal_id, uint8_t sub_pal, uint8_t idx) {
     /* Sub-palettes 2 (Arch) & 3 (Accent) indices 13..14 are warm lit windows, lanterns & beacons */
     if ((sub_pal == 2u || sub_pal == 3u) && (idx == 13u || idx == 14u)) return true;
+    /* Unified World Map: keep Cinderpeak magma (4..5, 13..15) & Aetheris cyan conduits (8..9) glowing at night */
+    if (pal_id == ZPAL_EVERTALE_WORLD && sub_pal == 3u) {
+        if ((idx >= 4u && idx <= 5u) || (idx >= 8u && idx <= 9u) || (idx >= 13u && idx <= 15u)) return true;
+    }
     /* Cinderpeak Volcano: keep molten magma & glowing vents blazing bright at dusk/night */
     if (pal_id == ZPAL_VOLCANO) {
         if (sub_pal == 0u && (idx == 12u || idx == 13u)) return true;
@@ -724,7 +721,6 @@ static void update_globe_region_streaming(HearthState *st, bool show_banner) {
     reg = hearth_globe_region_at(tx, ty);
     if (reg != st->world_region_id) {
         st->world_region_id = reg;
-        st->terrain_pal_id = region_to_pal(reg);
         st->bgm_id = region_to_bgm(reg);
         if (show_banner) st->zone_banner_frames = 100;
         if (reg != st->globe_enemy_region) {
@@ -743,7 +739,7 @@ static void populate_zone_evertale_world(HearthState *st) {
     st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->has_windmill = true;
     st->world_region_id = reg;
-    st->terrain_pal_id = region_to_pal(reg);
+    st->terrain_pal_id = (uint8_t)ZPAL_EVERTALE_WORLD;
     st->bgm_id = region_to_bgm(reg);
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
 

@@ -349,21 +349,21 @@ int main(void) {
     for (int f = 0; f < 30; f++) hearth_step_60hz(&g_st, PAD_UP);
     CHECK(FROM_FP(g_st.hero_fy) > 2800, "Flying north past Y=0 wraps seamlessly to south edge (Y~3072)");
 
-    /* Verify all 7 continents stream distinct world_region_id, terrain_pal_id, and bgm_id */
+    /* Verify all 7 continents stream distinct world_region_id & bgm_id while keeping unified ZPAL_EVERTALE_WORLD palette */
     {
         const uint16_t rx[7] = { 104, 132, 52, 128, 212, 32, 220 };
         const uint16_t ry[7] = { 84, 154, 146, 22, 126, 62, 62 };
-        uint32_t pal_mask = 0u;
         uint32_t bgm_mask = 0u;
         for (int r = 0; r < 7; r++) {
             g_st.hero_fx = TO_FP((int)rx[r] * 16 + 8);
             g_st.hero_fy = TO_FP((int)ry[r] * 16 + 8);
             const HearthPpuPacket *rp = hearth_step_60hz(&g_st, 0);
             CHECK(rp->world_region_id == (uint8_t)r, "Globe streaming detects correct continent region");
-            pal_mask |= (1u << rp->terrain_pal_id);
+            CHECK(rp->terrain_pal_id == ZPAL_EVERTALE_WORLD,
+                  "World Map keeps unified ZPAL_EVERTALE_WORLD palette across all continents (zero snaps)");
             bgm_mask |= (1u << rp->bgm_id);
         }
-        CHECK(pal_mask != 0u && bgm_mask != 0u, "All 7 continents stream distinct palettes and regional BGM");
+        CHECK(bgm_mask != 0u, "All 7 continents stream regional BGM seamlessly");
     }
 
     /* Verify World Atlas toggle via PAD_SELECT, PAD_START (Genesis 3-btn & SNES), and PAD_X */
@@ -788,11 +788,13 @@ int main(void) {
         CHECK(hearth_tod_is_emissive_4pal(ZPAL_SUNHILL_MARKET, 2u, 13u) &&
               hearth_tod_is_emissive_4pal(ZPAL_SUNHILL_MARKET, 3u, 14u),
               "Lit town windows & lanterns stay emissive on 4-subpalette hosts");
-        CHECK(hearth_tod_is_emissive_4pal(ZPAL_VOLCANO, 0u, 12u) &&
+        CHECK(hearth_tod_is_emissive_4pal(ZPAL_EVERTALE_WORLD, 3u, 4u) &&
+              hearth_tod_is_emissive_4pal(ZPAL_EVERTALE_WORLD, 3u, 8u) &&
+              hearth_tod_is_emissive_4pal(ZPAL_VOLCANO, 0u, 12u) &&
               hearth_tod_is_emissive_4pal(ZPAL_VOLCANO, 3u, 4u) &&
               hearth_tod_is_emissive_4pal(ZPAL_TECH, 0u, 13u) &&
               hearth_tod_is_emissive_4pal(ZPAL_TECH, 3u, 5u),
-              "Volcano magma and Aetheris cyan beacons stay emissive on 4-subpalette hosts");
+              "World Map lava/cyan conduits, Volcano magma, and Aetheris beacons stay emissive");
         CHECK(!hearth_tod_is_emissive_4pal(ZPAL_EVERTALE_WORLD, 0u, 3u),
               "Standard grass/ground entries receive full TOD grading");
         CHECK(hearth_tod_is_emissive_gen(ZPAL_EVERTALE_WORLD, 0u, 13u) &&
