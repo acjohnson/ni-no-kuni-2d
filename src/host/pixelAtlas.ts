@@ -86,6 +86,42 @@ function lerpRgbaTuple(
 }
 
 const TOD_PAL_KEYS = [6, 1, 7, 8] as const; // Morning, Afternoon, Dusk, Night
+// Exact mirror of hearth_tod_grade_params() in engine/core/hearth_core.c
+const TOD_MUL_R = [213, 256, 188, 74] as const;
+const TOD_MUL_G = [205, 256, 158, 84] as const;
+const TOD_MUL_B = [209, 256, 144, 118] as const;
+const TOD_ADD_R = [49, 0, 59, 12] as const;
+const TOD_ADD_G = [37, 0, 27, 18] as const;
+const TOD_ADD_B = [32, 0, 16, 36] as const;
+
+function isEmissive4Pal(palId: number, subPal: number, idx: number): boolean {
+  if ((subPal === 2 || subPal === 3) && (idx === 13 || idx === 14)) return true;
+  if (palId === 16) {
+    if (subPal === 0 && (idx === 12 || idx === 13)) return true;
+    if (subPal === 3 && ((idx >= 2 && idx <= 5) || (idx >= 12 && idx <= 15))) return true;
+  }
+  if (palId === 17) {
+    if (subPal === 0 && idx === 13) return true;
+    if (subPal === 3 && (idx === 4 || idx === 5)) return true;
+  }
+  return false;
+}
+
+function gradeRgbaTuple(
+  c: [number, number, number, number],
+  mr: number,
+  mg: number,
+  mb: number,
+  ar8: number,
+  ag8: number,
+  ab8: number
+): [number, number, number, number] {
+  if (c[3] === 0) return c;
+  const r = Math.min(255, Math.max(0, (c[0] * mr + ar8 + 128) >> 8));
+  const g = Math.min(255, Math.max(0, (c[1] * mg + ag8 + 128) >> 8));
+  const b = Math.min(255, Math.max(0, (c[2] * mb + ab8 + 128) >> 8));
+  return [r, g, b, c[3]];
+}
 
 export type SwappableSlotId =
   | 'hero'
@@ -132,7 +168,7 @@ export class PixelAtlas {
   private readonly zonePalettes: readonly (readonly string[])[];
   private currentTerrainPalId = 0;
   private currentTodPhase = -1;
-  private currentMountainVista = false;
+  private currentOutdoorTod = false;
   private bg1Tiles = new Map<number, HTMLCanvasElement[]>(); // tileId -> animation frames
   private bg2Tiles = new Map<number, HTMLCanvasElement>();
   private sprites = new Map<string, HTMLCanvasElement>(); // key: `${spriteId}_${dir}_${frame}`
@@ -148,21 +184,19 @@ export class PixelAtlas {
     this.buildAllSprites();
   }
 
-  public setTerrainPalette(palId: number, todPhase = 0, hasMountainVista = false): void {
-    const isTodBlend =
-      hasMountainVista && (palId === 6 || palId === 1 || palId === 7 || palId === 8);
-    const effPhase = isTodBlend ? (todPhase & 1023) : 0;
+  public setTerrainPalette(palId: number, todPhase = 0, hasOutdoorTod = false): void {
+    const effPhase = hasOutdoorTod ? (todPhase & 1023) : 0;
     if (
       palId === this.currentTerrainPalId &&
       effPhase === this.currentTodPhase &&
-      isTodBlend === this.currentMountainVista
+      hasOutdoorTod === this.currentOutdoorTod
     ) {
       return;
     }
     if (palId >= 0 && palId < CHRONO_ZONE_PALS.length) {
       this.currentTerrainPalId = palId;
       this.currentTodPhase = effPhase;
-      this.currentMountainVista = isTodBlend;
+      this.currentOutdoorTod = hasOutdoorTod;
       if (palId < this.zonePalettes.length) {
         this.activePalettes[0] = this.zonePalettes[palId];
       }
@@ -239,7 +273,9 @@ export class PixelAtlas {
         ? this.currentTerrainPalId
         : 0;
     let rgbaPals: [number, number, number, number][][];
-    if (this.currentMountainVista) {
+    const isAutumnBlend =
+      this.currentOutdoorTod && (palId === 6 || palId === 1 || palId === 7 || palId === 8);
+    if (isAutumnBlend) {
       const seg = (this.currentTodPhase >> 8) & 3;
       const frac = this.currentTodPhase & 255;
       const pA = CHRONO_ZONE_PALS[TOD_PAL_KEYS[seg]];
@@ -248,6 +284,25 @@ export class PixelAtlas {
         subA.map((hexA, ci) =>
           lerpRgbaTuple(hexToRgbaTuple(hexA), hexToRgbaTuple(pB[sp][ci]), frac)
         )
+      );
+    } else if (this.currentOutdoorTod) {
+      const seg = (this.currentTodPhase >> 8) & 3;
+      const nxt = (seg + 1) & 3;
+      const frac = this.currentTodPhase & 255;
+      const inv = 256 - frac;
+      const mr = (TOD_MUL_R[seg] * inv + TOD_MUL_R[nxt] * frac + 128) >> 8;
+      const mg = (TOD_MUL_G[seg] * inv + TOD_MUL_G[nxt] * frac + 128) >> 8;
+      const mb = (TOD_MUL_B[seg] * inv + TOD_MUL_B[nxt] * frac + 128) >> 8;
+      const ar8 = TOD_ADD_R[seg] * inv + TOD_ADD_R[nxt] * frac;
+      const ag8 = TOD_ADD_G[seg] * inv + TOD_ADD_G[nxt] * frac;
+      const ab8 = TOD_ADD_B[seg] * inv + TOD_ADD_B[nxt] * frac;
+      const fourPals = CHRONO_ZONE_PALS[palId];
+      rgbaPals = fourPals.map((sub, sp) =>
+        sub.map((hex, ci) => {
+          const base = hexToRgbaTuple(hex);
+          if (ci === 0 || isEmissive4Pal(palId, sp, ci)) return base;
+          return gradeRgbaTuple(base, mr, mg, mb, ar8, ag8, ab8);
+        })
       );
     } else {
       const fourPals = CHRONO_ZONE_PALS[palId];

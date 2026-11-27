@@ -65,7 +65,7 @@ static inline uint32_t pal_col(uint8_t pal, uint8_t idx) {
 
 static uint8_t  g_last_terrain_pal = 255u;
 static uint16_t g_last_tod_phase   = 0xFFFFu;
-static bool     g_last_mtn_vista   = false;
+static bool     g_last_outdoor_tod = false;
 
 static inline uint32_t lerp_rgb888(uint32_t a, uint32_t b, uint16_t t256) {
     uint32_t inv = (uint32_t)(256u - t256);
@@ -75,22 +75,32 @@ static inline uint32_t lerp_rgb888(uint32_t a, uint32_t b, uint16_t t256) {
     return (r << 16) | (g << 8) | bl;
 }
 
-static void apply_zone_palette(uint8_t pal_id, uint16_t tod_phase, bool has_mountain_vista) {
+static inline uint32_t grade_rgb888(uint32_t rgb, const HearthTodGrade *gr) {
+    uint32_t r = (((rgb >> 16) & 0xFFu) * (uint32_t)gr->mr + (uint32_t)gr->ar8 + 128u) >> 8;
+    uint32_t g = (((rgb >> 8)  & 0xFFu) * (uint32_t)gr->mg + (uint32_t)gr->ag8 + 128u) >> 8;
+    uint32_t b = ((rgb         & 0xFFu) * (uint32_t)gr->mb + (uint32_t)gr->ab8 + 128u) >> 8;
+    if (r > 255u) r = 255u;
+    if (g > 255u) g = 255u;
+    if (b > 255u) b = 255u;
+    return (r << 16) | (g << 8) | b;
+}
+
+static void apply_zone_palette(uint8_t pal_id, uint16_t tod_phase, bool has_outdoor_tod) {
     static const uint8_t TOD_KEYS[4] = {
         ZPAL_AUTUMN_MORNING, ZPAL_ALDERBROOK, ZPAL_AUTUMN_DUSK, ZPAL_AUTUMN_NIGHT
     };
     if (pal_id >= ZPAL_COUNT) pal_id = 0;
-    bool is_tod_blend = has_mountain_vista && (
+    bool is_autumn_blend = has_outdoor_tod && (
         pal_id == ZPAL_AUTUMN_MORNING || pal_id == ZPAL_ALDERBROOK ||
         pal_id == ZPAL_AUTUMN_DUSK    || pal_id == ZPAL_AUTUMN_NIGHT
     );
-    uint16_t eff_phase = is_tod_blend ? (uint16_t)(tod_phase & 1023u) : 0u;
-    if (g_last_terrain_pal == pal_id && g_last_tod_phase == eff_phase && g_last_mtn_vista == is_tod_blend) return;
+    uint16_t eff_phase = has_outdoor_tod ? (uint16_t)(tod_phase & 1023u) : 0u;
+    if (g_last_terrain_pal == pal_id && g_last_tod_phase == eff_phase && g_last_outdoor_tod == has_outdoor_tod) return;
     g_last_terrain_pal = pal_id;
     g_last_tod_phase   = eff_phase;
-    g_last_mtn_vista   = is_tod_blend;
+    g_last_outdoor_tod = has_outdoor_tod;
 
-    if (is_tod_blend) {
+    if (is_autumn_blend) {
         uint8_t  seg  = (uint8_t)((eff_phase >> 8) & 3u);
         uint16_t frac = (uint16_t)(eff_phase & 255u);
         uint8_t  pA   = TOD_KEYS[seg];
@@ -102,6 +112,23 @@ static void apply_zone_palette(uint8_t pal_id, uint16_t tod_phase, bool has_moun
         for (int p = 0; p < 4; p++) {
             for (int i = 0; i < 16; i++) {
                 uint32_t rgb = lerp_rgb888(SDL_CHRONO_PALS[pA][p][i], SDL_CHRONO_PALS[pB][p][i], frac);
+                g_chrono_pal_argb[p][i] = (i == 0) ? 0u : rgb_to_argb(rgb);
+            }
+        }
+    } else if (has_outdoor_tod) {
+        HearthTodGrade gr;
+        hearth_tod_grade_params(eff_phase, &gr);
+        for (int i = 0; i < 16; i++) {
+            uint32_t base = HEARTH_ZONE_PALETTES_RGB[pal_id][i];
+            uint32_t rgb = (i == 0 || (pal_id == ZPAL_VOLCANO && (i == 12 || i == 13)))
+                ? base : grade_rgb888(base, &gr);
+            g_pal_argb[0][i] = (i == 0) ? 0u : rgb_to_argb(rgb);
+        }
+        for (int p = 0; p < 4; p++) {
+            for (int i = 0; i < 16; i++) {
+                uint32_t base = SDL_CHRONO_PALS[pal_id][p][i];
+                uint32_t rgb = (i == 0 || hearth_tod_is_emissive_4pal(pal_id, (uint8_t)p, (uint8_t)i))
+                    ? base : grade_rgb888(base, &gr);
                 g_chrono_pal_argb[p][i] = (i == 0) ? 0u : rgb_to_argb(rgb);
             }
         }
@@ -1435,11 +1462,13 @@ static void render_sdl2_living_atmosphere(const HearthState *st, const HearthPpu
     if (!ppu->zone_is_dark && pal_id != 3u && pal_id != 5u) {
         uint32_t beam_col = 0xFFFFF4BAu;
         uint8_t beam_a = 22u;
-        if (pal_id == 6u)      { beam_col = 0xFFFFD4B8u; beam_a = 24u; } /* Dawn rose-gold */
-        else if (pal_id == 7u) { beam_col = 0xFFFFA866u; beam_a = 24u; } /* Copper dusk */
-        else if (pal_id == 8u) { beam_col = 0xFF9CCCFFu; beam_a = 17u; } /* Silver moonbeams */
-        else if (pal_id == 9u) { beam_col = 0xFFFFE8A4u; beam_a = 23u; } /* Cottage window shafts */
-        else if (pal_id == 14u){ beam_col = 0xFFDAF4FFu; beam_a = 19u; } /* Frost sparkle rays */
+        if (pal_id == 9u)                                    { beam_col = 0xFFFFE8A4u; beam_a = 23u; } /* Cottage window shafts */
+        else if (ppu->has_outdoor_tod && ppu->time_of_day == 0u) { beam_col = 0xFFFFD4B8u; beam_a = 24u; } /* Dawn rose-gold */
+        else if (ppu->has_outdoor_tod && ppu->time_of_day == 2u) { beam_col = 0xFFFFA866u; beam_a = 24u; } /* Copper dusk */
+        else if (pal_id == 6u)                               { beam_col = 0xFFFFD4B8u; beam_a = 24u; }
+        else if (pal_id == 7u)                               { beam_col = 0xFFFFA866u; beam_a = 24u; }
+        else if (pal_id == 8u)                               { beam_col = 0xFF9CCCFFu; beam_a = 17u; }
+        else if (pal_id == 14u)                              { beam_col = 0xFFDAF4FFu; beam_a = 19u; } /* Frost sparkle rays */
 
         int drift = atmos_tri_wave((int)(fc >> 1), 8);
         int beam_count = st->is_world_map ? 3 : 4;
@@ -1464,7 +1493,8 @@ static void render_sdl2_living_atmosphere(const HearthState *st, const HearthPpu
     /* 2. Warm Glowing Lantern & Cozy Fireplace Halos */
     if (!st->is_world_map) {
         int flick = atmos_tri_wave((int)(fc * 3u), 3);
-        bool dim_scene = ppu->zone_is_dark || pal_id == 7u || pal_id == 8u || pal_id == 9u;
+        bool dim_scene = ppu->zone_is_dark || (ppu->has_outdoor_tod && ppu->time_of_day >= 2u) ||
+                         pal_id == 7u || pal_id == 8u || pal_id == 9u;
         uint8_t outer_a = dim_scene ? 34u : 18u;
         uint8_t inner_a = dim_scene ? 64u : 32u;
         for (int ty = ty0; ty <= ty1; ty++) {
@@ -1483,10 +1513,11 @@ static void render_sdl2_living_atmosphere(const HearthState *st, const HearthPpu
     }
 
     /* 3. Biome-Specific Drifting 16-Bit Pixel Particles (Leaves, Petals, Fireflies, Snow, Embers) */
-    bool is_autumn   = (pal_id == 1u || pal_id == 6u);
-    bool is_firefly  = (pal_id == 7u || pal_id == 8u || pal_id == 3u || pal_id == 5u || ppu->zone_is_dark);
     bool is_snow     = (pal_id == 14u);
     bool is_volcano  = (pal_id == 16u);
+    bool is_autumn   = (pal_id == 1u || pal_id == 6u);
+    bool is_firefly  = (!is_snow && !is_volcano &&
+                        (pal_id == 7u || pal_id == 8u || pal_id == 3u || pal_id == 5u || ppu->zone_is_dark));
     bool is_interior = (pal_id == 9u);
     int pcount = is_interior ? 8 : 14;
 
@@ -2865,18 +2896,20 @@ static void render_mountain_vista(const HearthState *st, const HearthPpuPacket *
 
     /* Castle Aurelia Distant Ivory Spires above Sunhill Market & Castle Gate */
     if (st->zone_id == ZONE_SUNHILL_MARKET || st->zone_id == ZONE_CASTLE_GATE) {
+        HearthTodGrade cgr;
+        hearth_tod_grade_params(phase, &cgr);
         int cx = w / 2 - (cam_x >> 3) + 18;
         int cy = 44;
-        fill_rect_px(cx - 26, cy, 52, 28, 0xFFD8D0C2u);
-        fill_rect_px(cx - 24, cy + 2, 48, 26, 0xFFEDE6D8u);
-        fill_rect_px(cx - 28, cy - 12, 10, 40, 0xFFE2DACCu);
-        fill_rect_px(cx + 18, cy - 12, 10, 40, 0xFFE2DACCu);
-        fill_rect_px(cx - 9, cy - 22, 18, 50, 0xFFF4EFE2u);
-        fill_rect_px(cx - 29, cy - 18, 12, 6, 0xFF3E68A6u);
-        fill_rect_px(cx + 17, cy - 18, 12, 6, 0xFF3E68A6u);
-        fill_rect_px(cx - 10, cy - 30, 20, 8, 0xFF2D5594u);
+        fill_rect_px(cx - 26, cy, 52, 28, rgb_to_argb(grade_rgb888(0xD8D0C2u, &cgr)));
+        fill_rect_px(cx - 24, cy + 2, 48, 26, rgb_to_argb(grade_rgb888(0xEDE6D8u, &cgr)));
+        fill_rect_px(cx - 28, cy - 12, 10, 40, rgb_to_argb(grade_rgb888(0xE2DACCu, &cgr)));
+        fill_rect_px(cx + 18, cy - 12, 10, 40, rgb_to_argb(grade_rgb888(0xE2DACCu, &cgr)));
+        fill_rect_px(cx - 9, cy - 22, 18, 50, rgb_to_argb(grade_rgb888(0xF4EFE2u, &cgr)));
+        fill_rect_px(cx - 29, cy - 18, 12, 6, rgb_to_argb(grade_rgb888(0x3E68A6u, &cgr)));
+        fill_rect_px(cx + 17, cy - 18, 12, 6, rgb_to_argb(grade_rgb888(0x3E68A6u, &cgr)));
+        fill_rect_px(cx - 10, cy - 30, 20, 8, rgb_to_argb(grade_rgb888(0x2D5594u, &cgr)));
         fill_rect_px(cx - 1, cy - 36, 2, 6, 0xFFF5B841u);
-        fill_rect_px(cx + 1, cy - 35, 5, 3, 0xFFE04C4Cu);
+        fill_rect_px(cx + 1, cy - 35, 5, 3, rgb_to_argb(grade_rgb888(0xE04C4Cu, &cgr)));
     }
 
     /* Mid Parallax Autumn Maple & Pine Foothill Ridge (0.45x scroll) */
@@ -3205,7 +3238,7 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
 
-    apply_zone_palette(ppu->terrain_pal_id, ppu->tod_phase, ppu->has_mountain_vista);
+    apply_zone_palette(ppu->terrain_pal_id, ppu->tod_phase, ppu->has_outdoor_tod);
 
     if (st->mode == MODE_INTRO) {
         render_intro_scene(st, ppu);
@@ -3341,10 +3374,11 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
             draw_rect_outline(hx - 5, hy - 7, 10, 8, 0xFF5AD2F4u);
         }
 
-        /* Lantern Lighting Mask (Deep Sewer Darkness vs Smoothly-Fading Moonlit Mountain Night) */
+        /* Lantern Lighting Mask (Deep Sewer Darkness vs Smoothly-Fading Outdoor/World-Map Night) */
         int dark_strength = 0; /* 0..256 */
-        if (!st->is_world_map && (st->mode == MODE_EXPLORE || st->mode == MODE_CUTSCENE || st->mode == MODE_FISHING)) {
-            if (ppu->has_mountain_vista) {
+        uint8_t world_dusk_a = 0u;
+        if (st->mode == MODE_EXPLORE || st->mode == MODE_CUTSCENE || st->mode == MODE_FISHING) {
+            if (ppu->has_outdoor_tod) {
                 uint16_t tp = (uint16_t)(ppu->tod_phase & 1023u);
                 if (tp >= 768u && tp <= 896u) {
                     dark_strength = 256;
@@ -3353,25 +3387,52 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
                 } else if (tp > 896u) {
                     dark_strength = (int)(((uint32_t)(1024u - tp) * 256u) / 128u);
                 }
+                if (st->is_world_map) {
+                    if (tp > 352u && tp <= 512u) {
+                        world_dusk_a = (uint8_t)(((uint32_t)(tp - 352u) * 32u) / 160u);
+                    } else if (tp > 512u && tp < 672u) {
+                        world_dusk_a = (uint8_t)(((uint32_t)(672u - tp) * 32u) / 160u);
+                    }
+                }
             } else if (ppu->zone_is_dark) {
                 dark_strength = 256;
             }
         }
+        if (world_dusk_a > 0u) {
+            fill_rect_alpha(0, 0, w, h, 0xFFDA6C2Cu, world_dusk_a);
+        }
         if (dark_strength > 0) {
-            int lhx = FROM_FP(st->hero_fx) - cam_x;
-            int lhy = FROM_FP(st->hero_fy) - cam_y - 6;
-            int base_min = ppu->has_mountain_vista ? 116 : 56;
+            int lhx, lhy;
+            int base_min = st->is_world_map ? 156 : (ppu->has_outdoor_tod ? 116 : 56);
             int min_scale = 255 - (((255 - base_min) * dark_strength) >> 8);
-            int blue_boost = ((ppu->has_mountain_vista ? 34 : 18) * dark_strength) >> 8;
+            int blue_boost = ((ppu->has_outdoor_tod ? 36 : 18) * dark_strength) >> 8;
             int span = 255 - min_scale;
-            /* Collect visible lantern posts for warm light pools */
-            int lx[8], ly[8], lcnt = 0;
-            for (int ty = ty0; ty <= ty1 && lcnt < 8; ty++) {
-                for (int tx = tx0; tx <= tx1 && lcnt < 8; tx++) {
-                    if (st->map_bg1[ty * mw + tx] == T_LANTERN_POST) {
-                        lx[lcnt] = tx * HEARTH_TILE_SIZE + 8 - cam_x;
-                        ly[lcnt] = ty * HEARTH_TILE_SIZE + 4 - cam_y;
+            int lx[16], ly[16], lcnt = 0;
+            if (st->is_world_map) {
+                int gw_px = HEARTH_GLOBE_W * HEARTH_TILE_SIZE;
+                int gh_px = HEARTH_GLOBE_H * HEARTH_TILE_SIZE;
+                lhx = w / 2 + wrap_delta(FROM_FP(st->hero_fx), cam_x + w / 2, gw_px);
+                lhy = h / 2 + wrap_delta(FROM_FP(st->hero_fy), cam_y + h / 2, gh_px) - 6;
+                for (uint8_t idx = 0; idx < HEARTH_GLOBE_LANDMARK_COUNT && lcnt < 16; idx++) {
+                    const HearthGlobeLandmark *lm = &HEARTH_GLOBE_LANDMARKS[idx];
+                    int sx = w / 2 + wrap_delta((int)lm->tx * 16 + 8, cam_x + w / 2, gw_px);
+                    int sy = h / 2 + wrap_delta((int)lm->ty * 16 + 8, cam_y + h / 2, gh_px) - 4;
+                    if (sx >= -56 && sx <= w + 56 && sy >= -56 && sy <= h + 56) {
+                        lx[lcnt] = sx;
+                        ly[lcnt] = sy;
                         lcnt++;
+                    }
+                }
+            } else {
+                lhx = FROM_FP(st->hero_fx) - cam_x;
+                lhy = FROM_FP(st->hero_fy) - cam_y - 6;
+                for (int ty = ty0; ty <= ty1 && lcnt < 16; ty++) {
+                    for (int tx = tx0; tx <= tx1 && lcnt < 16; tx++) {
+                        if (st->map_bg1[ty * mw + tx] == T_LANTERN_POST) {
+                            lx[lcnt] = tx * HEARTH_TILE_SIZE + 8 - cam_x;
+                            ly[lcnt] = ty * HEARTH_TILE_SIZE + 4 - cam_y;
+                            lcnt++;
+                        }
                     }
                 }
             }

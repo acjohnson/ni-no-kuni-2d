@@ -1773,6 +1773,7 @@ static u8  g_last_battle_tod = 255;
 static u8  g_last_pal_id = 255;
 static u8  g_last_pal3_mode = 255;
 static u16 g_last_tod_phase = 0xFFFFu;
+static u8  g_last_outdoor_tod = 255;
 static u8  g_last_portrait_id = 0;
 static u8  g_last_map_rev = 255;
 static u8  g_last_zone_id = 255;
@@ -3140,16 +3141,29 @@ static u16 gen_lerp_bgr333(u16 c0, u16 c1, u16 frac256, u16 br, u16 bg, u16 bb) 
     return (u16)((b << 9) | (g << 5) | (r << 1));
 }
 
-static void upload_zone_pal0_to_cram(u8 pal_id, u8 terrain_pal3, u16 tod_phase, TransferMethod tm) {
+static u16 gen_grade_bgr333(u16 c, const HearthTodGrade *gr, u16 br, u16 bg, u16 bb) {
+    u16 r0 = (u16)((c >> 1) & 7u), g0 = (u16)((c >> 5) & 7u), b0 = (u16)((c >> 9) & 7u);
+    u16 r = (u16)((r0 * gr->mr + (gr->ar8 >> 5) + br) >> 8);
+    u16 g = (u16)((g0 * gr->mg + (gr->ag8 >> 5) + bg) >> 8);
+    u16 b = (u16)((b0 * gr->mb + (gr->ab8 >> 5) + bb) >> 8);
+    if (r > 7u) r = 7u;
+    if (g > 7u) g = 7u;
+    if (b > 7u) b = 7u;
+    return (u16)((b << 9) | (g << 5) | (r << 1));
+}
+
+static void upload_zone_pal0_to_cram(u8 pal_id, u8 terrain_pal3, u16 tod_phase, u8 has_outdoor_tod, TransferMethod tm) {
     static u16 cram0[16];
     static u16 cram3[16];
     static const u8 TOD_KEYS[4] = {
         ZPAL_AUTUMN_MORNING, ZPAL_ALDERBROOK, ZPAL_AUTUMN_DUSK, ZPAL_AUTUMN_NIGHT
     };
+    HearthTodGrade gr;
     u8 pid = (pal_id < ZPAL_COUNT) ? pal_id : 0u;
-    u8 smooth_tod = (u8)((g_hearth.ppu.has_mountain_vista &&
+    u8 autumn_blend = (u8)((has_outdoor_tod &&
         (pid == ZPAL_AUTUMN_MORNING || pid == ZPAL_ALDERBROOK ||
          pid == ZPAL_AUTUMN_DUSK || pid == ZPAL_AUTUMN_NIGHT)) ? 1u : 0u);
+    u8 grade_tod = (u8)((has_outdoor_tod && !autumn_blend) ? 1u : 0u);
     u16 eff_phase = (u16)(tod_phase & 1023u);
     u8 seg = (u8)((eff_phase >> 8) & 3u);
     u16 frac = (u16)(eff_phase & 255u);
@@ -3157,8 +3171,11 @@ static void upload_zone_pal0_to_cram(u8 pal_id, u8 terrain_pal3, u16 tod_phase, 
     u8 pB = TOD_KEYS[(seg + 1u) & 3u];
     u8 changed0 = 0u;
     u8 changed3 = 0u;
+    if (grade_tod) {
+        hearth_tod_grade_params(eff_phase, &gr);
+    }
     for (u16 c = 0u; c < 16u; c++) {
-        if (smooth_tod && frac > 0u) {
+        if (autumn_blend && frac > 0u) {
             /* Stagger per-(entry, channel) BGR333 thresholds across 0..255 so colors drift one-by-one! */
             u16 b0r = (u16)((c * 97u + 19u) & 255u);
             u16 b0g = (u16)((c * 97u + 109u) & 255u);
@@ -3171,8 +3188,23 @@ static void upload_zone_pal0_to_cram(u8 pal_id, u8 terrain_pal3, u16 tod_phase, 
                 ? ((c == 1u || c == 15u) ? GEN_CHRONO_PALS[pA][1][c]
                    : gen_lerp_bgr333(GEN_CHRONO_PALS[pA][1][c], GEN_CHRONO_PALS[pB][1][c], frac, b3r, b3g, b3b))
                 : hearth_rgb_to_genesis_bgr333(HEARTH_PALETTES_RGB[3][c]);
+        } else if (grade_tod) {
+            u16 b0r = (u16)((c * 97u + 19u) & 255u);
+            u16 b0g = (u16)((c * 97u + 109u) & 255u);
+            u16 b0b = (u16)((c * 97u + 199u) & 255u);
+            u16 b3r = (u16)((c * 97u + 62u) & 255u);
+            u16 b3g = (u16)((c * 97u + 152u) & 255u);
+            u16 b3b = (u16)((c * 97u + 242u) & 255u);
+            cram0[c] = (c == 0u || hearth_tod_is_emissive_gen(pid, 0u, (u8)c))
+                ? GEN_CHRONO_PALS[pid][0][c]
+                : gen_grade_bgr333(GEN_CHRONO_PALS[pid][0][c], &gr, b0r, b0g, b0b);
+            cram3[c] = terrain_pal3
+                ? ((c == 0u || hearth_tod_is_emissive_gen(pid, 1u, (u8)c))
+                    ? GEN_CHRONO_PALS[pid][1][c]
+                    : gen_grade_bgr333(GEN_CHRONO_PALS[pid][1][c], &gr, b3r, b3g, b3b))
+                : hearth_rgb_to_genesis_bgr333(HEARTH_PALETTES_RGB[3][c]);
         } else {
-            u8 use_p = smooth_tod ? pA : pid;
+            u8 use_p = autumn_blend ? pA : pid;
             cram0[c] = GEN_CHRONO_PALS[use_p][0][c];
             cram3[c] = terrain_pal3
                 ? GEN_CHRONO_PALS[use_p][1][c]
@@ -3193,6 +3225,7 @@ static void upload_zone_pal0_to_cram(u8 pal_id, u8 terrain_pal3, u16 tod_phase, 
     g_last_pal_id = pid;
     g_last_pal3_mode = terrain_pal3;
     g_last_tod_phase = eff_phase;
+    g_last_outdoor_tod = has_outdoor_tod ? 1u : 0u;
 }
 
 static void upload_palettes_to_cram(void) {
@@ -3206,6 +3239,7 @@ static void upload_palettes_to_cram(void) {
     g_last_pal_id = 255u;
     g_last_pal3_mode = 255u;
     g_last_tod_phase = 0xFFFFu;
+    g_last_outdoor_tod = 255u;
     g_prev_cram_valid = 0u;
 }
 
@@ -3827,7 +3861,8 @@ int main(bool hard_reset) {
             gen_vdp_begin_bulk();
             upload_palettes_to_cram();
             VDP_setBackgroundColor(33); /* PAL2[1] warm slate backdrop */
-            upload_zone_pal0_to_cram(boot_ppu->terrain_pal_id, boot_tpal3, boot_ppu->tod_phase, CPU);
+            upload_zone_pal0_to_cram(boot_ppu->terrain_pal_id, boot_tpal3, boot_ppu->tod_phase,
+                                     boot_ppu->has_outdoor_tod ? 1u : 0u, CPU);
             g_last_scene_mode = 0u;
             gen_clear_plane(BG_A);
             draw_full_world_viewport(boot_ppu->cam_x, boot_ppu->cam_y);
@@ -3911,7 +3946,8 @@ int main(bool hard_reset) {
                     upload_palettes_to_cram();
                     g_cinema_pals_active = 0u;
                 }
-                upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, ppu->tod_phase, CPU);
+                upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, ppu->tod_phase,
+                                         ppu->has_outdoor_tod ? 1u : 0u, CPU);
                 if (prev_scene != 0u || map_changed) {
                     gen_clear_plane(BG_A);
                 }
@@ -3947,11 +3983,13 @@ int main(bool hard_reset) {
             gen_vdp_end_bulk();
         }
 
-        /* 3. Incremental VBlank DMA_QUEUE palette updates (smooth 64-step time-of-day / atlas close) */
+        /* 3. Incremental VBlank DMA_QUEUE palette updates (smooth 1024-step outdoor TOD / atlas close) */
         if (scene_mode == 0u && !g_hearth.atlas_open &&
             (ppu->terrain_pal_id != g_last_pal_id || want_tpal3 != g_last_pal3_mode ||
-             (ppu->has_mountain_vista && ppu->tod_phase != g_last_tod_phase))) {
-            upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, ppu->tod_phase, DMA_QUEUE);
+             (ppu->has_outdoor_tod ? 1u : 0u) != g_last_outdoor_tod ||
+             (ppu->has_outdoor_tod && ppu->tod_phase != g_last_tod_phase))) {
+            upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, ppu->tod_phase,
+                                     ppu->has_outdoor_tod ? 1u : 0u, DMA_QUEUE);
         }
 
         /* 4. Per-frame incremental scrolling, environmental animations & VSync scroll latch */

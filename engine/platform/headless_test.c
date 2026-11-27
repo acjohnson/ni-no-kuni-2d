@@ -763,6 +763,89 @@ int main(void) {
         printf("[PASS] Milestone 6: All 12 Context-Aware Battle Biomes & BIOME_AUTO Resolution\n");
     }
 
+    /* 12. Shared World Map & Outdoor Town Time-of-Day Color Grading System */
+    {
+        HearthTodGrade gr;
+
+        /* 12a. Verify Q8 grade curve endpoints & exact Afternoon identity */
+        hearth_tod_grade_params(0u, &gr);
+        CHECK(gr.mr == 213u && gr.mg == 205u && gr.mb == 209u &&
+              gr.ar8 == (49u << 8) && gr.ag8 == (37u << 8) && gr.ab8 == (32u << 8),
+              "Morning (phase=0) emits Rose-Gold Q8 grade parameters");
+        hearth_tod_grade_params(256u, &gr);
+        CHECK(gr.mr == 256u && gr.mg == 256u && gr.mb == 256u && gr.ar8 == 0u && gr.ag8 == 0u && gr.ab8 == 0u,
+              "Afternoon (phase=256) is bit-exact identity (MUL=256, ADD=0)");
+        hearth_tod_grade_params(512u, &gr);
+        CHECK(gr.mr == 188u && gr.mg == 158u && gr.mb == 144u &&
+              gr.ar8 == (59u << 8) && gr.ag8 == (27u << 8) && gr.ab8 == (16u << 8),
+              "Dusk (phase=512) emits Copper-Amber Q8 grade parameters");
+        hearth_tod_grade_params(768u, &gr);
+        CHECK(gr.mr == 74u && gr.mg == 84u && gr.mb == 118u &&
+              gr.ar8 == (12u << 8) && gr.ag8 == (18u << 8) && gr.ab8 == (36u << 8),
+              "Night (phase=768) emits Moonlit Indigo Q8 grade parameters");
+
+        /* 12b. Verify emissive protection for 4-pal (Web/SDL2/SNES) and Genesis 2-pal */
+        CHECK(hearth_tod_is_emissive_4pal(ZPAL_SUNHILL_MARKET, 2u, 13u) &&
+              hearth_tod_is_emissive_4pal(ZPAL_SUNHILL_MARKET, 3u, 14u),
+              "Lit town windows & lanterns stay emissive on 4-subpalette hosts");
+        CHECK(hearth_tod_is_emissive_4pal(ZPAL_VOLCANO, 0u, 12u) &&
+              hearth_tod_is_emissive_4pal(ZPAL_VOLCANO, 3u, 4u) &&
+              hearth_tod_is_emissive_4pal(ZPAL_TECH, 0u, 13u) &&
+              hearth_tod_is_emissive_4pal(ZPAL_TECH, 3u, 5u),
+              "Volcano magma and Aetheris cyan beacons stay emissive on 4-subpalette hosts");
+        CHECK(!hearth_tod_is_emissive_4pal(ZPAL_EVERTALE_WORLD, 0u, 3u),
+              "Standard grass/ground entries receive full TOD grading");
+        CHECK(hearth_tod_is_emissive_gen(ZPAL_EVERTALE_WORLD, 0u, 13u) &&
+              hearth_tod_is_emissive_gen(ZPAL_EVERTALE_WORLD, 1u, 1u) &&
+              hearth_tod_is_emissive_gen(ZPAL_EVERTALE_WORLD, 1u, 15u),
+              "Genesis protects warm gold window/lantern entry and PAL3 UI text colors");
+
+        /* 12c. Verify World Map ticks TOD smoothly and transitions seamlessly into outdoor towns without clobbering biome palettes */
+        g_st.mode = MODE_EXPLORE;
+        g_st.tod_locked = false;
+        g_st.tod_phase = 500u; /* Approaching Dusk */
+        g_st.time_of_day = TOD_DUSK;
+        g_st.day_subtick = 0u;
+        hearth_enter_zone(&g_st, ZONE_EVERTALE_WORLD, 104, 84);
+        CHECK(g_st.has_outdoor_tod && g_st.ppu.has_outdoor_tod && g_st.tod_phase == 500u,
+              "World Map enables shared outdoor TOD and preserves tod_phase on entry");
+        for (int f = 0; f < 56; f++) hearth_step_60hz(&g_st, 0);
+        CHECK(g_st.tod_phase == 501u, "World Map advances shared 1024-step TOD clock in real time");
+
+        /* Enter Sunhill Market, Babana Oasis, Coral Cove, and Windmill Hamlet -> tod_phase preserved & biome palette kept! */
+        hearth_enter_zone(&g_st, ZONE_SUNHILL_MARKET, 21, 20);
+        CHECK(g_st.has_outdoor_tod && g_st.ppu.has_outdoor_tod &&
+              g_st.tod_phase == 501u && g_st.ppu.terrain_pal_id == ZPAL_SUNHILL_MARKET,
+              "World Map -> Sunhill Market preserves tod_phase and Sunhill palette");
+        for (int f = 0; f < 56; f++) hearth_step_60hz(&g_st, 0);
+        CHECK(g_st.tod_phase == 502u && g_st.ppu.terrain_pal_id == ZPAL_SUNHILL_MARKET,
+              "Sunhill Market advances TOD without overwriting terrain_pal_id with Alderbrook autumn");
+
+        hearth_enter_zone(&g_st, ZONE_BABANA_OASIS, 20, 16);
+        CHECK(g_st.has_outdoor_tod && g_st.tod_phase == 502u && g_st.ppu.terrain_pal_id == ZPAL_DESERT,
+              "Babana Oasis enables outdoor TOD with Desert palette");
+
+        /* Enter indoor tent sharing ZPAL_DESERT -> pauses TOD & clears has_outdoor_tod! */
+        hearth_enter_zone(&g_st, ZONE_BABANA_TENT, 20, 12);
+        CHECK(!g_st.has_outdoor_tod && !g_st.ppu.has_outdoor_tod && g_st.ppu.terrain_pal_id == ZPAL_DESERT,
+              "Indoor Babana Tent disables outdoor TOD while sharing ZPAL_DESERT");
+        for (int f = 0; f < 120; f++) hearth_step_60hz(&g_st, 0);
+        CHECK(g_st.tod_phase == 502u, "Indoor building pauses the outdoor TOD clock cleanly");
+
+        /* Underground Sewers stays dark & non-TOD */
+        hearth_enter_zone(&g_st, ZONE_SEWERS, 20, 20);
+        CHECK(!g_st.has_outdoor_tod && g_st.zone_is_dark && g_st.tod_phase == 502u,
+              "Sunken Sewers stays permanently dark with outdoor TOD disabled");
+
+        /* Return to World Map at Night -> zone_is_dark tracks smooth night phase */
+        g_st.tod_phase = 768u;
+        hearth_enter_zone(&g_st, ZONE_EVERTALE_WORLD, 104, 84);
+        CHECK(g_st.has_outdoor_tod && g_st.zone_is_dark && g_st.ppu.zone_is_dark,
+              "World Map at Night (tod_phase=768) sets zone_is_dark seamlessly");
+
+        printf("[PASS] Milestone 7: Shared World Map & Outdoor Town Time-of-Day Color Grading\n");
+    }
+
     printf("ALL PURE C99 CORE TESTS PASSED!\n");
     return 0;
 }

@@ -396,6 +396,7 @@ static void sync_snapshot(void) {
     g_scalars[172] = p->globe_w;
     g_scalars[173] = p->globe_h;
     g_scalars[174] = p->tod_phase;
+    g_scalars[175] = p->has_outdoor_tod ? 1 : 0;
 }
 
 static void inject_ui_pad(uint16_t mask) {

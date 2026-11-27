@@ -47,6 +47,7 @@ typedef struct {
     bool         tod_locked;      /* True during story-locked scenes (e.g. Ch1 night Mido chase) */
     bool         zone_is_dark;
     bool         has_mountain_vista;
+    bool         has_outdoor_tod;
     bool         is_world_map;
     uint8_t      zone_banner_frames;
     uint8_t      story_stage;
@@ -204,5 +205,10 @@ void hearth_respawn_enemies(HearthState *st);
 void hearth_heal_party(HearthState *st);
 void hearth_toggle_ppu_mode(HearthState *st);
 uint8_t hearth_compute_hero_pose(const HearthState *st);
+
+/* Shared Runtime Outdoor Time-of-Day Color Grading (SNES / Genesis / SDL2 / WASM parity) */
+void hearth_tod_grade_params(uint16_t tod_phase, HearthTodGrade *out);
+bool hearth_tod_is_emissive_4pal(uint8_t pal_id, uint8_t sub_pal, uint8_t idx);
+bool hearth_tod_is_emissive_gen(uint8_t pal_id, uint8_t gen_pal_slot, uint8_t idx);
 
 #endif /* HEARTH_CORE_H */

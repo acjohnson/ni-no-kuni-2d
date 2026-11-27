@@ -208,6 +208,12 @@ typedef enum {
     TOD_NIGHT     = 3
 } HearthTimeOfDay;
 
+/* Shared 1024-step outdoor Time-of-Day color-grade transform (Q8 mul + Q8 8-bit add) */
+typedef struct {
+    uint16_t mr, mg, mb;       /* 0..256 fixed-point Q8 channel multipliers */
+    uint16_t ar8, ag8, ab8;    /* 0..16384 fixed-point Q8 8-bit channel offsets */
+} HearthTodGrade;
+
 /* Per-Zone, Continent & Time-of-Day Terrain Sub-Palette IDs (Swapped into PAL0 on all 4 hosts) */
 typedef enum {
     ZPAL_HAMLET           = 0,
@@ -889,6 +895,7 @@ typedef struct {
     uint16_t tod_phase;       /* 0..1023 ultra-smooth real-time day/night phase (256 steps/quarter!) */
     bool     zone_is_dark;
     bool     has_mountain_vista;
+    bool     has_outdoor_tod;
     bool     is_world_map;
     uint8_t  zone_banner_frames;
     const char *zone_name;

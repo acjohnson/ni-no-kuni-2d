@@ -932,6 +932,7 @@ export class WasmHearthEngine {
       timeOfDay: (Math.min(3, Math.max(0, i32[s + 147])) as TimeOfDay),
       todPhase: i32[s + 174] & 1023,
       hasMountainVista: i32[s + 148] !== 0,
+      hasOutdoorTod: i32[s + 175] !== 0,
       objectiveText: this.readCString(i32[s + 149]),
       heroWorldX: fromFp(i32[s + 18]),
       heroWorldY: fromFp(i32[s + 19]),

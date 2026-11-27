@@ -69,7 +69,7 @@ export class SoftwarePpuRenderer {
       canvas.height = packet.height;
     }
 
-    atlas.setTerrainPalette(packet.terrainPalId, packet.todPhase, packet.hasMountainVista);
+    atlas.setTerrainPalette(packet.terrainPalId, packet.todPhase, packet.hasOutdoorTod);
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -308,19 +308,33 @@ export class SoftwarePpuRenderer {
     this.renderParticles(ctx, packet, false);
     this.renderLivingAtmosphere(ctx, packet, map, startCol, endCol, startRow, endRow, mapW);
 
-    // 5.5. Sunken Sewers & Smoothly-Fading Mountain Night Lantern Lighting Mask
+    // 5.5. Sunken Sewers & Smoothly-Fading Outdoor Night / World-Map Twilight Lighting Mask
     let darkAlpha = 0;
-    if (packet.hasMountainVista) {
+    let worldDuskAlpha = 0;
+    if (packet.hasOutdoorTod) {
       const tp = packet.todPhase & 1023;
+      const peakNight = packet.isWorldMap ? 0.36 : 0.52;
       if (tp >= 768 && tp <= 896) {
-        darkAlpha = 0.52;
+        darkAlpha = peakNight;
       } else if (tp > 576 && tp < 768) {
-        darkAlpha = 0.52 * ((tp - 576) / 192);
+        darkAlpha = peakNight * ((tp - 576) / 192);
       } else if (tp > 896) {
-        darkAlpha = 0.52 * ((1024 - tp) / 128);
+        darkAlpha = peakNight * ((1024 - tp) / 128);
+      }
+      if (packet.isWorldMap) {
+        // Gentle golden-hour amber veil unifies multi-tile landmarks & ships with sunset terrain
+        if (tp > 352 && tp <= 512) {
+          worldDuskAlpha = 0.13 * ((tp - 352) / 160);
+        } else if (tp > 512 && tp < 672) {
+          worldDuskAlpha = 0.13 * ((672 - tp) / 160);
+        }
       }
     } else if (packet.zoneIsDark) {
       darkAlpha = 0.76;
+    }
+    if (worldDuskAlpha > 0.004) {
+      ctx.fillStyle = `rgba(218, 108, 44, ${worldDuskAlpha.toFixed(3)})`;
+      ctx.fillRect(0, 0, width, height);
     }
     if (darkAlpha > 0.005) {
       if (this.darkCanvas.width !== width || this.darkCanvas.height !== height) {
@@ -330,7 +344,7 @@ export class SoftwarePpuRenderer {
       const dctx = this.darkCtx;
       dctx.globalCompositeOperation = 'source-over';
       dctx.clearRect(0, 0, width, height);
-      dctx.fillStyle = packet.hasMountainVista
+      dctx.fillStyle = packet.hasOutdoorTod
         ? `rgba(10, 16, 38, ${darkAlpha.toFixed(3)})`
         : `rgba(7, 11, 18, ${darkAlpha.toFixed(3)})`;
       dctx.fillRect(0, 0, width, height);
@@ -348,12 +362,31 @@ export class SoftwarePpuRenderer {
 
       dctx.globalCompositeOperation = 'destination-out';
       const flicker = Math.sin(frameCount * 0.12) * 3;
-      punchLight(packet.heroWorldX - camX, packet.heroWorldY - camY - 6, 62 + flicker);
-      for (let r = startRow; r <= endRow; r++) {
-        const rowOff = r * mapW;
-        for (let c = startCol; c <= endCol; c++) {
-          if (map.bg1[rowOff + c] === T_LANTERN_POST) {
-            punchLight(c * TILE_SIZE + 8 - camX, r * TILE_SIZE + 6 - camY, 48 + flicker * 0.6);
+      if (packet.isWorldMap) {
+        const globePxW = packet.globeW * TILE_SIZE;
+        const globePxH = packet.globeH * TILE_SIZE;
+        const wrapDelta = (d: number, span: number) => {
+          const half = span >> 1;
+          return (((d + half) % span) + span) % span - half;
+        };
+        const hx = Math.round((width >> 1) + wrapDelta(packet.heroWorldX - (camX + (width >> 1)), globePxW));
+        const hy = Math.round((height >> 1) + wrapDelta(packet.heroWorldY - (camY + (height >> 1)), globePxH));
+        punchLight(hx, hy - 6, 56 + flicker);
+        for (const lm of packet.landmarks) {
+          const lx = Math.round((width >> 1) + wrapDelta(lm.tx * TILE_SIZE + 8 - (camX + (width >> 1)), globePxW));
+          const ly = Math.round((height >> 1) + wrapDelta(lm.ty * TILE_SIZE + 8 - (camY + (height >> 1)), globePxH));
+          if (lx >= -56 && lx <= width + 56 && ly >= -56 && ly <= height + 56) {
+            punchLight(lx, ly - 4, 46 + flicker * 0.5);
+          }
+        }
+      } else {
+        punchLight(packet.heroWorldX - camX, packet.heroWorldY - camY - 6, 62 + flicker);
+        for (let r = startRow; r <= endRow; r++) {
+          const rowOff = r * mapW;
+          for (let c = startCol; c <= endCol; c++) {
+            if (map.bg1[rowOff + c] === T_LANTERN_POST) {
+              punchLight(c * TILE_SIZE + 8 - camX, r * TILE_SIZE + 6 - camY, 48 + flicker * 0.6);
+            }
           }
         }
       }
@@ -420,16 +453,18 @@ export class SoftwarePpuRenderer {
     endRow: number,
     mapW: number
   ): void {
-    const { width, height, camX, camY, frameCount, terrainPalId, isWorldMap, zoneIsDark } = packet;
+    const { width, height, camX, camY, frameCount, terrainPalId, isWorldMap, zoneIsDark, hasOutdoorTod, timeOfDay } = packet;
     ctx.save();
 
     // 1. Diagonal Dappled Sunbeams / Interior Window Light Shafts (not in sewers or pitch dark)
     if (!zoneIsDark && terrainPalId !== 3 && terrainPalId !== 5) {
       let beamCol = 'rgba(255, 244, 186, 0.085)';
-      if (terrainPalId === 6) beamCol = 'rgba(255, 212, 184, 0.095)'; // Dawn rose-gold
-      else if (terrainPalId === 7) beamCol = 'rgba(255, 168, 102, 0.095)'; // Copper dusk
-      else if (terrainPalId === 8) beamCol = 'rgba(156, 204, 255, 0.065)'; // Silver moonbeams
-      else if (terrainPalId === 9) beamCol = 'rgba(255, 232, 164, 0.09)'; // Warm cottage window shafts
+      if (terrainPalId === 9) beamCol = 'rgba(255, 232, 164, 0.09)'; // Warm cottage window shafts
+      else if (hasOutdoorTod && timeOfDay === 0) beamCol = 'rgba(255, 212, 184, 0.095)'; // Dawn rose-gold
+      else if (hasOutdoorTod && timeOfDay === 2) beamCol = 'rgba(255, 168, 102, 0.095)'; // Copper dusk
+      else if (terrainPalId === 6) beamCol = 'rgba(255, 212, 184, 0.095)';
+      else if (terrainPalId === 7) beamCol = 'rgba(255, 168, 102, 0.095)';
+      else if (terrainPalId === 8) beamCol = 'rgba(156, 204, 255, 0.065)';
       else if (terrainPalId === 14) beamCol = 'rgba(218, 244, 255, 0.075)'; // Frost sparkle rays
 
       const drift = Math.sin(frameCount * 0.012) * 8;
@@ -451,7 +486,10 @@ export class SoftwarePpuRenderer {
     // 2. Warm Glowing Lantern & Cozy Fireplace Halos (especially atmospheric at dusk/night/interiors!)
     if (!isWorldMap) {
       const flicker = Math.sin(frameCount * 0.14) * 2.5;
-      const haloAlpha = zoneIsDark || terrainPalId === 7 || terrainPalId === 8 || terrainPalId === 9 ? 0.22 : 0.11;
+      const haloAlpha =
+        zoneIsDark || (hasOutdoorTod && timeOfDay >= 2) || terrainPalId === 7 || terrainPalId === 8 || terrainPalId === 9
+          ? 0.22
+          : 0.11;
       for (let r = startRow; r <= endRow; r++) {
         const rowOff = r * mapW;
         for (let c = startCol; c <= endCol; c++) {
@@ -472,10 +510,13 @@ export class SoftwarePpuRenderer {
     }
 
     // 3. Biome-Specific Drifting 16-Bit Pixel Particles (Leaves, Petals, Fireflies, Snow, Embers!)
-    const isAutumn = terrainPalId === 1 || terrainPalId === 6;
-    const isFirefly = terrainPalId === 7 || terrainPalId === 8 || terrainPalId === 3 || terrainPalId === 5 || zoneIsDark;
     const isSnow = terrainPalId === 14;
     const isVolcano = terrainPalId === 16;
+    const isAutumn = terrainPalId === 1 || terrainPalId === 6;
+    const isFirefly =
+      !isSnow &&
+      !isVolcano &&
+      (terrainPalId === 7 || terrainPalId === 8 || terrainPalId === 3 || terrainPalId === 5 || zoneIsDark);
     const isInterior = terrainPalId === 9;
     const count = isInterior ? 8 : 14;
 
@@ -605,10 +646,14 @@ export class SoftwarePpuRenderer {
 
     // 4. Midground Ridge — Evertale Sunlit Castle Aurelia Skyline vs. Alderbrook Autumn Foothills
     const isEvertaleVista = packet.zoneId === 9 || packet.zoneId === 10;
-    const midColKeys = ['#3E5448', '#355444', '#4A2B36', '#15243A'] as const;
-    const midMapleKeys = ['#B8663A', '#B84A32', '#A64A32', '#3B2846'] as const;
-    const midCol = isEvertaleVista ? '#4A8E54' : lerpHex(midColKeys[seg], midColKeys[segN]);
-    const midMaple = isEvertaleVista ? '#6AB868' : lerpHex(midMapleKeys[seg], midMapleKeys[segN]);
+    const midColKeys = isEvertaleVista
+      ? (['#6C986E', '#4A8E54', '#6E5A44', '#1E3C4C'] as const)
+      : (['#3E5448', '#355444', '#4A2B36', '#15243A'] as const);
+    const midMapleKeys = isEvertaleVista
+      ? (['#88B682', '#6AB868', '#866C4E', '#2A4E5E'] as const)
+      : (['#B8663A', '#B84A32', '#A64A32', '#3B2846'] as const);
+    const midCol = lerpHex(midColKeys[seg], midColKeys[segN]);
+    const midMaple = lerpHex(midMapleKeys[seg], midMapleKeys[segN]);
     const midScroll = Math.floor(camX * 0.28);
     for (let x = 0; x < width; x += 4) {
       const wx = x + midScroll;
@@ -626,17 +671,20 @@ export class SoftwarePpuRenderer {
     if (isEvertaleVista) {
       const cx = Math.round(width * 0.5 - (camX - 180) * 0.12);
       const cy = 22;
-      ctx.fillStyle = '#DCE6F2';
+      const wallKeys = ['#EADCD8', '#DCE6F2', '#DC9E82', '#4C5E84'] as const;
+      const hiKeys = ['#FCF2EA', '#F7FAFF', '#F2B896', '#667CA8'] as const;
+      const roofKeys = ['#5676B0', '#3874B8', '#5E4B78', '#223A68'] as const;
+      ctx.fillStyle = lerpHex(wallKeys[seg], wallKeys[segN]);
       ctx.fillRect(cx - 32, cy + 20, 64, 24);
       ctx.fillRect(cx - 10, cy + 8, 20, 34);
       ctx.fillRect(cx - 28, cy + 14, 12, 26);
       ctx.fillRect(cx + 16, cy + 14, 12, 26);
-      ctx.fillStyle = '#F7FAFF';
+      ctx.fillStyle = lerpHex(hiKeys[seg], hiKeys[segN]);
       ctx.fillRect(cx - 8, cy + 10, 6, 30);
       ctx.fillRect(cx - 26, cy + 16, 4, 22);
       ctx.fillRect(cx + 18, cy + 16, 4, 22);
       // Azure conical turrets & gold pennants
-      ctx.fillStyle = '#3874B8';
+      ctx.fillStyle = lerpHex(roofKeys[seg], roofKeys[segN]);
       ctx.fillRect(cx - 12, cy + 4, 24, 5);
       ctx.fillRect(cx - 8, cy, 16, 5);
       ctx.fillRect(cx - 4, cy - 4, 8, 5);

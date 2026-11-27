@@ -923,7 +923,7 @@ export default function App() {
                     </button>
                   </>
                 )}
-                {ui && !ui.isWorldMap && (
+                {ui && (
                   <>
                     <span aria-hidden="true" className="text-[#4B546B]">
                       ·

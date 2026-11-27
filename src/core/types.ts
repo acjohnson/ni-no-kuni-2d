@@ -681,8 +681,9 @@ export interface PpuFramePacket {
   zoneBannerFrames: number;
   zoneName: string;
   timeOfDay: TimeOfDay;
-  todPhase: number; // 0..63 smooth real-time day/night progression
+  todPhase: number; // 0..1023 smooth real-time day/night progression
   hasMountainVista: boolean;
+  hasOutdoorTod: boolean;
   objectiveText: string;
   heroWorldX: number;
   heroWorldY: number;

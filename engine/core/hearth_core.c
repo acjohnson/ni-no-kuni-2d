@@ -472,10 +472,69 @@ static uint8_t tod_to_mountain_pal(uint8_t tod) {
     return (uint8_t)ZPAL_ALDERBROOK;
 }
 
+static bool tod_phase_is_dark(uint16_t tod_phase) {
+    uint16_t tp = (uint16_t)(tod_phase & 1023u);
+    return (tp >= 640u && tp <= 960u);
+}
+
 static void set_tod_phase_quarter(HearthState *st, uint8_t tod) {
     st->time_of_day = (uint8_t)(tod & 3u);
     st->tod_phase = (uint16_t)((uint16_t)st->time_of_day << 8);
     st->day_subtick = 0u;
+}
+
+void hearth_tod_grade_params(uint16_t tod_phase, HearthTodGrade *out) {
+    /* Keyframes match ZPAL_AUTUMN_MORNING / ALDERBROOK / DUSK / NIGHT curves:
+     *   0: Morning Dawn (Rose-Gold Mist)
+     *   1: Afternoon    (100% Pure Daylight Identity)
+     *   2: Dusk         (Copper-Amber Golden Sunset)
+     *   3: Night        (Moonlit Indigo & Silver) */
+    static const uint16_t MUL_R[4] = { 213u, 256u, 188u,  74u };
+    static const uint16_t MUL_G[4] = { 205u, 256u, 158u,  84u };
+    static const uint16_t MUL_B[4] = { 209u, 256u, 144u, 118u };
+    static const uint16_t ADD_R[4] = {  49u,   0u,  59u,  12u };
+    static const uint16_t ADD_G[4] = {  37u,   0u,  27u,  18u };
+    static const uint16_t ADD_B[4] = {  32u,   0u,  16u,  36u };
+    uint16_t eff = (uint16_t)(tod_phase & 1023u);
+    uint8_t  seg = (uint8_t)((eff >> 8) & 3u);
+    uint8_t  nxt = (uint8_t)((seg + 1u) & 3u);
+    uint16_t frac = (uint16_t)(eff & 255u);
+    uint16_t inv  = (uint16_t)(256u - frac);
+    out->mr  = (uint16_t)((MUL_R[seg] * inv + MUL_R[nxt] * frac + 128u) >> 8);
+    out->mg  = (uint16_t)((MUL_G[seg] * inv + MUL_G[nxt] * frac + 128u) >> 8);
+    out->mb  = (uint16_t)((MUL_B[seg] * inv + MUL_B[nxt] * frac + 128u) >> 8);
+    out->ar8 = (uint16_t)(ADD_R[seg] * inv + ADD_R[nxt] * frac);
+    out->ag8 = (uint16_t)(ADD_G[seg] * inv + ADD_G[nxt] * frac);
+    out->ab8 = (uint16_t)(ADD_B[seg] * inv + ADD_B[nxt] * frac);
+}
+
+bool hearth_tod_is_emissive_4pal(uint8_t pal_id, uint8_t sub_pal, uint8_t idx) {
+    /* Sub-palettes 2 (Arch) & 3 (Accent) indices 13..14 are warm lit windows, lanterns & beacons */
+    if ((sub_pal == 2u || sub_pal == 3u) && (idx == 13u || idx == 14u)) return true;
+    /* Cinderpeak Volcano: keep molten magma & glowing vents blazing bright at dusk/night */
+    if (pal_id == ZPAL_VOLCANO) {
+        if (sub_pal == 0u && (idx == 12u || idx == 13u)) return true;
+        if (sub_pal == 3u && ((idx >= 2u && idx <= 5u) || (idx >= 12u && idx <= 15u))) return true;
+    }
+    /* Aetheris Citadel: keep electric cyan power conduits & beacons glowing at night */
+    if (pal_id == ZPAL_TECH) {
+        if (sub_pal == 0u && idx == 13u) return true;
+        if (sub_pal == 3u && (idx == 4u || idx == 5u)) return true;
+    }
+    return false;
+}
+
+bool hearth_tod_is_emissive_gen(uint8_t pal_id, uint8_t gen_pal_slot, uint8_t idx) {
+    if (gen_pal_slot == 0u) {
+        if (idx == 13u) return true; /* Lit windows, lanterns & tech glow */
+        if ((pal_id == ZPAL_VOLCANO || pal_id == ZPAL_TECH) && idx == 15u) return true;
+    } else {
+        /* PAL3[1] & PAL3[15] double as HUD UI colors; PAL3[14] is warm lantern/emote gold */
+        if (idx == 1u || idx == 14u || idx == 15u) return true;
+        if (pal_id == ZPAL_VOLCANO && (idx >= 11u && idx <= 13u)) return true;
+        if (pal_id == ZPAL_TECH && idx == 13u) return true;
+    }
+    return false;
 }
 
 static void clear_zone_entities(HearthState *st) {
@@ -490,6 +549,7 @@ static void clear_zone_entities(HearthState *st) {
     st->has_windmill = false;
     st->has_locomotive = false;
     st->has_mountain_vista = false;
+    st->has_outdoor_tod = false;
     st->zone_is_dark = false;
     st->is_world_map = false;
 }
@@ -528,8 +588,9 @@ static void populate_zone_rowan_upstairs(HearthState *st) {
 static void populate_zone_alderbrook(HearthState *st) {
     st->terrain_pal_id = tod_to_mountain_pal(st->time_of_day);
     st->bgm_id = (st->time_of_day == TOD_NIGHT) ? (uint8_t)BGM_CINEMA_LULLABY : (uint8_t)BGM_ALDERBROOK;
-    st->zone_is_dark = (st->time_of_day == TOD_NIGHT);
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->has_mountain_vista = true;
+    st->has_outdoor_tod = true;
     st->has_locomotive = true;
     st->loco_tx = 20;
     st->loco_ty = 5;
@@ -570,8 +631,9 @@ static void populate_zone_whispering_woods(HearthState *st) {
     uint8_t si;
     st->terrain_pal_id = tod_to_mountain_pal(st->time_of_day);
     st->bgm_id = (st->time_of_day == TOD_NIGHT) ? (uint8_t)BGM_CINEMA_LULLABY : (uint8_t)BGM_ALDERBROOK;
-    st->zone_is_dark = (st->time_of_day == TOD_NIGHT);
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->has_mountain_vista = true;
+    st->has_outdoor_tod = true;
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
     st->has_sign = true;
     st->sign_tx = 7;
@@ -602,8 +664,9 @@ static void populate_zone_whispering_woods(HearthState *st) {
 static void populate_zone_hollow_glade(HearthState *st) {
     st->terrain_pal_id = tod_to_mountain_pal(st->time_of_day);
     st->bgm_id = (st->time_of_day == TOD_NIGHT) ? (uint8_t)BGM_CINEMA_LULLABY : (uint8_t)BGM_ALDERBROOK;
-    st->zone_is_dark = (st->time_of_day == TOD_NIGHT);
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->has_mountain_vista = true;
+    st->has_outdoor_tod = true;
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
 
     if (st->ch1_step >= 6u && st->story_stage < STORY_EVERTALE_AWAKENED) {
@@ -676,6 +739,8 @@ static void populate_zone_evertale_world(HearthState *st) {
     uint8_t reg = hearth_globe_region_at(tx, ty);
     g_last_region_macro = (uint16_t)(((ty >> 2) << 6) | (tx >> 2));
     st->is_world_map = true;
+    st->has_outdoor_tod = true;
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->has_windmill = true;
     st->world_region_id = reg;
     st->terrain_pal_id = region_to_pal(reg);
@@ -689,6 +754,8 @@ static void populate_zone_evertale_world(HearthState *st) {
 static void populate_zone_timber_pier(HearthState *st) {
     st->terrain_pal_id = ZPAL_EVERTALE_WORLD;
     st->bgm_id = BGM_HAMLET;
+    st->has_outdoor_tod = true;
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
     st->has_sign = true;
     st->sign_tx = 18;
@@ -716,6 +783,8 @@ static void populate_zone_timber_pier(HearthState *st) {
 static void populate_zone_coral_cove(HearthState *st) {
     st->terrain_pal_id = ZPAL_PARADISE;
     st->bgm_id = BGM_PARADISE;
+    st->has_outdoor_tod = true;
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
     st->has_sign = true;
     st->sign_tx = 15;
@@ -744,6 +813,8 @@ static void populate_zone_coral_cove(HearthState *st) {
 static void populate_zone_babana_oasis(HearthState *st) {
     st->terrain_pal_id = ZPAL_DESERT;
     st->bgm_id = BGM_DESERT;
+    st->has_outdoor_tod = true;
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
     st->has_waystone = true;
     st->waystone_tx = 21;
@@ -771,6 +842,8 @@ static void populate_zone_sunhill_market(HearthState *st) {
     st->terrain_pal_id = ZPAL_SUNHILL_MARKET;
     st->bgm_id = BGM_HAMLET;
     st->has_mountain_vista = true;
+    st->has_outdoor_tod = true;
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
     st->has_sign = true;
     st->sign_tx = 18;
@@ -797,6 +870,8 @@ static void populate_zone_castle_gate(HearthState *st) {
     st->terrain_pal_id = ZPAL_SUNHILL_MARKET;
     st->bgm_id = BGM_HAMLET;
     st->has_mountain_vista = true;
+    st->has_outdoor_tod = true;
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
     st->has_sign = true;
     st->sign_tx = 17;
@@ -812,6 +887,8 @@ static void populate_zone_castle_gate(HearthState *st) {
 static void populate_zone_bramble_edge(HearthState *st) {
     st->terrain_pal_id = ZPAL_HAMLET;
     st->bgm_id = BGM_HAMLET;
+    st->has_outdoor_tod = true;
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
     st->has_sign = true;
     st->sign_tx = 12;
@@ -832,6 +909,8 @@ static void populate_zone_bramble_edge(HearthState *st) {
 static void populate_zone_sunken_ruins(HearthState *st) {
     st->terrain_pal_id = ZPAL_HAMLET;
     st->bgm_id = BGM_HAMLET;
+    st->has_outdoor_tod = true;
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
     st->has_sign = true;
     st->sign_tx = 11;
@@ -856,6 +935,8 @@ static void populate_zone_hamlet(HearthState *st) {
         return;
     }
 
+    st->has_outdoor_tod = true;
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
     st->has_waystone = true;
     st->waystone_tx = 8;
@@ -903,6 +984,8 @@ static void populate_zone_hamlet(HearthState *st) {
 static void populate_zone_whiskerburgh(HearthState *st) {
     st->terrain_pal_id = ZPAL_WHISKERBURGH;
     st->bgm_id = BGM_WHISKERBURGH;
+    st->has_outdoor_tod = true;
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->pip_visible = (st->ch2_step >= 3u || st->flag_has_familiar);
     st->has_waystone = true;
     st->waystone_tx = 11;
@@ -969,6 +1052,8 @@ static void populate_zone_sewers(HearthState *st) {
 static void populate_zone_boarhold(HearthState *st) {
     st->terrain_pal_id = ZPAL_BOARHOLD;
     st->bgm_id = BGM_BOARHOLD;
+    st->has_outdoor_tod = true;
+    st->zone_is_dark = tod_phase_is_dark(st->tod_phase);
     st->pip_visible = true;
     st->has_waystone = true;
     st->waystone_tx = 12;
@@ -1255,6 +1340,7 @@ static void finish_cinema_mode(HearthState *st, bool play_sfx) {
         st->story_stage = STORY_EVERTALE_AWAKENED;
         st->ch1_step = 8u;
         st->ch2_step = 0u;
+        set_tod_phase_quarter(st, TOD_MORNING);
         st->tod_locked = false;
         st->flag_has_wand = false;
         st->flag_has_familiar = false;
@@ -1533,6 +1619,7 @@ void hearth_start_sandbox(HearthState *st) {
     if (st->story_stage < STORY_EVERTALE_AWAKENED) {
         st->story_stage = STORY_EVERTALE_AWAKENED;
     }
+    set_tod_phase_quarter(st, TOD_AFTERNOON);
     st->tod_locked = false;
     st->ch1_step = 8u;
     st->ch2_step = 6u;
@@ -5552,6 +5639,7 @@ static void build_ppu_packet(HearthState *st) {
     HP.tod_phase = HS.tod_phase;
     HP.zone_is_dark = HS.zone_is_dark;
     HP.has_mountain_vista = HS.has_mountain_vista;
+    HP.has_outdoor_tod = HS.has_outdoor_tod;
     HP.zone_banner_frames = HS.zone_banner_frames;
     HP.zone_name = HS.is_world_map
         ? HEARTH_REGION_NAMES[(HS.world_region_id < REGION_COUNT) ? HS.world_region_id : 0u]
@@ -5699,16 +5787,20 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
                     if (just_pressed & PAD_A) try_interact(st);
                     if (just_pressed & PAD_L) { HS.active_slot = (uint8_t)((HS.active_slot + 2) % 3); push_sfx(st, SFX_CURSOR); }
                     if (just_pressed & PAD_R) { HS.active_slot = (uint8_t)((HS.active_slot + 1) % 3); push_sfx(st, SFX_CURSOR); }
-                    /* Ultra-smooth 1024-step mountain day/night cycle (56 frames/step = ~16m full cycle = 4x slower!)
-                     * Paused whenever HS.tod_locked is true (e.g. Ch1 nighttime Mido chase through Alderbrook & Woods). */
-                    if (HS.has_mountain_vista && !HS.tod_locked) {
+                    /* Shared 1024-step outdoor day/night cycle across World Map & all outdoor towns/villages
+                     * (56 frames/step = ~16m full cycle). Paused indoors or when HS.tod_locked is true. */
+                    if (HS.has_outdoor_tod && !HS.tod_locked) {
                         HS.day_subtick++;
                         if (HS.day_subtick >= 56u) {
                             HS.day_subtick = 0u;
                             HS.tod_phase = (uint16_t)((HS.tod_phase + 1u) & 1023u);
                             HS.time_of_day = (uint8_t)(HS.tod_phase >> 8);
-                            HS.terrain_pal_id = tod_to_mountain_pal(HS.time_of_day);
-                            HS.zone_is_dark = (HS.tod_phase >= 640u && HS.tod_phase <= 960u);
+                            if (HS.zone_id == ZONE_ALDERBROOK ||
+                                HS.zone_id == ZONE_WHISPERING_WOODS ||
+                                HS.zone_id == ZONE_HOLLOW_GLADE) {
+                                HS.terrain_pal_id = tod_to_mountain_pal(HS.time_of_day);
+                            }
+                            HS.zone_is_dark = tod_phase_is_dark(HS.tod_phase);
                         }
                     }
                 }

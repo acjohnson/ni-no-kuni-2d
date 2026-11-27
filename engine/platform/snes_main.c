@@ -158,6 +158,7 @@ static u8  g_last_battle_biome = 255;
 static u8  g_last_battle_tod   = 255;
 static u8  g_last_pal_id       = 255;
 static u16 g_last_tod_phase    = 0xFFFFu;
+static u8  g_last_outdoor_tod  = 255;
 static u8  g_pal_dirty         = 0;
 static u8  g_last_portrait_id  = 0;
 static u8  g_portrait_dma_dirty = 0;
@@ -563,27 +564,43 @@ static u16 snes_lerp_bgr555(u16 c0, u16 c1, u16 frac256, u16 br, u16 bg, u16 bb)
     return (u16)((b << 10) | (g << 5) | r);
 }
 
-static void upload_zone_pal0(u8 pal_id, u16 tod_phase) {
+static u16 snes_grade_bgr555(u16 c, const HearthTodGrade *gr, u16 br, u16 bg, u16 bb) {
+    u16 r0, g0, b0, r, g, b;
+    r0 = (u16)(c & 31u);
+    g0 = (u16)((c >> 5) & 31u);
+    b0 = (u16)((c >> 10) & 31u);
+    r = (u16)((r0 * gr->mr + (gr->ar8 >> 3) + br) >> 8);
+    g = (u16)((g0 * gr->mg + (gr->ag8 >> 3) + bg) >> 8);
+    b = (u16)((b0 * gr->mb + (gr->ab8 >> 3) + bb) >> 8);
+    if (r > 31u) r = 31u;
+    if (g > 31u) g = 31u;
+    if (b > 31u) b = 31u;
+    return (u16)((b << 10) | (g << 5) | r);
+}
+
+static void upload_zone_pal0(u8 pal_id, u16 tod_phase, u8 has_outdoor_tod) {
     static const u8 TOD_KEYS[4] = {
         ZPAL_AUTUMN_MORNING, ZPAL_ALDERBROOK, ZPAL_AUTUMN_DUSK, ZPAL_AUTUMN_NIGHT
     };
-    u16 c, p, eff_phase, frac, br, bg, bb, base;
-    u8 pid, smooth_tod, seg, pA, pB, use_p, changed;
+    HearthTodGrade gr;
+    u16 c, p, eff_phase, frac, br, bg, bb, base, bg_col;
+    u8 pid, autumn_blend, grade_tod, seg, pA, pB, use_p, changed;
 
     pid = (pal_id < ZPAL_COUNT) ? pal_id : 0u;
-    smooth_tod = (u8)((!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista &&
+    autumn_blend = (u8)((has_outdoor_tod &&
         (pid == ZPAL_AUTUMN_MORNING || pid == ZPAL_ALDERBROOK ||
          pid == ZPAL_AUTUMN_DUSK || pid == ZPAL_AUTUMN_NIGHT)) ? 1u : 0u);
+    grade_tod = (u8)((has_outdoor_tod && !autumn_blend) ? 1u : 0u);
     eff_phase = (u16)(tod_phase & 1023u);
     seg = (u8)((eff_phase >> 8) & 3u);
     frac = (u16)(eff_phase & 255u);
     pA = TOD_KEYS[seg];
     pB = TOD_KEYS[(seg + 1u) & 3u];
-    use_p = smooth_tod ? pA : pid;
+    use_p = autumn_blend ? pA : pid;
 
     /* Upload all 4 Chrono/Mana terrain sub-palettes (60 simultaneous colors in CGRAM 0..63)!
      * Staggered per-(subpal, entry, channel) rounding across 256 steps/quarter eliminates jumps! */
-    if (smooth_tod && frac > 0u) {
+    if (autumn_blend && frac > 0u) {
         for (p = 0u; p < 4u; p++) {
             base = (u16)(p << 4);
             changed = 0u;
@@ -595,6 +612,37 @@ static void upload_zone_pal0(u8 pal_id, u16 tod_phase) {
             }
             if (p == 0u) {
                 g_pal16[0] = snes_lerp_bgr555(SNES_CHRONO_PALS[pA][1][2], SNES_CHRONO_PALS[pB][1][2], frac, 64u, 148u, 224u);
+            }
+            for (c = 0u; c < 16u; c++) {
+                if (!g_prev_cgram_valid || g_pal16[c] != g_prev_cgram[base + c]) {
+                    changed = 1u;
+                    g_prev_cgram[base + c] = g_pal16[c];
+                }
+            }
+            if (changed) {
+                dmaCopyCGram((u8 *)g_pal16, base, 32u);
+            }
+        }
+        g_prev_cgram_valid = 1u;
+    } else if (grade_tod) {
+        hearth_tod_grade_params(eff_phase, &gr);
+        for (p = 0u; p < 4u; p++) {
+            base = (u16)(p << 4);
+            changed = 0u;
+            for (c = 0u; c < 16u; c++) {
+                if (c == 0u || hearth_tod_is_emissive_4pal(pid, (u8)p, (u8)c)) {
+                    g_pal16[c] = SNES_CHRONO_PALS[pid][p][c];
+                } else {
+                    br = (u16)((p * 43u + c * 97u + 19u) & 255u);
+                    bg = (u16)((p * 43u + c * 97u + 109u) & 255u);
+                    bb = (u16)((p * 43u + c * 97u + 199u) & 255u);
+                    g_pal16[c] = snes_grade_bgr555(SNES_CHRONO_PALS[pid][p][c], &gr, br, bg, bb);
+                }
+            }
+            if (p == 0u) {
+                bg_col = (!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista)
+                    ? SNES_CHRONO_PALS[pid][1][2] : SNES_CHRONO_PALS[pid][0][1];
+                g_pal16[0] = snes_grade_bgr555(bg_col, &gr, 64u, 148u, 224u);
             }
             for (c = 0u; c < 16u; c++) {
                 if (!g_prev_cgram_valid || g_pal16[c] != g_prev_cgram[base + c]) {
@@ -3479,7 +3527,7 @@ static void flush_env_vblank_dma(void) {
 static void flush_one_vblank_dma(void) {
     /* Stay strictly under SNES NTSC VBlank DMA budget (~2.6 KB max per frame)! */
     if (g_pal_dirty) {
-        upload_zone_pal0(g_last_pal_id, g_last_tod_phase);
+        upload_zone_pal0(g_last_pal_id, g_last_tod_phase, g_last_outdoor_tod);
         g_pal_dirty = 0u;
     }
     if (g_pal7_dma_dirty) {
@@ -4066,7 +4114,8 @@ int main(void) {
     ppu = hearth_step_60hz(&g_hearth, g_hearth.prev_pad);
     g_last_pal_id = ppu->terrain_pal_id;
     g_last_tod_phase = ppu->tod_phase;
-    upload_zone_pal0(g_last_pal_id, g_last_tod_phase);
+    g_last_outdoor_tod = ppu->has_outdoor_tod ? 1u : 0u;
+    upload_zone_pal0(g_last_pal_id, g_last_tod_phase, g_last_outdoor_tod);
     g_prev_oam_cnt = 0u;
     g_env_frame = 0u;
     g_ui_layout = 255u;
@@ -4124,9 +4173,11 @@ int main(void) {
 
         if (scene_kind == 0u &&
             (ppu->terrain_pal_id != g_last_pal_id ||
-             (ppu->has_mountain_vista && ppu->tod_phase != g_last_tod_phase))) {
+             (ppu->has_outdoor_tod ? 1u : 0u) != g_last_outdoor_tod ||
+             (ppu->has_outdoor_tod && ppu->tod_phase != g_last_tod_phase))) {
             g_last_pal_id = ppu->terrain_pal_id;
             g_last_tod_phase = ppu->tod_phase;
+            g_last_outdoor_tod = ppu->has_outdoor_tod ? 1u : 0u;
             g_pal_dirty = 1u;
         }
 
@@ -4155,6 +4206,7 @@ int main(void) {
             if ((g_last_scene_kind == 2u || g_last_scene_kind == 1u) && scene_kind == 0u) {
                 g_last_pal_id = ppu->terrain_pal_id;
                 g_last_tod_phase = ppu->tod_phase;
+                g_last_outdoor_tod = ppu->has_outdoor_tod ? 1u : 0u;
                 g_pal_dirty = 1u;
                 g_full_pal_dirty = 1u; /* Restore BG1 terrain & BG PAL0..PAL3 overwritten by 60-color CG/Battle BG! */
                 g_prev_cgram_valid = 0u;
@@ -4208,13 +4260,13 @@ int main(void) {
                 /* Restore Chrono/Mana 415-tile BG1 terrain from ROM (single 4ms DMA!) + 60-color palettes */
                 upload_chrono_terrain_vram();
                 upload_all_palettes();
-                upload_zone_pal0(g_last_pal_id, g_last_tod_phase);
+                upload_zone_pal0(g_last_pal_id, g_last_tod_phase, g_last_outdoor_tod);
                 if (g_pal7_is_portrait) upload_pal7_atlas_or_portrait(1u);
                 g_pal7_dma_dirty = 0u;
                 g_full_pal_dirty = 0u;
                 g_pal_dirty = 0u;
             } else if (g_pal_dirty || want_bg2 != g_bg2_enabled) {
-                upload_zone_pal0(g_last_pal_id, g_last_tod_phase);
+                upload_zone_pal0(g_last_pal_id, g_last_tod_phase, g_last_outdoor_tod);
                 g_pal_dirty = 0u;
             }
             if (g_pal7_dma_dirty) {
