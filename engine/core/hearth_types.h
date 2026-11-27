@@ -281,7 +281,8 @@ typedef enum {
     PORTRAIT_TESSA    = 8,
     PORTRAIT_CORIN    = 9,
     PORTRAIT_SENTINEL = 10,
-    PORTRAIT_COUNT    = 11
+    PORTRAIT_ELDER    = 11,
+    PORTRAIT_COUNT    = 12
 } HearthPortraitId;
 
 typedef enum {
@@ -885,7 +886,7 @@ typedef struct {
     uint8_t  terrain_pal_id;
     uint8_t  bgm_id;
     uint8_t  time_of_day;
-    uint8_t  tod_phase;       /* 0..63 smooth real-time day/night phase (16 subtle steps per quarter!) */
+    uint16_t tod_phase;       /* 0..1023 ultra-smooth real-time day/night phase (256 steps/quarter!) */
     bool     zone_is_dark;
     bool     has_mountain_vista;
     bool     is_world_map;

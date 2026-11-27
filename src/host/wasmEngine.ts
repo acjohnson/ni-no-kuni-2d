@@ -930,7 +930,7 @@ export class WasmHearthEngine {
       zoneBannerFrames: i32[s + 99],
       zoneName: this.readCString(i32[s + 100]) || 'Alderbrook',
       timeOfDay: (Math.min(3, Math.max(0, i32[s + 147])) as TimeOfDay),
-      todPhase: i32[s + 174] & 63,
+      todPhase: i32[s + 174] & 1023,
       hasMountainVista: i32[s + 148] !== 0,
       objectiveText: this.readCString(i32[s + 149]),
       heroWorldX: fromFp(i32[s + 18]),

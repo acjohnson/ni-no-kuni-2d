@@ -50,7 +50,7 @@ T_NAMES = {
     48: "T_WORLD_PEAK", 49: "T_WORLD_FOREST", 50: "T_WORLD_HILL", 51: "T_WORLD_CASTLE",
     52: "T_WORLD_TOWN", 53: "T_WORLD_RUINS", 54: "T_WORLD_SHALLOW", 55: "T_WORLD_SAND",
     56: "T_WORLD_SNOW", 57: "T_WORLD_LAVA", 58: "T_WORLD_JUNGLE", 59: "T_WORLD_CORAL",
-    60: "T_WORLD_TECH", 61: "T_PALM_TREE", 62: "T_DOCK_PIER",
+    60: "T_WORLD_TECH", 61: "T_PALM_TREE", 62: "T_DOCK_PIER", 63: "T_LANTERN_UNLIT",
 }
 
 T_GRASS, T_GRASS_ALT, T_FLOWERS, T_TALL_GRASS = 0, 1, 2, 3
@@ -68,7 +68,7 @@ T_STONE_STAIRS, T_INTERIOR_WALL, T_WORLD_OCEAN, T_WORLD_BEACH = 44, 45, 46, 47
 T_WORLD_PEAK, T_WORLD_FOREST, T_WORLD_HILL, T_WORLD_CASTLE = 48, 49, 50, 51
 T_WORLD_TOWN, T_WORLD_RUINS, T_WORLD_SHALLOW, T_WORLD_SAND = 52, 53, 54, 55
 T_WORLD_SNOW, T_WORLD_LAVA, T_WORLD_JUNGLE, T_WORLD_CORAL = 56, 57, 58, 59
-T_WORLD_TECH, T_PALM_TREE, T_DOCK_PIER = 60, 61, 62
+T_WORLD_TECH, T_PALM_TREE, T_DOCK_PIER, T_LANTERN_UNLIT = 60, 61, 62, 63
 
 O_NONE, O_CANOPY_TL, O_CANOPY_TR, O_CANOPY_BL, O_CANOPY_BR = 0, 1, 2, 3, 4
 O_ROOF_EAVE, O_SHRINE_ARCH, O_MAPLE_TL, O_MAPLE_TR = 5, 6, 7, 8
@@ -81,7 +81,7 @@ WATER_TILES = {T_WATER, T_FORD, T_RAPIDS, T_WORLD_OCEAN, T_WORLD_SHALLOW}
 AQUATIC_TILES = WATER_TILES | {T_WORLD_CORAL}
 GRASS_LIKE = {T_GRASS, T_GRASS_ALT, T_FLOWERS, T_TALL_GRASS, T_AUTUMN_GRASS}
 PROP_TILES = {
-    T_LANTERN_POST, T_SIGNPOST, T_FLOWER_BED, T_BUSH, T_FENCE,
+    T_LANTERN_POST, T_LANTERN_UNLIT, T_SIGNPOST, T_FLOWER_BED, T_BUSH, T_FENCE,
     T_BOULDER, T_TREE_TRUNK, T_MAPLE_TRUNK, T_PINE_TRUNK, T_PALM_TREE,
 }
 WORLD_ICON_TILES = {T_WORLD_CASTLE, T_WORLD_TOWN, T_WORLD_RUINS}
@@ -122,7 +122,7 @@ EXPECT_SOLID = {
     T_CLIFF_WALL, T_CLIFF_LEDGE, T_BOULDER, T_MAPLE_TRUNK, T_PINE_TRUNK,
     T_FIREPLACE, T_HOLLOW_OAK, T_INTERIOR_WALL, T_MTN_SKY,
     T_WORLD_PEAK, T_WORLD_FOREST, T_WORLD_CASTLE, T_WORLD_TOWN,
-    T_WORLD_RUINS, T_PALM_TREE,
+    T_WORLD_RUINS, T_PALM_TREE, T_LANTERN_UNLIT,
 }
 
 # Region -> ZPAL index for globe rendering
@@ -155,6 +155,7 @@ CAT_COLORS = {
     "FLOW":      ( 40, 235, 255),  # Cyan
     "SEAM":      (235,  65, 240),  # Magenta
     "OVERLAY":   (120, 255,  90),  # Lime
+    "CONSOLE":   ( 90, 210, 255),  # Sky Blue (SNES / Genesis hardware & parity)
 }
 
 
@@ -261,6 +262,35 @@ def reconstruct_gen_metatile(gen_tiles, qlist):
     return ft
 
 
+def quantize_snes_cgram_rgb(hex_rgb):
+    """Exact SNES 15-bit BGR555 CGRAM quantization (5 bits per channel -> 0..255)."""
+    r5 = ((hex_rgb >> 16) & 0xFF) >> 3
+    g5 = ((hex_rgb >> 8) & 0xFF) >> 3
+    b5 = (hex_rgb & 0xFF) >> 3
+    return ((r5 << 3) | (r5 >> 2), (g5 << 3) | (g5 >> 2), (b5 << 3) | (b5 >> 2))
+
+
+def reconstruct_snes_metatile(snes_tiles, qlist):
+    """Rebuild a 16x16 FlatTile from SNES 4x(tid, pal, hf, vf, prio) quadrant descriptors."""
+    px = [0] * 256
+    qpal = [0, 0, 0, 0]
+    for qidx, (tid, pal, hf, vf, _prio) in enumerate(qlist):
+        qpal[qidx] = pal & 3
+        q8 = snes_tiles[tid]
+        qx = (qidx & 1) * 8
+        qy = (qidx >> 1) * 8
+        for y in range(8):
+            sy = (7 - y) if vf else y
+            for x in range(8):
+                sx = (7 - x) if hf else x
+                px[(qy + y) * 16 + (qx + x)] = q8[sy * 8 + sx]
+    ft = FlatTile.__new__(FlatTile)
+    ft.px = px
+    ft.qpal = qpal
+    ft.pal = qpal[0]
+    return ft
+
+
 def build_tileset_cache(baker):
     zone_pals = baker.build_zone_palettes()  # dict {0..17: [4][16] of 0xRRGGBB}
     gen_pals = baker.build_genesis_palettes(zone_pals)  # list {0..17: [2][16] of 0xRRGGBB}
@@ -270,12 +300,16 @@ def build_tileset_cache(baker):
 
     # Pre-unpack SNES/SDL2/Web 60-color palette RGB tuples: pal_rgb[zpal][subpal][ci] -> (r,g,b)
     pal_rgb = []
+    snes_pal_rgb = []
     for zi in range(len(zone_pals)):
         zp = zone_pals[zi]
         sp_list = []
+        snes_sp_list = []
         for sp in zp:
             sp_list.append([((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF) for c in sp])
+            snes_sp_list.append([quantize_snes_cgram_rgb(c) for c in sp])
         pal_rgb.append(sp_list)
+        snes_pal_rgb.append(snes_sp_list)
 
     # Pre-unpack exact Sega Genesis 9-bit CRAM palettes: gen_pal_rgb[zpal][0..1][ci] -> (r,g,b)
     gen_pal_rgb = []
@@ -283,16 +317,22 @@ def build_tileset_cache(baker):
         gp = gen_pals[zi]
         gen_pal_rgb.append([[quantize_gen_cram_rgb(c) for c in sp] for sp in gp])
 
-    # Map meta_id -> FlatTile for frames 0..3 (SNES/PC/Web)
+    # Map meta_id -> FlatTile for frames 0..3 (PC/Web master)
     meta_tiles = []
     for f in range(4):
         meta_tiles.append([FlatTile(t) for t in frames[f]])
 
-    # Compile exact Sega Genesis 8x8 tilebank & reconstruct Genesis 16x16 metatiles
+    # Compile exact SNES 4bpp 8x8 tilebank (<= 510 tiles) & reconstruct SNES 16x16 metatiles
+    snes_tiles, _snes_anim, snes_meta_quads = baker.compile_console_bank(frames, max_tiles=510, is_genesis=False)
+    snes_meta_tiles = [reconstruct_snes_metatile(snes_tiles, qlist) for qlist in snes_meta_quads]
+
+    # Compile exact Sega Genesis 8x8 tilebank (<= 399 tiles) & reconstruct Genesis 16x16 metatiles
     gen_tiles, _gen_anim, gen_meta_quads = baker.compile_console_bank(frames, max_tiles=399, is_genesis=True)
     gen_meta_tiles = [reconstruct_gen_metatile(gen_tiles, qlist) for qlist in gen_meta_quads]
 
-    return meta_names, name_to_id, pal_rgb, meta_tiles, gen_pal_rgb, gen_meta_tiles
+    return (meta_names, name_to_id, pal_rgb, meta_tiles,
+            snes_pal_rgb, snes_tiles, snes_meta_tiles,
+            gen_pal_rgb, gen_tiles, gen_meta_tiles)
 
 
 # ============================================================================
@@ -542,6 +582,284 @@ def render_genesis_zone_rgb(w, h, cells, gen_pal_rgb, gen_meta_tiles, pal_id, ha
                 if 1 <= bg2 <= 12:
                     blit_tile(cx, cy, gen_meta_tiles[ov_base + (bg2 - 1)], transparent0=True)
     return img_w, img_h, buf
+
+
+def render_snes_zone_rgb(w, h, cells, snes_pal_rgb, snes_meta_tiles, pal_id, has_mountain_vista, name_to_id, is_globe=False, crop=None):
+    """
+    Render a local zone or globe crop using the EXACT SNES Mode-1 PPU single-BG1 rules,
+    compiled <=510-tile 4bpp bank, CM_OPQ_* opaque canopies, and 15-bit BGR555 CGRAM.
+    """
+    if crop:
+        x0, y0, x1, y1 = crop
+    else:
+        x0, y0, x1, y1 = 0, 0, w, h
+    cw, ch = x1 - x0, y1 - y0
+    img_w, img_h = cw * 16, ch * 16
+    buf = bytearray(img_w * img_h * 3)
+    opq_base = name_to_id["CM_OPQ_CANOPY_TL"]
+    oak_crown_opq = name_to_id["CM_OPQ_OAK_CROWN"]
+
+    for cy in range(ch):
+        my = (y0 + cy) % h if is_globe else (y0 + cy)
+        for cx in range(cw):
+            mx = (x0 + cx) % w if is_globe else (x0 + cx)
+            rec = cells[my * w + mx]
+            bg1, bg2 = rec[0], rec[1]
+            meta = rec[3]
+            zpal = REGION_TO_ZPAL.get(rec[4], 10) if is_globe else pal_id
+            sp = snes_pal_rgb[zpal]
+            sky_rgb = sp[1][2] if (not is_globe and has_mountain_vista) else sp[0][1]
+
+            if is_globe:
+                # Exact SNES stream_world_row/col rule: non-zero bg2 -> CM_OPQ_OAK_CROWN
+                use_meta = oak_crown_opq if bg2 > 0 else meta
+            elif 1 <= bg2 <= 12:
+                use_meta = opq_base + (bg2 - 1)
+            else:
+                use_meta = meta
+
+            tile = snes_meta_tiles[use_meta]
+            qpal = tile.qpal
+            px = tile.px
+            for ty in range(16):
+                row_off = ((cy * 16 + ty) * img_w + cx * 16) * 3
+                t_row = ty * 16
+                qy = 2 if ty >= 8 else 0
+                sp_l = sp[qpal[qy]]
+                sp_r = sp[qpal[qy + 1]]
+                for tx in range(16):
+                    ci = px[t_row + tx]
+                    r, g, b = sky_rgb if (ci == 0 and not is_globe and has_mountain_vista and bg1 == T_MTN_SKY) else (sp_l if tx < 8 else sp_r)[ci]
+                    off = row_off + tx * 3
+                    buf[off] = r; buf[off + 1] = g; buf[off + 2] = b
+    return img_w, img_h, buf
+
+
+# ============================================================================
+# PASS 7: Console Hardware, VRAM/OAM, Portrait Parity & 816-tcc/SGDK Safety Audit
+# ============================================================================
+def audit_console_hardware(dump, meta_names, meta_tiles, snes_tiles, snes_meta_tiles, gen_tiles):
+    """
+    Verifies console-specific hardware constraints & parity invariants across SNES,
+    Sega Genesis, SDL2, and Web builds so console-only regressions cannot slip through.
+    """
+    issues = []
+
+    def add(sev, target, code, msg):
+        issues.append({
+            "severity": sev, "category": "CONSOLE", "code": code,
+            "zone_id": -1, "zone": f"Console:{target}", "x": 0, "y": 0, "msg": msg,
+        })
+
+    snes_c_path = os.path.join(ROOT, "engine", "platform", "snes_main.c")
+    gen_c_path = os.path.join(ROOT, "engine", "platform", "genesis_main.c")
+    sdl_c_path = os.path.join(ROOT, "engine", "platform", "sdl2_main.c")
+    types_h_path = os.path.join(ROOT, "engine", "core", "hearth_types.h")
+    data_c_path = os.path.join(ROOT, "engine", "core", "hearth_data.c")
+    terrain_rom_h = os.path.join(ROOT, "engine", "platform", "hearth_terrain_rom.h")
+    terrain_snes_asm = os.path.join(ROOT, "engine", "platform", "hearth_terrain_snes.asm")
+    cinema_rom_h = os.path.join(ROOT, "engine", "platform", "cinema_cg_rom.h")
+    cinema_sdl_h = os.path.join(ROOT, "engine", "platform", "cinema_cg_sdl2.h")
+    cinema_snes_asm = os.path.join(ROOT, "engine", "platform", "cinema_cg_snes.asm")
+    portrait_tsx = os.path.join(ROOT, "src", "components", "PortraitFrame.tsx")
+
+    snes_src = open(snes_c_path, "r").read()
+    gen_src = open(gen_c_path, "r").read()
+    sdl_src = open(sdl_c_path, "r").read()
+    types_src = open(types_h_path, "r").read()
+    data_src = open(data_c_path, "r").read()
+
+    # 7a. Console VRAM Tilebank Budgets & SNES ROM Table Sync
+    if len(snes_tiles) > 510:
+        add("CRITICAL", "SNES", "SNES_VRAM_OVERFLOW",
+            f"Compiled SNES 4bpp BG1 tilebank ({len(snes_tiles)}) exceeds 510-tile VRAM budget")
+    if len(gen_tiles) > 399:
+        add("CRITICAL", "Genesis", "GEN_VRAM_OVERFLOW",
+            f"Compiled Genesis 4bpp BG tilebank ({len(gen_tiles)}) exceeds 399-tile VRAM budget")
+
+    if os.path.isfile(terrain_rom_h) and os.path.isfile(terrain_snes_asm):
+        trom = open(terrain_rom_h, "r").read()
+        tasm = open(terrain_snes_asm, "r").read()
+        m_cnt = re.search(r"#define\s+SNES_CHRONO_TILE_COUNT\s+(\d+)", trom)
+        if m_cnt:
+            rom_tcnt = int(m_cnt.group(1))
+            if rom_tcnt > 510:
+                add("CRITICAL", "SNES", "SNES_ROM_TILE_BUDGET",
+                    f"hearth_terrain_rom.h SNES_CHRONO_TILE_COUNT={rom_tcnt} exceeds 510")
+            m_blk = re.search(r"snes_chrono_tiles:(.*?)(?:snes_chrono_anim_frames:|snes_chrono_tiles_end:|\.ends)", tasm, re.S)
+            if m_blk:
+                n_bytes = len(re.findall(r"\$[0-9A-Fa-f]{2}", m_blk.group(1)))
+                if n_bytes != rom_tcnt * 32:
+                    add("ERROR", "SNES", "SNES_TERRAIN_ASM_MISMATCH",
+                        f"snes_chrono_tiles ASM has {n_bytes}B, expected {rom_tcnt * 32}B ({rom_tcnt} tiles)")
+            # Check SNES_META_TL/TR/BL/BR tile indices fit inside rom_tcnt
+            for arr_name in ("SNES_META_TL", "SNES_META_TR", "SNES_META_BL", "SNES_META_BR"):
+                m_arr = re.search(rf"{arr_name}\[.*?\]\s*=\s*\{{(.*?)\}};", trom, re.S)
+                if m_arr:
+                    vals = [int(v, 0) for v in re.findall(r"0x[0-9A-Fa-f]+", m_arr.group(1))]
+                    bad = [v & 0x03FF for v in vals if (v & 0x03FF) >= rom_tcnt]
+                    if bad:
+                        add("CRITICAL", "SNES", "SNES_META_TILE_OOB",
+                            f"{arr_name} references out-of-range tile index {bad[0]} >= {rom_tcnt}")
+
+    # 7b. SNES OBJ VRAM 8x8 Tile Collision & Ambient Particle Audit
+    # Compute all 8x8 OBJ tile indices occupied by 16x16 slots 0..48 and 49..60
+    def slot_to_tile(slot):
+        return ((slot >> 3) << 5) + ((slot & 7) << 1)
+
+    obj_owners = {}  # tile_idx -> owner label
+    sprite16_tiles = set()
+    # Slots 0..48 (core sprites) + 49, 55..60 (timed ring, battle vfx, atlas, fish, pip hop/squash)
+    active_16x16_slots = list(range(0, 49)) + [49, 55, 56, 57, 58, 59, 60]
+    for s in active_16x16_slots:
+        t0 = slot_to_tile(s)
+        for dt in (0, 1, 16, 17):
+            ti = t0 + dt
+            sprite16_tiles.add(ti)
+            if ti in obj_owners:
+                add("CRITICAL", "SNES", "SNES_OBJ_VRAM_COLLISION",
+                    f"OBJ tile 0x{ti:02X} claimed by both {obj_owners[ti]} and 16x16 slot {s}")
+            obj_owners[ti] = f"slot16:{s}"
+
+    # Parse SPR_BOOT_TILE_LUT boot strips (each non-zero entry occupies bt and bt+1)
+    m_boot = re.search(r"SPR_BOOT_TILE_LUT\[\d+\]\s*=\s*\{(.*?)\};", snes_src, re.S)
+    if m_boot:
+        clean_boot = re.sub(r"/\*.*?\*/", "", m_boot.group(1), flags=re.S)
+        boot_vals = [int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]+)u?", clean_boot)]
+        for sidx, bt in enumerate(boot_vals):
+            if bt == 0:
+                continue
+            for dt in (0, 1):
+                ti = bt + dt
+                if ti >= 256:
+                    add("CRITICAL", "SNES", "SNES_OBJ_BOOT_OOB",
+                        f"SPR_BOOT_TILE_LUT[{sidx}] boot tile 0x{ti:02X} >= 0x100")
+                elif ti in obj_owners:
+                    add("CRITICAL", "SNES", "SNES_OBJ_VRAM_COLLISION",
+                        f"OBJ tile 0x{ti:02X} collision: SPR_BOOT_TILE_LUT[{sidx}] overlaps {obj_owners[ti]}")
+                else:
+                    obj_owners[ti] = f"boot:{sidx}"
+
+    # Parse dedicated OBJ_TILE_AMBIENT_* defines and verify zero collision with any sprite/boot tile
+    amb_defines = re.findall(r"#define\s+(OBJ_TILE_AMBIENT_\w+)\s+0x([0-9A-Fa-f]+)u?", snes_src)
+    if not amb_defines:
+        add("ERROR", "SNES", "SNES_AMBIENT_NO_DEDICATED_TILES",
+            "snes_main.c defines no dedicated OBJ_TILE_AMBIENT_* 8x8 tiles for drifting particles")
+    for name, hx in amb_defines:
+        ti = int(hx, 16)
+        if ti >= 256:
+            add("CRITICAL", "SNES", "SNES_OBJ_AMBIENT_OOB",
+                f"{name}=0x{ti:02X} exceeds 8-bit OBJ tile table")
+        elif ti in obj_owners:
+            add("CRITICAL", "SNES", "SNES_OBJ_VRAM_COLLISION",
+                f"Dedicated ambient tile {name}=0x{ti:02X} collides with {obj_owners[ti]}")
+        else:
+            obj_owners[ti] = name
+
+    # Verify EMIT_SNES_OAM never emits a raw 8x8 quadrant from a 16x16 sprite (like 0x42u = SPR_EMOTE_SPARK!)
+    for m_oam in re.finditer(r"EMIT_SNES_OAM\([^,]+,[^,]+,\s*0x([0-9A-Fa-f]+)u?\s*,[^,]+,\s*0u?\s*\)", snes_src):
+        ti = int(m_oam.group(1), 16)
+        if ti in sprite16_tiles:
+            add("ERROR", "SNES", "SNES_AMBIENT_SPRITE_SLICE",
+                f"8x8 EMIT_SNES_OAM uses raw 16x16 sprite quadrant 0x{ti:02X} ({obj_owners.get(ti, '?')})")
+
+    # Verify MODE_EXPLORE ambient particles explicitly suppress indoor zones (Grandma Mara's cottage & interiors)
+    m_amb_blk = re.search(r"Drifting Biome Atmosphere Particles(.*?)Swimming / Trophy Fish", snes_src, re.S)
+    if m_amb_blk:
+        blk = m_amb_blk.group(1)
+        if "ZPAL_COTTAGE_INTERIOR" not in blk or "ZONE_ROWAN_HOME" not in blk:
+            add("ERROR", "SNES", "SNES_INTERIOR_PARTICLE_LEAK",
+                "SNES MODE_EXPLORE ambient particle loop does not suppress ZPAL_COTTAGE_INTERIOR / ZONE_ROWAN_HOME")
+    else:
+        add("WARNING", "SNES", "SNES_AMBIENT_BLOCK_MISSING",
+            "Could not locate SNES ambient particle emitter block for interior suppression check")
+
+    # 7c. SNES Top HUD NTSC Overscan Safety Check
+    if "u16 col = 33u;" not in snes_src or "g_bg0_map + 32u" not in snes_src:
+        add("ERROR", "SNES", "SNES_HUD_OVERSCAN_CLIP",
+            "SNES Explore HUD must render on Row 1 (col=33u, DMA g_bg0_map+32u) to clear NTSC top overscan")
+
+    # 7d. SNES Globe Streaming Overlay Sentinel Parity (Emerald Heartland Hollow Oak crown)
+    if "CM_OPQ_CANOPY_TL" in re.findall(r"stream_world_(?:col|row).*?return;", snes_src, re.S).__str__():
+        add("ERROR", "SNES", "SNES_GLOBE_CROWN_WRONG_TILE",
+            "snes_main.c globe streamer maps overlay sentinel to CM_OPQ_CANOPY_TL instead of CM_OPQ_OAK_CROWN")
+    if "t == 63u" in snes_src or "(uint8_t)63u" in data_src:
+        add("ERROR", "SNES", "GLOBE_SENTINEL_COLLISION",
+            "Globe overlay sentinel uses tile ID 63u (collides with T_LANTERN_UNLIT) instead of 255u")
+    if snes_src.count("CM_OPQ_OAK_CROWN") < 2:
+        add("ERROR", "SNES", "SNES_GLOBE_CROWN_MISSING",
+            "snes_main.c must map globe overlay sentinel 255u -> CM_OPQ_OAK_CROWN in both stream_world_col and stream_world_row")
+
+    # 7e. Cross-Platform Character Portrait Parity Audit (Core, SNES, Genesis, SDL2, Web)
+    m_pcount = re.search(r"PORTRAIT_COUNT\s*=\s*(\d+)", types_src)
+    expected_portraits = (int(m_pcount.group(1)) - 1) if m_pcount else 0
+    if expected_portraits < 10:
+        add("ERROR", "Parity", "PORTRAIT_COUNT_LOW",
+            f"hearth_types.h PORTRAIT_COUNT implies only {expected_portraits} painted portraits")
+    if os.path.isfile(cinema_rom_h):
+        crom = open(cinema_rom_h, "r").read()
+        m_rc = re.search(r"#define\s+ROM_PORTRAIT_COUNT\s+(\d+)", crom)
+        if not m_rc or int(m_rc.group(1)) != expected_portraits:
+            add("ERROR", "Parity", "ROM_PORTRAIT_PARITY",
+                f"cinema_cg_rom.h ROM_PORTRAIT_COUNT={m_rc.group(1) if m_rc else 'missing'} != {expected_portraits}")
+    if os.path.isfile(cinema_sdl_h):
+        csdl = open(cinema_sdl_h, "r").read()
+        m_sc = re.search(r"#define\s+CINEMA_SDL_PORTRAIT_COUNT\s+(\d+)", csdl)
+        if not m_sc or int(m_sc.group(1)) != expected_portraits:
+            add("ERROR", "Parity", "SDL2_PORTRAIT_PARITY",
+                f"cinema_cg_sdl2.h CINEMA_SDL_PORTRAIT_COUNT={m_sc.group(1) if m_sc else 'missing'} != {expected_portraits}")
+    if os.path.isfile(cinema_snes_asm):
+        casm = open(cinema_snes_asm, "r").read()
+        m_pblk = re.search(r"snes_portrait_tiles:(.*?)(?:snes_portrait_tiles_end:|\.ends)", casm, re.S)
+        if not m_pblk:
+            add("CRITICAL", "SNES", "SNES_PORTRAIT_ASM_MISSING",
+                "snes_portrait_tiles label missing in cinema_cg_snes.asm")
+        else:
+            p_bytes = len(re.findall(r"\$[0-9A-Fa-f]{2}", m_pblk.group(1)))
+            if p_bytes != expected_portraits * 512:
+                add("ERROR", "SNES", "SNES_PORTRAIT_ASM_SIZE",
+                    f"snes_portrait_tiles has {p_bytes}B, expected {expected_portraits * 512}B ({expected_portraits} portraits)")
+    if os.path.isfile(portrait_tsx):
+        ptsx = open(portrait_tsx, "r").read()
+        m_map = re.search(r"PAINTED_PORTRAITS_BY_ID\s*:\s*Record<number,\s*string>\s*=\s*\{(.*?)\};", ptsx, re.S)
+        web_ids = set(int(k) for k in re.findall(r"(\d+)\s*:", m_map.group(1))) if m_map else set()
+        missing_web = [i for i in range(1, expected_portraits + 1) if i not in web_ids]
+        if missing_web:
+            add("ERROR", "Web", "WEB_PORTRAIT_PARITY",
+                f"PortraitFrame.tsx PAINTED_PORTRAITS_BY_ID missing portrait IDs {missing_web}")
+    if "ROM_PORTRAIT_COUNT" not in snes_src or "snes_portrait_tiles" not in snes_src:
+        add("ERROR", "SNES", "SNES_PORTRAIT_UNWIRED", "snes_main.c does not wire baked ROM portraits")
+    if "ROM_PORTRAIT_COUNT" not in gen_src or "GEN_PORTRAIT_TILES" not in gen_src:
+        add("ERROR", "Genesis", "GEN_PORTRAIT_UNWIRED", "genesis_main.c does not wire baked ROM portraits")
+    if "CINEMA_SDL_PORTRAIT_COUNT" not in sdl_src:
+        add("ERROR", "SDL2", "SDL2_PORTRAIT_UNWIRED", "sdl2_main.c does not wire baked SDL2 portraits")
+
+    # 7f. WDC 65816 (816-tcc) Static Codegen Safety & Genesis SGDK Portability Audit
+    # 816-tcc miscompiles compound &&/|| expressions mixing 24-bit pointers with scalar/deref tests!
+    ptr_null_pat = re.compile(r"(&&|\|\|).*([!=]=\s*NULL)|([!=]=\s*NULL).*(&&|\|\|)")
+    ptr_truthy_pat = re.compile(
+        r"(!\s*(speaker|text|full_text|next_text|label|interact_label|zone_name|title|line1|line2|src|dst|s|p_bg\d|out_\w+)\s*(\|\||&&)"
+        r"|(\|\||&&)\s*!?\s*(speaker|text|full_text|next_text|label|interact_label|zone_name|title|line1|line2|src|dst|p_bg\d|out_\w+)\b(?!\s*\[))"
+    )
+    c_scan_files = sorted([os.path.join(ROOT, "engine", "core", f)
+                           for f in os.listdir(os.path.join(ROOT, "engine", "core")) if f.endswith(".c")])
+    c_scan_files.append(snes_c_path)
+    for fpath in c_scan_files:
+        rel = os.path.relpath(fpath, ROOT)
+        for lineno, line in enumerate(open(fpath, "r"), 1):
+            code = line.split("/*")[0]
+            if ptr_null_pat.search(code) or ptr_truthy_pat.search(code):
+                add("ERROR", "SNES-816TCC", "SNES_816TCC_PTR_BOOL",
+                    f"{rel}:{lineno} mixes 24-bit pointer test with &&/|| (miscompiles under PVSnesLib 816-tcc — split into nested if)")
+
+    if "* 512u" in snes_src:
+        add("ERROR", "SNES-816TCC", "SNES_PORTRAIT_MUL512",
+            "snes_main.c uses * 512u instead of << 9 shift for portrait ROM offset")
+    if "uintptr_t" in gen_src:
+        add("CRITICAL", "Genesis", "GEN_UINTPTR_FORBIDDEN",
+            "genesis_main.c uses uintptr_t (unavailable in SGDK m68k stdint.h)")
+
+    return issues
 
 
 def audit_genesis_zone_seams(zone_info, cells, meta_names, gen_meta_tiles, gen_pal_rgb, name_to_id):
@@ -1632,7 +1950,9 @@ def main():
 
     print("Loading baked 16-bit tileset & palettes from bake_chrono_tileset.py...")
     baker = load_tileset_module()
-    meta_names, name_to_id, pal_rgb, meta_tiles, gen_pal_rgb, gen_meta_tiles = build_tileset_cache(baker)
+    (meta_names, name_to_id, pal_rgb, meta_tiles,
+     snes_pal_rgb, snes_tiles, snes_meta_tiles,
+     gen_pal_rgb, gen_tiles, gen_meta_tiles) = build_tileset_cache(baker)
     water_flows = measure_water_flow_vectors(meta_names, meta_tiles)
 
     # Load existing visual baseline hashes if present
@@ -1662,14 +1982,20 @@ def main():
     current_hashes = {}
     map_png_paths = {}
     zone_sheet_entries = []
+    snes_sheet_entries = []
     genesis_sheet_entries = []
     globe_sheet_entries = []
 
-    # Key Genesis showcase zones (12 diverse biomes incl. Alderbrook, Whispering Woods, Rowan Home, Mara Bedroom, Coral Cove)
-    GENESIS_SHEET_ZONE_IDS = {0, 1, 2, 5, 24, 6, 9, 11, 12, 18, 20, 21}
+    # Key Console showcase zones (12 diverse biomes incl. Alderbrook, Whispering Woods, Rowan Home, Mara Bedroom, Coral Cove)
+    CONSOLE_SHEET_ZONE_IDS = {0, 1, 2, 5, 24, 6, 9, 11, 12, 18, 20, 21}
 
-    # Audit all local zones (SNES/PC/Web 60-color AND Sega Genesis 9-bit CRAM!)
+    # Pass 7: Console Hardware, VRAM/OAM, Portrait Parity & 816-tcc/SGDK Safety Audit
+    console_issues = audit_console_hardware(dump, meta_names, meta_tiles, snes_tiles, snes_meta_tiles, gen_tiles)
+    all_issues.extend(console_issues)
+
+    # Audit all local zones (PC/Web master, SNES 4bpp BGR555, AND Sega Genesis 9-bit CRAM!)
     zones_png_dir = os.path.join(out_dir, "zones")
+    snes_png_dir = os.path.join(out_dir, "snes_zones")
     gen_png_dir = os.path.join(out_dir, "genesis_zones")
     for z in dump["zones"]:
         raw = open(os.path.join(raw_dir, z["bin"]), "rb").read()
@@ -1690,10 +2016,25 @@ def main():
         z_crit_err = sum(1 for i in z_issues if i["severity"] in ("CRITICAL", "ERROR"))
         zone_sheet_entries.append((f"{z['id']:02d} {z['name']}", img_w, img_h, buf, is_changed, z_crit_err))
 
+        # SNES 4bpp Mode-1 Hardware Render (single-BG1 + CM_OPQ_* + 15-bit BGR555 CGRAM)
+        if z["id"] in CONSOLE_SHEET_ZONE_IDS:
+            s_map_key = f"snes:{z['id']:02d}_{slug}"
+            s_png_path = os.path.join(snes_png_dir, f"{z['id']:02d}_{slug}_snes.png")
+            sw_z, sh_z, sbuf_z = render_snes_zone_rgb(
+                z["w"], z["h"], cells, snes_pal_rgb, snes_meta_tiles,
+                z["pal_id"], z.get("has_mountain_vista", False), name_to_id, is_globe=False
+            )
+            s_clean_hash = hashlib.sha256(sbuf_z).hexdigest()[:16]
+            current_hashes[s_map_key] = s_clean_hash
+            map_png_paths[s_map_key] = s_png_path
+            s_is_changed = baseline_exists and (baseline_hashes.get(s_map_key) != s_clean_hash)
+            write_png_rgb(s_png_path, sw_z, sh_z, sbuf_z)
+            snes_sheet_entries.append((f"{z['id']:02d} {z['name']}", sw_z, sh_z, sbuf_z, s_is_changed, 0))
+
         # Sega Genesis CRAM seam audit (all local zones!) + PNG render for showcase sheet
         gz_issues = audit_genesis_zone_seams(z, cells, meta_names, gen_meta_tiles, gen_pal_rgb, name_to_id)
         all_issues.extend(gz_issues)
-        if z["id"] in GENESIS_SHEET_ZONE_IDS or gz_issues:
+        if z["id"] in CONSOLE_SHEET_ZONE_IDS or gz_issues:
             g_map_key = f"genesis:{z['id']:02d}_{slug}"
             g_png_path = os.path.join(gen_png_dir, f"{z['id']:02d}_{slug}_genesis.png")
             gw_z, gh_z, gbuf_z = render_genesis_zone_rgb(
@@ -1714,6 +2055,21 @@ def main():
     g_cells = [g_raw[i:i + 5] for i in range(0, len(g_raw), 5)]
     g_issues = audit_globe(g_info, g_cells, meta_names, meta_tiles, pal_rgb, water_flows)
     all_issues.extend(g_issues)
+
+    # Render SNES Hardware Emerald Heartland Globe crop (verifies Hollow Oak crown & BGR555 bank!)
+    hx0, hy0, hx1, hy1 = CONTINENT_CROPS[0][1:]
+    s_hl_key = "snes:globe_00_heartland"
+    s_hl_path = os.path.join(snes_png_dir, "globe_00_heartland_snes.png")
+    shw, shh, shbuf = render_snes_zone_rgb(
+        g_info["w"], g_info["h"], g_cells, snes_pal_rgb, snes_meta_tiles,
+        10, False, name_to_id, is_globe=True, crop=(hx0, hy0, hx1, hy1)
+    )
+    sh_hash = hashlib.sha256(shbuf).hexdigest()[:16]
+    current_hashes[s_hl_key] = sh_hash
+    map_png_paths[s_hl_key] = s_hl_path
+    sh_changed = baseline_exists and (baseline_hashes.get(s_hl_key) != sh_hash)
+    write_png_rgb(s_hl_path, shw, shh, shbuf)
+    snes_sheet_entries.append(("GLOBE HEARTLAND", shw, shh, shbuf, sh_changed, 0))
 
     # Export globe overview + 7 zoomed continent crops
     globe_overview_path = os.path.join(out_dir, "globe_overview_annotated.png")
@@ -1742,11 +2098,12 @@ def main():
         label = slug.replace("_", " ").upper()
         globe_sheet_entries.append((label, img_w, img_h, buf, c_changed, c_crit_err))
 
-    # Export 4 labeled contact-sheet PNGs (SNES/PC zones, Sega Genesis CRAM zones, Evertale Globe)
+    # Export 5 labeled contact-sheet PNGs (Master zones, Evertale Globe, SNES 4bpp Hardware, Genesis 9-bit CRAM)
     sheet1_path = os.path.join(out_dir, "contact_sheet_zones_1.png")
     sheet2_path = os.path.join(out_dir, "contact_sheet_zones_2.png")
     sheet3_path = os.path.join(out_dir, "contact_sheet_globe.png")
     sheet4_path = os.path.join(out_dir, "contact_sheet_genesis_zones.png")
+    sheet5_path = os.path.join(out_dir, "contact_sheet_snes_zones.png")
     half = (len(zone_sheet_entries) + 1) // 2
     build_contact_sheet(sheet1_path, "PROJECT HEARTH - LOCAL ZONES (SHEET 1 OF 2)",
                         zone_sheet_entries[:half], cols=4, cell_w=352, cell_h=224)
@@ -1756,6 +2113,8 @@ def main():
                         globe_sheet_entries, cols=4, cell_w=420, cell_h=280)
     build_contact_sheet(sheet4_path, "PROJECT HEARTH - SEGA GENESIS CRAM ZONES (9-BIT VDP)",
                         genesis_sheet_entries, cols=4, cell_w=352, cell_h=224)
+    build_contact_sheet(sheet5_path, "PROJECT HEARTH - SNES MODE-1 HARDWARE ZONES (15-BIT BGR555)",
+                        snes_sheet_entries, cols=4, cell_w=352, cell_h=224)
 
     # Pixel-diff baseline comparison
     changed_maps = sorted(k for k, h in current_hashes.items() if baseline_hashes.get(k) != h) if baseline_exists else []
@@ -1784,6 +2143,7 @@ def main():
             "globe_cells_audited": g_info["w"] * g_info["h"],
             "snes_tile_count": dump["snes_tile_count"],
             "gen_tile_count": dump["gen_tile_count"],
+            "console_checks_failed": sum(1 for i in console_issues if i["severity"] in ("CRITICAL", "ERROR")),
             "critical": by_sev["CRITICAL"],
             "error": by_sev["ERROR"],
             "warning": by_sev["WARNING"],
@@ -1796,7 +2156,7 @@ def main():
             "changed_maps": changed_maps,
             "removed_maps": removed_maps,
         },
-        "contact_sheets": [sheet1_path, sheet2_path, sheet3_path, sheet4_path],
+        "contact_sheets": [sheet1_path, sheet2_path, sheet3_path, sheet4_path, sheet5_path],
         "root_causes": [
             {"severity": sev, "category": cat, "code": code, "count": cnt}
             for (sev, cat, code), cnt in by_code.most_common()
@@ -1810,11 +2170,13 @@ def main():
 
     print("")
     print("========================================================================")
-    print("  PROJECT HEARTH — 6-PASS WORLD, AUTOTILE & SEAM AUDIT REPORT")
+    print("  PROJECT HEARTH — 7-PASS WORLD, AUTOTILE, SEAM & CONSOLE AUDIT REPORT")
     print("========================================================================")
     print(f"  Cells audited: {len(dump['zones']) * 44 * 28 + g_info['w'] * g_info['h']:,} "
-          f"({len(dump['zones'])} zones [SNES + Genesis CRAM] + 256x192 Evertale Globe)")
+          f"({len(dump['zones'])} zones [Master + SNES + Genesis CRAM] + 256x192 Evertale Globe)")
     print(f"  VRAM footprint: SNES={dump['snes_tile_count']}/510 tiles | Genesis={dump['gen_tile_count']}/399 tiles")
+    print(f"  Console Audit : SNES/Genesis VRAM, OAM, Particles, HUD, Portraits & 816-tcc = "
+          f"{'PASS (0 issues)' if not console_issues else f'{len(console_issues)} finding(s)'}")
     print(f"  Findings: CRITICAL={by_sev['CRITICAL']}  ERROR={by_sev['ERROR']}  WARNING={by_sev['WARNING']}")
     if blessed_now:
         print(f"  Visual Diff : BLESSED {len(current_hashes)} map pixel hashes -> {BASELINE_PATH}")
@@ -1854,8 +2216,9 @@ def main():
             break
     print("------------------------------------------------------------------------")
     print(f"  JSON Report    : {report_path}")
-    print(f"  Contact Sheets : {sheet1_path}, {sheet2_path}, {sheet3_path}, {sheet4_path}")
+    print(f"  Contact Sheets : {sheet1_path}, {sheet2_path}, {sheet3_path}, {sheet4_path}, {sheet5_path}")
     print(f"  Zone PNGs      : {zones_png_dir}/ ({len(dump['zones'])} annotated pixel-art maps)")
+    print(f"  SNES PNGs      : {snes_png_dir}/ ({len(snes_sheet_entries)} SNES Mode-1 BGR555 maps)")
     print(f"  Genesis PNGs   : {gen_png_dir}/ ({len(genesis_sheet_entries)} Sega Genesis CRAM maps)")
     print(f"  Globe PNGs     : {globe_overview_path} + {cont_dir}/ (7 crops)")
     print("========================================================================")
@@ -1865,14 +2228,14 @@ def main():
     if args.vision:
         if args.changed_only:
             if not baseline_exists:
-                vision_targets = [sheet1_path, sheet2_path, sheet3_path, sheet4_path]
+                vision_targets = [sheet1_path, sheet2_path, sheet3_path, sheet4_path, sheet5_path]
             elif not changed_maps:
                 print("[VISION] 0 maps changed visually since blessed baseline — skipping Gemini Vision call.")
                 return exit_code
             else:
                 vision_targets = [map_png_paths[k] for k in changed_maps if k in map_png_paths]
         else:
-            vision_targets = [sheet1_path, sheet2_path, sheet3_path, sheet4_path]
+            vision_targets = [sheet1_path, sheet2_path, sheet3_path, sheet4_path, sheet5_path]
 
         vision_out = os.path.join(out_dir, "vision_report.json")
         cmd = [sys.executable, VISION_SCRIPT, "--out", vision_out] + vision_targets

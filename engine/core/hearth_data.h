@@ -75,7 +75,8 @@ enum {
     T_WORLD_TECH    = 60, /* Aetheris Citadel Chrome Plating & Cyan Conduit */
     T_PALM_TREE     = 61, /* Desert Oasis & Tropical Suncrest Palm Tree */
     T_DOCK_PIER     = 62, /* Weathered Sun-Cedar Timber Pier & Dock Planks */
-    T_TILE_COUNT    = 63
+    T_LANTERN_UNLIT = 63, /* Unlit Dark Stone Shrine Lantern (lights into T_LANTERN_POST) */
+    T_TILE_COUNT    = 64
 };
 
 /* BG2 Overhead Canopy / Roof Eave / Archway Tile IDs */

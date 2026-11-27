@@ -88,7 +88,8 @@ enum {
     SUI_LOCK_SWORD  = 19,
     SUI_LOCK_SUN    = 20,
     SUI_LOCK_STAR   = 21,
-    SUI_LOCK_BROKEN = 22
+    SUI_LOCK_BROKEN = 22,
+    SUI_HUD_TRIM    = 23
 };
 
 #define SUI_PORTRAIT_BASE 96u /* 4x4 = 16 baked 4bpp PAL2 32x32 dialogue portrait tiles (96..111 -> 0x2600..0x26FF) */
@@ -110,6 +111,11 @@ enum {
 #define SPR_FISH_ICON_SLOT     58u  /* OBJ tile 0xE4: 16x16 Swimming Pixel Fish */
 #define SPR_PIP_HOP_SLOT       59u  /* OBJ tile 0xE6: 16x16 Pip Mid-Air Stretch Hop */
 #define SPR_PIP_SQUASH_SLOT    60u  /* OBJ tile 0xE8: 16x16 Pip Landing/Takeoff Squash */
+/* Dedicated 8x8 ambient particle OBJ tiles packed in free slot 63 (0xEE, 0xEF, 0xFE, 0xFF) */
+#define OBJ_TILE_AMBIENT_LEAF  0xEEu  /* Warm drifting autumn leaf / petal (OBJ PAL1) */
+#define OBJ_TILE_AMBIENT_SNOW  0xEFu  /* Crisp drifting snow / sunlit pollen (OBJ PAL1) */
+#define OBJ_TILE_AMBIENT_MOTE  0xFEu  /* Glowing twilight firefly / spore (OBJ PAL3) */
+#define OBJ_TILE_AMBIENT_EMBER 0xFFu  /* Rising volcanic ember / cinder (OBJ PAL3) */
 
 /* Tilemap shadow buffers & pixel baker scratchpads in Bank $7E WRAM */
 static u16 g_bg0_map[1024];
@@ -151,13 +157,16 @@ static u8  g_last_intro_scene  = 255;
 static u8  g_last_battle_biome = 255;
 static u8  g_last_battle_tod   = 255;
 static u8  g_last_pal_id       = 255;
-static u8  g_last_tod_phase    = 255;
+static u16 g_last_tod_phase    = 0xFFFFu;
 static u8  g_pal_dirty         = 0;
 static u8  g_last_portrait_id  = 0;
 static u8  g_portrait_dma_dirty = 0;
 static u8  g_pal7_is_portrait  = 0;
 static u8  g_pal7_dma_dirty    = 0;
 static u8  g_last_map_rev      = 255;
+static u8  g_last_zone_id      = 255;
+static u16 g_prev_cgram[64];
+static u8  g_prev_cgram_valid  = 0;
 static u8  g_ui_layout         = 255;
 static u8  g_ui_tick          = 0;
 static u16 g_last_hud_sig     = 0xFFFFu;
@@ -409,6 +418,19 @@ static void flush_rowan_vblank_dma(void) {
     g_rowan_dma_dirty = 0u;
 }
 
+/* Stream active character's pre-baked 32x32 4bpp portrait from FastROM (shift offset, zero __mulhi3) */
+static void flush_portrait_vblank_dma(void) {
+    u16 poff;
+    u8 *psrc;
+    if (!g_portrait_dma_dirty) return;
+    if (g_last_portrait_id >= 1u && g_last_portrait_id <= ROM_PORTRAIT_COUNT) {
+        poff = (u16)((u16)(g_last_portrait_id - 1u) << 9);
+        psrc = ((u8 *)&snes_portrait_tiles) + poff;
+        dmaCopyVram(psrc, (u16)(VRAM_BG0_GFX + (SUI_PORTRAIT_BASE << 4)), 512u);
+    }
+    g_portrait_dma_dirty = 0u;
+}
+
 static void p8_fill(u8 col) {
     hearth_memset(g_pix8, col, 64u);
 }
@@ -452,6 +474,40 @@ static void p16_art(const char *art) {
 /* ============================================================================
  * 4. CGRAM PALETTES (BG 0..6 + OBJ 0..3)
  * ============================================================================ */
+/* Unified BG Palette 7: 16-Color World Atlas, Fishing Gauge & Battle Emblem Palette */
+static const uint32_t SNES_ATLAS_PAL_RGB[16] = {
+    0x000000u, /* 0: Transparent */
+    0x161322u, /* 1: Dark Slate BG / Pin Outline */
+    0x1F4C82u, /* 2: Deep Cobalt Ocean (cell 0) */
+    0x3EB4CCu, /* 3: Turquoise Shallows / Raft Channel (cell 1) */
+    0xE87EA8u, /* 4: Coral Reef Shoals (cell 2) */
+    0x5EA84Eu, /* 5: Emerald Heartland / Catch Zone (cell 3) */
+    0xE4BC62u, /* 6: Sands of Babana / Gold Trim (cell 4) */
+    0x56C49Au, /* 7: Suncrest Paradise / Catch Glow (cell 5) */
+    0xE6F0FCu, /* 8: Frostmere North / Snow (cell 6) */
+    0x226E3Au, /* 9: Canopy Wilds (cell 7) */
+    0xD44824u, /* 10: Cinderpeak Caldera / Tension Red (cell 8) */
+    0x4898C8u, /* 11: Aetheris Citadel / Water Mid (cell 9) */
+    0xFFF1A8u, /* 12: Bright Gold (Port Pin / Sun Lock / Catch Highlight) */
+    0x74D8F5u, /* 13: Sky Cyan (Vista Pin / Star Lock / Water Ripple) */
+    0xFF9838u, /* 14: Warm Amber (Tension Mid / Bronze Frame) */
+    0xF6ECD4u  /* 15: Warm Cream (Sword Blade / Crisp Gleam) */
+};
+
+static void upload_pal7_atlas_or_portrait(u8 is_portrait) {
+    u16 c;
+    if (is_portrait) {
+        for (c = 0u; c < 16u; c++) {
+            g_pal16[c] = hearth_rgb_to_snes_bgr555(HEARTH_PALETTES_RGB[2][c]);
+        }
+    } else {
+        for (c = 0u; c < 16u; c++) {
+            g_pal16[c] = hearth_rgb_to_snes_bgr555(SNES_ATLAS_PAL_RGB[c]);
+        }
+    }
+    dmaCopyCGram((u8 *)g_pal16, (u16)(PAL_UI_ATLAS * 16u), 32u);
+}
+
 static void upload_all_palettes(void) {
     u16 p, c;
 
@@ -484,68 +540,12 @@ static void upload_all_palettes(void) {
     g_pal16[15] = hearth_rgb_to_snes_bgr555(0x74E4FFu);
     dmaCopyCGram((u8 *)g_pal16, (u16)(PAL_UI_CYAN * 16u), 32u);
 
-    /* BG Palette 7: Dedicated 16-Color World Atlas, Fishing Gauge & Battle Emblem Palette */
-    {
-        static const uint32_t ATLAS_PAL_RGB[16] = {
-            0x000000u, /* 0: Transparent */
-            0x161322u, /* 1: Dark Slate BG / Pin Outline */
-            0x1F4C82u, /* 2: Deep Cobalt Ocean (cell 0) */
-            0x3EB4CCu, /* 3: Turquoise Shallows / Raft Channel (cell 1) */
-            0xE87EA8u, /* 4: Coral Reef Shoals (cell 2) */
-            0x5EA84Eu, /* 5: Emerald Heartland / Catch Zone (cell 3) */
-            0xE4BC62u, /* 6: Sands of Babana / Gold Trim (cell 4) */
-            0x56C49Au, /* 7: Suncrest Paradise / Catch Glow (cell 5) */
-            0xE6F0FCu, /* 8: Frostmere North / Snow (cell 6) */
-            0x226E3Au, /* 9: Canopy Wilds (cell 7) */
-            0xD44824u, /* 10: Cinderpeak Caldera / Tension Red (cell 8) */
-            0x4898C8u, /* 11: Aetheris Citadel / Water Mid (cell 9) */
-            0xFFF1A8u, /* 12: Bright Gold (Port Pin / Sun Lock / Catch Highlight) */
-            0x74D8F5u, /* 13: Sky Cyan (Vista Pin / Star Lock / Water Ripple) */
-            0xFF9838u, /* 14: Warm Amber (Tension Mid / Bronze Frame) */
-            0xF6ECD4u  /* 15: Warm Cream (Sword Blade / Crisp Gleam) */
-        };
-        for (c = 0u; c < 16u; c++) {
-            g_pal16[c] = hearth_rgb_to_snes_bgr555(ATLAS_PAL_RGB[c]);
-        }
-        dmaCopyCGram((u8 *)g_pal16, (u16)(PAL_UI_ATLAS * 16u), 32u);
-    }
+    /* BG Palette 7: Unified Atlas / Fishing / Battle Emblem Palette */
+    upload_pal7_atlas_or_portrait(0u);
     g_last_pal_id = ZPAL_HAMLET;
 }
 
-static const u32 SNES_ATLAS_PAL_RGB[16] = {
-    0x000000u, /* 0: Transparent */
-    0x161926u, /* 1: Deep Slate Grid / Frame / Bar Track */
-    0x143866u, /* 2: Deep Cobalt Ocean (cell 0) */
-    0x2EA0B8u, /* 3: Turquoise Shallows (cell 1) / Catch Zone Edge */
-    0x3E8A4Au, /* 4: Emerald Heartland (cell 2) / Catch Zone & Progress Fill */
-    0xD8A852u, /* 5: Sands of Babana (cell 3) / Sun Lock Gold */
-    0xE292A8u, /* 6: Suncrest Coral Cove (cell 4) */
-    0xD8ECFAu, /* 7: Frostmere Snow (cell 5) */
-    0x20643Au, /* 8: Canopy Rainforest (cell 6) */
-    0x5A2E3Au, /* 9: Volcanic Basalt (cell 7) */
-    0xE84634u, /* 10: Magma Lava (cell 8) / Tension Red */
-    0x4898C8u, /* 11: Aetheris Citadel / Water Mid (cell 9) */
-    0xFFF1A8u, /* 12: Bright Gold (Port Pin / Sun Lock / Catch Highlight) */
-    0x74D8F5u, /* 13: Sky Cyan (Vista Pin / Star Lock / Water Ripple) */
-    0xFF9838u, /* 14: Warm Amber (Tension Mid / Bronze Frame) */
-    0xF6ECD4u  /* 15: Warm Cream (Sword Blade / Crisp Gleam) */
-};
-
-static void upload_pal7_atlas_or_portrait(u8 is_portrait) {
-    u16 c;
-    if (is_portrait) {
-        for (c = 0u; c < 16u; c++) {
-            g_pal16[c] = hearth_rgb_to_snes_bgr555(HEARTH_PALETTES_RGB[2][c]);
-        }
-    } else {
-        for (c = 0u; c < 16u; c++) {
-            g_pal16[c] = hearth_rgb_to_snes_bgr555(SNES_ATLAS_PAL_RGB[c]);
-        }
-    }
-    dmaCopyCGram((u8 *)g_pal16, (u16)(PAL_UI_ATLAS * 16u), 32u);
-}
-
-static u16 snes_lerp_bgr555(u16 c0, u16 c1, u8 frac) {
+static u16 snes_lerp_bgr555(u16 c0, u16 c1, u16 frac256, u16 br, u16 bg, u16 bb) {
     u16 r0, g0, b0, r1, g1, b1, inv, r, g, b;
     r0 = (u16)(c0 & 31u);
     g0 = (u16)((c0 >> 5) & 31u);
@@ -553,45 +553,60 @@ static u16 snes_lerp_bgr555(u16 c0, u16 c1, u8 frac) {
     r1 = (u16)(c1 & 31u);
     g1 = (u16)((c1 >> 5) & 31u);
     b1 = (u16)((c1 >> 10) & 31u);
-    inv = (u16)(16u - (u16)frac);
-    r = (u16)((r0 * inv + r1 * (u16)frac + 8u) >> 4);
-    g = (u16)((g0 * inv + g1 * (u16)frac + 8u) >> 4);
-    b = (u16)((b0 * inv + b1 * (u16)frac + 8u) >> 4);
+    inv = (u16)(256u - frac256);
+    r = (u16)((r0 * inv + r1 * frac256 + br) >> 8);
+    g = (u16)((g0 * inv + g1 * frac256 + bg) >> 8);
+    b = (u16)((b0 * inv + b1 * frac256 + bb) >> 8);
     if (r > 31u) r = 31u;
     if (g > 31u) g = 31u;
     if (b > 31u) b = 31u;
     return (u16)((b << 10) | (g << 5) | r);
 }
 
-static void upload_zone_pal0(u8 pal_id, u8 tod_phase) {
+static void upload_zone_pal0(u8 pal_id, u16 tod_phase) {
     static const u8 TOD_KEYS[4] = {
         ZPAL_AUTUMN_MORNING, ZPAL_ALDERBROOK, ZPAL_AUTUMN_DUSK, ZPAL_AUTUMN_NIGHT
     };
-    u16 c, p;
-    u8 pid, smooth_tod, seg, frac, pA, pB, use_p;
+    u16 c, p, eff_phase, frac, br, bg, bb, base;
+    u8 pid, smooth_tod, seg, pA, pB, use_p, changed;
 
     pid = (pal_id < ZPAL_COUNT) ? pal_id : 0u;
     smooth_tod = (u8)((!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista &&
         (pid == ZPAL_AUTUMN_MORNING || pid == ZPAL_ALDERBROOK ||
          pid == ZPAL_AUTUMN_DUSK || pid == ZPAL_AUTUMN_NIGHT)) ? 1u : 0u);
-    seg = (u8)((tod_phase >> 4) & 3u);
-    frac = (u8)(tod_phase & 15u);
+    eff_phase = (u16)(tod_phase & 1023u);
+    seg = (u8)((eff_phase >> 8) & 3u);
+    frac = (u16)(eff_phase & 255u);
     pA = TOD_KEYS[seg];
     pB = TOD_KEYS[(seg + 1u) & 3u];
     use_p = smooth_tod ? pA : pid;
 
     /* Upload all 4 Chrono/Mana terrain sub-palettes (60 simultaneous colors in CGRAM 0..63)!
-     * Smoothly interpolates BGR555 channels across 64 subtle steps during mountain day/night! */
+     * Staggered per-(subpal, entry, channel) rounding across 256 steps/quarter eliminates jumps! */
     if (smooth_tod && frac > 0u) {
         for (p = 0u; p < 4u; p++) {
+            base = (u16)(p << 4);
+            changed = 0u;
             for (c = 0u; c < 16u; c++) {
-                g_pal16[c] = snes_lerp_bgr555(SNES_CHRONO_PALS[pA][p][c], SNES_CHRONO_PALS[pB][p][c], frac);
+                br = (u16)((p * 43u + c * 97u + 19u) & 255u);
+                bg = (u16)((p * 43u + c * 97u + 109u) & 255u);
+                bb = (u16)((p * 43u + c * 97u + 199u) & 255u);
+                g_pal16[c] = snes_lerp_bgr555(SNES_CHRONO_PALS[pA][p][c], SNES_CHRONO_PALS[pB][p][c], frac, br, bg, bb);
             }
             if (p == 0u) {
-                g_pal16[0] = snes_lerp_bgr555(SNES_CHRONO_PALS[pA][1][2], SNES_CHRONO_PALS[pB][1][2], frac);
+                g_pal16[0] = snes_lerp_bgr555(SNES_CHRONO_PALS[pA][1][2], SNES_CHRONO_PALS[pB][1][2], frac, 64u, 148u, 224u);
             }
-            dmaCopyCGram((u8 *)g_pal16, (u16)(p << 4), 32u);
+            for (c = 0u; c < 16u; c++) {
+                if (!g_prev_cgram_valid || g_pal16[c] != g_prev_cgram[base + c]) {
+                    changed = 1u;
+                    g_prev_cgram[base + c] = g_pal16[c];
+                }
+            }
+            if (changed) {
+                dmaCopyCGram((u8 *)g_pal16, base, 32u);
+            }
         }
+        g_prev_cgram_valid = 1u;
     } else {
         for (c = 0u; c < 16u; c++) {
             g_pal16[c] = SNES_CHRONO_PALS[use_p][0][c];
@@ -605,6 +620,13 @@ static void upload_zone_pal0(u8 pal_id, u8 tod_phase) {
         dmaCopyCGram((u8 *)SNES_CHRONO_PALS[use_p][1], 16u, 32u);
         dmaCopyCGram((u8 *)SNES_CHRONO_PALS[use_p][2], 32u, 32u);
         dmaCopyCGram((u8 *)SNES_CHRONO_PALS[use_p][3], 48u, 32u);
+        for (c = 0u; c < 16u; c++) {
+            g_prev_cgram[c]        = g_pal16[c];
+            g_prev_cgram[16u + c]  = SNES_CHRONO_PALS[use_p][1][c];
+            g_prev_cgram[32u + c]  = SNES_CHRONO_PALS[use_p][2][c];
+            g_prev_cgram[48u + c]  = SNES_CHRONO_PALS[use_p][3][c];
+        }
+        g_prev_cgram_valid = 1u;
     }
 }
 
@@ -743,6 +765,12 @@ static void bake_bg0_ui_and_font(void) {
     p8_rect(2, 2, 4, 4, 2);
     g_pix8[18] = 1; g_pix8[27] = 1; g_pix8[36] = 1; g_pix8[45] = 1;
     upload_bg0_tile(SUI_LOCK_BROKEN);
+
+    /* 23: SUI_HUD_TRIM (2px Storybook Cream & Gold Lower Divider for Overscan-Safe Top HUD) */
+    p8_fill(0);
+    p8_rect(0, 0, 8, 1, 15);
+    p8_rect(0, 1, 8, 1, 7);
+    upload_bg0_tile(SUI_HUD_TRIM);
 
     /* Tiles 32..95: Direct 4bpp planar encoding for 5x7 ASCII font (bg=1, fg=15 -> bp0=0xFF, bp1=bp2=bp3=mask)
      * 50x faster than pixel-by-pixel encoding (~2ms on 65816 -> instant splash screen boot!) */
@@ -1458,6 +1486,29 @@ static void bake_obj_sprites_hero_ext(void) {
     g_last_rowan_key = 0u;
     flush_rowan_vblank_dma();
 
+    /* Dedicated 8x8 Ambient Biome Particle OBJ Tiles (0xEE..0xEF, 0xFE..0xFF - zero collision!) */
+    /* 0xEE: OBJ_TILE_AMBIENT_LEAF (Delicate 4x3 autumn leaf / blossom petal, OBJ PAL1) */
+    p8_fill(0u);
+    g_pix8[27] = 9u;  g_pix8[28] = 10u; g_pix8[29] = 11u;
+    g_pix8[34] = 8u;  g_pix8[35] = 9u;  g_pix8[36] = 10u;
+    g_pix8[42] = 8u;  g_pix8[43] = 9u;
+    encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((u16)OBJ_TILE_AMBIENT_LEAF << 4)));
+
+    /* 0xEF: OBJ_TILE_AMBIENT_SNOW (Crisp 3x3 snowflake / sunlit meadow pollen, OBJ PAL1) */
+    p8_fill(0u);
+    g_pix8[28] = 11u; g_pix8[35] = 11u; g_pix8[36] = 14u; g_pix8[37] = 11u; g_pix8[44] = 11u;
+    encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((u16)OBJ_TILE_AMBIENT_SNOW << 4)));
+
+    /* 0xFE: OBJ_TILE_AMBIENT_MOTE (Soft 3x3 twilight firefly / woodland spore, OBJ PAL3) */
+    p8_fill(0u);
+    g_pix8[28] = 11u; g_pix8[35] = 11u; g_pix8[36] = 12u; g_pix8[37] = 11u; g_pix8[44] = 11u;
+    encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((u16)OBJ_TILE_AMBIENT_MOTE << 4)));
+
+    /* 0xFF: OBJ_TILE_AMBIENT_EMBER (Glowing 2x3 rising volcanic ember, OBJ PAL3) */
+    p8_fill(0u);
+    g_pix8[28] = 12u; g_pix8[35] = 11u; g_pix8[36] = 11u; g_pix8[44] = 10u;
+    encode_and_upload_tile8((u16)(VRAM_OBJ_GFX + ((u16)OBJ_TILE_AMBIENT_EMBER << 4)));
+
     /* Tall 16x24 Adult NPCs: Grandma Mara + 12 key cast (upper 16x16 in own slot, lower 16x8 in boot strip) */
     for (idx = 0u; idx < 13u; idx++) {
         sid = TALL_NPCS[idx];
@@ -1820,8 +1871,8 @@ static void stream_world_col(s16 mx, s16 my_start) {
         for (k = 0u; k < 16u; k++) {
             j = (u16)(k + 1u);
             t = g_stream_b[j];
-            if (t == 63u) {
-                m = (u8)CM_OPQ_CANOPY_TL;
+            if (t == 255u) {
+                m = (u8)CM_OPQ_OAK_CROWN;
             } else {
                 m = hearth_resolve_chrono_meta(
                     t, 0u,
@@ -1927,8 +1978,8 @@ static void stream_world_row(s16 mx_start, s16 my) {
         for (k = 0u; k < 18u; k++) {
             j = (u16)(k + 1u);
             t = g_stream_b[j];
-            if (t == 63u) {
-                m = (u8)CM_OPQ_CANOPY_TL;
+            if (t == 255u) {
+                m = (u8)CM_OPQ_OAK_CROWN;
             } else {
                 m = hearth_resolve_chrono_meta(
                     t, 0u,
@@ -2234,7 +2285,7 @@ static void bg0_fill_rect(u16 x, u16 y, u16 w, u16 h, u16 entry) {
     }
     if (y >= 20u) {
         if (g_bg0_dirty < 2u) g_bg0_dirty = 2u;
-    } else if (y == 0u && h == 1u) {
+    } else if (y == 1u && h == 1u) {
         if (g_bg0_dirty == 0u) g_bg0_dirty = 1u;
     } else {
         g_bg0_dirty = 3u;
@@ -2265,7 +2316,8 @@ static void bg0_draw_box(u16 x, u16 y, u16 w, u16 h) {
 static void bg0_text_n(u16 x, u16 y, u16 pal, const char *s, u16 max_c) {
     u16 i;
     char c;
-    if (!s || y >= 28u) return;
+    if (s == NULL) return;
+    if (y >= 28u) return;
     for (i = 0; i < max_c && s[i] != '\0' && (u16)(x + i) < 32u; i++) {
         c = s[i];
         if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
@@ -2274,7 +2326,7 @@ static void bg0_text_n(u16 x, u16 y, u16 pal, const char *s, u16 max_c) {
     }
     if (y >= 20u) {
         if (g_bg0_dirty < 2u) g_bg0_dirty = 2u;
-    } else if (y == 0u) {
+    } else if (y == 1u) {
         if (g_bg0_dirty == 0u) g_bg0_dirty = 1u;
     } else {
         g_bg0_dirty = 3u;
@@ -2400,7 +2452,8 @@ static u16 put_hud_u16(u16 col, u16 v) {
 
 static u16 put_hud_str(u16 col, const char *s) {
     u16 ch;
-    while (*s != '\0' && col < 31u) {
+    if (s == NULL) return col;
+    while (*s != '\0' && col < 63u) {
         ch = (u16)(u8)(*s++);
         if (ch >= (u16)'a' && ch <= (u16)'z') ch = (u16)(ch - 32u);
         else if (ch < 32u || ch > 95u) ch = 32u;
@@ -2411,7 +2464,7 @@ static u16 put_hud_str(u16 col, const char *s) {
 
 static void draw_explore_hud(const HearthPpuPacket *ppu) {
     const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
-    u16 col = 1u;
+    u16 col = 33u; /* Row 1, Col 1: clear of SNES NTSC top overscan! */
     (void)ppu;
 
     g_bg0_map[col++] = (u16)('H' | 0x3000u);
@@ -2425,14 +2478,16 @@ static void draw_explore_hud(const HearthPpuPacket *ppu) {
     col = put_hud_u16(col, g_hearth.guilders);
     g_bg0_map[col++] = (u16)('G' | 0x3000u);
 
-    if (g_hearth.ppu.interact_active && g_hearth.ppu.interact_label) {
-        col = put_hud_str(col, " [A]");
-        col = put_hud_str(col, g_hearth.ppu.interact_label);
-    } else if (g_hearth.ppu.zone_name) {
+    if (g_hearth.ppu.interact_active) {
+        if (g_hearth.ppu.interact_label != NULL) {
+            col = put_hud_str(col, " [A]");
+            col = put_hud_str(col, g_hearth.ppu.interact_label);
+        }
+    } else if (g_hearth.ppu.zone_name != NULL) {
         col = put_hud_str(col, " ");
         col = put_hud_str(col, g_hearth.ppu.zone_name);
     }
-    while (col < 31u) {
+    while (col < 63u) {
         g_bg0_map[col++] = 0x3020u;
     }
     if (g_bg0_dirty == 0u) g_bg0_dirty = 1u;
@@ -2443,7 +2498,14 @@ static void draw_dialogue_ui(void) {
     u16 vis, start, take, last_sp, row, max_row, tx0, max_w, px, py, pt;
     u8 c, show_choices, pid, has_port;
 
-    show_choices = (u8)((d->finished && d->next_text == NULL && d->choice_count > 0u) ? 1u : 0u);
+    show_choices = 0u;
+    if (d->finished) {
+        if (d->next_text == NULL) {
+            if (d->choice_count > 0u) {
+                show_choices = 1u;
+            }
+        }
+    }
     pid = d->portrait_id;
     has_port = (u8)((pid >= 1u && pid <= ROM_PORTRAIT_COUNT) ? 1u : 0u);
     tx0 = has_port ? 7u : 2u;
@@ -2461,8 +2523,8 @@ static void draw_dialogue_ui(void) {
             }
         }
     }
-    bg0_text(tx0, 20u, PAL_UI_GOLD, d->speaker ? d->speaker : "...");
-    if (d->full_text) {
+    bg0_text(tx0, 20u, PAL_UI_GOLD, (d->speaker != NULL) ? d->speaker : "...");
+    if (d->full_text != NULL) {
         vis = d->visible_chars;
         start = 0u;
         max_row = show_choices ? 23u : 24u;
@@ -2500,23 +2562,28 @@ static void draw_intro_ui(void) {
     const char *hdr;
     u16 total, vis, start, end, cut, row;
 
-    bg0_fill_rect(0u, 0u, 32u, 1u, SNES_TILE(SUI_FILL, PAL_UI_TEXT, 1u));
-    bg0_text_n(1u, 0u, PAL_UI_GOLD, in->title ? in->title : "PROLOGUE", 30u);
+    bg0_fill_rect(0u, 0u, 32u, 2u, SNES_TILE(SUI_FILL, PAL_UI_TEXT, 1u));
+    bg0_text_n(1u, 1u, PAL_UI_GOLD, (in->title != NULL) ? in->title : "PROLOGUE", 30u);
 
     bg0_fill_rect(1u, 20u, 30u, 7u, SNES_TILE(SUI_FILL, PAL_UI_TEXT, 1u));
-    hdr = (in->speaker && in->speaker[0] != '\0') ? in->speaker : (in->title ? in->title : "PROLOGUE");
+    hdr = (in->title != NULL) ? in->title : "PROLOGUE";
+    if (in->speaker != NULL) {
+        if (in->speaker[0] != '\0') hdr = in->speaker;
+    }
     bg0_text_n(2u, 20u, PAL_UI_GOLD, hdr, 28u);
 
     /* Join line1 + space + line2 in Bank $7E scratch buffer and word-wrap across rows 21..24 */
     total = 0u;
-    if (in->line1) {
+    if (in->line1 != NULL) {
         s = in->line1;
         while (*s && total < 125u) g_intro_buf[total++] = *s++;
     }
-    if (in->line2 && total < 125u) {
-        if (total > 0u) g_intro_buf[total++] = ' ';
-        s = in->line2;
-        while (*s && total < 126u) g_intro_buf[total++] = *s++;
+    if (in->line2 != NULL) {
+        if (total < 125u) {
+            if (total > 0u) g_intro_buf[total++] = ' ';
+            s = in->line2;
+            while (*s && total < 126u) g_intro_buf[total++] = *s++;
+        }
     }
     g_intro_buf[total] = '\0';
 
@@ -2805,8 +2872,10 @@ static u16 compute_hud_sig(u8 want, const HearthPpuPacket *ppu) {
         const HearthPartyMember *m = &g_hearth.party[g_hearth.active_slot];
         sig = (u16)(sig + (u16)m->hp + (u16)(m->mp << 5) + g_hearth.guilders);
         sig ^= (u16)(((u16)g_hearth.zone_id << 8) ^ ((u16)g_hearth.world_region_id << 12));
-        if (g_hearth.ppu.interact_active && g_hearth.ppu.interact_label) {
-            sig ^= (u16)(0x4000u ^ ((u16)(u8)g_hearth.ppu.interact_label[0] << 8) ^ (u16)(u8)g_hearth.ppu.interact_label[1]);
+        if (g_hearth.ppu.interact_active) {
+            if (g_hearth.ppu.interact_label != NULL) {
+                sig ^= (u16)(0x4000u ^ ((u16)(u8)g_hearth.ppu.interact_label[0] << 8) ^ (u16)(u8)g_hearth.ppu.interact_label[1]);
+            }
         }
         return sig;
     }
@@ -2830,7 +2899,7 @@ static u16 compute_hud_sig(u8 want, const HearthPpuPacket *ppu) {
     }
     if (want == 2u) {
         const HearthDialogue *d = &g_hearth.dialogue;
-        sig ^= (u16)((d->visible_chars << 4) ^ ((u16)d->selected_choice << 8) ^ d->full_len);
+        sig ^= (u16)((d->visible_chars << 4) ^ ((u16)d->selected_choice << 8) ^ d->full_len ^ ((u16)d->portrait_id << 10));
         if (d->finished) sig ^= 0x4000u;
         if (d->next_text != NULL) sig ^= 0x2000u;
         sig ^= (u16)((u16)d->choice_count << 2);
@@ -2907,15 +2976,15 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
             g_last_hud_sig = compute_hud_sig(want, ppu);
         } else if (want == 0u) {
             bg0_clear_all();
-            bg0_fill_rect(0u, 0u, 32u, 1u, SNES_TILE(SUI_FILL, PAL_UI_TEXT, 1u));
-            bg0_fill_rect(0u, 1u, 32u, 1u, SNES_TILE(SUI_BOT,  PAL_UI_TEXT, 1u));
+            bg0_fill_rect(0u, 0u, 32u, 2u, SNES_TILE(SUI_FILL, PAL_UI_TEXT, 1u));
+            bg0_fill_rect(0u, 2u, 32u, 1u, SNES_TILE(SUI_HUD_TRIM, PAL_UI_TEXT, 1u));
             g_bg0_dirty = 3u;
         } else {
             bg0_clear_all();
             bg0_draw_box(0u, 19u, 32u, 9u);
             g_bg0_dirty = 3u;
         }
-        g_ui_tick = 0;
+        g_ui_tick = (want == 2u) ? 4u : 0u;
         if (want == 1u) return;
     }
 
@@ -2992,9 +3061,10 @@ static const u8 HI_TAIL_MASK[4] = { 0x00u, 0x54u, 0x50u, 0x40u };
 static void render_snes_sprites(const HearthPpuPacket *ppu) {
     u16 i, n, count, sid, ta, flg, oidx, hi_idx, hi_byte, hi_mask, prev_cnt, end_lane;
     s16 sx, sy, sy_bot, sx_r, shx, shy, min_y, max_y, min_y_tall, max_y_tall;
-    u16 prog, rem, rpal;
+    u16 prog, rem, rpal, pi, burst_drawn;
     u8 boot_tile, hdir, hpose, rkey, hflip, bt_l, bt_r, battr;
     const HearthOamSprite *o;
+    const HearthParticle *pt;
     (void)ppu;
 
     count = 0u;
@@ -3010,6 +3080,25 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
         max_y      = (g_ui_layout >= 2u) ? 140 : 224;
         min_y_tall = (g_ui_layout == 0u) ? 0  : -23;
         max_y_tall = (g_ui_layout >= 2u) ? 132 : 224;
+
+        /* Hardware OAM Spark Burst Particles (Lamp Ignition, Chests, Heart Mending) — drawn in front! */
+        if (g_hearth.active_particles > 0u) {
+            burst_drawn = 0u;
+            for (pi = 0u; pi < HEARTH_MAX_PARTICLES && burst_drawn < 12u && count < 110u; pi++) {
+                pt = &g_hearth.particles[pi];
+                if (!pt->active) continue;
+                if ((pt->kind != 3u && pt->kind != 4u) || pt->size < 3u) continue;
+                sx = (s16)(FP_PX(pt->fx) + (pt->screen_space ? shx : (s16)(-g_hearth.ppu.cam_x + shx)) - 8);
+                sy = (s16)(FP_PX(pt->fy) + (pt->screen_space ? shy : (s16)(-g_hearth.ppu.cam_y + shy)) - 8);
+                if (sx < -15 || sx >= 256 || sy < min_y || sy >= max_y) continue;
+                ta = (u16)(SPR_TILE_ATTR_LUT[SPR_EMOTE_SPARK] | 0x3000u);
+                if ((((u16)g_hearth.frame_count >> 2) + pi) & 1u) ta |= 0x4000u;
+                if ((((u16)g_hearth.frame_count >> 3) + pi) & 1u) ta |= 0x8000u;
+                EMIT_SNES_OAM(sx, sy, (u8)ta, (u8)(ta >> 8), 1u);
+                burst_drawn++;
+            }
+        }
+
         n = (u16)g_hearth.ppu.oam_count;
         if (n > 48u) n = 48u;
         /* Reverse iterate ppu->oam: SNES OAM draws LOWER sprite indices IN FRONT of higher indices! */
@@ -3113,9 +3202,9 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             }
         }
 
-        /* 60fps Hardware Drifting Biome Atmosphere Particles (8x8 OBJ: leaves, petals, embers, snow) */
+        /* 60fps Hardware Drifting Biome Atmosphere Particles (dedicated 8x8 OBJ: leaves, snow, motes, embers; suppressed indoors!) */
         if ((g_hearth.mode == MODE_EXPLORE || g_hearth.mode == MODE_BATTLE) && count < 118u) {
-            u8 ap, p_pal, pid;
+            u8 ap, p_pal, p_tile, pid, is_interior;
             u16 fc16;
             fc16 = (u16)g_hearth.frame_count;
             if (g_hearth.mode == MODE_BATTLE) {
@@ -3123,10 +3212,15 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
                 u8 rises = (bb == BIOME_VOLCANO || bb == BIOME_BOARHOLD) ? 1u : 0u;
                 u8 bobs  = (bb == BIOME_SHRINE || bb == BIOME_FOREST || bb == BIOME_SEWER ||
                             g_hearth.time_of_day == TOD_NIGHT) ? 1u : 0u;
-                p_pal = (bb == BIOME_VOLCANO || bb == BIOME_BOARHOLD) ? 0x30u
-                      : (bb == BIOME_FROST || bb == BIOME_SEA) ? 0x34u
-                      : (bb == BIOME_SHRINE || bb == BIOME_SEWER || g_hearth.time_of_day == TOD_NIGHT) ? 0x36u
-                      : 0x32u;
+                if (rises) {
+                    p_tile = OBJ_TILE_AMBIENT_EMBER; p_pal = 0x36u;
+                } else if (bobs) {
+                    p_tile = OBJ_TILE_AMBIENT_MOTE;  p_pal = 0x36u;
+                } else if (bb == BIOME_FROST || bb == BIOME_SEA) {
+                    p_tile = OBJ_TILE_AMBIENT_SNOW;  p_pal = 0x32u;
+                } else {
+                    p_tile = OBJ_TILE_AMBIENT_LEAF;  p_pal = 0x32u;
+                }
                 for (ap = 0u; ap < 6u; ap++) {
                     u16 seed = (u16)((ap * 43u + 19u) & 255u);
                     s16 ax, ay;
@@ -3142,27 +3236,40 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
                         ay = (s16)(((seed * 3u + ((fc16 * (u16)(1u + (ap & 1u))) >> 2)) & 127u) + 10u);
                     }
                     if (ax < 248 && ay >= 6 && ay < 148) {
-                        EMIT_SNES_OAM(ax, ay, 0x42u, p_pal, 0u);
+                        EMIT_SNES_OAM(ax, ay, p_tile, p_pal, 0u);
                     }
                 }
             } else {
                 pid = ppu->terrain_pal_id;
-                p_pal = (pid == 1u || pid == 6u || pid == 16u) ? 0x30u
-                      : (pid == 14u) ? 0x34u
-                      : (pid == 7u || pid == 8u || pid == 3u || pid == 5u) ? 0x36u : 0x32u;
-                for (ap = 0u; ap < 6u; ap++) {
-                    u16 seed = (u16)((ap * 43u + 17u) & 255u);
-                    s16 ax, ay;
-                    if (pid == 7u || pid == 8u || pid == 3u || pid == 5u) {
-                        if (((fc16 + (u16)(ap * 19u)) & 31u) >= 20u) continue;
-                        ax = (s16)(((seed * 3u + (fc16 >> 2) - (u16)(ppu->cam_x >> 1)) & 255u));
-                        ay = (s16)((((seed * 5u + ((fc16 >> 3) ^ (u16)(ap << 3)) - (u16)(ppu->cam_y >> 1)) & 127u) + 24u));
+                is_interior = (u8)((pid == ZPAL_COTTAGE_INTERIOR ||
+                    g_hearth.zone_id == ZONE_ROWAN_HOME ||
+                    g_hearth.zone_id == ZONE_ROWAN_UPSTAIRS ||
+                    (g_hearth.zone_id >= ZONE_ALDER_DEPOT && g_hearth.zone_id <= ZONE_BABANA_TENT)) ? 1u : 0u);
+                if (!is_interior) {
+                    if (pid == ZPAL_VOLCANO) {
+                        p_tile = OBJ_TILE_AMBIENT_EMBER; p_pal = 0x36u;
+                    } else if (pid == ZPAL_AUTUMN_DUSK || pid == ZPAL_AUTUMN_NIGHT ||
+                               pid == ZPAL_SEWERS || pid == ZPAL_SHADOW) {
+                        p_tile = OBJ_TILE_AMBIENT_MOTE;  p_pal = 0x36u;
+                    } else if (pid == ZPAL_FROST || pid == ZPAL_EVERTALE_WORLD || pid == ZPAL_PARADISE) {
+                        p_tile = OBJ_TILE_AMBIENT_SNOW;  p_pal = 0x32u;
                     } else {
-                        ax = (s16)(((seed * 5u + (fc16 >> 1) - (u16)(ppu->cam_x >> 1)) & 255u));
-                        ay = (s16)((((seed * 3u + ((fc16 * (u16)(1u + (ap & 1u))) >> 2) - (u16)(ppu->cam_y >> 1)) & 191u) + 16u));
+                        p_tile = OBJ_TILE_AMBIENT_LEAF;  p_pal = 0x32u;
                     }
-                    if (ax < 248 && ay < 208) {
-                        EMIT_SNES_OAM(ax, ay, 0x42u, p_pal, 0u);
+                    for (ap = 0u; ap < 6u; ap++) {
+                        u16 seed = (u16)((ap * 43u + 17u) & 255u);
+                        s16 ax, ay;
+                        if (p_tile == OBJ_TILE_AMBIENT_MOTE) {
+                            if (((fc16 + (u16)(ap * 19u)) & 31u) >= 20u) continue;
+                            ax = (s16)(((seed * 3u + (fc16 >> 2) - (u16)(ppu->cam_x >> 1)) & 255u));
+                            ay = (s16)((((seed * 5u + ((fc16 >> 3) ^ (u16)(ap << 3)) - (u16)(ppu->cam_y >> 1)) & 127u) + 24u));
+                        } else {
+                            ax = (s16)(((seed * 5u + (fc16 >> 1) - (u16)(ppu->cam_x >> 1)) & 255u));
+                            ay = (s16)((((seed * 3u + ((fc16 * (u16)(1u + (ap & 1u))) >> 2) - (u16)(ppu->cam_y >> 1)) & 191u) + 20u));
+                        }
+                        if (ax < 248 && ay >= 20 && ay < 208) {
+                            EMIT_SNES_OAM(ax, ay, p_tile, p_pal, 0u);
+                        }
                     }
                 }
             }
@@ -3379,10 +3486,8 @@ static void flush_one_vblank_dma(void) {
         upload_pal7_atlas_or_portrait(g_pal7_is_portrait);
         g_pal7_dma_dirty = 0u;
     }
-    if (g_portrait_dma_dirty && g_last_portrait_id >= 1u && g_last_portrait_id <= ROM_PORTRAIT_COUNT) {
-        dmaCopyVram((u8 *)&snes_portrait_tiles + (u16)((u16)(g_last_portrait_id - 1u) * 512u),
-                    (u16)(VRAM_BG0_GFX + (SUI_PORTRAIT_BASE << 4)), 512u);
-        g_portrait_dma_dirty = 0u;
+    if (g_portrait_dma_dirty) {
+        flush_portrait_vblank_dma();
     }
     if (g_rowan_dma_dirty) {
         flush_rowan_vblank_dma();
@@ -3402,8 +3507,8 @@ static void flush_one_vblank_dma(void) {
             g_bg1_row_dirty = 0u;
         }
         if (g_bg0_dirty == 1u) {
-            /* Explore HUD row 0 only (64 bytes -> 0.4 scanlines) */
-            dmaCopyVram((u8 *)g_bg0_map, VRAM_BG0_MAP, 64u);
+            /* Explore HUD row 1 only (64 bytes -> 0.4 scanlines) */
+            dmaCopyVram((u8 *)(g_bg0_map + 32u), (u16)(VRAM_BG0_MAP + 32u), 64u);
             g_bg0_dirty = 0u;
         } else if (g_bg0_dirty == 2u) {
             /* Dialogue / Battle box rows 20..26 only (448 bytes -> 2.7 scanlines) */
@@ -3956,6 +4061,7 @@ int main(void) {
     g_hearth.prev_pad = read_snes_pad(); /* Prevent skip button from skipping Opening Cinema! */
     bake_world_tile_cache();
     g_last_map_rev = g_hearth.map_revision;
+    g_last_zone_id = g_hearth.zone_id;
     g_hearth.tuning.ppu_mode = PPU_SNES_256x224;
     ppu = hearth_step_60hz(&g_hearth, g_hearth.prev_pad);
     g_last_pal_id = ppu->terrain_pal_id;
@@ -4025,11 +4131,20 @@ int main(void) {
         }
 
         if (g_hearth.map_revision != g_last_map_rev) {
+            u8 same_zone = (u8)((g_hearth.zone_id == g_last_zone_id &&
+                                 scene_kind == 0u && g_last_scene_kind == 0u) ? 1u : 0u);
             g_last_map_rev = g_hearth.map_revision;
+            g_last_zone_id = g_hearth.zone_id;
             bake_world_tile_cache();
-            scene_switched = 1;
             if (scene_kind == 0u) {
                 build_full_world_bg1(ppu->cam_x, ppu->cam_y);
+            }
+            if (same_zone) {
+                /* Flicker-free VBlank BG1 refresh when lighting a shrine lantern in-place! */
+                g_bg1_dirty_l = 1;
+                g_bg1_dirty_r = 1;
+            } else {
+                scene_switched = 1;
             }
         }
 
@@ -4042,6 +4157,7 @@ int main(void) {
                 g_last_tod_phase = ppu->tod_phase;
                 g_pal_dirty = 1u;
                 g_full_pal_dirty = 1u; /* Restore BG1 terrain & BG PAL0..PAL3 overwritten by 60-color CG/Battle BG! */
+                g_prev_cgram_valid = 0u;
             }
             g_last_scene_kind = scene_kind;
             g_last_intro_scene = g_hearth.intro.scene;
@@ -4105,10 +4221,8 @@ int main(void) {
                 upload_pal7_atlas_or_portrait(g_pal7_is_portrait);
                 g_pal7_dma_dirty = 0u;
             }
-            if (g_portrait_dma_dirty && g_last_portrait_id >= 1u && g_last_portrait_id <= ROM_PORTRAIT_COUNT) {
-                dmaCopyVram((u8 *)&snes_portrait_tiles + (u16)((u16)(g_last_portrait_id - 1u) * 512u),
-                            (u16)(VRAM_BG0_GFX + (SUI_PORTRAIT_BASE << 4)), 512u);
-                g_portrait_dma_dirty = 0u;
+            if (g_portrait_dma_dirty) {
+                flush_portrait_vblank_dma();
             }
             if (want_bg2 != g_bg2_enabled) {
                 if (want_bg2) bgSetEnable(2);

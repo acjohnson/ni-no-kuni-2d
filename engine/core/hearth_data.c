@@ -649,15 +649,15 @@ static void build_zone_whispering_woods(uint8_t *bg1, uint8_t *bg2, uint8_t *col
         set_bg1(bg1, col, x, 17, T_BRIDGE_RAIL_S, COL_SOLID);
     }
 
-    /* 3 Stone Lantern Shrine Clearings along the Woods Trail */
+    /* 3 Stone Lantern Shrine Clearings along the Woods Trail (dark/unlit by default until Rowan lights them!) */
     fill_rect(bg1, col, 11, 16, 3, 3, T_SHRINE_FLOOR, COL_WALKABLE);
-    set_bg1(bg1, col, 12, 17, T_LANTERN_POST, COL_SOLID); /* Shrine 0 */
+    set_bg1(bg1, col, 12, 17, T_LANTERN_UNLIT, COL_SOLID); /* Shrine 0 */
 
     fill_rect(bg1, col, 25, 14, 3, 3, T_SHRINE_FLOOR, COL_WALKABLE);
-    set_bg1(bg1, col, 26, 15, T_LANTERN_POST, COL_SOLID); /* Shrine 1 */
+    set_bg1(bg1, col, 26, 15, T_LANTERN_UNLIT, COL_SOLID); /* Shrine 1 */
 
     fill_rect(bg1, col, 32,  8, 3, 3, T_SHRINE_FLOOR, COL_WALKABLE);
-    set_bg1(bg1, col, 33,  9, T_LANTERN_POST, COL_SOLID); /* Shrine 2 */
+    set_bg1(bg1, col, 33,  9, T_LANTERN_UNLIT, COL_SOLID); /* Shrine 2 */
 
     /* Trail Signpost & Campfire Lantern */
     set_bg1(bg1, col, 7, 20, T_SIGNPOST, COL_SOLID);
@@ -1342,7 +1342,9 @@ static void globe_apply_heartland(uint16_t x, uint16_t y, uint8_t *p_bg1, uint8_
         if (x >= 130u && x <= 132u && y <= 109u) { *p_bg1 = T_DIRT; *p_col = COL_WALKABLE; }
         if (x >= 73u && x <= 75u) {
             if (x == 74u && y == 108u) { *p_bg1 = T_HOLLOW_OAK; *p_col = COL_SOLID; }
-            if (y == 107u && p_bg2 != NULL) { *p_bg2 = O_OAK_CROWN; }
+            if (y == 107u) {
+                if (p_bg2 != NULL) { *p_bg2 = O_OAK_CROWN; }
+            }
             if (x == 74u && y == 109u) { *p_bg1 = T_SHRINE_RUNE; *p_col = COL_WALKABLE; }
         }
         if (y >= 104u && y <= 105u && x >= 129u && x <= 131u) { *p_bg1 = T_WORLD_RUINS; *p_col = COL_SOLID; }
@@ -1585,7 +1587,7 @@ void hearth_globe_stream_row(uint16_t wx0, uint16_t wy, uint8_t count, uint8_t *
         } else if (y_band == 2u) {
             globe_apply_outer_landmarks(x, y, &bg1, &col);
         }
-        *dst_meta++ = (bg2 != O_NONE) ? (uint8_t)63u : ((bg1 < 63u) ? bg1 : (uint8_t)T_WORLD_OCEAN);
+        *dst_meta++ = (bg2 != O_NONE) ? (uint8_t)255u : ((bg1 < 64u) ? bg1 : (uint8_t)T_WORLD_OCEAN);
         x = (uint16_t)((x + 1u) & 255u);
     }
 }
@@ -1630,7 +1632,7 @@ void hearth_globe_stream_col(uint16_t wx, uint16_t wy0, uint8_t count, uint8_t *
                 globe_apply_outer_landmarks(x, y, &bg1, &col);
             }
         }
-        *dst_meta++ = (bg2 != O_NONE) ? (uint8_t)63u : ((bg1 < 63u) ? bg1 : (uint8_t)T_WORLD_OCEAN);
+        *dst_meta++ = (bg2 != O_NONE) ? (uint8_t)255u : ((bg1 < 64u) ? bg1 : (uint8_t)T_WORLD_OCEAN);
         y++;
         if (y >= HEARTH_GLOBE_H) y = 0u;
     }

@@ -1772,10 +1772,14 @@ static u8  g_last_battle_biome = 255;
 static u8  g_last_battle_tod = 255;
 static u8  g_last_pal_id = 255;
 static u8  g_last_pal3_mode = 255;
-static u8  g_last_tod_phase = 255;
+static u16 g_last_tod_phase = 0xFFFFu;
 static u8  g_last_portrait_id = 0;
 static u8  g_last_map_rev = 255;
+static u8  g_last_zone_id = 255;
 static u8  g_cinema_pals_active = 0;
+static u16 g_prev_cram0[16];
+static u16 g_prev_cram3[16];
+static u8  g_prev_cram_valid = 0;
 
 static void draw_full_world_viewport(s16 cam_x, s16 cam_y) {
     s16 mx0 = (s16)((cam_x >> 4) - 2);
@@ -2554,6 +2558,32 @@ static void render_sprites(const HearthPpuPacket *ppu) {
         return;
     }
 
+    /* Hardware SAT Spark Burst Particles (Lamp Ignition, Chests, Heart Mending) — drawn in front! */
+    if (g_hearth.active_particles > 0u) {
+        u8 burst_drawn = 0u;
+        for (u16 pi = 0u; pi < HEARTH_MAX_PARTICLES && burst_drawn < 12u && count < 56u; pi++) {
+            const HearthParticle *p = &g_hearth.particles[pi];
+            s16 px, py;
+            u8 hf, vf;
+            u16 ppal;
+            if (!p->active) continue;
+            if ((p->kind != 3u && p->kind != 4u) || p->size < 3u) continue;
+            px = (s16)(FROM_FP(p->fx) + (p->screen_space ? ppu->shake_x : (s16)(-ppu->cam_x + ppu->shake_x)) - 8);
+            py = (s16)(FROM_FP(p->fy) + (p->screen_space ? ppu->shake_y : (s16)(-ppu->cam_y + ppu->shake_y)) - 8);
+            if (px < -16 || px >= 320 || py < -16 || py >= 224) continue;
+            if (g_win_layout >= 2u && py >= 148) continue;
+            if (g_win_layout == 0u && py < 8) continue;
+            hf = (u8)(((g_hearth.frame_count >> 2) + pi) & 1u);
+            vf = (u8)(((g_hearth.frame_count >> 3) + pi) & 1u);
+            ppal = (((g_hearth.frame_count >> 1) + pi) & 1u) ? PAL3 : PAL1;
+            VDP_setSpriteFull(count, px, py, SPRITE_SIZE(2, 2),
+                TILE_ATTR_FULL(ppal, 1, vf, hf, VRAM_SPR_BASE + SPR_EMOTE_SPARK * 4u),
+                (u8)(count + 1u));
+            count++;
+            burst_drawn++;
+        }
+    }
+
     /* Reverse iterate ppu->oam: Genesis SAT draws LOWER sprite indices IN FRONT of higher indices! */
     for (s16 ri = (s16)ppu->oam_count - 1; ri >= 0 && count < 58u; ri--) {
         const HearthOamSprite *o = &ppu->oam[ri];
@@ -3097,20 +3127,20 @@ static uint16_t read_genesis_pad(void) {
     return bits;
 }
 
-static u16 gen_lerp_bgr333(u16 c0, u16 c1, u8 frac) {
+static u16 gen_lerp_bgr333(u16 c0, u16 c1, u16 frac256, u16 br, u16 bg, u16 bb) {
     u16 r0 = (u16)((c0 >> 1) & 7u), g0 = (u16)((c0 >> 5) & 7u), b0 = (u16)((c0 >> 9) & 7u);
     u16 r1 = (u16)((c1 >> 1) & 7u), g1 = (u16)((c1 >> 5) & 7u), b1 = (u16)((c1 >> 9) & 7u);
-    u16 inv = (u16)(16u - (u16)frac);
-    u16 r = (u16)((r0 * inv + r1 * (u16)frac + 8u) >> 4);
-    u16 g = (u16)((g0 * inv + g1 * (u16)frac + 8u) >> 4);
-    u16 b = (u16)((b0 * inv + b1 * (u16)frac + 8u) >> 4);
+    u16 inv = (u16)(256u - frac256);
+    u16 r = (u16)((r0 * inv + r1 * frac256 + br) >> 8);
+    u16 g = (u16)((g0 * inv + g1 * frac256 + bg) >> 8);
+    u16 b = (u16)((b0 * inv + b1 * frac256 + bb) >> 8);
     if (r > 7u) r = 7u;
     if (g > 7u) g = 7u;
     if (b > 7u) b = 7u;
     return (u16)((b << 9) | (g << 5) | (r << 1));
 }
 
-static void upload_zone_pal0_to_cram(u8 pal_id, u8 terrain_pal3, u8 tod_phase, TransferMethod tm) {
+static void upload_zone_pal0_to_cram(u8 pal_id, u8 terrain_pal3, u16 tod_phase, TransferMethod tm) {
     static u16 cram0[16];
     static u16 cram3[16];
     static const u8 TOD_KEYS[4] = {
@@ -3120,16 +3150,26 @@ static void upload_zone_pal0_to_cram(u8 pal_id, u8 terrain_pal3, u8 tod_phase, T
     u8 smooth_tod = (u8)((g_hearth.ppu.has_mountain_vista &&
         (pid == ZPAL_AUTUMN_MORNING || pid == ZPAL_ALDERBROOK ||
          pid == ZPAL_AUTUMN_DUSK || pid == ZPAL_AUTUMN_NIGHT)) ? 1u : 0u);
-    u8 seg = (u8)((tod_phase >> 4) & 3u);
-    u8 frac = (u8)(tod_phase & 15u);
+    u16 eff_phase = (u16)(tod_phase & 1023u);
+    u8 seg = (u8)((eff_phase >> 8) & 3u);
+    u16 frac = (u16)(eff_phase & 255u);
     u8 pA = TOD_KEYS[seg];
     u8 pB = TOD_KEYS[(seg + 1u) & 3u];
+    u8 changed0 = 0u;
+    u8 changed3 = 0u;
     for (u16 c = 0u; c < 16u; c++) {
         if (smooth_tod && frac > 0u) {
-            cram0[c] = gen_lerp_bgr333(GEN_CHRONO_PALS[pA][0][c], GEN_CHRONO_PALS[pB][0][c], frac);
+            /* Stagger per-(entry, channel) BGR333 thresholds across 0..255 so colors drift one-by-one! */
+            u16 b0r = (u16)((c * 97u + 19u) & 255u);
+            u16 b0g = (u16)((c * 97u + 109u) & 255u);
+            u16 b0b = (u16)((c * 97u + 199u) & 255u);
+            u16 b3r = (u16)((c * 97u + 62u) & 255u);
+            u16 b3g = (u16)((c * 97u + 152u) & 255u);
+            u16 b3b = (u16)((c * 97u + 242u) & 255u);
+            cram0[c] = gen_lerp_bgr333(GEN_CHRONO_PALS[pA][0][c], GEN_CHRONO_PALS[pB][0][c], frac, b0r, b0g, b0b);
             cram3[c] = terrain_pal3
                 ? ((c == 1u || c == 15u) ? GEN_CHRONO_PALS[pA][1][c]
-                   : gen_lerp_bgr333(GEN_CHRONO_PALS[pA][1][c], GEN_CHRONO_PALS[pB][1][c], frac))
+                   : gen_lerp_bgr333(GEN_CHRONO_PALS[pA][1][c], GEN_CHRONO_PALS[pB][1][c], frac, b3r, b3g, b3b))
                 : hearth_rgb_to_genesis_bgr333(HEARTH_PALETTES_RGB[3][c]);
         } else {
             u8 use_p = smooth_tod ? pA : pid;
@@ -3138,12 +3178,21 @@ static void upload_zone_pal0_to_cram(u8 pal_id, u8 terrain_pal3, u8 tod_phase, T
                 ? GEN_CHRONO_PALS[use_p][1][c]
                 : hearth_rgb_to_genesis_bgr333(HEARTH_PALETTES_RGB[3][c]);
         }
+        if (!g_prev_cram_valid || cram0[c] != g_prev_cram0[c]) changed0 = 1u;
+        if (!g_prev_cram_valid || cram3[c] != g_prev_cram3[c]) changed3 = 1u;
     }
-    PAL_setColors(0,  cram0, 16, tm);
-    PAL_setColors(48, cram3, 16, tm);
+    if (tm == CPU || changed0) {
+        PAL_setColors(0, cram0, 16, tm);
+        for (u16 c = 0u; c < 16u; c++) g_prev_cram0[c] = cram0[c];
+    }
+    if (tm == CPU || changed3) {
+        PAL_setColors(48, cram3, 16, tm);
+        for (u16 c = 0u; c < 16u; c++) g_prev_cram3[c] = cram3[c];
+    }
+    g_prev_cram_valid = 1u;
     g_last_pal_id = pid;
     g_last_pal3_mode = terrain_pal3;
-    g_last_tod_phase = tod_phase;
+    g_last_tod_phase = eff_phase;
 }
 
 static void upload_palettes_to_cram(void) {
@@ -3156,7 +3205,8 @@ static void upload_palettes_to_cram(void) {
     }
     g_last_pal_id = 255u;
     g_last_pal3_mode = 255u;
-    g_last_tod_phase = 255u;
+    g_last_tod_phase = 0xFFFFu;
+    g_prev_cram_valid = 0u;
 }
 
 /* ============================================================================
@@ -3752,6 +3802,7 @@ int main(bool hard_reset) {
         u8 boot_tpal3 = (g_hearth.mode == MODE_TITLE || g_hearth.mode == MODE_EXPLORE ||
                          g_hearth.mode == MODE_CUTSCENE || g_hearth.mode == MODE_SHOP) ? 1u : 0u;
         g_last_map_rev = g_hearth.map_revision;
+        g_last_zone_id = g_hearth.zone_id;
         bake_genesis_zone_metas();
 
         /* Pre-bake vista outside bulk lock if starting on an alpine exterior */
@@ -3816,9 +3867,12 @@ int main(bool hard_reset) {
             (scene_mode == 1u && (g_hearth.battle.biome != g_last_battle_biome ||
                                   g_hearth.time_of_day != g_last_battle_tod))) {
             u8 prev_scene = g_last_scene_mode;
+            u8 same_zone_edit = (u8)((map_changed && prev_scene == 0u && scene_mode == 0u &&
+                                      g_hearth.zone_id == g_last_zone_id) ? 1u : 0u);
             g_last_scene_mode = scene_mode;
             g_last_intro_scene = g_hearth.intro.scene;
             g_last_map_rev = g_hearth.map_revision;
+            g_last_zone_id = g_hearth.zone_id;
             did_scene_transition = 1u;
             if (map_changed) {
                 gen_invalidate_globe_cache();
@@ -3827,6 +3881,7 @@ int main(bool hard_reset) {
             if (scene_mode == 2u) {
                 g_last_pal_id = 255u; /* Force zone PAL0+PAL3 restore upon leaving cinema */
                 g_last_pal3_mode = 255u;
+                g_prev_cram_valid = 0u;
                 draw_intro_backdrop(g_hearth.intro.scene);
                 gen_vdp_begin_bulk();
                 update_window_ui(ppu);
@@ -3844,6 +3899,9 @@ int main(bool hard_reset) {
                 gen_vdp_begin_bulk();
                 update_window_ui(ppu);
                 gen_vdp_end_bulk();
+            } else if (same_zone_edit) {
+                /* Seamless in-place tile update (e.g. lighting a Whispering Woods shrine lantern!) */
+                draw_full_world_viewport(ppu->cam_x, ppu->cam_y);
             } else {
                 if (!g_hearth.is_world_map && ppu->has_mountain_vista && g_vista_vram_dirty) {
                     bake_genesis_parallax_vista();

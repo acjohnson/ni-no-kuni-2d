@@ -23,6 +23,7 @@ const PAINTED_PORTRAITS_BY_ID: Record<number, string> = {
   8: portraitTessa,
   9: portraitCorin,
   10: portraitSentinel,
+  11: portraitElder,
 };
 
 const GENERATED_PORTRAITS: Partial<Record<PortraitId, string>> = {

@@ -122,12 +122,42 @@ int main(void) {
     hearth_start_story_cg(&g_st, 2u);
     CHECK(g_st.mode == MODE_INTRO && g_st.intro.scene == CG_PIP_DREAM_RETURN, "Sleeping launches Plate 7 (Pip Dream Return CG)");
     for (int f = 0; f < 1000 && g_st.mode == MODE_INTRO; f++) hearth_step_60hz(&g_st, ((f % 6) == 0) ? PAD_A : 0);
-    CHECK(g_st.mode == MODE_EXPLORE && g_st.time_of_day == TOD_NIGHT && g_st.ch1_step == 6u,
-          "Pip Dream CG awakens Rowan at Moonlit Night");
+    CHECK(g_st.mode == MODE_EXPLORE && g_st.time_of_day == TOD_NIGHT && g_st.ch1_step == 6u && g_st.tod_locked && g_st.tod_phase == 768u,
+          "Pip Dream CG awakens Rowan at story-locked Moonlit Night (tod_phase=768)");
 
-    /* Whispering Woods (Zone 6) + 3 Lantern Shrines + Hollow Glade (Zone 7) + Hollow Oak Awakens CG (Script 3) */
-    hearth_enter_zone(&g_st, ZONE_WHISPERING_WOODS, 14, 21);
+    /* Whispering Woods (Zone 6) + 3 Unlit -> Lit Lantern Shrines + TOD Lock Verification */
+    hearth_enter_zone(&g_st, ZONE_WHISPERING_WOODS, 12, 18);
     CHECK(g_st.ppu.has_mountain_vista && g_st.ppu.terrain_pal_id == ZPAL_AUTUMN_NIGHT, "Whispering Woods renders under Moonlit Night palette");
+    CHECK(g_st.map_bg1[17 * HEARTH_MAP_W + 12] == T_LANTERN_UNLIT &&
+          g_st.map_bg1[15 * HEARTH_MAP_W + 26] == T_LANTERN_UNLIT &&
+          g_st.map_bg1[9  * HEARTH_MAP_W + 33] == T_LANTERN_UNLIT,
+          "All 3 Whispering Woods shrine lamps start visibly UNLIT (T_LANTERN_UNLIT)");
+    {
+        /* Verify story-locked Night stays fixed at 768 even after 300 frames of exploration */
+        for (int f = 0; f < 300; f++) hearth_step_60hz(&g_st, 0);
+        CHECK(g_st.tod_phase == 768u && g_st.time_of_day == TOD_NIGHT && g_st.tod_locked,
+              "Story-locked nighttime Mido sequence stays locked at Night without advancing TOD");
+
+        /* Interact with Shrine 0 (facing north at (12,17)) -> lights lamp & spawns burst sparks! */
+        uint8_t prev_rev = g_st.map_revision;
+        g_st.hero_dir = DIR_UP;
+        hearth_step_60hz(&g_st, PAD_A);
+        CHECK((g_st.woods_shrines_mask & 1u) != 0u &&
+              g_st.map_bg1[17 * HEARTH_MAP_W + 12] == T_LANTERN_POST &&
+              g_st.map_bg1[15 * HEARTH_MAP_W + 26] == T_LANTERN_UNLIT &&
+              g_st.map_revision != prev_rev &&
+              g_st.active_particles >= 10u,
+              "Lighting Shrine 0 flips tile to T_LANTERN_POST, bumps map_revision, and spawns spark burst");
+        for (int f = 0; f < 80 && g_st.dialogue.active; f++) hearth_step_60hz(&g_st, ((f % 4) == 0) ? PAD_A : 0);
+
+        /* Verify unlocked 1024-step real-time TOD advances by exactly 1 step every 56 frames (~16m full cycle) */
+        g_st.tod_locked = false;
+        g_st.day_subtick = 0u;
+        for (int f = 0; f < 56; f++) hearth_step_60hz(&g_st, 0);
+        CHECK(g_st.tod_phase == 769u, "Unlocked real-time TOD advances 1/1024 micro-step after 56 frames (4x slower)");
+        g_st.tod_phase = 768u;
+        g_st.tod_locked = true;
+    }
     g_st.woods_shrines_mask = 0x07u;
     g_st.ch1_step = 7u;
     hearth_enter_zone(&g_st, ZONE_HOLLOW_GLADE, 15, 20);

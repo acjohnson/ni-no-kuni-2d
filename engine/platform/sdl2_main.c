@@ -63,19 +63,19 @@ static inline uint32_t pal_col(uint8_t pal, uint8_t idx) {
     return g_pal_argb[pal & 3u][idx & 15u];
 }
 
-static uint8_t g_last_terrain_pal = 255u;
-static uint8_t g_last_tod_phase   = 255u;
-static bool    g_last_mtn_vista   = false;
+static uint8_t  g_last_terrain_pal = 255u;
+static uint16_t g_last_tod_phase   = 0xFFFFu;
+static bool     g_last_mtn_vista   = false;
 
-static inline uint32_t lerp_rgb888(uint32_t a, uint32_t b, uint8_t t16) {
-    uint32_t inv = (uint32_t)(16u - t16);
-    uint32_t r = (((a >> 16) & 0xFFu) * inv + ((b >> 16) & 0xFFu) * t16 + 8u) >> 4;
-    uint32_t g = (((a >> 8)  & 0xFFu) * inv + ((b >> 8)  & 0xFFu) * t16 + 8u) >> 4;
-    uint32_t bl = ((a & 0xFFu) * inv + (b & 0xFFu) * t16 + 8u) >> 4;
+static inline uint32_t lerp_rgb888(uint32_t a, uint32_t b, uint16_t t256) {
+    uint32_t inv = (uint32_t)(256u - t256);
+    uint32_t r = (((a >> 16) & 0xFFu) * inv + ((b >> 16) & 0xFFu) * t256 + 128u) >> 8;
+    uint32_t g = (((a >> 8)  & 0xFFu) * inv + ((b >> 8)  & 0xFFu) * t256 + 128u) >> 8;
+    uint32_t bl = ((a & 0xFFu) * inv + (b & 0xFFu) * t256 + 128u) >> 8;
     return (r << 16) | (g << 8) | bl;
 }
 
-static void apply_zone_palette(uint8_t pal_id, uint8_t tod_phase, bool has_mountain_vista) {
+static void apply_zone_palette(uint8_t pal_id, uint16_t tod_phase, bool has_mountain_vista) {
     static const uint8_t TOD_KEYS[4] = {
         ZPAL_AUTUMN_MORNING, ZPAL_ALDERBROOK, ZPAL_AUTUMN_DUSK, ZPAL_AUTUMN_NIGHT
     };
@@ -84,17 +84,17 @@ static void apply_zone_palette(uint8_t pal_id, uint8_t tod_phase, bool has_mount
         pal_id == ZPAL_AUTUMN_MORNING || pal_id == ZPAL_ALDERBROOK ||
         pal_id == ZPAL_AUTUMN_DUSK    || pal_id == ZPAL_AUTUMN_NIGHT
     );
-    uint8_t eff_phase = is_tod_blend ? (uint8_t)(tod_phase & 63u) : 0u;
+    uint16_t eff_phase = is_tod_blend ? (uint16_t)(tod_phase & 1023u) : 0u;
     if (g_last_terrain_pal == pal_id && g_last_tod_phase == eff_phase && g_last_mtn_vista == is_tod_blend) return;
     g_last_terrain_pal = pal_id;
     g_last_tod_phase   = eff_phase;
     g_last_mtn_vista   = is_tod_blend;
 
     if (is_tod_blend) {
-        uint8_t seg  = (uint8_t)((eff_phase >> 4) & 3u);
-        uint8_t frac = (uint8_t)(eff_phase & 15u);
-        uint8_t pA   = TOD_KEYS[seg];
-        uint8_t pB   = TOD_KEYS[(seg + 1u) & 3u];
+        uint8_t  seg  = (uint8_t)((eff_phase >> 8) & 3u);
+        uint16_t frac = (uint16_t)(eff_phase & 255u);
+        uint8_t  pA   = TOD_KEYS[seg];
+        uint8_t  pB   = TOD_KEYS[(seg + 1u) & 3u];
         for (int i = 0; i < 16; i++) {
             uint32_t rgb = lerp_rgb888(HEARTH_ZONE_PALETTES_RGB[pA][i], HEARTH_ZONE_PALETTES_RGB[pB][i], frac);
             g_pal_argb[0][i] = (i == 0) ? 0u : rgb_to_argb(rgb);
@@ -133,7 +133,7 @@ static void init_palettes(void) {
         }
     }
     g_last_terrain_pal = 255u;
-    g_last_tod_phase   = 255u;
+    g_last_tod_phase   = 0xFFFFu;
     apply_zone_palette(0, 0, false);
 }
 
@@ -2804,11 +2804,11 @@ static void render_mountain_vista(const HearthState *st, const HearthPpuPacket *
     };
     int w = (int)g_ppu_w;
     int vista_h = 96;
-    uint8_t tod = ppu->time_of_day;
-    uint8_t phase = (uint8_t)(ppu->tod_phase & 63u);
-    uint8_t seg   = (uint8_t)((phase >> 4) & 3u);
-    uint8_t frac  = (uint8_t)(phase & 15u);
-    uint8_t seg_n = (uint8_t)((seg + 1u) & 3u);
+    uint8_t  tod   = ppu->time_of_day;
+    uint16_t phase = (uint16_t)(ppu->tod_phase & 1023u);
+    uint8_t  seg   = (uint8_t)((phase >> 8) & 3u);
+    uint16_t frac  = (uint16_t)(phase & 255u);
+    uint8_t  seg_n = (uint8_t)((seg + 1u) & 3u);
     uint32_t sky_top    = rgb_to_argb(lerp_rgb888(SKY_KEY[seg][0], SKY_KEY[seg_n][0], frac));
     uint32_t sky_mid    = rgb_to_argb(lerp_rgb888(SKY_KEY[seg][1], SKY_KEY[seg_n][1], frac));
     uint32_t sky_hor    = rgb_to_argb(lerp_rgb888(SKY_KEY[seg][2], SKY_KEY[seg_n][2], frac));
@@ -2822,7 +2822,7 @@ static void render_mountain_vista(const HearthState *st, const HearthPpuPacket *
     }
 
     /* Stars & Crescent Moon at Night, or Drifting High Clouds by Day */
-    if (tod == TOD_NIGHT || phase >= 42u) {
+    if (tod == TOD_NIGHT || phase >= 672u) {
         for (int i = 0; i < 24; i++) {
             int sx = (i * 41 + 13) % w;
             int sy = 4 + ((i * 19) % 44);
@@ -3341,12 +3341,28 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
             draw_rect_outline(hx - 5, hy - 7, 10, 8, 0xFF5AD2F4u);
         }
 
-        /* Lantern Lighting Mask (Deep Sewer Darkness vs Soft Moonlit Mountain Night) */
-        if (ppu->zone_is_dark && !st->is_world_map && (st->mode == MODE_EXPLORE || st->mode == MODE_CUTSCENE || st->mode == MODE_FISHING)) {
+        /* Lantern Lighting Mask (Deep Sewer Darkness vs Smoothly-Fading Moonlit Mountain Night) */
+        int dark_strength = 0; /* 0..256 */
+        if (!st->is_world_map && (st->mode == MODE_EXPLORE || st->mode == MODE_CUTSCENE || st->mode == MODE_FISHING)) {
+            if (ppu->has_mountain_vista) {
+                uint16_t tp = (uint16_t)(ppu->tod_phase & 1023u);
+                if (tp >= 768u && tp <= 896u) {
+                    dark_strength = 256;
+                } else if (tp > 576u && tp < 768u) {
+                    dark_strength = (int)(((uint32_t)(tp - 576u) * 256u) / 192u);
+                } else if (tp > 896u) {
+                    dark_strength = (int)(((uint32_t)(1024u - tp) * 256u) / 128u);
+                }
+            } else if (ppu->zone_is_dark) {
+                dark_strength = 256;
+            }
+        }
+        if (dark_strength > 0) {
             int lhx = FROM_FP(st->hero_fx) - cam_x;
             int lhy = FROM_FP(st->hero_fy) - cam_y - 6;
-            int min_scale = ppu->has_mountain_vista ? 116 : 56;
-            int blue_boost = ppu->has_mountain_vista ? 34 : 18;
+            int base_min = ppu->has_mountain_vista ? 116 : 56;
+            int min_scale = 255 - (((255 - base_min) * dark_strength) >> 8);
+            int blue_boost = ((ppu->has_mountain_vista ? 34 : 18) * dark_strength) >> 8;
             int span = 255 - min_scale;
             /* Collect visible lantern posts for warm light pools */
             int lx[8], ly[8], lcnt = 0;

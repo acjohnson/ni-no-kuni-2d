@@ -502,6 +502,8 @@ META_NAMES = [
     "CM_WATER_V", "CM_RAPIDS_V", "CM_SHORE_V_W", "CM_SHORE_V_E",
     "CM_SHORE_WE", "CM_SHORE_NS", "CM_BRIDGE_NS",
     "CM_BOULDER_COBBLE", "CM_BOULDER_SAND", "CM_PALM_GRASS",
+    # 204: Unlit Stone Shrine Lantern (Whispering Woods dark lantern before Rowan lights it!)
+    "CM_LAMP_UNLIT",
 ]
 META_IDX = {name: i for i, name in enumerate(META_NAMES)}
 
@@ -1778,6 +1780,23 @@ def paint_lantern(t, pal_mode=TPAL_ARCH):
     # Peaked iron cap
     t.hline(4, 2, 8, iron_d); t.hline(6, 1, 4, iron_l); t.p(7, 0, cap); t.p(8, 0, cap)
 
+def paint_lantern_unlit(t, pal_mode=TPAL_ARCH):
+    """Unlit dark wrought-iron stone shrine lantern (cold slate glass, zero golden flame)."""
+    if pal_mode == TPAL_ARCH:
+        sh, iron_d, iron_l, glass_d, glass_m, cap = 1, 2, 3, 1, 2, 1
+    else:
+        sh, iron_d, iron_l, glass_d, glass_m, cap = 1, 7, 8, 1, 2, 1
+    # Identical base shadow, pedestal & post to paint_lantern (deduplicates bottom 8x8 tiles!)
+    t.hline(5, 14, 6, sh); t.hline(6, 15, 4, sh)
+    t.rect(6, 12, 4, 3, iron_d); t.hline(6, 12, 3, 4 if pal_mode == TPAL_ARCH else 9)
+    t.vline(7, 6, 7, iron_d); t.vline(8, 6, 7, 4 if pal_mode == TPAL_ARCH else 9)
+    # Dark cold iron housing + unlit smoky-slate glass pane (no amber flame!)
+    t.rect(5, 2, 6, 5, sh)
+    t.rect(6, 3, 4, 3, glass_d)
+    t.p(7, 3, glass_m); t.p(8, 4, glass_m)
+    # Dark iron peaked cap
+    t.hline(4, 2, 8, sh); t.hline(6, 1, 4, iron_l); t.p(7, 0, cap); t.p(8, 0, cap)
+
 def paint_signpost(t, pal_mode=TPAL_ARCH):
     """Carved wooden storybook signpost with bevel grain & oval ground shadow."""
     if pal_mode == TPAL_ARCH:
@@ -2551,6 +2570,7 @@ def build_all_metatiles(frame=0):
 
     # Seamless Ground-Composited Props (ZERO green boxes on Cobblestone / Pier / Autumn / Dirt / Wood!)
     t = make_cobble(0); paint_lantern(t, TPAL_ARCH); M["CM_LAMP_COBBLE"] = t
+    t = make_cobble(0); paint_lantern_unlit(t, TPAL_ARCH); M["CM_LAMP_UNLIT"] = t
     t = make_cobble(0); paint_signpost(t, TPAL_ARCH); M["CM_SIGN_COBBLE"] = t
     t = make_cobble(0); paint_flower_bed(t, TPAL_ARCH); M["CM_FLOWERBED_COBBLE"] = t
     t = make_cobble(0); paint_bush(t, TPAL_ARCH); M["CM_BUSH_COBBLE"] = t
@@ -2816,6 +2836,12 @@ def compile_console_bank(frames_meta, max_tiles, is_genesis=False):
     # grass/stone/water sub-variants (typical Hamming distance <= 6 px out of 64!).
     if len(static_tiles) > max_tiles:
         remap = list(range(len(static_tiles)))
+        # Protect visually critical state-toggle metatiles (e.g. unlit vs lit lanterns) from fuzzy folding
+        protected_tids = set()
+        for pname in ("CM_LAMP_UNLIT", "CM_LAMP_COBBLE"):
+            if pname in META_IDX:
+                for qinfo in meta_quads[META_IDX[pname]]:
+                    protected_tids.add(qinfo[0])
         active = list(range(1 + anim_count, len(static_tiles)))
         # Precompute nearest neighbor (dist, other_idx) for each active tile
         def find_nearest(ti, pool):
@@ -2824,6 +2850,8 @@ def compile_console_bank(frames_meta, max_tiles, is_genesis=False):
             bo = -1
             for oj in pool:
                 if oj == ti:
+                    continue
+                if ti in protected_tids and oj in protected_tids:
                     continue
                 qo = static_tiles[oj]
                 d = 0
@@ -2842,13 +2870,17 @@ def compile_console_bank(frames_meta, max_tiles, is_genesis=False):
         nn = {ti: find_nearest(ti, active) for ti in active}
         max_folded_d = 0
         while len(active) + 1 + anim_count > max_tiles:
-            # Pick active tile with smallest Hamming distance to another surviving active tile
-            best_t = min(active, key=lambda ti: nn[ti][0])
+            # Pick active tile with smallest Hamming distance to another surviving active tile (never drop protected)
+            droppable = [ti for ti in active if ti not in protected_tids]
+            best_t = min(droppable, key=lambda ti: nn[ti][0])
             bd, bo = nn[best_t]
             if bd > max_folded_d:
                 max_folded_d = bd
-            # Fold the higher-index tile into the lower-index tile
-            drop, keep_t = (best_t, bo) if best_t > bo else (bo, best_t)
+            # Fold the droppable tile into its nearest surviving partner
+            if bo in protected_tids:
+                drop, keep_t = best_t, bo
+            else:
+                drop, keep_t = (best_t, bo) if best_t > bo else (bo, best_t)
             remap[drop] = keep_t
             active.remove(drop)
             del nn[drop]
@@ -3084,6 +3116,7 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("    uint8_t is_ns_bridge = (uint8_t)((flags & 4u) != 0u);")
     out.append("    uint8_t gnd;")
     out.append("    /* 1. Seamless Ground-Composited Props, Palms & Cozy Indoor Furniture */")
+    out.append("    if (t == T_LANTERN_UNLIT) return (uint8_t)CM_LAMP_UNLIT;")
     out.append("    if (t == T_PALM_TREE) {")
     out.append("        uint8_t gc = (uint8_t)(hearth_is_grass_like(tn) + hearth_is_grass_like(ts) + hearth_is_grass_like(tw) + hearth_is_grass_like(te));")
     out.append("        uint8_t sc = (uint8_t)(((tn == T_WORLD_BEACH || tn == T_WORLD_SAND) ? 1u : 0u) +")
@@ -3625,6 +3658,7 @@ def emit_web_ts(zone_pals, frames_meta):
         "  const isNsRiver = (flags & 2) !== 0;",
         "  const isNsBridge = (flags & 4) !== 0;",
         "  const v = (((mx * 3 + my * 5) ^ (mx >> 1)) & 3);",
+        "  if (t === 63) return CM_LAMP_UNLIT;",
         "  if (t === 61) {",
         "    const gc = (isGrassLike(tn) ? 1 : 0) + (isGrassLike(ts) ? 1 : 0) + (isGrassLike(tw) ? 1 : 0) + (isGrassLike(te) ? 1 : 0);",
         "    const sc = ((tn === 47 || tn === 55) ? 1 : 0) + ((ts === 47 || ts === 55) ? 1 : 0) + ((tw === 47 || tw === 55) ? 1 : 0) + ((te === 47 || te === 55) ? 1 : 0);",

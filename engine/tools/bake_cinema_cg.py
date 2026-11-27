@@ -61,6 +61,7 @@ PORTRAITS = [
     ("TESSA",        "portrait_tessa_1795319779391.jpg"),
     ("CORIN",        "portrait_corin_1795319780579.jpg"),
     ("SENTINEL",     "portrait_sentinel_1795319781052.jpg"),
+    ("ELDER_WREN",   "portrait_villager_elder_1794938563121.jpg"),
 ]
 
 SDL_W, SDL_H = 340, 156
@@ -648,7 +649,7 @@ def build_rom_headers():
         for idx in range(len(ROM_PLATES)):
             f.write(f"    CINEMA_ROM_MAP_{idx},\n")
         f.write("};\n\n")
-        f.write("/* 10 x 32x32 (16 8x8 tiles = 128 u32s) PAL2 character portraits for Genesis dialogue */\n")
+        f.write(f"/* {len(gen_portraits)} x 32x32 (16 8x8 tiles = 128 u32s) PAL2 character portraits for Genesis dialogue */\n")
         f.write("static const uint32_t GEN_PORTRAIT_TILES[ROM_PORTRAIT_COUNT][128] = {\n")
         for idx, name, tiles16 in gen_portraits:
             f.write(f"    /* {idx}: {name} */\n    {{\n")
@@ -690,7 +691,7 @@ def build_rom_headers():
                 f.write('.dw ' + ','.join(f'${v:04X}' for v in pals_bgr[p][8:]) + '\n')
             f.write('.ends\n\n')
 
-        f.write('; --- 10 x 32x32 PAL2 Character Dialogue Portraits (160 4bpp tiles = 5120 bytes) ---\n')
+        f.write(f'; --- {len(snes_portraits)} x 32x32 PAL2 Character Dialogue Portraits ({len(snes_portraits) * 16} 4bpp tiles = {len(snes_portraits) * 512} bytes) ---\n')
         f.write('.section ".rodata_portraits" superfree\n\n')
         f.write('snes_portrait_tiles:\n')
         for idx, name, tiles16 in snes_portraits:

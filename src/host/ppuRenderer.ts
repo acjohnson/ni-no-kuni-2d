@@ -308,8 +308,21 @@ export class SoftwarePpuRenderer {
     this.renderParticles(ctx, packet, false);
     this.renderLivingAtmosphere(ctx, packet, map, startCol, endCol, startRow, endRow, mapW);
 
-    // 5.5. Sunken Sewers Atmospheric Lantern Lighting Mask
-    if (packet.zoneIsDark) {
+    // 5.5. Sunken Sewers & Smoothly-Fading Mountain Night Lantern Lighting Mask
+    let darkAlpha = 0;
+    if (packet.hasMountainVista) {
+      const tp = packet.todPhase & 1023;
+      if (tp >= 768 && tp <= 896) {
+        darkAlpha = 0.52;
+      } else if (tp > 576 && tp < 768) {
+        darkAlpha = 0.52 * ((tp - 576) / 192);
+      } else if (tp > 896) {
+        darkAlpha = 0.52 * ((1024 - tp) / 128);
+      }
+    } else if (packet.zoneIsDark) {
+      darkAlpha = 0.76;
+    }
+    if (darkAlpha > 0.005) {
       if (this.darkCanvas.width !== width || this.darkCanvas.height !== height) {
         this.darkCanvas.width = width;
         this.darkCanvas.height = height;
@@ -318,8 +331,8 @@ export class SoftwarePpuRenderer {
       dctx.globalCompositeOperation = 'source-over';
       dctx.clearRect(0, 0, width, height);
       dctx.fillStyle = packet.hasMountainVista
-        ? 'rgba(10, 16, 38, 0.52)'
-        : 'rgba(7, 11, 18, 0.76)';
+        ? `rgba(10, 16, 38, ${darkAlpha.toFixed(3)})`
+        : `rgba(7, 11, 18, ${darkAlpha.toFixed(3)})`;
       dctx.fillRect(0, 0, width, height);
 
       const punchLight = (lx: number, ly: number, r: number) => {
@@ -515,22 +528,22 @@ export class SoftwarePpuRenderer {
   private renderMountainVista(ctx: CanvasRenderingContext2D, packet: PpuFramePacket): void {
     const { width, camX, camY, frameCount, timeOfDay, todPhase } = packet;
     const horizonH = Math.min(packet.height, Math.max(88, 128 - Math.floor(camY * 0.25)));
-    const phase = todPhase & 63;
-    const seg = (phase >> 4) & 3;
+    const phase = todPhase & 1023;
+    const seg = (phase >> 8) & 3;
     const segN = (seg + 1) & 3;
-    const frac = phase & 15;
+    const frac = phase & 255;
 
     const lerpHex = (ha: string, hb: string): string => {
       const a = parseInt(ha.slice(1), 16);
       const b = parseInt(hb.slice(1), 16);
-      const inv = 16 - frac;
-      const r = (((a >> 16) & 255) * inv + ((b >> 16) & 255) * frac + 8) >> 4;
-      const g = (((a >> 8) & 255) * inv + ((b >> 8) & 255) * frac + 8) >> 4;
-      const bl = ((a & 255) * inv + (b & 255) * frac + 8) >> 4;
+      const inv = 256 - frac;
+      const r = (((a >> 16) & 255) * inv + ((b >> 16) & 255) * frac + 128) >> 8;
+      const g = (((a >> 8) & 255) * inv + ((b >> 8) & 255) * frac + 128) >> 8;
+      const bl = ((a & 255) * inv + (b & 255) * frac + 128) >> 8;
       return `rgb(${r},${g},${bl})`;
     };
 
-    // 1. Smooth 64-Step Time-of-Day Sky Gradient Bands
+    // 1. Ultra-Smooth 1024-Step Time-of-Day Sky Gradient Bands
     const skyPalettes: readonly (readonly string[])[] = [
       ['#3A5C88', '#6B8EB5', '#B9978A', '#ECC89E'], // 0 = Morning Rose-Gold Dawn
       ['#2E649E', '#528EC4', '#86B8DF', '#D6E2E8'], // 1 = Crisp Autumn Afternoon
@@ -544,7 +557,7 @@ export class SoftwarePpuRenderer {
     }
 
     // 2. Celestial Body / Drifting Autumn Clouds
-    if (timeOfDay === 3 || phase >= 42) {
+    if (timeOfDay === 3 || phase >= 672) {
       // Twinkling alpine stars + harvest crescent moon
       ctx.fillStyle = '#E8F0FF';
       for (let i = 0; i < 20; i++) {

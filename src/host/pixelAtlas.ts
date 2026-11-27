@@ -74,13 +74,13 @@ function hexToRgbaTuple(hex: string): [number, number, number, number] {
 function lerpRgbaTuple(
   a: [number, number, number, number],
   b: [number, number, number, number],
-  frac16: number
+  frac256: number
 ): [number, number, number, number] {
-  const inv = 16 - frac16;
+  const inv = 256 - frac256;
   return [
-    (a[0] * inv + b[0] * frac16 + 8) >> 4,
-    (a[1] * inv + b[1] * frac16 + 8) >> 4,
-    (a[2] * inv + b[2] * frac16 + 8) >> 4,
+    (a[0] * inv + b[0] * frac256 + 128) >> 8,
+    (a[1] * inv + b[1] * frac256 + 128) >> 8,
+    (a[2] * inv + b[2] * frac256 + 128) >> 8,
     a[3],
   ];
 }
@@ -151,7 +151,7 @@ export class PixelAtlas {
   public setTerrainPalette(palId: number, todPhase = 0, hasMountainVista = false): void {
     const isTodBlend =
       hasMountainVista && (palId === 6 || palId === 1 || palId === 7 || palId === 8);
-    const effPhase = isTodBlend ? (todPhase & 63) : 0;
+    const effPhase = isTodBlend ? (todPhase & 1023) : 0;
     if (
       palId === this.currentTerrainPalId &&
       effPhase === this.currentTodPhase &&
@@ -240,8 +240,8 @@ export class PixelAtlas {
         : 0;
     let rgbaPals: [number, number, number, number][][];
     if (this.currentMountainVista) {
-      const seg = (this.currentTodPhase >> 4) & 3;
-      const frac = this.currentTodPhase & 15;
+      const seg = (this.currentTodPhase >> 8) & 3;
+      const frac = this.currentTodPhase & 255;
       const pA = CHRONO_ZONE_PALS[TOD_PAL_KEYS[seg]];
       const pB = CHRONO_ZONE_PALS[TOD_PAL_KEYS[(seg + 1) & 3]];
       rgbaPals = pA.map((subA, sp) =>

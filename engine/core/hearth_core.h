@@ -42,8 +42,9 @@ typedef struct {
     uint8_t      terrain_pal_id;
     uint8_t      bgm_id;
     uint8_t      time_of_day;     /* TOD_MORNING..TOD_NIGHT */
-    uint8_t      tod_phase;       /* 0..63 continuous time-of-day step (64 smooth palettes!) */
-    uint8_t      day_subtick;     /* 0..224 frame counter per tod_phase step (~3.75s/step = 4m/day) */
+    uint16_t     tod_phase;       /* 0..1023 ultra-smooth time-of-day step (256 steps per quarter!) */
+    uint8_t      day_subtick;     /* 0..55 frame counter per tod_phase step (~0.93s/step = ~16m/day) */
+    bool         tod_locked;      /* True during story-locked scenes (e.g. Ch1 night Mido chase) */
     bool         zone_is_dark;
     bool         has_mountain_vista;
     bool         is_world_map;

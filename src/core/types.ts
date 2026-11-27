@@ -207,6 +207,7 @@ export const T_WORLD_CORAL = 59;
 export const T_WORLD_TECH = 60;
 export const T_PALM_TREE = 61;
 export const T_DOCK_PIER = 62;
+export const T_LANTERN_UNLIT = 63;
 
 export const O_NONE = 0;
 export const O_CANOPY_TL = 1;
