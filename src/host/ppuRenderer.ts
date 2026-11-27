@@ -1002,6 +1002,7 @@ export class SoftwarePpuRenderer {
       const ly = lm.ty * TILE_SIZE + 8;
       const dx = Math.abs(wrapDelta(heroWorldX - lx, globePxW));
       const dy = Math.abs(wrapDelta(heroWorldY - ly, globePxH));
+      if (packet.interactPrompt.active && dx * dx + dy * dy < 40 * 40) continue;
       if (dx + dy > 118) continue;
       const label = lm.name.toUpperCase();
       const tw = Math.ceil(ctx.measureText(label).width) + 10;

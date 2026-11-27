@@ -1488,7 +1488,8 @@ static void resolve_metatile_attrs(s16 mx, s16 my, u8 use_parallax,
         if (bg1 == (u8)T_WORLD_OCEAN || bg1 == (u8)T_WORLD_SHALLOW ||
             bg1 == (u8)T_WORLD_CORAL || bg1 == (u8)T_WORLD_BEACH ||
             bg1 == (u8)T_WORLD_SAND || bg1 == (u8)T_WATER ||
-            bg1 == (u8)T_FORD || bg1 == (u8)T_PALM_TREE) {
+            bg1 == (u8)T_FORD || bg1 == (u8)T_PALM_TREE ||
+            bg1 == (u8)T_DOCK_PIER) {
             u16 wx_w = (u16)((wx - 1u) & 255u);
             u16 wx_e = (u16)((wx + 1u) & 255u);
             u16 wy_n = (wy == 0u) ? (u16)(HEARTH_GLOBE_H - 1u) : (u16)(wy - 1u);

@@ -79,6 +79,8 @@ PROP_TILES = {
     T_LANTERN_POST, T_SIGNPOST, T_FLOWER_BED, T_BUSH, T_FENCE,
     T_BOULDER, T_TREE_TRUNK, T_MAPLE_TRUNK, T_PINE_TRUNK, T_PALM_TREE,
 }
+WORLD_ICON_TILES = {T_WORLD_CASTLE, T_WORLD_TOWN, T_WORLD_RUINS}
+BIOME_FEATURE_TILES = {T_WORLD_HILL, T_WORLD_PEAK, T_FLOWERS, T_SHRINE_PILLAR}
 WALKABLE_GROUND = {
     T_GRASS, T_GRASS_ALT, T_FLOWERS, T_TALL_GRASS, T_AUTUMN_GRASS, T_DIRT,
     T_COBBLE, T_ROCKY_PATH, T_SHRINE_FLOOR, T_SHRINE_RUNE, T_WOOD_FLOOR,
@@ -301,9 +303,9 @@ def measure_water_flow_vectors(meta_names, meta_tiles):
 # Helper: Is shore land (mirrors hearth_is_shore_land in hearth_terrain_rom.h)
 # ============================================================================
 def is_shore_land(t, is_world):
-    if t in WATER_TILES or t == T_WORLD_CORAL:
+    if t in WATER_TILES or t == T_WORLD_CORAL or t == T_DOCK_PIER:
         return False
-    if not is_world and t in (T_BRIDGE, T_BRIDGE_RAIL_N, T_BRIDGE_RAIL_S, T_DOCK_PIER):
+    if not is_world and t in (T_BRIDGE, T_BRIDGE_RAIL_N, T_BRIDGE_RAIL_S):
         return False
     return True
 
@@ -352,6 +354,10 @@ def tile_border_rgb_diff(tA, tB, zp, direction):
 PROP_CORNER_COORDS = (
     (0, 0), (1, 0), (14, 0), (15, 0),
     (0, 15), (1, 15), (14, 15), (15, 15),
+)
+PEAK_TOP_CORNER_COORDS = (
+    (0, 0), (1, 0), (2, 0), (13, 0), (14, 0), (15, 0),
+    (0, 1), (15, 1),
 )
 
 
@@ -698,6 +704,25 @@ def audit_local_zone(zone, cells, all_zones_by_id, inbound_spawns, meta_names, m
                     add_issue("WARNING", "AUTOTILE", "PROP_GROUND_MISMATCH", x, y,
                               f"Palm tree on lush grass resolved to sandy {mname} instead of CM_PALM_GRASS")
 
+            # Pass 3e: Miniature overworld icons should never be stamped into human-scale local zones
+            if bg1 in WORLD_ICON_TILES:
+                add_issue("ERROR", "AUTOTILE", "WORLD_ICON_IN_LOCAL_ZONE", x, y,
+                          f"Miniature overworld icon {T_NAMES[bg1]} placed inside local zone {zname}")
+
+            # Pass 3f: Pier south edge must open onto water, not a shore/coast rim
+            if bg1 == T_DOCK_PIER and mname == "CM_PIER_WATER_EDGE" and y + 1 < h:
+                s_bg1, _, _, s_meta = cells[(y + 1) * w + x]
+                if s_bg1 in AQUATIC_TILES and "N" in expected_shore_edges_from_meta(meta_names[s_meta]):
+                    add_issue("ERROR", "AUTOTILE", "PIER_BLOCKED_BY_COAST", x, y + 1,
+                              f"Water south of T_DOCK_PIER draws north shore ({meta_names[s_meta]}) blocking pier")
+
+            # Pass 3g: Grass-banked shore inside purely cobblestone plaza (excluding dark sewers)
+            if bg1 in WATER_TILES and mname.startswith("CM_SHORE_") and pal_id != 3:
+                land_nbs = [nt for nt in (tn, ts, tw, te) if is_shore_land(nt, False)]
+                if land_nbs and all(nt in (T_COBBLE, T_ROCKY_PATH, T_SHRINE_FLOOR) for nt in land_nbs):
+                    add_issue("WARNING", "SEAM", "WATER_BANK_GROUND_MISMATCH", x, y,
+                              f"Grass-banked shore {mname} sits directly inside stone pavement with no grass border")
+
             # Pass 5: BG2 Overhead Canopy / Eave Anchor Audit
             if bg2 != O_NONE:
                 if bg2 == O_ROOF_EAVE:
@@ -740,6 +765,15 @@ def audit_local_zone(zone, cells, all_zones_by_id, inbound_spawns, meta_names, m
             mean_rgb_cache[key] = res
         return res
 
+    self_seam_cache = {}
+    def get_self_seam(mid, direction):
+        k = (mid, direction)
+        v = self_seam_cache.get(k)
+        if v is None:
+            v = tile_border_rgb_diff(t0_arr[mid], t0_arr[mid], zp, direction)
+            self_seam_cache[k] = v
+        return v
+
     for y in range(h):
         for x in range(w):
             bg1, _, _, meta = cells[y * w + x]
@@ -760,9 +794,10 @@ def audit_local_zone(zone, cells, all_zones_by_id, inbound_spawns, meta_names, m
                                               f"Unblended E/W aquatic feature seam ({avg_diff:.1f}) between {mname} and {meta_names[rmeta]}")
                         elif bg1 == rbg1:
                             avg_diff = tile_border_rgb_diff(tA, t0_arr[rmeta], zp, "E")
-                            if avg_diff > 48.0:
-                                add_issue("WARNING", "SEAM", "WATER_EDGE_SEAM", x, y,
-                                          f"Harsh E/W pixel seam ({avg_diff:.1f}) between {mname} and {meta_names[rmeta]}")
+                            excess = avg_diff - max(get_self_seam(meta, "E"), get_self_seam(rmeta, "E"))
+                            if avg_diff > 24.0 and excess > 18.0:
+                                add_issue("ERROR", "SEAM", "WATER_EDGE_SEAM", x, y,
+                                          f"Harsh E/W pixel seam ({avg_diff:.1f}, +{excess:.1f} over self) between {mname} and {meta_names[rmeta]}")
                 # Check South neighbor
                 if y + 1 < h and cells[(y + 1) * w + x][0] in AQUATIC_TILES:
                     dbg1, _, _, dmeta = cells[(y + 1) * w + x]
@@ -776,10 +811,11 @@ def audit_local_zone(zone, cells, all_zones_by_id, inbound_spawns, meta_names, m
                                               f"Unblended N/S aquatic feature seam ({avg_diff:.1f}) between {mname} and {meta_names[dmeta]}")
                         elif bg1 == dbg1:
                             avg_diff = tile_border_rgb_diff(tA, t0_arr[dmeta], zp, "S")
-                            if avg_diff > 48.0:
-                                add_issue("WARNING", "SEAM", "WATER_EDGE_SEAM", x, y,
-                                          f"Harsh N/S pixel seam ({avg_diff:.1f}) between {mname} and {meta_names[dmeta]}")
-            elif bg1 in PROP_TILES:
+                            excess = avg_diff - max(get_self_seam(meta, "S"), get_self_seam(dmeta, "S"))
+                            if avg_diff > 24.0 and excess > 18.0:
+                                add_issue("ERROR", "SEAM", "WATER_EDGE_SEAM", x, y,
+                                          f"Harsh N/S pixel seam ({avg_diff:.1f}, +{excess:.1f} over self) between {mname} and {meta_names[dmeta]}")
+            elif bg1 in PROP_TILES or bg1 == T_SHRINE_PILLAR:
                 fam_nbs = {}
                 for nx, ny in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
                     if 0 <= nx < w and 0 <= ny < h:
@@ -795,9 +831,36 @@ def audit_local_zone(zone, cells, all_zones_by_id, inbound_spawns, meta_names, m
                         prop_rgb = get_mean_rgb(meta, True)
                         gnd_rgb = get_mean_rgb(top_list[0][3], False)
                         cdiff = (abs(prop_rgb[0] - gnd_rgb[0]) + abs(prop_rgb[1] - gnd_rgb[1]) + abs(prop_rgb[2] - gnd_rgb[2])) / 3.0
-                        if cdiff > 45.0:
+                        if bg1 == T_SHRINE_PILLAR and top_fam == "GRASS" and cdiff > 35.0:
+                            add_issue("ERROR", "SEAM", "TERRAIN_BIOME_SEAM", x, y,
+                                      f"Stone pillar {mname} sits on GRASS with harsh border diff {cdiff:.1f}")
+                        elif bg1 in PROP_TILES and cdiff > 38.0 and not (bg1 in (T_LANTERN_POST, T_SIGNPOST) and top_fam == "SAND"):
                             add_issue("WARNING", "SEAM", "PROP_BORDER_SEAM", x, y,
                                       f"Prop {mname} outer corner RGB differs from surrounding {top_fam} ({T_NAMES[top_list[0][0]]}) by {cdiff:.1f}")
+
+            # Pass 4b: Cobble-to-Grass feathered edge color match
+            if mname.startswith("CM_COBBLE_EDGE_") or mname.startswith("CM_COBBLE_CORNER_"):
+                tA = t0_arr[meta]
+                if "W" in mname and x > 0 and cells[y * w + (x - 1)][0] in (T_GRASS, T_GRASS_ALT):
+                    avg_diff = tile_border_rgb_diff(t0_arr[cells[y * w + (x - 1)][3]], tA, zp, "E")
+                    if avg_diff > 22.0:
+                        add_issue("WARNING", "SEAM", "ROAD_EDGE_SEAM", x, y,
+                                  f"Cobble grass-edge {mname} clashes with west grass (border diff {avg_diff:.1f})")
+                if "E" in mname and x + 1 < w and cells[y * w + (x + 1)][0] in (T_GRASS, T_GRASS_ALT):
+                    avg_diff = tile_border_rgb_diff(tA, t0_arr[cells[y * w + (x + 1)][3]], zp, "E")
+                    if avg_diff > 22.0:
+                        add_issue("WARNING", "SEAM", "ROAD_EDGE_SEAM", x, y,
+                                  f"Cobble grass-edge {mname} clashes with east grass (border diff {avg_diff:.1f})")
+                if "N" in mname and y > 0 and cells[(y - 1) * w + x][0] in (T_GRASS, T_GRASS_ALT):
+                    avg_diff = tile_border_rgb_diff(t0_arr[cells[(y - 1) * w + x][3]], tA, zp, "S")
+                    if avg_diff > 22.0:
+                        add_issue("WARNING", "SEAM", "ROAD_EDGE_SEAM", x, y,
+                                  f"Cobble grass-edge {mname} clashes with north grass (border diff {avg_diff:.1f})")
+                if "S" in mname and y + 1 < h and cells[(y + 1) * w + x][0] in (T_GRASS, T_GRASS_ALT):
+                    avg_diff = tile_border_rgb_diff(tA, t0_arr[cells[(y + 1) * w + x][3]], zp, "S")
+                    if avg_diff > 22.0:
+                        add_issue("WARNING", "SEAM", "ROAD_EDGE_SEAM", x, y,
+                                  f"Cobble grass-edge {mname} clashes with south grass (border diff {avg_diff:.1f})")
 
     return issues
 
@@ -909,11 +972,52 @@ def audit_globe(globe_info, cells, meta_names, meta_tiles, pal_rgb, water_flows)
     t0_arr = meta_tiles[0]
     globe_mean_cache = {}
 
-    def get_globe_mean_rgb(pal_id, mid, corners_only=False):
-        key = (pal_id, mid, corners_only)
+    # Pass 4-pre: Verify every Globe region's ocean palette stays cool/aquatic (never lava-red!)
+    for reg_id, rname in enumerate(reg_names):
+        zp_reg = pal_rgb[REGION_TO_ZPAL.get(reg_id, 10)]
+        oc_rgb = tile_mean_rgb(t0_arr[T_WORLD_OCEAN], zp_reg, None)
+        if oc_rgb[0] > oc_rgb[2] + 30.0:
+            add_issue("ERROR", "SEAM", "OCEAN_PALETTE_HUE", 0, 0,
+                      f"Region {rname} ocean palette is red/lava-tinted (mean RGB={oc_rgb[0]:.0f},{oc_rgb[1]:.0f},{oc_rgb[2]:.0f})", reg_id)
+
+    # Pass 3-pre: Detect miniature landmark icon spam (connected clusters of T_WORLD_CASTLE/TOWN/RUINS > 24 tiles!)
+    icon_seen = set()
+    for y in range(h):
+        for x in range(w):
+            bg1 = cells[y * w + x][0]
+            if bg1 in WORLD_ICON_TILES and (x, y) not in icon_seen:
+                comp = []
+                q = collections.deque([(x, y)])
+                icon_seen.add((x, y))
+                while q:
+                    ux, uy = q.popleft()
+                    comp.append((ux, uy))
+                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        np = ((ux + dx) % w, (uy + dy) % h)
+                        if np not in icon_seen and cells[np[1] * w + np[0]][0] == bg1:
+                            icon_seen.add(np)
+                            q.append(np)
+                if len(comp) > 24:
+                    rx, ry = comp[0]
+                    reg0 = cells[ry * w + rx][4]
+                    add_issue("ERROR", "AUTOTILE", "LANDMARK_ICON_SPAM", rx, ry,
+                              f"Oversized cluster of {len(comp)} identical {T_NAMES[bg1]} miniature icons tiled across continent", reg0)
+
+    globe_self_seam_cache = {}
+    def get_globe_self_seam(pal_id, mid, direction):
+        k = (pal_id, mid, direction)
+        v = globe_self_seam_cache.get(k)
+        if v is None:
+            v = tile_border_rgb_diff(t0_arr[mid], t0_arr[mid], pal_rgb[pal_id], direction)
+            globe_self_seam_cache[k] = v
+        return v
+
+    def get_globe_mean_rgb(pal_id, mid, mode=0):
+        key = (pal_id, mid, mode)
         res = globe_mean_cache.get(key)
         if res is None:
-            res = tile_mean_rgb(t0_arr[mid], pal_rgb[pal_id], PROP_CORNER_COORDS if corners_only else None)
+            coords = None if mode == 0 else (PROP_CORNER_COORDS if mode == 1 else PEAK_TOP_CORNER_COORDS)
+            res = tile_mean_rgb(t0_arr[mid], pal_rgb[pal_id], coords)
             globe_mean_cache[key] = res
         return res
 
@@ -935,6 +1039,29 @@ def audit_globe(globe_info, cells, meta_names, meta_tiles, pal_rgb, water_flows)
             elif bg1 in EXPECT_SOLID and col == COL_WALKABLE:
                 add_issue("ERROR", "COLLISION", "SOLID_TILE_WALKABLE", x, y,
                           f"Globe solid tile {T_NAMES.get(bg1, bg1)} marked COL_WALKABLE", reg)
+
+            # Pass 3f: Pier south edge must not be blocked by a sandy coastline rim!
+            if bg1 == T_DOCK_PIER and mname == "CM_PIER_WATER_EDGE":
+                scell = cells[ys * w + x]
+                if scell[0] in AQUATIC_TILES and "N" in expected_shore_edges_from_meta(meta_names[scell[3]]):
+                    add_issue("ERROR", "AUTOTILE", "PIER_BLOCKED_BY_COAST", x, ys,
+                              f"Globe water south of T_DOCK_PIER draws north coast ({meta_names[scell[3]]}) blocking pier", reg)
+
+            # Pass 3g: Incomplete sand-to-grass transition mask (pinched sand OR isolated 1x1 grass dot on beach/sand)
+            if bg1 in (T_WORLD_BEACH, T_WORLD_SAND):
+                gn = cells[yn * w + x][0] in GRASS_LIKE
+                gs = cells[ys * w + x][0] in GRASS_LIKE
+                gw = cells[y * w + xw][0] in GRASS_LIKE
+                ge = cells[y * w + xe][0] in GRASS_LIKE
+                if (gn and gs) or (gw and ge):
+                    add_issue("WARNING", "SEAM", "SAND_GRASS_INCOMPLETE_MASK", x, y,
+                              f"Sand/beach tile {mname} pinched between opposite grass tiles with no dual-edge transition", reg)
+            elif bg1 in (T_GRASS, T_GRASS_ALT):
+                sand_cnt = sum(1 for nb in (cells[yn * w + x], cells[ys * w + x], cells[y * w + xw], cells[y * w + xe])
+                               if nb[0] in (T_WORLD_BEACH, T_WORLD_SAND))
+                if sand_cnt >= 3:
+                    add_issue("WARNING", "SEAM", "SAND_GRASS_INCOMPLETE_MASK", x, y,
+                              f"Isolated 1x1 {T_NAMES[bg1]} polka-dot surrounded by {sand_cnt} beach/sand tiles", reg)
 
             # Pass 3 & 4: Coastline bank completeness, aquatic feature overlap, opposing flow & pixel seams
             if bg1 in AQUATIC_TILES:
@@ -995,9 +1122,10 @@ def audit_globe(globe_info, cells, meta_names, meta_tiles, pal_rgb, water_flows)
                                               f"Unblended E/W aquatic feature seam ({avg_diff:.1f}) between {mname} and {meta_names[rmeta]}", reg)
                         elif bg1 == rcell[0]:
                             avg_diff = tile_border_rgb_diff(tA, t0_arr[rmeta], zp, "E")
-                            if avg_diff > 48.0:
-                                add_issue("WARNING", "SEAM", "WATER_EDGE_SEAM", x, y,
-                                          f"Harsh E/W globe water seam ({avg_diff:.1f}) between {mname} and {meta_names[rmeta]}", reg)
+                            excess = avg_diff - max(get_globe_self_seam(pal_id, meta, "E"), get_globe_self_seam(pal_id, rmeta, "E"))
+                            if avg_diff > 24.0 and excess > 18.0:
+                                add_issue("ERROR", "SEAM", "WATER_EDGE_SEAM", x, y,
+                                          f"Harsh E/W globe water seam ({avg_diff:.1f}, +{excess:.1f} over self) between {mname} and {meta_names[rmeta]}", reg)
                 dcell = cells[ys * w + x]
                 if dcell[0] in AQUATIC_TILES and dcell[4] == reg:
                     dmeta = dcell[3]
@@ -1011,10 +1139,11 @@ def audit_globe(globe_info, cells, meta_names, meta_tiles, pal_rgb, water_flows)
                                               f"Unblended N/S aquatic feature seam ({avg_diff:.1f}) between {mname} and {meta_names[dmeta]}", reg)
                         elif bg1 == dcell[0]:
                             avg_diff = tile_border_rgb_diff(tA, t0_arr[dmeta], zp, "S")
-                            if avg_diff > 48.0:
-                                add_issue("WARNING", "SEAM", "WATER_EDGE_SEAM", x, y,
-                                          f"Harsh N/S globe water seam ({avg_diff:.1f}) between {mname} and {meta_names[dmeta]}", reg)
-            elif bg1 in PROP_TILES:
+                            excess = avg_diff - max(get_globe_self_seam(pal_id, meta, "S"), get_globe_self_seam(pal_id, dmeta, "S"))
+                            if avg_diff > 24.0 and excess > 18.0:
+                                add_issue("ERROR", "SEAM", "WATER_EDGE_SEAM", x, y,
+                                          f"Harsh N/S globe water seam ({avg_diff:.1f}, +{excess:.1f} over self) between {mname} and {meta_names[dmeta]}", reg)
+            elif bg1 in PROP_TILES or bg1 in BIOME_FEATURE_TILES:
                 fam_nbs = {}
                 for nb in (cells[yn * w + x], cells[ys * w + x], cells[y * w + xw], cells[y * w + xe]):
                     if nb[4] == reg:
@@ -1025,13 +1154,30 @@ def audit_globe(globe_info, cells, meta_names, meta_tiles, pal_rgb, water_flows)
                     ranked = sorted(fam_nbs.items(), key=lambda kv: len(kv[1]), reverse=True)
                     top_fam, top_list = ranked[0]
                     second_cnt = len(ranked[1][1]) if len(ranked) > 1 else 0
-                    if len(top_list) >= 2 and len(top_list) > second_cnt:
-                        prop_rgb = get_globe_mean_rgb(pal_id, meta, True)
-                        gnd_rgb = get_globe_mean_rgb(pal_id, top_list[0][3], False)
-                        cdiff = (abs(prop_rgb[0] - gnd_rgb[0]) + abs(prop_rgb[1] - gnd_rgb[1]) + abs(prop_rgb[2] - gnd_rgb[2])) / 3.0
-                        if cdiff > 45.0:
-                            add_issue("WARNING", "SEAM", "PROP_BORDER_SEAM", x, y,
-                                      f"Globe prop {mname} outer corner RGB differs from surrounding {top_fam} ({T_NAMES[top_list[0][0]]}) by {cdiff:.1f}", reg)
+                    min_nbs = 1 if bg1 == T_WORLD_PEAK else 2
+                    if len(top_list) >= min_nbs and (bg1 == T_WORLD_PEAK or len(top_list) > second_cnt):
+                        if bg1 == T_WORLD_PEAK and top_fam == "SNOW":
+                            feat_rgb = get_globe_mean_rgb(pal_id, meta, 2)
+                            gnd_rgb = get_globe_mean_rgb(pal_id, top_list[0][3], 0)
+                            cdiff = (abs(feat_rgb[0] - gnd_rgb[0]) + abs(feat_rgb[1] - gnd_rgb[1]) + abs(feat_rgb[2] - gnd_rgb[2])) / 3.0
+                            if cdiff > 52.0:
+                                add_issue("ERROR", "SEAM", "TERRAIN_BIOME_SEAM", x, y,
+                                          f"Snow-biome {mname} top backdrop RGB differs from SNOW by {cdiff:.1f}", reg)
+                        elif bg1 in (T_WORLD_HILL, T_FLOWERS) and top_fam in ("SNOW", "JUNGLE"):
+                            feat_rgb = get_globe_mean_rgb(pal_id, meta, 1)
+                            gnd_rgb = get_globe_mean_rgb(pal_id, top_list[0][3], 0)
+                            cdiff = (abs(feat_rgb[0] - gnd_rgb[0]) + abs(feat_rgb[1] - gnd_rgb[1]) + abs(feat_rgb[2] - gnd_rgb[2])) / 3.0
+                            lim = 20.0 if (bg1 == T_FLOWERS and top_fam == "JUNGLE") else 32.0
+                            if cdiff > lim:
+                                add_issue("ERROR", "SEAM", "TERRAIN_BIOME_SEAM", x, y,
+                                          f"Globe {mname} clashes with surrounding {top_fam} (corner diff {cdiff:.1f})", reg)
+                        elif bg1 in PROP_TILES and len(top_list) >= 2 and len(top_list) > second_cnt:
+                            prop_rgb = get_globe_mean_rgb(pal_id, meta, 1)
+                            gnd_rgb = get_globe_mean_rgb(pal_id, top_list[0][3], 0)
+                            cdiff = (abs(prop_rgb[0] - gnd_rgb[0]) + abs(prop_rgb[1] - gnd_rgb[1]) + abs(prop_rgb[2] - gnd_rgb[2])) / 3.0
+                            if cdiff > 45.0:
+                                add_issue("WARNING", "SEAM", "PROP_BORDER_SEAM", x, y,
+                                          f"Globe prop {mname} outer corner RGB differs from surrounding {top_fam} ({T_NAMES[top_list[0][0]]}) by {cdiff:.1f}", reg)
 
             # Pass 5: BG2 Overlay Anchor on Globe
             if bg2 == O_OAK_CROWN:

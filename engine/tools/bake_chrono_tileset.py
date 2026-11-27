@@ -96,7 +96,7 @@ BASE_WATER = [
 BASE_ARCH = [
     0x000000, 0x241B22, 0x4B4E5C, 0x7C808E, 0xB2AEA4, 0xE2DDD0, 0x4E2B1E,
     0x8C5634, 0xC89058, 0xEED8AA, 0x6E2424, 0xB04432, 0xDE7444, 0xF6CA62,
-    0xFFF4BC, 0x56824A,
+    0xFFF4BC, 0x64A652,
 ]
 BASE_ACCENT = [
     0x000000, 0x241620, 0x6E2028, 0xB4362C, 0xE06834, 0xF6B44A, 0x24485E,
@@ -172,7 +172,7 @@ def build_zone_palettes():
         list(BASE_WATER),
         [0x000000, 0x281E1C, 0x5E5450, 0x968A7E, 0xC8BCAC, 0xF0E6D4, 0x583222,
          0x98603A, 0xD29C62, 0xF6DFB0, 0x7E2822, 0xC84E36, 0xEC824C, 0xFAD266,
-         0xFFF6C2, 0x628E50],
+         0xFFF6C2, 0x7AB45E],
         list(BASE_ACCENT),
     ]
 
@@ -268,7 +268,7 @@ def build_zone_palettes():
          0xE2F6FC, 0xFFFFFF],
         [0x000000, 0x221A20, 0x4B505E, 0x828896, 0xB8B6AE, 0xEEEBE0, 0x522E20,
          0x925C38, 0xCE985E, 0xF4DCAC, 0x762624, 0xC04834, 0xEA7846, 0xFAD064,
-         0xFFF5BC, 0x568A4C],
+         0xFFF5BC, 0x62B056],
         [0x000000, 0x241620, 0x7A2434, 0xC6424A, 0xEC7C64, 0xF8C678, 0x1E6254,
          0x34A488, 0x74DEC0, 0xD8FAF0, 0x4A4458, 0x8E88A2, 0xF0CA60, 0xF69638,
          0xFFE478, 0xFFFAD8],
@@ -284,7 +284,7 @@ def build_zone_palettes():
          0xECF6FC, 0xFFFFFF],
         [0x000000, 0x241C20, 0x54545E, 0x8E8C8A, 0xC4BEB2, 0xF0EBE0, 0x543022,
          0x965E3A, 0xD0985E, 0xF4DDB0, 0x782824, 0xC24834, 0xEC7C48, 0xFAD266,
-         0xFFF6C2, 0x5E8C4E],
+         0xFFF6C2, 0x70B45A],
         [0x000000, 0x26181E, 0x7E2428, 0xC84238, 0xEE7848, 0xFAD062, 0x24587C,
          0x3E8EC0, 0x7CCAE8, 0xE0F6FC, 0x544854, 0x9C8E98, 0xF2CE62, 0xF8983C,
          0xFFE680, 0xFFFADC],
@@ -300,7 +300,7 @@ def build_zone_palettes():
          0xE6F8FA, 0xFFFFFF],
         [0x000000, 0x2A1A14, 0x6E4A34, 0xAA7E54, 0xDAB27C, 0xF6E0B4, 0x5A301A,
          0x9A5E30, 0xD29450, 0xF4CE8A, 0x7A2622, 0xC44832, 0xEC7C44, 0xFAD25E,
-         0xFFF5B8, 0x568846],
+         0xFFF5B8, 0x84B658],
         [0x000000, 0x2A1614, 0x822424, 0xCC4432, 0xF27E44, 0xFCD668, 0x1A6264,
          0x32A09A, 0x70DAD0, 0xD8FAF4, 0x6A4A36, 0xB88E64, 0xF6CE58, 0xFA9A38,
          0xFFE67C, 0xFFFAD8],
@@ -316,19 +316,19 @@ def build_zone_palettes():
          0xE4FAF8, 0xFFFFFF],
         [0x000000, 0x241E22, 0x545A66, 0x8C949E, 0xC6C4BC, 0xF2EEE4, 0x563222,
          0x9A623C, 0xD69C64, 0xF6DFB0, 0x862A44, 0xD25270, 0xF688A0, 0xFAD466,
-         0xFFF6C2, 0x46985C],
+         0xFFF6C2, 0x5AC264],
         [0x000000, 0x261624, 0x88244A, 0xD44874, 0xF67CA0, 0xFCD0DC, 0x147080,
          0x2EB8C4, 0x78EAE8, 0xDCFCFA, 0x56485A, 0x9E8EA2, 0xFAD45E, 0xFA9A46,
          0xFFE888, 0xFFFCE0],
     ]
 
-    # 14: ZPAL_FROST — Frostmere North (Crisp Snow White, Ice Cyan & Festive Evergreen)
+    # 14: ZPAL_FROST — Frostmere North (Crisp Snow White, Ice Cyan & Glacial Peak Backdrops)
     z[14] = [
         [0x000000, 0x142234, 0x1E4A44, 0x327462, 0x66A492, 0xB8DCE6, 0xEFF8FE,
          0x3E3444, 0x6C5C6E, 0xA498AA, 0xDCE2EE, 0xFAFDFF, 0xF8D466, 0xD8444E,
          0x78D4FA, 0x26564E],
         [0x000000, 0x1A4E8E, 0x3684C4, 0x80CCF4, 0x102E5C, 0x4A5E7C, 0x8CA2BE,
-         0xF4FAFE, 0x263854, 0x1C4646, 0x367268, 0xDCE8F4, 0x58BEE4, 0xB4E4F8,
+         0xF4FAFE, 0x263854, 0xB8DCE6, 0xE6F4FC, 0xDCE8F4, 0x58BEE4, 0xB4E4F8,
          0xECF8FE, 0xFFFFFF],
         [0x000000, 0x1E1C2A, 0x4C5872, 0x8290AA, 0xBCC6D8, 0xEEF2F8, 0x482E28,
          0x825444, 0xBC8A72, 0xE6CCB8, 0x6E222E, 0xB83A44, 0xE26A6C, 0xFAD268,
@@ -348,20 +348,20 @@ def build_zone_palettes():
          0xD4F6EE, 0xF6FFFC],
         [0x000000, 0x1C1818, 0x3E4646, 0x6C7872, 0x9EA89C, 0xD4DCD0, 0x422416,
          0x7A482A, 0xB47848, 0xE0B47E, 0x6A2622, 0xB04632, 0xDE7442, 0xF6C858,
-         0xFFF2B6, 0x3E7C44],
+         0xFFF2B6, 0x429A46],
         [0x000000, 0x1A141E, 0x7A1E3A, 0xC83C5C, 0xF27284, 0xFCC49A, 0x165E4C,
          0x2E9E7A, 0x6ADCA8, 0xD0FAE4, 0x42404E, 0x80828E, 0xF4CC52, 0xF89438,
          0xFFE278, 0xFFF8D8],
     ]
 
-    # 16: ZPAL_VOLCANO — Cinderpeak Caldera (Basalt Charcoal, Crimson Magma & Ash)
+    # 16: ZPAL_VOLCANO — Cinderpeak Caldera (Volcanic Slate-Blue Sea, Basalt Charcoal & Crimson Magma in TPAL_ACCENT!)
     z[16] = [
         [0x000000, 0x181014, 0x302226, 0x4E383A, 0x745452, 0xA27A70, 0xD4AE9C,
          0x381E1C, 0x62342C, 0x985440, 0xCE8464, 0xEAD2BC, 0xFAAC3C, 0xE84428,
          0x9A7288, 0x3E282C],
-        [0x000000, 0x58161A, 0xA8281E, 0xF06828, 0x300C12, 0x342A32, 0x5E505A,
-         0x9A8C94, 0x20161E, 0x362228, 0x5E3E42, 0x7C626C, 0xDC4822, 0xF89834,
-         0xFFE068, 0xFFF8C8],
+        [0x000000, 0x163858, 0x265A80, 0x5292B4, 0x0C223A, 0x342A32, 0x5E505A,
+         0x9A8C94, 0x20161E, 0x362228, 0x5E3E42, 0x7C626C, 0x367C92, 0x86BED0,
+         0xD8ECF2, 0xF8FCFF],
         [0x000000, 0x1A1216, 0x362E36, 0x5E525C, 0x8E8088, 0xC2B4B8, 0x40201A,
          0x723A2A, 0xAA6244, 0xDC986E, 0x6A1A1A, 0xB82E22, 0xEC622C, 0xFAAC38,
          0xFFE878, 0x6E4E48],
@@ -891,7 +891,7 @@ def make_cobble(variant=0):
     t.stamp(pats[variant & 3])
     return t
 
-def make_water(frame=0, deep=False, shallow=False, rapids=False, vertical=False):
+def make_water(frame=0, deep=False, shallow=False, rapids=False, vertical=False, ocean_v1=False):
     """
     Rich, layered 16-bit Chrono Trigger / Trials of Mana animated water:
       - Deep Ocean: rolling arched swells cycling abyssal cobalt (4) -> sapphire (1) ->
@@ -950,7 +950,7 @@ def make_water(frame=0, deep=False, shallow=False, rapids=False, vertical=False)
                 if (y in (3, 11) and wx in (4, 5, 6)) or (y in (7, 15) and wx in (11, 12)):
                     t.p(x, y, 15 if (wx == 5 or wx == 11) else 14)
             elif deep:
-                # Sweeping seamless 16x16 ocean swells (curved wave arcs, zero repeating flat bars!)
+                # Sweeping seamless 16x16 ocean swells (curved wave arcs, 0.0-diff tile borders!)
                 px = (x + shift) & 15
                 swell = math.sin(px * (math.pi / 8.0) + math.sin(y * (math.pi / 4.0)) * 0.7)
                 band  = math.sin((y + 0.5) * (math.pi / 4.0) + math.cos(px * (math.pi / 8.0)) * 0.85)
@@ -963,12 +963,20 @@ def make_water(frame=0, deep=False, shallow=False, rapids=False, vertical=False)
                     t.p(x, y, 2)          # rolling mid-ocean swell
                 else:
                     t.p(x, y, 1)          # rich sapphire body
-                # Delicate arched sunlight glints along wave peaks (staggered organically)
-                wx = (px + (y // 8) * 7) & 15
-                if (y == 2 and wx in (3, 4)) or (y == 10 and wx in (11, 12)):
-                    t.p(x, y, 14 if (wx == (3 if y == 2 else 11)) else 3)
-                elif (y == 3 and wx == 2) or (y == 11 and wx == 10):
-                    t.p(x, y, 2)
+                # Delicate arched sunlight glints along wave peaks (ocean_v1 varies interior glints only!)
+                if ocean_v1:
+                    if 3 <= x <= 12:
+                        wx = (px + (y // 8) * 5 + 3) & 15
+                        if (y == 3 and wx in (5, 6)) or (y == 11 and wx in (9, 10)):
+                            t.p(x, y, 14 if (wx == (5 if y == 3 else 9)) else 3)
+                        elif (y == 6 and wx == 7) or (y == 14 and wx == 11):
+                            t.p(x, y, 3)
+                else:
+                    wx = (px + (y // 8) * 7) & 15
+                    if (y == 2 and wx in (3, 4)) or (y == 10 and wx in (11, 12)):
+                        t.p(x, y, 14 if (wx == (3 if y == 2 else 11)) else 3)
+                    elif (y == 3 and wx == 2) or (y == 11 and wx == 10):
+                        t.p(x, y, 2)
             elif shallow:
                 # Translucent tropical turquoise shallows with smooth horizontal wavelets (ZERO polka-dot grid!)
                 px = (x + shift) & 15
@@ -1006,11 +1014,7 @@ def make_shore(edge, frame=0, vertical=False):
     3D top-down RPG rounded grassy/earthen shorelines curving smoothly into shimmering water!
     NEVER flips the underlying water layer horizontally — every bank (W, E, NE, SE, INE, ISE)
     animates in the EXACT same unified flow direction as adjacent water tiles!
-    Supports ALL 14 organic shapes:
-      - Cardinal edges: 'N', 'S', 'W', 'E' (N has 3D overhanging grass lip + earthen drop-off + cast shadow!)
-      - Outer coves:    'NW', 'NE', 'SW', 'SE' (pixel-aligned to straight N/S/W/E curves!)
-      - Inner corners:  'INW', 'INE', 'ISW', 'ISE' (pixel-aligned rounded peninsula tips!)
-      - Narrow streams: 'WE' (vertical N-S stream with both banks), 'NS' (horizontal W-E canal with both banks)
+    Boundary-exact curves guarantee pixel-perfect joins across N/S/W/E/NW/NE/SW/SE/INW/INE/ISW/ISE!
     """
     t = make_water(frame, shallow=False, vertical=(vertical or edge == 'WE'))
     foam = 0.65 if (frame in (1, 2)) else 0.0
@@ -1021,109 +1025,66 @@ def make_shore(edge, frame=0, vertical=False):
         'INE': 'INW', 'ISW': 'INW', 'ISE': 'INW',
     }.get(edge, edge)
 
+    def paint_shore_d(x, y, d, north_drop=False, south_edge=False):
+        if d < -2.0:
+            t.p(x, y, 10 if ((x * 3 + y * 5) & 3) else 9)
+        elif d < -0.9:
+            t.p(x, y, 10 if (south_edge and ((x + y) & 1)) else 9)
+        elif d < 0.0:
+            t.p(x, y, 5 if (north_drop and ((x + y) & 1)) else 5)
+        elif north_drop and d < 0.9:
+            t.p(x, y, 4)
+        elif d < (1.9 if north_drop else 1.2) + foam:
+            t.p(x, y, 15 if ((x + y + frame) & 1) else 14)
+        elif d < (3.4 if north_drop else 2.8) + foam * 0.5:
+            t.p(x, y, 12 if ((x + y) & 1) else 13)
+
     if base_e == 'N':
-        curve = [4.6, 5.2, 5.7, 6.0, 5.8, 5.3, 4.7, 4.3, 4.4, 4.9, 5.6, 6.0, 5.8, 5.2, 4.6, 4.4]
+        curve = [4.5, 5.1, 5.6, 5.9, 5.7, 5.2, 4.7, 4.4, 4.5, 5.0, 5.6, 5.9, 5.6, 5.1, 4.7, 4.5]
         for x in range(16):
             h = curve[x]
             for y in range(16):
-                d = y - h
-                if d < -2.2:
-                    t.p(x, y, 10 if ((x * 3 + y * 5) & 3) else 9)
-                elif d < -1.1:
-                    t.p(x, y, 9)
-                elif d < 0.0:
-                    t.p(x, y, 5 if ((x + y) & 1) else 8)
-                elif d < 1.0:
-                    t.p(x, y, 4)
-                elif d < 2.1 + foam:
-                    t.p(x, y, 15 if ((x + frame) & 1) else 14)
-                elif d < 3.6 + foam * 0.5:
-                    t.p(x, y, 12 if ((x + y) & 1) else 13)
+                paint_shore_d(x, y, y - h, north_drop=True)
     elif base_e == 'S':
-        curve = [4.2, 4.8, 5.3, 5.5, 5.2, 4.7, 4.2, 4.0, 4.3, 4.9, 5.4, 5.5, 5.1, 4.6, 4.1, 4.0]
+        curve = [4.5, 5.0, 5.5, 5.7, 5.4, 4.9, 4.5, 4.3, 4.5, 5.0, 5.5, 5.6, 5.3, 4.9, 4.6, 4.5]
         for x in range(16):
-            h = 15.5 - curve[x]
+            h = 15.0 - curve[x]
             for y in range(16):
-                d = h - y
-                if d < -1.2:
-                    t.p(x, y, 10 if ((x * 3 + y * 5) & 3) else 9)
-                elif d < 0.0:
-                    t.p(x, y, 10 if (x & 1) else 5)
-                elif d < 1.2 + foam:
-                    t.p(x, y, 15 if ((x + frame) & 1) else 14)
-                elif d < 2.9 + foam * 0.5:
-                    t.p(x, y, 12 if ((x + y) & 1) else 13)
+                paint_shore_d(x, y, h - y, north_drop=False, south_edge=True)
     elif base_e == 'W':
-        curve = [4.4, 5.0, 5.5, 5.8, 5.6, 5.1, 4.5, 4.2, 4.5, 5.1, 5.6, 5.8, 5.5, 4.9, 4.4, 4.2]
+        curve = [4.5, 5.1, 5.6, 5.9, 5.7, 5.2, 4.7, 4.4, 4.5, 5.0, 5.6, 5.9, 5.6, 5.1, 4.7, 4.5]
         for y in range(16):
             w = curve[y]
             for x in range(16):
                 sx = (15 - x) if flip_x else x
-                d = sx - w
-                if d < -1.8:
-                    t.p(x, y, 10 if ((x * 3 + y * 5) & 3) else 9)
-                elif d < -0.7:
-                    t.p(x, y, 9)
-                elif d < 0.3:
-                    t.p(x, y, 5)
-                elif d < 1.4 + foam:
-                    t.p(x, y, 15 if ((y + frame) & 1) else 14)
-                elif d < 3.0 + foam * 0.5:
-                    t.p(x, y, 12 if ((x + y) & 1) else 13)
+                paint_shore_d(x, y, sx - w, north_drop=False)
     elif base_e == 'NW':
-        # Pixel-aligned to N (y=4.5 at x=15) and W (x=4.4 at y=15)
+        # Boundary-exact: at sx=15, 10.5 - r = y - 4.5 (matches N!); at y=15, 10.5 - r = sx - 4.5 (matches W!)
         for y in range(16):
             for x in range(16):
                 sx = (15 - x) if flip_x else x
-                r = math.hypot(15.2 - sx, 15.2 - y) + math.sin((sx - y) * 0.45) * 0.25
-                if r > 12.9:
-                    t.p(x, y, 10 if ((x * 3 + y * 5) & 3) else 9)
-                elif r > 11.8:
-                    t.p(x, y, 9)
-                elif r > 10.7:
-                    t.p(x, y, 5 if (y < 11) else 8)
-                elif r > 9.7 and y < 10:
-                    t.p(x, y, 4)
-                elif r > 8.6 - foam * 0.5:
-                    t.p(x, y, 15 if ((x + y + frame) & 1) else 14)
-                elif r > 7.1 - foam * 0.3:
-                    t.p(x, y, 12 if ((x + y) & 1) else 13)
+                edge_damp = math.sin(sx * math.pi / 15.0) * math.sin(y * math.pi / 15.0)
+                r = math.hypot(15.0 - sx, 15.0 - y) + math.sin((sx - y) * 0.45) * 0.35 * edge_damp
+                paint_shore_d(x, y, 10.5 - r, north_drop=(y < 9 and sx > y))
     elif base_e == 'SW':
-        # Pixel-aligned to S (y=11.3 at x=15) and W (x=4.4 at y=0)
+        # Boundary-exact: at sx=15, 10.5 - r = 10.5 - y (matches S!); at y=0, 10.5 - r = sx - 4.5 (matches W!)
         for y in range(16):
             for x in range(16):
                 sx = (15 - x) if flip_x else x
-                r = math.hypot(15.2 - sx, -0.2 - y) + math.sin((sx + y) * 0.45) * 0.25
-                if r > 12.5:
-                    t.p(x, y, 10 if ((x * 3 + y * 5) & 3) else 9)
-                elif r > 11.4:
-                    t.p(x, y, 9 if (sx < 6) else 10)
-                elif r > 10.5:
-                    t.p(x, y, 5)
-                elif r > 9.2 - foam * 0.5:
-                    t.p(x, y, 15 if ((x + y + frame) & 1) else 14)
-                elif r > 7.6 - foam * 0.3:
-                    t.p(x, y, 12 if ((x + y) & 1) else 13)
+                edge_damp = math.sin(sx * math.pi / 15.0) * math.sin(y * math.pi / 15.0)
+                r = math.hypot(15.0 - sx, float(y)) + math.sin((sx + y) * 0.45) * 0.35 * edge_damp
+                paint_shore_d(x, y, 10.5 - r, north_drop=False, south_edge=(y > 8))
     elif base_e == 'INW':
-        # Pixel-aligned rounded peninsula tip matching N (y=4.5) and W (x=4.4)
+        # Boundary-exact: at sx=0, r - 4.5 = sy - 4.5 (matches N/S!); at sy=0, r - 4.5 = sx - 4.5 (matches W/E!)
         for y in range(16):
             for x in range(16):
                 sx = (15 - x) if flip_x else x
                 sy = (15 - y) if flip_y else y
-                r = math.hypot(sx + 0.5, sy + 0.5)
-                if r < 3.0:
-                    t.p(x, y, 10 if ((x * 3 + y * 5) & 3) else 9)
-                elif r < 4.1:
-                    t.p(x, y, 9)
-                elif r < 5.1:
-                    t.p(x, y, 5)
-                elif r < 6.6 + foam * 0.5:
-                    t.p(x, y, 15 if ((x + y + frame) & 1) else 14)
-                elif r < 8.2 + foam * 0.3:
-                    t.p(x, y, 12 if ((x + y) & 1) else 13)
+                r = math.hypot(float(sx), float(sy))
+                paint_shore_d(x, y, r - 4.5, north_drop=(not flip_y and sy > sx))
     elif base_e == 'WE':
         # Narrow 1-tile vertical N-S stream with BOTH West & East mossy banks
-        curve = [3.2, 3.6, 3.9, 4.0, 3.8, 3.5, 3.1, 3.0, 3.2, 3.6, 3.9, 4.0, 3.8, 3.4, 3.1, 3.0]
+        curve = [3.2, 3.6, 3.9, 4.0, 3.8, 3.5, 3.2, 3.1, 3.2, 3.6, 3.9, 4.0, 3.8, 3.5, 3.3, 3.2]
         for y in range(16):
             w = curve[y]
             for x in range(16):
@@ -1140,7 +1101,7 @@ def make_shore(edge, frame=0, vertical=False):
                     t.p(x, y, 12 if ((x + y) & 1) else 13)
     elif base_e == 'NS':
         # Narrow 1-tile horizontal W-E canal with BOTH North & South mossy banks
-        curve = [3.2, 3.6, 3.9, 4.0, 3.8, 3.5, 3.1, 3.0, 3.2, 3.6, 3.9, 4.0, 3.8, 3.4, 3.1, 3.0]
+        curve = [3.2, 3.6, 3.9, 4.0, 3.8, 3.5, 3.2, 3.1, 3.2, 3.6, 3.9, 4.0, 3.8, 3.5, 3.3, 3.2]
         for x in range(16):
             h = curve[x]
             for y in range(16):
@@ -1162,8 +1123,7 @@ def make_shore(edge, frame=0, vertical=False):
 def make_world_coast(edge, frame=0, deep_ocean=False):
     """
     Sweeping 16-bit Chrono Trigger / Trials of Mana rounded coastal beaches on the Evertale Globe!
-    NEVER flips the underlying animated water layer — ALL 12 coastal edges animate in the exact
-    same consistent wave direction as adjacent deep ocean & turquoise shallows!
+    Boundary-exact periodic curves eliminate ALL tile-border seam jumps across N/S/W/E/NW/NE/SW/SE/INW..ISE!
     """
     t = make_water(frame, deep=deep_ocean, shallow=(not deep_ocean))
     foam = 0.6 if (frame in (1, 2)) else 0.0
@@ -1176,7 +1136,7 @@ def make_world_coast(edge, frame=0, deep_ocean=False):
 
     def paint_coast_pixel(x, y, d, is_north_drop=False):
         if d < -2.2:
-            w = math.sin(x * 0.55 + y * 0.35)
+            w = math.sin(x * (math.pi / 8.0) + y * (math.pi / 8.0))
             t.p(x, y, 7 if w > 0.68 else 11)
         elif d < -1.0:
             t.p(x, y, 11 if ((x + y) & 3) else 6)
@@ -1192,17 +1152,17 @@ def make_world_coast(edge, frame=0, deep_ocean=False):
             t.p(x, y, 2 if ((x + y) & 1) else 3)
 
     if base_e == 'N':
-        curve = [4.6, 5.3, 5.9, 6.2, 5.9, 5.3, 4.7, 4.4, 4.6, 5.2, 5.9, 6.2, 5.8, 5.2, 4.6, 4.4]
+        curve = [4.5, 5.2, 5.8, 6.1, 5.8, 5.2, 4.7, 4.4, 4.6, 5.2, 5.8, 6.1, 5.7, 5.2, 4.7, 4.5]
         for x in range(16):
             for y in range(16):
                 paint_coast_pixel(x, y, y - curve[x], is_north_drop=True)
     elif base_e == 'S':
-        curve = [4.4, 5.0, 5.6, 5.8, 5.5, 4.9, 4.4, 4.2, 4.5, 5.1, 5.6, 5.8, 5.4, 4.8, 4.3, 4.2]
+        curve = [4.5, 5.0, 5.6, 5.8, 5.5, 4.9, 4.5, 4.3, 4.5, 5.1, 5.6, 5.8, 5.4, 4.9, 4.6, 4.5]
         for x in range(16):
             for y in range(16):
-                paint_coast_pixel(x, y, (15.5 - curve[x]) - y, is_north_drop=False)
+                paint_coast_pixel(x, y, (15.0 - curve[x]) - y, is_north_drop=False)
     elif base_e == 'W':
-        curve = [4.5, 5.2, 5.8, 6.0, 5.7, 5.1, 4.6, 4.3, 4.6, 5.3, 5.8, 6.0, 5.6, 5.0, 4.5, 4.3]
+        curve = [4.5, 5.2, 5.8, 6.0, 5.7, 5.1, 4.6, 4.3, 4.6, 5.3, 5.8, 6.0, 5.6, 5.1, 4.7, 4.5]
         for y in range(16):
             for x in range(16):
                 sx = (15 - x) if flip_x else x
@@ -1211,21 +1171,24 @@ def make_world_coast(edge, frame=0, deep_ocean=False):
         for y in range(16):
             for x in range(16):
                 sx = (15 - x) if flip_x else x
-                r = math.hypot(15.0 - sx, 15.0 - y) + math.sin((sx - y) * 0.42) * 0.4
-                paint_coast_pixel(x, y, 10.6 - r, is_north_drop=(y < 9))
+                edge_damp = math.sin(sx * math.pi / 15.0) * math.sin(y * math.pi / 15.0)
+                r = math.hypot(15.0 - sx, 15.0 - y) + math.sin((sx - y) * 0.42) * 0.4 * edge_damp
+                paint_coast_pixel(x, y, 10.5 - r, is_north_drop=(y < 9 and sx > y))
     elif base_e == 'SW':
         for y in range(16):
             for x in range(16):
                 sx = (15 - x) if flip_x else x
-                r = math.hypot(15.0 - sx, 0.0 - y) + math.sin((sx + y) * 0.42) * 0.4
-                paint_coast_pixel(x, y, 10.6 - r, is_north_drop=False)
+                edge_damp = math.sin(sx * math.pi / 15.0) * math.sin(y * math.pi / 15.0)
+                r = math.hypot(15.0 - sx, float(y)) + math.sin((sx + y) * 0.42) * 0.4 * edge_damp
+                paint_coast_pixel(x, y, 10.5 - r, is_north_drop=False)
     elif base_e == 'INW':
         for y in range(16):
             for x in range(16):
                 sx = (15 - x) if flip_x else x
                 sy = (15 - y) if flip_y else y
-                r = math.hypot(sx + 0.5, sy + 0.5) + math.sin((sx - sy) * 0.5) * 0.25
-                paint_coast_pixel(x, y, r - 5.4, is_north_drop=(sy > sx))
+                edge_damp = math.sin(sx * math.pi / 15.0) * math.sin(sy * math.pi / 15.0)
+                r = math.hypot(float(sx), float(sy)) + math.sin((sx - sy) * 0.5) * 0.25 * edge_damp
+                paint_coast_pixel(x, y, r - 4.5, is_north_drop=(not flip_y and sy > sx))
     return t
 
 def make_bridge():
@@ -1728,13 +1691,28 @@ def paint_tree_trunk(t, autumn=False, pine=False, palm=False):
                 if t.px[y][x] != 0:
                     t.p(x, y, 2 if t.qpal[0] == TPAL_FOLIAGE else 1)
     if palm:
-        # Curved tropical palm trunk
-        for y in range(0, 14):
-            cx = 7 + int(math.sin(y * 0.25) * 1.5)
-            t.p(cx - 1, y, 7); t.p(cx, y, 9 if (y & 1) else 8); t.p(cx + 1, y, 8 if (y & 1) else 7)
-            t.p(cx + 2, y, 7)
-        # Crown fronds peeking at top
-        t.hline(2, 0, 12, 4); t.hline(1, 1, 14, 3); t.hline(4, 2, 8, 5)
+        # Lush 16-bit Chrono/Mana tropical palm tree: slender curved trunk + sweeping arched emerald fronds!
+        for y in range(6, 14):
+            cx = 7 + int(math.sin((y - 6) * 0.35) * 1.2)
+            t.p(cx - 1, y, 7)
+            t.p(cx, y, 9 if (y & 1) else 8)
+            t.p(cx + 1, y, 7 if (y & 1) else 8)
+        # Coconuts tucked under the frond crown
+        t.p(6, 6, 7); t.p(7, 6, 8); t.p(9, 6, 7)
+        # Upper canopy crown & 6 radiating arched palm fronds (staying inside x=1..14, y=0..8)
+        frond_rows = [
+            (0, "....455554......"),
+            (1, "..3456556543...."),
+            (2, ".234554455432..."),
+            (3, ".2343245324322.."),
+            (4, ".232..34..2342.."),
+            (5, ".2....23....32.."),
+            (6, "......78.7...2.."),
+        ]
+        for ry, row_s in frond_rows:
+            for rx, ch in enumerate(row_s):
+                if ch != '.':
+                    t.p(rx, ry, int(ch))
     elif pine:
         # Seamless lower half of 16x32 alpine spruce (joins O_PINE_TOP w=12 cleanly at y=0!)
         t.rect(6, 10, 4, 4, 7); t.vline(7, 10, 4, 8)
@@ -2302,10 +2280,12 @@ def make_feathered_edge(base_fn, edge, moss_on_arch=False):
     if edge == 'E': return make_feathered_edge(base_fn, 'W', moss_on_arch).flip_h()
     if edge == 'S': return make_feathered_edge(base_fn, 'N', moss_on_arch).flip_v()
     t = base_fn(0)
-    tuft = [4, 3, 5, 5, 3, 3, 4, 5, 4, 3, 4, 5, 4, 3, 4, 3]
     if moss_on_arch:
-        c_deep, c_mid, c_lit = 2, 15, 15
+        # Slim, organic 2-3px meadow turf fringe harmonizing smoothly into cobblestone!
+        tuft = [2, 3, 2, 2, 3, 3, 2, 2, 3, 2, 2, 3, 3, 2, 2, 3]
+        c_deep, c_mid, c_lit = 3, 15, 15
     else:
+        tuft = [4, 3, 5, 5, 3, 3, 4, 5, 4, 3, 4, 5, 4, 3, 4, 3]
         c_deep, c_mid, c_lit = 2, 4, 5
     if edge == 'N':
         for x in range(16):
@@ -2328,9 +2308,16 @@ def make_feathered_corner(base_fn, corner, moss_on_arch=False):
     if corner == 'SE': return make_feathered_corner(base_fn, 'NW', moss_on_arch).flip_h().flip_v()
     t = base_fn(0)
     if moss_on_arch:
-        c_deep, c_mid, c_lit = 2, 15, 15
-    else:
-        c_deep, c_mid, c_lit = 2, 4, 5
+        c_deep, c_mid, c_lit = 3, 15, 15
+        for y in range(16):
+            for x in range(16):
+                r = math.hypot(15.2 - x, 15.2 - y) + math.sin((x - y) * 0.55) * 0.35
+                if r > 13.5:
+                    t.p(x, y, c_mid)
+                elif r > 12.6:
+                    t.p(x, y, c_deep)
+        return t
+    c_deep, c_mid, c_lit = 2, 4, 5
     for y in range(16):
         for x in range(16):
             r = math.hypot(15.2 - x, 15.2 - y) + math.sin((x - y) * 0.55) * 0.45
@@ -2344,9 +2331,8 @@ def make_feathered_corner(base_fn, corner, moss_on_arch=False):
 
 def make_sand_grass_transition(edge):
     """
-    Organic feathered Sand/Beach-to-Grass biome transition (Edges + Rounded Corners!).
-    Both sand (9,10,11) and meadow grass (2,3,4,5) live in TPAL_FOLIAGE, so edges blend
-    with soft creeping grass tufts, sunlit sand borders, and ZERO palette seams!
+    Organic feathered Beach-to-Grass biome transition (Edges + Rounded Corners!).
+    Built over warm sunlit beach sand (make_world_beach) so tropical coastlines blend smoothly!
     """
     if edge == 'E':  return make_sand_grass_transition('W').flip_h()
     if edge == 'S':  return make_sand_grass_transition('N').flip_v()
@@ -2354,7 +2340,7 @@ def make_sand_grass_transition(edge):
     if edge == 'SW': return make_sand_grass_transition('NW').flip_v()
     if edge == 'SE': return make_sand_grass_transition('NW').flip_h().flip_v()
 
-    t = make_world_sand(0)
+    t = make_world_beach()
     g = make_grass(0)
     if edge == 'N':
         curve = [4.5, 5.2, 5.8, 6.2, 5.6, 4.9, 4.3, 4.7, 5.5, 6.1, 5.8, 5.0, 4.4, 4.8, 5.4, 4.9]
@@ -2536,7 +2522,7 @@ def build_all_metatiles(frame=0):
     M["CM_SNOW_V1"]       = make_world_snow(1)
     M["CM_JUNGLE_V1"]     = make_world_jungle(1)
     M["CM_SHRINE_V1"]     = make_shrine_floor(1)
-    M["CM_OCEAN_V1"]      = make_water((frame + 2) & 3, deep=True)
+    M["CM_OCEAN_V1"]      = make_water(frame, deep=True, ocean_v1=True)
 
     # Rounded Shorelines & Organic Feathered Edges + Corners
     for e in ('N', 'S', 'W', 'E', 'NW', 'NE', 'SW', 'SE', 'INW', 'INE', 'ISW', 'ISE'):
@@ -3011,8 +2997,8 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("}")
     out.append("")
     out.append("static uint8_t hearth_is_shore_land(uint8_t t, uint8_t is_world) {")
-    out.append("    if (hearth_is_water_like(t) || t == T_WORLD_CORAL) return 0u;")
-    out.append("    if (!is_world && (t == T_BRIDGE || t == T_BRIDGE_RAIL_N || t == T_BRIDGE_RAIL_S || t == T_DOCK_PIER)) return 0u;")
+    out.append("    if (hearth_is_water_like(t) || t == T_WORLD_CORAL || t == T_DOCK_PIER) return 0u;")
+    out.append("    if (!is_world && (t == T_BRIDGE || t == T_BRIDGE_RAIL_N || t == T_BRIDGE_RAIL_S)) return 0u;")
     out.append("    return 1u;")
     out.append("}")
     out.append("")
@@ -3038,7 +3024,7 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("                else break;")
     out.append("            }")
     out.append("        }")
-    out.append("        for (d = 1u; d <= 3u; d++) {")
+    out.append("        for (d = 1u; d <= 4u; d++) {")
     out.append("            if (mx >= d && hearth_is_shore_land(bg1[(uint32_t)my * mw + (mx - d)], 0u)) land_w = 1u;")
     out.append("            if (mx + d < mw && hearth_is_shore_land(bg1[(uint32_t)my * mw + (mx + d)], 0u)) land_e = 1u;")
     out.append("        }")
@@ -3549,8 +3535,8 @@ def emit_web_ts(zone_pals, frames_meta):
         "  return best;",
         "}",
         "function isShoreLand(t: number, isWorld: boolean): boolean {",
-        "  if (isWaterLike(t) || t === 59) return false;",
-        "  if (!isWorld && (t === 8 || t === 9 || t === 10 || t === 62)) return false;",
+        "  if (isWaterLike(t) || t === 59 || t === 62) return false;",
+        "  if (!isWorld && (t === 8 || t === 9 || t === 10)) return false;",
         "  return true;",
         "}",
         "",
@@ -3574,7 +3560,7 @@ def emit_web_ts(zone_pals, frames_meta):
         "        else break;",
         "      }",
         "    }",
-        "    for (let d = 1; d <= 3; d++) {",
+        "    for (let d = 1; d <= 4; d++) {",
         "      if (mx >= d && isShoreLand(bg1[my * mw + (mx - d)], false)) landW = true;",
         "      if (mx + d < mw && isShoreLand(bg1[my * mw + (mx + d)], false)) landE = true;",
         "    }",

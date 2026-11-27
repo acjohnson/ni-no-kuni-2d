@@ -475,9 +475,9 @@ static void build_zone_alderbrook(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     fill_rect(bg1, col, 7, 13, 28, 3, T_ROCKY_PATH, COL_WALKABLE);
     fill_rect(bg1, col, 14, 9, 2, 5, T_ROCKY_PATH, COL_WALKABLE);
     fill_rect(bg1, col, 25, 9, 2, 5, T_ROCKY_PATH, COL_WALKABLE);
-    fill_rect(bg1, col, 15, 16, 2, 8, T_ROCKY_PATH, COL_WALKABLE);
-    fill_rect(bg1, col, 29, 16, 2, 8, T_ROCKY_PATH, COL_WALKABLE);
-    fill_rect(bg1, col, 11, 23, 21, 2, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 15, 16, 2, 9, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 29, 16, 2, 9, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 11, 24, 21, 2, T_ROCKY_PATH, COL_WALKABLE);
 
     /* Rowan & Grandma Mara's Cedar Cottage (x=9..13, y=10..12; door at 11,12) */
     place_cottage(bg1, bg2, col, 9, 10);
@@ -606,7 +606,7 @@ static void build_zone_whispering_woods(uint8_t *bg1, uint8_t *bg2, uint8_t *col
 
     /* Winding Rocky Switchback Trail from SW Entry (2,21) -> Bridge -> 3 Shrines -> NE Pass (37,5) */
     fill_rect(bg1, col, 2,  20, 12, 3, T_ROCKY_PATH, COL_WALKABLE);
-    fill_rect(bg1, col, 11, 15,  5, 6, T_ROCKY_PATH, COL_WALKABLE);
+    fill_rect(bg1, col, 11, 15,  4, 6, T_ROCKY_PATH, COL_WALKABLE);
     fill_rect(bg1, col, 10, 10,  5, 6, T_ROCKY_PATH, COL_WALKABLE); /* Jasper's Camp Clearing */
     fill_rect(bg1, col, 15, 15, 19, 2, T_ROCKY_PATH, COL_WALKABLE); /* Rapids Log Bridge Crossing */
     fill_rect(bg1, col, 32,  9,  6, 8, T_ROCKY_PATH, COL_WALKABLE);
@@ -872,12 +872,12 @@ static void build_zone_whiskerburgh(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     fill_rect(bg1, col, 8, 7, 28, 12, T_COBBLE, COL_WALKABLE);
     fill_rect(bg1, col, 20, 2, 4, 6, T_COBBLE, COL_WALKABLE); /* Road to Northern Sewer Grate */
 
-    /* Northern Sewer Grate Entrance (21..22, 2..3) */
+    /* Northern Sewer Grate Entrance (21..22, 2..3) — pillars anchored onto stone apron */
     fill_rect(bg1, col, 20, 2, 4, 2, T_SHRINE_FLOOR, COL_WALKABLE);
     set_bg1(bg1, col, 21, 2, T_SHRINE_RUNE, COL_WALKABLE);
     set_bg1(bg1, col, 22, 2, T_SHRINE_RUNE, COL_WALKABLE);
-    set_bg1(bg1, col, 19, 2, T_SHRINE_PILLAR, COL_SOLID);
-    set_bg1(bg1, col, 24, 2, T_SHRINE_PILLAR, COL_SOLID);
+    set_bg1(bg1, col, 20, 2, T_SHRINE_PILLAR, COL_SOLID);
+    set_bg1(bg1, col, 23, 2, T_SHRINE_PILLAR, COL_SOLID);
     set_bg2(bg2, 21, 2, O_SHRINE_ARCH);
     set_bg2(bg2, 22, 2, O_SHRINE_ARCH);
 
@@ -1277,10 +1277,9 @@ static void globe_apply_heartland(uint16_t x, uint16_t y, uint8_t *p_bg1, uint8_
             return;
         }
         if (y >= 86u && x <= 135u) { *p_bg1 = T_DIRT; *p_col = COL_WALKABLE; }
-        if (x >= 101u && x <= 107u) {
+        if (x >= 102u && x <= 106u) {
             if (x >= 103u && x <= 105u) { *p_bg1 = T_COBBLE; *p_col = COL_WALKABLE; }
-            if (y >= 80u && y <= 81u && x >= 102u && x <= 106u) { *p_bg1 = T_WORLD_TOWN; *p_col = COL_SOLID; }
-            if ((x == 101u || x == 107u) && y >= 79u && y <= 83u) { *p_bg1 = T_COBBLE; *p_col = COL_WALKABLE; }
+            if (y >= 80u && y <= 81u) { *p_bg1 = T_WORLD_TOWN; *p_col = COL_SOLID; }
         } else if (x >= 130u && x <= 132u) {
             *p_bg1 = T_DIRT; *p_col = COL_WALKABLE;
             if (x == 132u) {
@@ -1443,14 +1442,14 @@ static uint8_t globe_base_bg1(char c, uint16_t x, uint16_t y, uint8_t hash) {
             return (hash == 4u) ? T_FLOWERS : T_GRASS;
         case 'p':
             if (hash == 3u && (y & 3u) == 0u && (x & 3u) == 2u) return T_PALM_TREE;
-            return (hash == 9u) ? T_GRASS : T_WORLD_BEACH;
-        case 'i': return (hash == 6u) ? T_WORLD_HILL : T_WORLD_SNOW;
-        case 'j': return (hash == 4u) ? T_FLOWERS : T_WORLD_JUNGLE;
+            return T_WORLD_BEACH;
+        case 'i': return T_WORLD_SNOW;
+        case 'j': return T_WORLD_JUNGLE;
         case 'J': return T_WORLD_FOREST;
         case 'v': return (hash == 2u) ? T_BOULDER : T_ROCKY_PATH;
         case 'l': return T_WORLD_LAVA;
         case 't': return (hash == 5u) ? T_COBBLE : T_WORLD_TECH;
-        case 'T': return T_WORLD_CASTLE;
+        case 'T': return T_SHRINE_PILLAR;
         default:  return T_WORLD_OCEAN;
     }
 }
@@ -1751,7 +1750,7 @@ static void build_zone_sunhill_market(uint8_t *bg1, uint8_t *bg2, uint8_t *col) 
     int x, y, hash;
     uint16_t i;
     static const int8_t trees[][2] = {
-        {4, 10}, {4, 21}, {39, 10}, {39, 21}, {10, 23}, {33, 23}
+        {4, 10}, {4, 21}, {39, 10}, {39, 21}, {10, 24}, {33, 24}
     };
 
     hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);
@@ -1764,11 +1763,9 @@ static void build_zone_sunhill_market(uint8_t *bg1, uint8_t *bg2, uint8_t *col) 
         }
     }
 
-    /* Northern Panoramic Skyline looking up toward Castle Aurelia's Spires! */
+    /* Northern Panoramic Skyline looking up toward Castle Aurelia's Spires (drawn via BG2 parallax vista!) */
     fill_rect(bg1, col, 0, 0, HEARTH_MAP_W, 4, T_MTN_SKY,    COL_SOLID);
     fill_rect(bg1, col, 0, 4, HEARTH_MAP_W, 1, T_CLIFF_LEDGE, COL_SOLID);
-    /* Distant Castle Aurelia silhouette towers atop the northern sky ridge */
-    fill_rect(bg1, col, 18, 1, 8, 3, T_WORLD_CASTLE, COL_SOLID);
 
     /* Perimeter stone parapet walls */
     for (y = 5; y < HEARTH_MAP_H; y++) {
@@ -1788,7 +1785,12 @@ static void build_zone_sunhill_market(uint8_t *bg1, uint8_t *bg2, uint8_t *col) 
     fill_rect(bg1, col, 6,  13, 32, 1,  T_CLIFF_LEDGE, COL_SOLID);
     fill_rect(bg1, col, 19, 12, 6,  3,  T_STONE_STAIRS, COL_WALKABLE);
 
-    /* Central Sunlit Fountain on Upper Terrace (20..23, 8..9) */
+    /* Central Sunlit Garden Pond & Fountain on Upper Terrace (manicured lawn surround!) */
+    fill_rect(bg1, col, 19, 7, 6, 4, T_GRASS, COL_WALKABLE);
+    set_bg1(bg1, col, 19, 7,  T_FLOWERS, COL_WALKABLE);
+    set_bg1(bg1, col, 24, 7,  T_FLOWERS, COL_WALKABLE);
+    set_bg1(bg1, col, 19, 10, T_FLOWERS, COL_WALKABLE);
+    set_bg1(bg1, col, 24, 10, T_FLOWERS, COL_WALKABLE);
     fill_rect(bg1, col, 20, 8, 4, 2, T_WATER, COL_WATER);
     set_bg1(bg1, col, 19, 8, T_FLOWER_BED, COL_SOLID);
     set_bg1(bg1, col, 24, 8, T_FLOWER_BED, COL_SOLID);
@@ -1827,23 +1829,40 @@ static void build_zone_castle_gate(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     fill_rect(bg1, col, 0, 0, HEARTH_MAP_W, HEARTH_MAP_H, T_GRASS, COL_WALKABLE);
     fill_rect(bg1, col, 0, 0, HEARTH_MAP_W, 4, T_MTN_SKY, COL_SOLID);
 
-    /* Grand White-Stone Castle Walls & Twin Towers */
-    fill_rect(bg1, col, 4, 4, 36, 6, T_WORLD_CASTLE, COL_SOLID);
+    /* Grand White-Stone Castle Curtain Wall, Twin Flanking Towers & Royal Gatehouse */
+    fill_rect(bg1, col, 4, 4, 36, 1, T_ROOF_TOP,      COL_SOLID);
+    fill_rect(bg1, col, 4, 5, 36, 5, T_WINDMILL_WALL, COL_SOLID);
+    /* Twin Gatehouse Towers & Curtain Buttresses */
+    for (y = 4; y <= 9; y++) {
+        set_bg1(bg1, col, 6,  y, T_SHRINE_PILLAR, COL_SOLID);
+        set_bg1(bg1, col, 14, y, T_SHRINE_PILLAR, COL_SOLID);
+        set_bg1(bg1, col, 29, y, T_SHRINE_PILLAR, COL_SOLID);
+        set_bg1(bg1, col, 37, y, T_SHRINE_PILLAR, COL_SOLID);
+    }
+    for (x = 9; x <= 34; x += 5) {
+        if (x < 18 || x > 25) {
+            set_bg1(bg1, col, x, 7, T_WALL_WINDOW, COL_SOLID);
+        }
+    }
+    fill_rect(bg1, col, 18, 4, 8, 1, T_ROOF_TOP,      COL_SOLID);
+    fill_rect(bg1, col, 18, 5, 8, 3, T_WINDMILL_WALL, COL_SOLID);
     fill_rect(bg1, col, 18, 8, 8, 2, T_SHRINE_PILLAR, COL_SOLID);
+    set_bg1(bg1, col, 20, 6, T_WALL_WINDOW, COL_SOLID);
+    set_bg1(bg1, col, 23, 6, T_WALL_WINDOW, COL_SOLID);
     set_bg1(bg1, col, 21, 9, T_WALL_DOOR, COL_SOLID);
     set_bg1(bg1, col, 22, 9, T_WALL_DOOR, COL_SOLID);
     set_bg2(bg2, 21, 9, O_SHRINE_ARCH);
     set_bg2(bg2, 22, 9, O_SHRINE_ARCH);
 
-    /* Sparkling Royal Moat & Wide N-S Limestone Drawbridge */
-    fill_rect(bg1, col, 18, 10, 8, 18, T_COBBLE, COL_WALKABLE);
+    /* Sparkling Royal Moat, Manicured Lawn Banks & Wide N-S Limestone Drawbridge */
+    fill_rect(bg1, col, 19, 10, 6, 18, T_COBBLE, COL_WALKABLE);
+    fill_rect(bg1, col, 11, 10, 22, 5, T_COBBLE, COL_WALKABLE); /* Courtyard Terrace (1-tile grass verge along moat!) */
     fill_rect(bg1, col, 2, 16, 40, 4, T_WATER, COL_WATER);
     for (y = 16; y <= 19; y++) {
         for (x = 19; x <= 24; x++) {
             set_bg1(bg1, col, x, y, T_BRIDGE, COL_WALKABLE);
         }
     }
-    fill_rect(bg1, col, 11, 10, 22, 6, T_COBBLE, COL_WALKABLE); /* Courtyard Terrace */
 
     /* Royal Lanterns & Flower Beds */
     set_bg1(bg1, col, 16, 11, T_LANTERN_POST, COL_SOLID);
@@ -1933,10 +1952,15 @@ static void build_zone_sunken_ruins(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     }
     fill_rect(bg1, col, 0, 11, 12, 4, T_ROCKY_PATH, COL_WALKABLE);
 
-    /* Weathered Stone Watchtower Courtyard & Ancient Pillars */
+    /* Weathered Stone Watchtower Keep & Ancient Courtyard Pillars */
     fill_rect(bg1, col, 12, 6, 18, 12, T_SHRINE_FLOOR, COL_WALKABLE);
     fill_rect(bg1, col, 19, 9, 4,  4,  T_SHRINE_RUNE,  COL_WALKABLE);
-    fill_rect(bg1, col, 18, 4, 6,  3,  T_WORLD_RUINS,  COL_SOLID);
+    fill_rect(bg1, col, 18, 4, 6,  1,  T_CLIFF_LEDGE,  COL_SOLID);
+    fill_rect(bg1, col, 18, 5, 6,  2,  T_CLIFF_WALL,   COL_SOLID);
+    set_bg1(bg1, col, 18, 6, T_SHRINE_PILLAR, COL_SOLID);
+    set_bg1(bg1, col, 23, 6, T_SHRINE_PILLAR, COL_SOLID);
+    set_bg1(bg1, col, 20, 5, T_WALL_WINDOW,   COL_SOLID);
+    set_bg1(bg1, col, 21, 5, T_WALL_WINDOW,   COL_SOLID);
     set_bg1(bg1, col, 12, 6,  T_SHRINE_PILLAR, COL_SOLID);
     set_bg1(bg1, col, 29, 6,  T_SHRINE_PILLAR, COL_SOLID);
     set_bg1(bg1, col, 12, 17, T_SHRINE_PILLAR, COL_SOLID);

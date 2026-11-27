@@ -3096,7 +3096,7 @@ static void render_sdl_world_landmarks(int cam_x, int cam_y, uint32_t frame) {
     }
 }
 
-static void render_sdl_world_banners(const HearthState *st, int cam_x, int cam_y) {
+static void render_sdl_world_banners(const HearthState *st, const HearthPpuPacket *ppu, int cam_x, int cam_y) {
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
     int gw_px = HEARTH_GLOBE_W * HEARTH_TILE_SIZE;
@@ -3109,7 +3109,10 @@ static void render_sdl_world_banners(const HearthState *st, int cam_x, int cam_y
         int ly = (int)lm->ty * 16 + 8;
         int dx = wrap_delta(hx, lx, gw_px);
         int dy = wrap_delta(hy, ly, gh_px);
-        if (dx * dx + dy * dy < 92 * 92) {
+        int d2 = dx * dx + dy * dy;
+        /* Avoid stacking a duplicate static landmark title directly on top of the active [A] prompt */
+        if (ppu && ppu->interact_active && d2 < 40 * 40) continue;
+        if (d2 < 92 * 92) {
             int sx = w / 2 + wrap_delta(lx, cam_x + w / 2, gw_px);
             int sy = h / 2 + wrap_delta(ly, cam_y + h / 2, gh_px) - 34;
             int bw = (int)strlen(lm->name) * 6 + 10;
@@ -3348,7 +3351,7 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
         render_sdl2_living_atmosphere(st, ppu, cam_x, cam_y, tx0, ty0, tx1, ty1, mw);
 
         if (st->is_world_map && st->mode == MODE_EXPLORE) {
-            render_sdl_world_banners(st, cam_x, cam_y);
+            render_sdl_world_banners(st, ppu, cam_x, cam_y);
         }
 
         /* Optional Debug Hitbox Overlay (F6) */
@@ -3402,12 +3405,14 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
 
         /* Contextual [A] Interact Prompt (already screen-relative) */
         if (ppu->interact_active && ppu->interact_label && st->mode == MODE_EXPLORE) {
+            char prompt_buf[80];
+            snprintf(prompt_buf, sizeof(prompt_buf), "[A] %s", ppu->interact_label);
             int ix = ppu->interact_x + ppu->shake_x;
             int iy = ppu->interact_y + ppu->shake_y;
-            int lw = (int)strlen(ppu->interact_label) * 6 + 10;
+            int lw = (int)strlen(prompt_buf) * 6 + 10;
             fill_rect_alpha(ix - lw / 2, iy - 5, lw, 11, 0xFF161220u, 220);
             draw_rect_outline(ix - lw / 2, iy - 5, lw, 11, 0xFFF5B841u);
-            draw_text_centered(ix, iy - 3, ppu->interact_label, 0xFFFFF6CCu, false);
+            draw_text_centered(ix, iy - 3, prompt_buf, 0xFFFFF6CCu, false);
         }
 
         /* Minimal Overworld Top Status Ribbon */
