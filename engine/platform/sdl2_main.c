@@ -64,17 +64,55 @@ static inline uint32_t pal_col(uint8_t pal, uint8_t idx) {
 }
 
 static uint8_t g_last_terrain_pal = 255u;
+static uint8_t g_last_tod_phase   = 255u;
+static bool    g_last_mtn_vista   = false;
 
-static void apply_zone_palette(uint8_t pal_id) {
+static inline uint32_t lerp_rgb888(uint32_t a, uint32_t b, uint8_t t16) {
+    uint32_t inv = (uint32_t)(16u - t16);
+    uint32_t r = (((a >> 16) & 0xFFu) * inv + ((b >> 16) & 0xFFu) * t16 + 8u) >> 4;
+    uint32_t g = (((a >> 8)  & 0xFFu) * inv + ((b >> 8)  & 0xFFu) * t16 + 8u) >> 4;
+    uint32_t bl = ((a & 0xFFu) * inv + (b & 0xFFu) * t16 + 8u) >> 4;
+    return (r << 16) | (g << 8) | bl;
+}
+
+static void apply_zone_palette(uint8_t pal_id, uint8_t tod_phase, bool has_mountain_vista) {
+    static const uint8_t TOD_KEYS[4] = {
+        ZPAL_AUTUMN_MORNING, ZPAL_ALDERBROOK, ZPAL_AUTUMN_DUSK, ZPAL_AUTUMN_NIGHT
+    };
     if (pal_id >= ZPAL_COUNT) pal_id = 0;
-    if (g_last_terrain_pal == pal_id) return;
+    bool is_tod_blend = has_mountain_vista && (
+        pal_id == ZPAL_AUTUMN_MORNING || pal_id == ZPAL_ALDERBROOK ||
+        pal_id == ZPAL_AUTUMN_DUSK    || pal_id == ZPAL_AUTUMN_NIGHT
+    );
+    uint8_t eff_phase = is_tod_blend ? (uint8_t)(tod_phase & 63u) : 0u;
+    if (g_last_terrain_pal == pal_id && g_last_tod_phase == eff_phase && g_last_mtn_vista == is_tod_blend) return;
     g_last_terrain_pal = pal_id;
-    for (int i = 0; i < 16; i++) {
-        g_pal_argb[0][i] = (i == 0) ? 0u : rgb_to_argb(HEARTH_ZONE_PALETTES_RGB[pal_id][i]);
-    }
-    for (int p = 0; p < 4; p++) {
+    g_last_tod_phase   = eff_phase;
+    g_last_mtn_vista   = is_tod_blend;
+
+    if (is_tod_blend) {
+        uint8_t seg  = (uint8_t)((eff_phase >> 4) & 3u);
+        uint8_t frac = (uint8_t)(eff_phase & 15u);
+        uint8_t pA   = TOD_KEYS[seg];
+        uint8_t pB   = TOD_KEYS[(seg + 1u) & 3u];
         for (int i = 0; i < 16; i++) {
-            g_chrono_pal_argb[p][i] = (i == 0) ? 0u : rgb_to_argb(SDL_CHRONO_PALS[pal_id][p][i]);
+            uint32_t rgb = lerp_rgb888(HEARTH_ZONE_PALETTES_RGB[pA][i], HEARTH_ZONE_PALETTES_RGB[pB][i], frac);
+            g_pal_argb[0][i] = (i == 0) ? 0u : rgb_to_argb(rgb);
+        }
+        for (int p = 0; p < 4; p++) {
+            for (int i = 0; i < 16; i++) {
+                uint32_t rgb = lerp_rgb888(SDL_CHRONO_PALS[pA][p][i], SDL_CHRONO_PALS[pB][p][i], frac);
+                g_chrono_pal_argb[p][i] = (i == 0) ? 0u : rgb_to_argb(rgb);
+            }
+        }
+    } else {
+        for (int i = 0; i < 16; i++) {
+            g_pal_argb[0][i] = (i == 0) ? 0u : rgb_to_argb(HEARTH_ZONE_PALETTES_RGB[pal_id][i]);
+        }
+        for (int p = 0; p < 4; p++) {
+            for (int i = 0; i < 16; i++) {
+                g_chrono_pal_argb[p][i] = (i == 0) ? 0u : rgb_to_argb(SDL_CHRONO_PALS[pal_id][p][i]);
+            }
         }
     }
 }
@@ -95,7 +133,8 @@ static void init_palettes(void) {
         }
     }
     g_last_terrain_pal = 255u;
-    apply_zone_palette(0);
+    g_last_tod_phase   = 255u;
+    apply_zone_palette(0, 0, false);
 }
 
 static inline void put_px(int x, int y, uint32_t col) {
@@ -1799,73 +1838,27 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
             break;
         }
         case SPR_ENEMY_RAT: {
-            /* Gutter Rat — Slate Fur, Red Eyes, Pink Tail */
-            spr_box(ox, oy + bob, -6, -8, 11, 6, 0xFF5A5D6Eu, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -7, -10, 3, 3, 0xFF8C6874u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -4,  -7, 2, 2, 0xFFFF4A5Au, flip, flash, sx, sy);
-            spr_box(ox, oy + bob,  5,  -6, 4, 2, 0xFFD88496u, flip, flash, sx, sy);
-            spr_box(ox, oy,       -5,  -2, 2, 2, 0xFF34323Eu, flip, flash, sx, sy);
-            spr_box(ox, oy,        2,  -2, 2, 2, 0xFF34323Eu, flip, flash, sx, sy);
+            const char *const *rf = ((frame >> 3) & 1u) ? RAT_F1 : RAT_F0;
+            draw_pixel_art(rf, 13, ox, oy + bob, 10, 12, 3, flip, flash, sx, sy);
             break;
         }
         case SPR_ENEMY_SLIME: {
-            /* Mire Slime — Translucent Emerald-Teal Blob with Gleaming Eyes */
-            int sq = ((frame >> 3) & 1u) ? 1 : 0;
-            fill_ellipse_alpha(ox, oy - 5 + sq, 7 + sq, 6 - sq, 0xFF44C888u, 225);
-            fill_ellipse_alpha(ox - 2, oy - 7 + sq, 3, 2, 0xFFB8F8D8u, 190);
-            spr_box(ox, oy + sq, -3, -6, 2, 2, 0xFF141820u, flip, flash, sx, sy);
-            spr_box(ox, oy + sq,  1, -6, 2, 2, 0xFF141820u, flip, flash, sx, sy);
+            const char *const *sf = ((frame >> 3) & 1u) ? SLIME_F1 : SLIME_F0;
+            draw_pixel_art(sf, 13, ox, oy, 9, 12, 3, flip, flash, sx, sy);
             break;
         }
         case SPR_ENEMY_BOAR: {
-            /* Boar Halberdier — Tusks, Iron Helm, Crimson Plume & Halberd */
-            spr_box(ox, oy + bob, -6, -15, 12, 8, 0xFF586074u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -2, -18,  4, 3, 0xFFD83E4Au, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -4, -10,  8, 4, 0xFFE0929Cu, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -6,  -8,  2, 2, 0xFFFFF6E4u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob,  4,  -8,  2, 2, 0xFFFFF6E4u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -6,  -6, 12, 6, 0xFF424858u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob,  6, -17,  2, 17, 0xFF7A5638u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob,  7, -17,  4,  5, 0xFFC8D4E4u, flip, flash, sx, sy);
+            draw_pixel_art(BOAR_F0, 20, ox, oy + bob, 11, 20, 3, flip, flash, sx, sy);
             break;
         }
         case SPR_BOSS_MUCKMAW: {
-            /* King Muckmaw — Huge Crowned Sewer Ooze Boss */
             int b = ((frame >> 3) & 1u) ? -1 : 0;
-            fill_ellipse_alpha(ox, oy - 13 + b, 18, 13, 0xFF2E8C6Au, 240);
-            fill_ellipse_alpha(ox, oy - 15 + b, 14, 10, 0xFF52C890u, 220);
-            /* Crooked Gold Crown */
-            spr_box(ox, oy + b, -8, -28, 16, 4, 0xFFF5B841u, flip, flash, sx, sy);
-            spr_box(ox, oy + b, -8, -31,  3, 3, 0xFFFFF1A8u, flip, flash, sx, sy);
-            spr_box(ox, oy + b, -1, -32,  3, 4, 0xFFFFF1A8u, flip, flash, sx, sy);
-            spr_box(ox, oy + b,  5, -31,  3, 3, 0xFFFFF1A8u, flip, flash, sx, sy);
-            /* Glowing Amber Eyes & Wide Maw */
-            spr_box(ox, oy + b, -8, -19,  4, 4, 0xFFFFE066u, flip, flash, sx, sy);
-            spr_box(ox, oy + b,  4, -19,  4, 4, 0xFFFFE066u, flip, flash, sx, sy);
-            spr_box(ox, oy + b, -9, -11, 18, 5, 0xFF182420u, flip, flash, sx, sy);
-            spr_box(ox, oy + b, -7, -11,  3, 2, 0xFFFFF8E8u, flip, flash, sx, sy);
-            spr_box(ox, oy + b,  4, -11,  3, 2, 0xFFFFF8E8u, flip, flash, sx, sy);
+            draw_pixel_art(BOSS_MUCKMAW_F0, 24, ox, oy + b, 16, 23, 3, flip, flash, sx, sy);
             break;
         }
         case SPR_BOSS_IRONFANG: {
-            /* Lord Ironfang — Towering Armored Boar Warlord Boss */
             int b = ((frame >> 4) & 1u) ? -1 : 0;
-            spr_box(ox, oy + b, -13, -24, 26, 18, 0xFF3A3E4Eu, flip, flash, sx, sy);
-            spr_box(ox, oy + b, -15, -22, 30,  6, 0xFF687088u, flip, flash, sx, sy);
-            spr_box(ox, oy + b, -11, -18, 22,  3, 0xFFE8B84Cu, flip, flash, sx, sy);
-            /* Crimson Cape */
-            spr_box(ox, oy + b, -15, -16,  4, 15, 0xFFB82C3Cu, flip, flash, sx, sy);
-            spr_box(ox, oy + b,  11, -16,  4, 15, 0xFFB82C3Cu, flip, flash, sx, sy);
-            /* Horned Boar Head + Tusks */
-            spr_box(ox, oy + b,  -8, -32, 16, 10, 0xFFE296A0u, flip, flash, sx, sy);
-            spr_box(ox, oy + b,  -9, -35, 18,  4, 0xFF52586Cu, flip, flash, sx, sy);
-            spr_box(ox, oy + b,  -5, -29,  3,  2, 0xFFFF4A4Au, flip, flash, sx, sy);
-            spr_box(ox, oy + b,   2, -29,  3,  2, 0xFFFF4A4Au, flip, flash, sx, sy);
-            spr_box(ox, oy + b, -10, -25,  3,  4, 0xFFFFF8E8u, flip, flash, sx, sy);
-            spr_box(ox, oy + b,   7, -25,  3,  4, 0xFFFFF8E8u, flip, flash, sx, sy);
-            /* Boots */
-            spr_box(ox, oy,      -9,  -6,  7,  6, 0xFF262834u, flip, flash, sx, sy);
-            spr_box(ox, oy,       2,  -6,  7,  6, 0xFF262834u, flip, flash, sx, sy);
+            draw_pixel_art(BOSS_IRONFANG_F0, 26, ox, oy + b, 16, 25, 3, flip, flash, sx, sy);
             break;
         }
         case SPR_HOLLOW_OAK: {
@@ -1933,66 +1926,42 @@ static void draw_oam_sprite(const HearthOamSprite *o, int ox, int oy, uint32_t f
             break;
         }
         case SPR_ENEMY_SCORPION: {
-            /* Dune Scorpion — Crimson Carapace, Pincers & Raised Stinger */
-            spr_box(ox, oy + bob, -6,  -7, 12, 6, 0xFF9E2C28u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -4,  -8,  8, 3, 0xFFD44E38u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -10, -9,  4, 4, 0xFFC43A30u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob,   6, -9,  4, 4, 0xFFC43A30u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob,   3,-14,  3, 7, 0xFF9E2C28u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob,   1,-16,  4, 3, 0xFFFFE066u, flip, flash, sx, sy);
+            /* Dune Scorpion — Detailed Dark-Outlined Carapace, Snapping Claws, 4 Leg Pairs & Venom Stinger */
+            const char *const *sf = ((frame >> 3) & 1u) ? SCORPION_F1 : SCORPION_F0;
+            draw_pixel_art(sf, 16, ox, oy + bob, 11, 16, 3, flip, flash, sx, sy);
             break;
         }
         case SPR_ENEMY_SANDWORM: {
-            /* Giant Desert Sandworm — Segmented Coiling Ochre Titan */
+            /* Giant Desert Sandworm — Coiled Armored Leviathan Boss with Fanged Maw */
             int sw = ((frame >> 3) & 1u) ? -1 : 0;
-            spr_box(ox, oy + sw, -12, -24, 24, 22, 0xFFB8783Cu, flip, flash, sx, sy);
-            spr_box(ox, oy + sw, -10, -22, 20,  5, 0xFFD89A54u, flip, flash, sx, sy);
-            spr_box(ox, oy + sw, -10, -14, 20,  5, 0xFFD89A54u, flip, flash, sx, sy);
-            spr_box(ox, oy + sw,  -8, -28, 16,  8, 0xFF42181Cu, flip, flash, sx, sy);
-            spr_box(ox, oy + sw,  -6, -27,  2,  3, 0xFFFFF4DCu, flip, flash, sx, sy);
-            spr_box(ox, oy + sw,   4, -27,  2,  3, 0xFFFFF4DCu, flip, flash, sx, sy);
-            spr_box(ox, oy + sw,  -1, -28,  2,  3, 0xFFFFF4DCu, flip, flash, sx, sy);
+            const char *const *wf = ((frame >> 3) & 1u) ? SANDWORM_F1 : SANDWORM_F0;
+            draw_pixel_art(wf, 24, ox, oy + sw, 16, 24, 3, flip, flash, sx, sy);
             break;
         }
         case SPR_FAUNA_CAMEL: {
-            /* Sands of Babana Caravan Camel */
-            spr_box(ox, oy + bob, -6, -10, 12, 6, 0xFFD8A662u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -3, -14,  6, 4, 0xFFC48E4Cu, flip, flash, sx, sy);
-            spr_box(ox, oy + bob,  5, -15,  4, 7, 0xFFD8A662u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob,  6, -15,  4, 3, 0xFFE6BC7Au, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -4, -10,  7, 3, 0xFFC43A3Cu, flip, flash, sx, sy);
-            spr_box(ox, oy,       -5,  -4,  2, 4, 0xFFA8783Cu, flip, flash, sx, sy);
-            spr_box(ox, oy,        3,  -4,  2, 4, 0xFFA8783Cu, flip, flash, sx, sy);
+            /* Sands of Babana Caravan Camel — Dark-Outlined 2-Frame Pixel Art */
+            const char *const *cf = ((frame >> 4) & 1u) ? CAMEL_F1 : CAMEL_F0;
+            draw_pixel_art(cf, 16, ox, oy, 10, 16, 2, flip, flash, sx, sy);
             break;
         }
         case SPR_FAUNA_PENGUIN: {
-            /* Frostmere North Festive Penguin with Red Scarf */
-            spr_box(ox, oy + bob, -4, -12,  8, 10, 0xFF202A3Au, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -3,  -9,  6,  7, 0xFFF4F8FCu, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -4, -10,  8,  2, 0xFFD83844u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -1, -11,  3,  2, 0xFFF5A838u, flip, flash, sx, sy);
-            spr_box(ox, oy,       -3,  -2,  2,  2, 0xFFF5A838u, flip, flash, sx, sy);
-            spr_box(ox, oy,        1,  -2,  2,  2, 0xFFF5A838u, flip, flash, sx, sy);
+            /* Frostmere North Festive Penguin with Crimson Scarf */
+            const char *const *pf = ((frame >> 4) & 1u) ? PENGUIN_F1 : PENGUIN_F0;
+            draw_pixel_art(pf, 16, ox, oy, 7, 16, 2, flip, flash, sx, sy);
             break;
         }
         case SPR_FAUNA_MONKEY: {
             /* Canopy Wilds Golden-Tailed Monkey */
-            spr_box(ox, oy + bob, -4,  -9,  8, 6, 0xFF8C5430u, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -3, -14,  6, 5, 0xFFA6683Cu, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -2, -12,  4, 3, 0xFFEEC69Cu, flip, flash, sx, sy);
-            spr_box(ox, oy + bob, -7, -11,  3, 4, 0xFF8C5430u, flip, flash, sx, sy);
-            spr_box(ox, oy,       -3,  -3,  2, 3, 0xFF6E4024u, flip, flash, sx, sy);
-            spr_box(ox, oy,        1,  -3,  2, 3, 0xFF6E4024u, flip, flash, sx, sy);
+            const char *const *mf = ((frame >> 3) & 1u) ? MONKEY_F1 : MONKEY_F0;
+            draw_pixel_art(mf, 16, ox, oy, 9, 15, 2, flip, flash, sx, sy);
             break;
         }
         case SPR_FAUNA_ROBOT: {
-            /* Aetheris Citadel Hover-Automaton with Glowing Cyan Visor */
+            /* Aetheris Citadel Hover-Automaton with Glowing Cyan Visor & Thruster */
             int hv = ((frame >> 3) & 1u) ? -2 : -1;
-            spr_box(ox, oy + hv, -5, -14, 10, 10, 0xFFAEC0D8u, flip, flash, sx, sy);
-            spr_box(ox, oy + hv, -4, -13,  8,  4, 0xFF202C3Cu, flip, flash, sx, sy);
-            spr_box(ox, oy + hv, -3, -12,  6,  2, 0xFF4AF2FFu, flip, flash, sx, sy);
-            spr_box(ox, oy + hv, -1, -17,  2,  3, 0xFF4AF2FFu, flip, flash, sx, sy);
-            fill_ellipse_alpha(ox, oy - 2, 5, 2, 0xFF4AF2FFu, 150);
+            const char *const *rf = ((frame >> 3) & 1u) ? ROBOT_F1 : ROBOT_F0;
+            fill_ellipse_alpha(ox, oy - 1, 5, 2, 0xFF4AF2FFu, 110);
+            draw_pixel_art(rf, 18, ox, oy + hv, 8, 17, 2, flip, flash, sx, sy);
             break;
         }
         /* Tall 16x24 Shipwright Orin handled above */
@@ -2823,24 +2792,29 @@ static void render_fishing_overlay(const HearthState *st, const HearthPpuPacket 
 }
 
 static void render_mountain_vista(const HearthState *st, const HearthPpuPacket *ppu, int cam_x) {
+    static const uint32_t SKY_KEY[4][6] = {
+        /* 0: Morning */
+        { 0x5A7CA8u, 0x9EB4CEu, 0xF2C8A0u, 0x586884u, 0xF6EDE6u, 0x6A4842u },
+        /* 1: Afternoon */
+        { 0x4882B8u, 0x82B2D8u, 0xDCE6ECu, 0x566E8Cu, 0xF4F6FAu, 0x584C3Cu },
+        /* 2: Dusk */
+        { 0x2E2A52u, 0x8E4A5Cu, 0xF29C58u, 0x423254u, 0xF8D0B4u, 0x4C2A32u },
+        /* 3: Night */
+        { 0x0E1228u, 0x1A2246u, 0x2C3A64u, 0x202A48u, 0xC4D4EEu, 0x161E34u }
+    };
     int w = (int)g_ppu_w;
     int vista_h = 96;
     uint8_t tod = ppu->time_of_day;
-    uint32_t sky_top, sky_mid, sky_hor, far_mtn, snow_cap, near_ridge;
-
-    if (tod == TOD_MORNING) {
-        sky_top = 0xFF5A7CA8u; sky_mid = 0xFF9EB4CEu; sky_hor = 0xFFF2C8A0u;
-        far_mtn = 0xFF586884u; snow_cap = 0xFFF6EDE6u; near_ridge = 0xFF6A4842u;
-    } else if (tod == TOD_DUSK) {
-        sky_top = 0xFF2E2A52u; sky_mid = 0xFF8E4A5Cu; sky_hor = 0xFFF29C58u;
-        far_mtn = 0xFF423254u; snow_cap = 0xFFF8D0B4u; near_ridge = 0xFF4C2A32u;
-    } else if (tod == TOD_NIGHT) {
-        sky_top = 0xFF0E1228u; sky_mid = 0xFF1A2246u; sky_hor = 0xFF2C3A64u;
-        far_mtn = 0xFF202A48u; snow_cap = 0xFFC4D4EEu; near_ridge = 0xFF161E34u;
-    } else {
-        sky_top = 0xFF4882B8u; sky_mid = 0xFF82B2D8u; sky_hor = 0xFFDCE6ECu;
-        far_mtn = 0xFF566E8Cu; snow_cap = 0xFFF4F6FAu; near_ridge = 0xFF584C3Cu;
-    }
+    uint8_t phase = (uint8_t)(ppu->tod_phase & 63u);
+    uint8_t seg   = (uint8_t)((phase >> 4) & 3u);
+    uint8_t frac  = (uint8_t)(phase & 15u);
+    uint8_t seg_n = (uint8_t)((seg + 1u) & 3u);
+    uint32_t sky_top    = rgb_to_argb(lerp_rgb888(SKY_KEY[seg][0], SKY_KEY[seg_n][0], frac));
+    uint32_t sky_mid    = rgb_to_argb(lerp_rgb888(SKY_KEY[seg][1], SKY_KEY[seg_n][1], frac));
+    uint32_t sky_hor    = rgb_to_argb(lerp_rgb888(SKY_KEY[seg][2], SKY_KEY[seg_n][2], frac));
+    uint32_t far_mtn    = rgb_to_argb(lerp_rgb888(SKY_KEY[seg][3], SKY_KEY[seg_n][3], frac));
+    uint32_t snow_cap   = rgb_to_argb(lerp_rgb888(SKY_KEY[seg][4], SKY_KEY[seg_n][4], frac));
+    uint32_t near_ridge = rgb_to_argb(lerp_rgb888(SKY_KEY[seg][5], SKY_KEY[seg_n][5], frac));
 
     for (int y = 0; y < vista_h; y++) {
         uint32_t c = (y < 28) ? sky_top : (y < 58) ? sky_mid : sky_hor;
@@ -2848,7 +2822,7 @@ static void render_mountain_vista(const HearthState *st, const HearthPpuPacket *
     }
 
     /* Stars & Crescent Moon at Night, or Drifting High Clouds by Day */
-    if (tod == TOD_NIGHT) {
+    if (tod == TOD_NIGHT || phase >= 42u) {
         for (int i = 0; i < 24; i++) {
             int sx = (i * 41 + 13) % w;
             int sy = 4 + ((i * 19) % 44);
@@ -2860,11 +2834,17 @@ static void render_mountain_vista(const HearthState *st, const HearthPpuPacket *
         fill_ellipse_alpha(w - 45, 20, 6, 6, sky_top, 255);
     } else {
         int drift = (int)((ppu->frame_count >> 3) & 511u);
+        uint32_t cld_a = rgb_to_argb(lerp_rgb888(
+            (seg == 2u) ? 0xF4B484u : 0xF8F4ECu,
+            (seg_n == 2u) ? 0xF4B484u : 0xF8F4ECu, frac));
+        uint32_t cld_b = rgb_to_argb(lerp_rgb888(
+            (seg == 2u) ? 0xF8CCA0u : 0xFFFFFFu,
+            (seg_n == 2u) ? 0xF8CCA0u : 0xFFFFFFu, frac));
         for (int i = 0; i < 4; i++) {
             int cx = ((i * 96 + drift - (cam_x >> 3)) % (w + 64)) - 32;
             int cy = 12 + (i & 1) * 14;
-            fill_ellipse_alpha(cx, cy, 20, 5, (tod == TOD_DUSK) ? 0xFFF4B484u : 0xFFF8F4ECu, 150);
-            fill_ellipse_alpha(cx + 12, cy - 2, 12, 4, (tod == TOD_DUSK) ? 0xFFF8CCA0u : 0xFFFFFFFFu, 175);
+            fill_ellipse_alpha(cx, cy, 20, 5, cld_a, 150);
+            fill_ellipse_alpha(cx + 12, cy - 2, 12, 4, cld_b, 175);
         }
     }
 
@@ -3225,7 +3205,7 @@ static void render_frame(const HearthState *st, const HearthPpuPacket *ppu) {
     int w = (int)g_ppu_w;
     int h = (int)g_ppu_h;
 
-    apply_zone_palette(ppu->terrain_pal_id);
+    apply_zone_palette(ppu->terrain_pal_id, ppu->tod_phase, ppu->has_mountain_vista);
 
     if (st->mode == MODE_INTRO) {
         render_intro_scene(st, ppu);

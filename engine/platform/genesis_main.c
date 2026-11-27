@@ -48,6 +48,7 @@ static HearthState g_hearth;
 #define VRAM_CG_BASE       VRAM_ATLAS_BASE
 #define VRAM_VISTA_BASE    VRAM_ATLAS_BASE
 #define VRAM_TALL_SPR_BASE ((u16)(VRAM_ATLAS_BASE + 480u))
+#define VRAM_PORTRAIT_BASE ((u16)(VRAM_TALL_SPR_BASE + 84u)) /* 1312..1327: 16 tiles (32x32 PAL2 dialogue portrait) */
 
 /* Nestable atomic VDP bulk-upload guard: prevents _VINT from clobbering VDP control latches
  * during multi-millisecond CPU tile/plane/CRAM uploads and restores autoInc=2 after VRAM fills. */
@@ -398,6 +399,20 @@ static void p16_rect(u8 x, u8 y, u8 w, u8 h, u8 col) {
         for (u8 px = x; px < x + w && px < 16; px++) {
             g_pix16[py * 16 + px] = col;
         }
+    }
+}
+
+static void p16_art(const char *art) {
+    u16 i;
+    for (i = 0u; i < 256u; i++) {
+        char ch = art[i];
+        u8 v = 0u;
+        if (ch >= '1' && ch <= '9') {
+            v = (u8)(ch - '0');
+        } else if (ch >= 'a' && ch <= 'f') {
+            v = (u8)(10 + (ch - 'a'));
+        }
+        g_pix16[i] = v;
     }
 }
 
@@ -862,46 +877,103 @@ static void bake_all_sprites(void) {
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_PET_MILO * 4);
 
     /* 24: SPR_ENEMY_RAT (Gutter Rat - PAL3) */
-    p16_clear();
-    p16_rect(3, 3, 3, 3, 3); p16_rect(10, 3, 3, 3, 3);     /* Rat ears */
-    p16_rect(4, 5, 8, 7, 2); p16_rect(5, 6, 6, 5, 4);      /* Fur body */
-    g_pix16[7*16+6]=10; g_pix16[7*16+9]=10;                /* Red eyes */
-    p16_rect(12, 9, 3, 2, 5);                              /* Tail */
-    p16_rect(5, 12, 2, 3, 3); p16_rect(9, 12, 2, 3, 3);
+    p16_art(
+        "................"
+        "................"
+        "................"
+        "....111........."
+        "...1da11111....."
+        "..11dddeeeed11.."
+        ".11d1aeeeeeeed1."
+        "1a11deeeeeeeed1."
+        ".111ddeddddded11"
+        "...11dd1111dd1a1"
+        "....1d1....1d1a1"
+        "....111....1111."
+        "................"
+        "................"
+        "................"
+        "................");
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_ENEMY_RAT * 4);
 
     /* 25: SPR_ENEMY_SLIME (Mire Slime - PAL3) */
-    p16_clear();
-    p16_rect(3, 6, 10, 8, 6); p16_rect(4, 4, 8, 8, 7);     /* Ooze dome */
-    p16_rect(5, 5, 3, 2, 15);                              /* Specular highlight */
-    g_pix16[8*16+6]=11; g_pix16[8*16+9]=11;                /* Bright eyes */
-    p16_rect(2, 12, 12, 2, 6);                             /* Puddle base */
+    p16_art(
+        "................"
+        "................"
+        ".....111111....."
+        "...1178887711..."
+        "..178cc8877761.."
+        ".178c8877777661."
+        ".17777777776661."
+        ".1771b1771b1661."
+        "1777111771116661"
+        "1777777777766661"
+        "1677711111166661"
+        "1667777777666661"
+        "1666666666666661"
+        ".11666666666611."
+        "..111111111111.."
+        "................");
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_ENEMY_SLIME * 4);
 
     /* 26: SPR_ENEMY_BOAR (Boar Halberdier - PAL3) */
-    p16_clear();
-    p16_rect(4, 1, 8, 4, 2); p16_rect(5, 2, 6, 2, 5);      /* Iron helm */
-    p16_rect(4, 5, 8, 4, 4); g_pix16[6*16+6]=11; g_pix16[6*16+9]=11;
-    g_pix16[8*16+4]=12; g_pix16[8*16+11]=12;               /* Ivory tusks */
-    p16_rect(3, 9, 10, 5, 3); p16_rect(5, 10, 6, 3, 10);   /* Crimson armor */
-    p16_rect(13, 1, 2, 14, 12);                            /* Halberd */
+    p16_art(
+        "......1111...11."
+        "....11a99a1.1ee1"
+        "...1deeeee1.1ed1"
+        "...1d1111d1.11e1"
+        "...13344331..1d1"
+        "..13b3443b31.1d1"
+        "..1c333333c1.1d1"
+        "..11c1111c11.1d1"
+        "..19aa99aa9111d1"
+        ".19a9deed9a911d1"
+        ".19a9deed9a911d1"
+        "..1199999911.1d1"
+        "...1d1111d1..1d1"
+        "...1d1..1d1..1d1"
+        "...111..111..111"
+        "................");
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_ENEMY_BOAR * 4);
 
     /* 27: SPR_BOSS_MUCKMAW (King Muckmaw Sewer Boss - PAL3) */
-    p16_clear();
-    p16_rect(5, 0, 6, 3, 11); g_pix16[0*16+6]=12; g_pix16[0*16+9]=12; /* Gold crown */
-    p16_rect(1, 3, 14, 12, 6); p16_rect(2, 4, 12, 9, 7);   /* Hulking ooze toad */
-    p16_rect(3, 5, 3, 2, 11); p16_rect(10, 5, 3, 2, 11);   /* Glowing eyes */
-    p16_rect(3, 9, 10, 3, 1); p16_rect(4, 9, 2, 2, 12); p16_rect(10, 9, 2, 2, 12); /* Maw */
+    p16_art(
+        "....11.11.11...."
+        "....1c1bc1c1...."
+        "....1bbbbbb1...."
+        "..111111111111.."
+        ".17888777776661."
+        "178c877777766661"
+        "1771cb1771bc1661"
+        "1771111771111661"
+        "1677777777776661"
+        "1671111111111661"
+        "1671c1c11c1c1661"
+        "1661111111111661"
+        "1666677777666661"
+        "1666666666666661"
+        ".11666666666611."
+        "..111111111111..");
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_BOSS_MUCKMAW * 4);
 
     /* 28: SPR_BOSS_IRONFANG (Lord Ironfang Arc Boss - PAL3) */
-    p16_clear();
-    p16_rect(2, 0, 2, 4, 12); p16_rect(12, 0, 2, 4, 12);   /* Great horns */
-    p16_rect(3, 2, 10, 6, 2); p16_rect(4, 3, 8, 4, 3);     /* Dark iron visor */
-    p16_rect(4, 5, 3, 2, 10); p16_rect(9, 5, 3, 2, 10);    /* Crimson eyes */
-    p16_rect(2, 8, 12, 7, 10); p16_rect(4, 8, 8, 6, 2);    /* Cape & breastplate */
-    p16_rect(3, 7, 2, 2, 12); p16_rect(11, 7, 2, 2, 12);   /* Ironfang tusks */
+    p16_art(
+        ".11..........11."
+        "1cc1.111111.1cc1"
+        ".1c11deeeed11c1."
+        "..11dd2222dd11.."
+        "..1dd111111dd1.."
+        "..1d1a1221a1d1.."
+        ".1c1122222211c1."
+        ".1cc11111111cc1."
+        ".19aa1deed1aa91."
+        "19aaa1d99d1aaa91"
+        "19aa91deed19aa91"
+        "19aa91d22d19aa91"
+        ".19991111119991."
+        "..11d11..11d11.."
+        "...1dd1..1dd1..."
+        "...1111..1111...");
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_BOSS_IRONFANG * 4);
 
     /* 29: SPR_HOLLOW_OAK (Ancient Hollow Oak Tree Gate - PAL2) */
@@ -1005,48 +1077,123 @@ static void bake_all_sprites(void) {
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_RAFT * 4);
 
     /* 41: SPR_ENEMY_SCORPION (Dune Scorpion - PAL3) */
-    p16_clear();
-    p16_rect(3, 7, 10, 6, 10); p16_rect(4, 8, 8, 4, 11);
-    p16_rect(1, 5, 3, 4, 10);  p16_rect(12, 5, 3, 4, 10);
-    p16_rect(6, 2, 4, 5, 10);  p16_rect(8, 1, 3, 2, 12);
-    g_pix16[8*16+6]=1; g_pix16[8*16+9]=1;
+    p16_art(
+        "......1111......"
+        ".....1cb1a1....."
+        ".....11..191...."
+        "..........1a1..."
+        ".111......19a1.."
+        "1a1.1.....1a91.."
+        "1aa111111119a1.."
+        ".119a1b1aa9aa1.."
+        "..1a9aaa9aaa91.."
+        "..119999999911.."
+        "...1a11911a11a1."
+        "..11.11.11.11.1."
+        ".11..1..1...11.."
+        "................"
+        "................"
+        "................");
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_ENEMY_SCORPION * 4);
 
     /* 42: SPR_ENEMY_SANDWORM (Giant Sandworm - PAL3) */
-    p16_clear();
-    p16_rect(2, 2, 12, 13, 10); p16_rect(3, 3, 10, 10, 11);
-    p16_rect(4, 4, 8, 5, 1);    p16_rect(5, 5, 2, 2, 12); p16_rect(9, 5, 2, 2, 12);
-    p16_rect(2, 10, 12, 2, 6);  p16_rect(3, 13, 10, 2, 6);
+    p16_art(
+        "....11111111...."
+        "..11aabbbbaa11.."
+        ".1ab11111111ba1."
+        "1aa1c11cc11c1aa1"
+        "1a911111111119a1"
+        "1ab1c111111c1ba1"
+        "1a911c1cc1c119a1"
+        ".1aa11111111aa1."
+        ".199aaaaaaaa991."
+        "..119999999911.."
+        ".1aabbbbbbbbaa1."
+        "1a99aaaaaaaa99a1"
+        "1999999999999991"
+        ".11aabbbbbbaa11."
+        "..119999999911.."
+        "...1111111111...");
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_ENEMY_SANDWORM * 4);
 
     /* 43: SPR_FAUNA_CAMEL (Desert Camel - PAL2) */
-    p16_clear();
-    p16_rect(4, 4, 8, 6, 11);  p16_rect(6, 2, 4, 3, 12);
-    p16_rect(11, 3, 4, 4, 11); g_pix16[3*16+14]=1;
-    p16_rect(4, 10, 2, 5, 11); p16_rect(10, 10, 2, 5, 11);
+    p16_art(
+        "................"
+        ".....1111....11."
+        "....177761..1771"
+        "...177a7761.1711"
+        "..177aaa77611761"
+        ".17777777777761."
+        "16777777777761.."
+        "1166777777661..."
+        "..1666666661...."
+        "..1166116611...."
+        "...161..161....."
+        "...161..161....."
+        "...161..161....."
+        "...1b1..1b1....."
+        "...111..111....."
+        "................");
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_FAUNA_CAMEL * 4);
 
     /* 44: SPR_FAUNA_PENGUIN (Frostmere Penguin - PAL2) */
-    p16_clear();
-    p16_rect(4, 2, 8, 12, 1);  p16_rect(5, 6, 6, 7, 15);
-    p16_rect(6, 4, 4, 2, 7);   g_pix16[3*16+5]=15; g_pix16[3*16+10]=15;
-    p16_rect(4, 14, 3, 2, 7);  p16_rect(9, 14, 3, 2, 7);
+    p16_art(
+        "................"
+        ".....111111....."
+        "....18888881...."
+        "...188f18f181..."
+        "...1881177181..."
+        "...1888777881..."
+        "..18814ff41881.."
+        ".18814ffff41881."
+        ".18114ffff41181."
+        ".11.14ffff41.11."
+        "....14ffff41...."
+        "....184ff481...."
+        "....11888811...."
+        "...1771111771..."
+        "...1111..1111..."
+        "................");
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_FAUNA_PENGUIN * 4);
 
     /* 45: SPR_FAUNA_MONKEY (Canopy Monkey - PAL2) */
-    p16_clear();
-    p16_rect(2, 3, 3, 3, 11);  p16_rect(11, 3, 3, 3, 11);
-    p16_rect(4, 2, 8, 6, 11);  p16_rect(5, 4, 6, 4, 2);
-    g_pix16[4*16+6]=1; g_pix16[4*16+9]=1;
-    p16_rect(4, 8, 8, 6, 11);  p16_rect(12, 7, 3, 4, 11);
+    p16_art(
+        "................"
+        "....1111111....."
+        ".111bcbbbcb111.."
+        "12b1b22b22b1b21."
+        "11b121222121b11."
+        "..11222322211..."
+        "...112222211..11"
+        "...1bcbbbcb1.1b1"
+        "..1b2c222c2b11b1"
+        "..1b1b222b1b111."
+        "..11.1bbb1.11..."
+        ".....1b1b1......"
+        "....1b1.1b1....."
+        "....121.121....."
+        "....111.111....."
+        "................");
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_FAUNA_MONKEY * 4);
 
     /* 46: SPR_FAUNA_ROBOT (Aetheris Automaton - PAL2) */
-    p16_clear();
-    p16_rect(7, 0, 2, 2, 7);   p16_rect(4, 2, 8, 5, 5);
-    p16_rect(5, 4, 6, 2, 9);   g_pix16[4*16+6]=15; g_pix16[4*16+9]=15;
-    p16_rect(3, 7, 10, 6, 4);  p16_rect(5, 8, 6, 4, 9);
-    p16_rect(5, 13, 2, 3, 5);  p16_rect(9, 13, 2, 3, 5);
+    p16_art(
+        ".......11......."
+        "......1771......"
+        ".......11......."
+        "...1111111111..."
+        "..145555555541.."
+        "..1419f99f9141.."
+        "..141999999141.."
+        "...1111111111..."
+        ".11145555554111."
+        "1541459ff9541451"
+        "1511459999541151"
+        ".11.14555541.11."
+        "....11111111...."
+        "....15411451...."
+        "....14411441...."
+        "....11111111....");
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_FAUNA_ROBOT * 4);
 
     /* 47: SPR_NPC_SHIPWRIGHT (Shipwright Orin - PAL2) */
@@ -1625,6 +1772,8 @@ static u8  g_last_battle_biome = 255;
 static u8  g_last_battle_tod = 255;
 static u8  g_last_pal_id = 255;
 static u8  g_last_pal3_mode = 255;
+static u8  g_last_tod_phase = 255;
+static u8  g_last_portrait_id = 0;
 static u8  g_last_map_rev = 255;
 static u8  g_cinema_pals_active = 0;
 
@@ -2086,8 +2235,29 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
     } else if (want_layout == 2) {
         const HearthDialogue *d = &g_hearth.dialogue;
         bool show_choices = (d->finished && d->next_text == NULL && d->choice_count > 0);
+        u8 pid = d->portrait_id;
+        bool has_port = (pid >= 1u && pid <= ROM_PORTRAIT_COUNT);
+        u16 tx0 = has_port ? 7u : 2u;
+        u16 max_cols = has_port ? 31u : 36u;
         VDP_fillTileMapRect(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FILL), 1, 21, 38, 6);
-        win_text(2, 21, PAL3, d->speaker ? d->speaker : "...");
+        if (has_port) {
+            if (pid != g_last_portrait_id) {
+                g_last_portrait_id = pid;
+                if (g_vdp_bulk_depth > 0u) {
+                    VDP_loadTileData(GEN_PORTRAIT_TILES[pid - 1u], VRAM_PORTRAIT_BASE, ROM_PORTRAIT_TILES, CPU);
+                } else {
+                    gen_queue_rom_tiles_dma(GEN_PORTRAIT_TILES[pid - 1u], VRAM_PORTRAIT_BASE, ROM_PORTRAIT_TILES);
+                }
+            }
+            for (u16 py = 0u; py < 4u; py++) {
+                for (u16 px = 0u; px < 4u; px++) {
+                    u16 pt = (u16)(VRAM_PORTRAIT_BASE + (py << 2) + px);
+                    VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, pt),
+                        (u16)(2u + px), (u16)(22u + py));
+                }
+            }
+        }
+        win_text(tx0, 21, PAL3, d->speaker ? d->speaker : "...");
         if (d->full_text) {
             u16 vis = d->visible_chars;
             u16 start = 0u;
@@ -2097,23 +2267,23 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
                 if (start >= vis) break;
                 u16 take = 0u;
                 u16 last_sp = 0u;
-                while ((u16)(start + take) < vis && take < 36u && d->full_text[start + take] != '\0') {
+                while ((u16)(start + take) < vis && take < max_cols && d->full_text[start + take] != '\0') {
                     if (d->full_text[start + take] == ' ') last_sp = take;
                     take++;
                 }
-                if (take == 36u && (u16)(start + take) < vis &&
+                if (take == max_cols && (u16)(start + take) < vis &&
                     d->full_text[start + take] != ' ' && d->full_text[start + take] != '\0' && last_sp > 0u) {
                     take = last_sp;
                 }
-                win_text_n(2, row, PAL2, d->full_text + start, take);
+                win_text_n(tx0, row, PAL2, d->full_text + start, take);
                 start = (u16)(start + take);
             }
         }
         if (show_choices) {
             for (u8 c = 0; c < d->choice_count && c < 3u; c++) {
-                win_text(2, (u16)(24 + c), (c == d->selected_choice) ? PAL3 : PAL2,
+                win_text(tx0, (u16)(24 + c), (c == d->selected_choice) ? PAL3 : PAL2,
                     (c == d->selected_choice) ? ">" : " ");
-                win_text(4, (u16)(24 + c), (c == d->selected_choice) ? PAL3 : PAL2, d->choices[c].label);
+                win_text((u16)(tx0 + 2u), (u16)(24 + c), (c == d->selected_choice) ? PAL3 : PAL2, d->choices[c].label);
             }
         } else if (d->finished) {
             win_text(28, 26, PAL3, (d->next_text != NULL) ? "[A] MORE" : "[A] NEXT");
@@ -2384,8 +2554,9 @@ static void render_sprites(const HearthPpuPacket *ppu) {
         return;
     }
 
-    for (u8 i = 0; i < ppu->oam_count && count < 58u; i++) {
-        const HearthOamSprite *o = &ppu->oam[i];
+    /* Reverse iterate ppu->oam: Genesis SAT draws LOWER sprite indices IN FRONT of higher indices! */
+    for (s16 ri = (s16)ppu->oam_count - 1; ri >= 0 && count < 58u; ri--) {
+        const HearthOamSprite *o = &ppu->oam[ri];
         u8 tslot = genesis_tall_slot(o->sprite_id);
         s16 sx = (s16)(o->x - 8 + ppu->shake_x);
         s16 sy;
@@ -2926,20 +3097,53 @@ static uint16_t read_genesis_pad(void) {
     return bits;
 }
 
-static void upload_zone_pal0_to_cram(u8 pal_id, u8 terrain_pal3, TransferMethod tm) {
+static u16 gen_lerp_bgr333(u16 c0, u16 c1, u8 frac) {
+    u16 r0 = (u16)((c0 >> 1) & 7u), g0 = (u16)((c0 >> 5) & 7u), b0 = (u16)((c0 >> 9) & 7u);
+    u16 r1 = (u16)((c1 >> 1) & 7u), g1 = (u16)((c1 >> 5) & 7u), b1 = (u16)((c1 >> 9) & 7u);
+    u16 inv = (u16)(16u - (u16)frac);
+    u16 r = (u16)((r0 * inv + r1 * (u16)frac + 8u) >> 4);
+    u16 g = (u16)((g0 * inv + g1 * (u16)frac + 8u) >> 4);
+    u16 b = (u16)((b0 * inv + b1 * (u16)frac + 8u) >> 4);
+    if (r > 7u) r = 7u;
+    if (g > 7u) g = 7u;
+    if (b > 7u) b = 7u;
+    return (u16)((b << 9) | (g << 5) | (r << 1));
+}
+
+static void upload_zone_pal0_to_cram(u8 pal_id, u8 terrain_pal3, u8 tod_phase, TransferMethod tm) {
     static u16 cram0[16];
     static u16 cram3[16];
+    static const u8 TOD_KEYS[4] = {
+        ZPAL_AUTUMN_MORNING, ZPAL_ALDERBROOK, ZPAL_AUTUMN_DUSK, ZPAL_AUTUMN_NIGHT
+    };
     u8 pid = (pal_id < ZPAL_COUNT) ? pal_id : 0u;
+    u8 smooth_tod = (u8)((g_hearth.ppu.has_mountain_vista &&
+        (pid == ZPAL_AUTUMN_MORNING || pid == ZPAL_ALDERBROOK ||
+         pid == ZPAL_AUTUMN_DUSK || pid == ZPAL_AUTUMN_NIGHT)) ? 1u : 0u);
+    u8 seg = (u8)((tod_phase >> 4) & 3u);
+    u8 frac = (u8)(tod_phase & 15u);
+    u8 pA = TOD_KEYS[seg];
+    u8 pB = TOD_KEYS[(seg + 1u) & 3u];
     for (u16 c = 0u; c < 16u; c++) {
-        cram0[c] = GEN_CHRONO_PALS[pid][0][c];
-        cram3[c] = terrain_pal3
-            ? GEN_CHRONO_PALS[pid][1][c]
-            : hearth_rgb_to_genesis_bgr333(HEARTH_PALETTES_RGB[3][c]);
+        if (smooth_tod && frac > 0u) {
+            cram0[c] = gen_lerp_bgr333(GEN_CHRONO_PALS[pA][0][c], GEN_CHRONO_PALS[pB][0][c], frac);
+            cram3[c] = terrain_pal3
+                ? ((c == 1u || c == 15u) ? GEN_CHRONO_PALS[pA][1][c]
+                   : gen_lerp_bgr333(GEN_CHRONO_PALS[pA][1][c], GEN_CHRONO_PALS[pB][1][c], frac))
+                : hearth_rgb_to_genesis_bgr333(HEARTH_PALETTES_RGB[3][c]);
+        } else {
+            u8 use_p = smooth_tod ? pA : pid;
+            cram0[c] = GEN_CHRONO_PALS[use_p][0][c];
+            cram3[c] = terrain_pal3
+                ? GEN_CHRONO_PALS[use_p][1][c]
+                : hearth_rgb_to_genesis_bgr333(HEARTH_PALETTES_RGB[3][c]);
+        }
     }
     PAL_setColors(0,  cram0, 16, tm);
     PAL_setColors(48, cram3, 16, tm);
     g_last_pal_id = pid;
     g_last_pal3_mode = terrain_pal3;
+    g_last_tod_phase = tod_phase;
 }
 
 static void upload_palettes_to_cram(void) {
@@ -2952,6 +3156,7 @@ static void upload_palettes_to_cram(void) {
     }
     g_last_pal_id = 255u;
     g_last_pal3_mode = 255u;
+    g_last_tod_phase = 255u;
 }
 
 /* ============================================================================
@@ -3571,7 +3776,7 @@ int main(bool hard_reset) {
             gen_vdp_begin_bulk();
             upload_palettes_to_cram();
             VDP_setBackgroundColor(33); /* PAL2[1] warm slate backdrop */
-            upload_zone_pal0_to_cram(boot_ppu->terrain_pal_id, boot_tpal3, CPU);
+            upload_zone_pal0_to_cram(boot_ppu->terrain_pal_id, boot_tpal3, boot_ppu->tod_phase, CPU);
             g_last_scene_mode = 0u;
             gen_clear_plane(BG_A);
             draw_full_world_viewport(boot_ppu->cam_x, boot_ppu->cam_y);
@@ -3648,7 +3853,7 @@ int main(bool hard_reset) {
                     upload_palettes_to_cram();
                     g_cinema_pals_active = 0u;
                 }
-                upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, CPU);
+                upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, ppu->tod_phase, CPU);
                 if (prev_scene != 0u || map_changed) {
                     gen_clear_plane(BG_A);
                 }
@@ -3684,10 +3889,11 @@ int main(bool hard_reset) {
             gen_vdp_end_bulk();
         }
 
-        /* 3. Incremental VBlank DMA_QUEUE palette updates (overworld time-of-day / atlas close) */
+        /* 3. Incremental VBlank DMA_QUEUE palette updates (smooth 64-step time-of-day / atlas close) */
         if (scene_mode == 0u && !g_hearth.atlas_open &&
-            (ppu->terrain_pal_id != g_last_pal_id || want_tpal3 != g_last_pal3_mode)) {
-            upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, DMA_QUEUE);
+            (ppu->terrain_pal_id != g_last_pal_id || want_tpal3 != g_last_pal3_mode ||
+             (ppu->has_mountain_vista && ppu->tod_phase != g_last_tod_phase))) {
+            upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, ppu->tod_phase, DMA_QUEUE);
         }
 
         /* 4. Per-frame incremental scrolling, environmental animations & VSync scroll latch */

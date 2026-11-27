@@ -59,7 +59,9 @@ export type GameMode =
   | 'SHOP'
   | 'FISHING';
 
-export type ZoneId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
+export type ZoneId =
+  | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
+  | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24;
 export type TimeOfDay = 0 | 1 | 2 | 3; // 0=Morning, 1=Afternoon, 2=Dusk, 3=Night
 
 export type BgmTrackId =
@@ -678,6 +680,7 @@ export interface PpuFramePacket {
   zoneBannerFrames: number;
   zoneName: string;
   timeOfDay: TimeOfDay;
+  todPhase: number; // 0..63 smooth real-time day/night progression
   hasMountainVista: boolean;
   objectiveText: string;
   heroWorldX: number;

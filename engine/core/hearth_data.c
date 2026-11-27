@@ -216,7 +216,8 @@ const char * const HEARTH_ZONE_NAMES[ZONE_COUNT] = {
     "Tessa's Tea House",
     "Corin's Archive Hall",
     "Whiskerburgh Guildhall",
-    "Babana Caravanserai"
+    "Babana Caravanserai",
+    "Mara's Bedroom"
 };
 
 const char * const HEARTH_REGION_NAMES[REGION_COUNT] = {
@@ -359,7 +360,7 @@ static void fill_perimeter(uint8_t *bg1, uint8_t *col, uint8_t border_tile) {
 }
 
 /* ============================================================================
- * ZONE 5: ROWAN'S CEDAR COTTAGE INTERIOR (Hearth, Bedroom & Attic Loft)
+ * ZONE 5: ROWAN'S CEDAR COTTAGE INTERIOR (Hearth, Rowan's Corner & Stairs Up)
  * ============================================================================ */
 static void build_zone_rowan_home(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);
@@ -378,31 +379,57 @@ static void build_zone_rowan_home(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     /* Woven Burgundy & Gold Hearthside Rug */
     fill_rect(bg1, col, 18, 9, 4, 3, T_HEARTH_RUG, COL_WALKABLE);
 
-    /* Left Bedroom Partition & Rowan's Patchwork Quilt Bed */
-    set_bg1(bg1, col, 17, 13, T_INTERIOR_WALL, COL_SOLID);
-    set_bg1(bg1, col, 17, 14, T_INTERIOR_WALL, COL_SOLID);
-    set_bg1(bg1, col, 17, 15, T_INTERIOR_WALL, COL_SOLID);
-    set_bg1(bg1, col, 14, 15, T_BED_QUILT,     COL_SOLID);
-    set_bg1(bg1, col, 14, 16, T_BED_QUILT,     COL_SOLID);
-    set_bg1(bg1, col, 14, 14, T_LANTERN_POST,  COL_SOLID);
+    /* Open Left Sleeping Nook: Rowan's Patchwork Quilt Bed & Bedside Lantern */
+    set_bg1(bg1, col, 14, 15, T_BED_QUILT,    COL_SOLID);
+    set_bg1(bg1, col, 14, 16, T_BED_QUILT,    COL_SOLID);
+    set_bg1(bg1, col, 14, 14, T_LANTERN_POST, COL_SOLID);
 
-    /* Right Attic Loft Landing & Grandma's Heirloom Cedar Chest */
-    set_bg1(bg1, col, 25, 8,  T_INTERIOR_WALL, COL_SOLID);
-    set_bg1(bg1, col, 25, 9,  T_INTERIOR_WALL, COL_SOLID);
-    set_bg1(bg1, col, 25, 10, T_INTERIOR_WALL, COL_SOLID);
-    set_bg1(bg1, col, 25, 11, T_STONE_STAIRS,  COL_WALKABLE);
-    set_bg1(bg1, col, 25, 12, T_STONE_STAIRS,  COL_WALKABLE);
-    fill_rect(bg1, col, 26, 8, 5, 5, T_WOOD_FLOOR, COL_WALKABLE);
-    set_bg1(bg1, col, 29, 9,  T_ATTIC_CHEST,   COL_SOLID);
-    set_bg1(bg1, col, 27, 8,  T_LANTERN_POST,  COL_SOLID);
+    /* Northeast Staircase Ascending to Grandma Mara's Upstairs Bedroom & Loft */
+    set_bg1(bg1, col, 29, 8,  T_STONE_STAIRS, COL_WALKABLE);
+    set_bg1(bg1, col, 29, 9,  T_STONE_STAIRS, COL_WALKABLE);
+    set_bg1(bg1, col, 27, 8,  T_LANTERN_POST, COL_SOLID);
 
     /* Cozy Tea Table Corner & South Front Doorway Exit */
-    set_bg1(bg1, col, 28, 17, T_FLOWER_BED,    COL_SOLID);
-    set_bg1(bg1, col, 29, 17, T_FLOWER_BED,    COL_SOLID);
-    set_bg1(bg1, col, 20, 20, T_WOOD_FLOOR,    COL_WALKABLE);
-    set_bg1(bg1, col, 21, 20, T_WOOD_FLOOR,    COL_WALKABLE);
-    set_bg1(bg1, col, 19, 19, T_LANTERN_POST,  COL_SOLID);
-    set_bg1(bg1, col, 22, 19, T_LANTERN_POST,  COL_SOLID);
+    set_bg1(bg1, col, 28, 17, T_FLOWER_BED,   COL_SOLID);
+    set_bg1(bg1, col, 29, 17, T_FLOWER_BED,   COL_SOLID);
+    set_bg1(bg1, col, 20, 20, T_WOOD_FLOOR,   COL_WALKABLE);
+    set_bg1(bg1, col, 21, 20, T_WOOD_FLOOR,   COL_WALKABLE);
+    set_bg1(bg1, col, 19, 19, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 22, 19, T_LANTERN_POST, COL_SOLID);
+}
+
+/* ============================================================================
+ * ZONE 24: GRANDMA MARA'S UPSTAIRS BEDROOM & KEEPSAKE ATTIC LOFT
+ * ============================================================================ */
+static void build_zone_rowan_upstairs(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
+    hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);
+    fill_rect(bg1, col, 0, 0, HEARTH_MAP_W, HEARTH_MAP_H, T_INTERIOR_WALL, COL_SOLID);
+
+    /* Snug Sunlit Cedar Loft Floor (x=14..29, y=9..18) */
+    fill_rect(bg1, col, 14, 9, 16, 10, T_WOOD_FLOOR, COL_WALKABLE);
+
+    /* North Dormer Windows Overlooking Alderbrook Peaks */
+    set_bg1(bg1, col, 17, 8, T_WALL_WINDOW, COL_SOLID);
+    set_bg1(bg1, col, 24, 8, T_WALL_WINDOW, COL_SOLID);
+
+    /* Central Woven Burgundy & Gold Bedroom Rug */
+    fill_rect(bg1, col, 19, 12, 5, 4, T_HEARTH_RUG, COL_WALKABLE);
+
+    /* Grandma Mara's Quilt Bed & Lavender Window Planters (West Side) */
+    set_bg1(bg1, col, 15, 11, T_BED_QUILT,    COL_SOLID);
+    set_bg1(bg1, col, 15, 12, T_BED_QUILT,    COL_SOLID);
+    set_bg1(bg1, col, 16, 10, T_LANTERN_POST, COL_SOLID);
+    set_bg1(bg1, col, 15, 16, T_FLOWER_BED,   COL_SOLID);
+    set_bg1(bg1, col, 16, 16, T_FLOWER_BED,   COL_SOLID);
+
+    /* Keepsake Nook: Grandma's Heirloom Cedar Chest (Northeast Side) */
+    set_bg1(bg1, col, 26, 10, T_ATTIC_CHEST,  COL_SOLID);
+    set_bg1(bg1, col, 25, 10, T_LANTERN_POST, COL_SOLID);
+
+    /* Working Return Staircase Descending to Cottage Ground Floor (Southeast) */
+    set_bg1(bg1, col, 28, 16, T_STONE_STAIRS, COL_WALKABLE);
+    set_bg1(bg1, col, 28, 17, T_STONE_STAIRS, COL_WALKABLE);
+    set_bg1(bg1, col, 27, 15, T_LANTERN_POST, COL_SOLID);
 }
 
 /* ============================================================================
@@ -2087,6 +2114,8 @@ void hearth_build_zone_map(uint8_t zone_id, uint8_t *bg1, uint8_t *bg2, uint8_t 
         build_zone_alderbrook(bg1, bg2, col);
     } else if (zone_id == ZONE_ROWAN_HOME) {
         build_zone_rowan_home(bg1, bg2, col);
+    } else if (zone_id == ZONE_ROWAN_UPSTAIRS) {
+        build_zone_rowan_upstairs(bg1, bg2, col);
     } else if (zone_id == ZONE_WHISPERING_WOODS) {
         build_zone_whispering_woods(bg1, bg2, col);
     } else if (zone_id == ZONE_HOLLOW_GLADE) {

@@ -149,7 +149,7 @@ def build_zone_palettes():
     ]
     alder_wat = [
         0x000000, 0x204A76, 0x3A7CAE, 0x82C4E4, 0x143052, 0x3C4252, 0x70788A,
-        0xDCE2EA, 0x242A3A, 0x3E5234, 0x6E7842, 0x627488, 0x489CB4, 0x9EC2D8,
+        0xDCE2EA, 0x242A3A, 0x566E3A, 0x8E8B40, 0x627488, 0x489CB4, 0x9EC2D8,
         0xE4EEF6, 0xF8FCFF,
     ]
     alder_arch = [
@@ -158,8 +158,8 @@ def build_zone_palettes():
         0xFFF0AE, 0x888642,
     ]
     alder_acc = [
-        0x000000, 0x28141A, 0x6E1E22, 0xB83226, 0xE2622C, 0xF6B040, 0x244234,
-        0x3E6A48, 0x78A85A, 0xD8E89A, 0x4A3A44, 0x887A86, 0xE8C460, 0xF48A30,
+        0x000000, 0x28141A, 0x6E1E22, 0xB83226, 0xE2622C, 0xF6B040, 0x566E3A,
+        0x8E8B40, 0xC6A84C, 0xD8E89A, 0x4A3A44, 0x887A86, 0xE8C460, 0xF48A30,
         0xFFD868, 0xFFF6D4,
     ]
     z[1] = [alder_fol, alder_wat, alder_arch, alder_acc]
@@ -411,13 +411,13 @@ def build_genesis_palettes(zone_pals):
         # GEN PAL3 (15 colors):
         #  1: deep slate (also crisp PAL3 UI text bg!)  2: deep water   3: mid cerulean
         #  4: turquoise shallow  5: bright foam white   6: stone dark   7: cobble mid
-        #  8: cobble lit         9: pale flagstone     10: cast shadow
+        #  8: cobble lit         9: pale flagstone     10: biome grass/turf match (seamless shores & cobble edges!)
         # 11: accent dark       12: accent mid         13: accent bright
         # 14: warm gold (glow/emote)  15: bright sunlit cream-cyan (also crisp PAL3 UI highlight text!)
         p3 = [
             0x000000,
             0x161826, wat[1], wat[2], wat[12], wat[15],
-            arch[2], arch[3], arch[4], arch[5], wat[8],
+            arch[2], arch[3], arch[4], arch[5], arch[15],
             acc[2], acc[3], acc[4], 0xF8CC58, 0xE6F8FF,
         ]
         gen.append((p0, p3))
@@ -2601,12 +2601,12 @@ def build_all_metatiles(frame=0):
         if ov_tile.qpal[0] == out_t.qpal[0]:
             out_t.overlay_from(ov_tile)
         else:
-            # Organic dappled moss turf in TPAL_ACCENT (indices 6,7,8 = deep/mid/lit sage in Alderbrook!)
+            # Mirror exact dappled meadow turf pixel pattern into TPAL_ACCENT indices 6,7,8 (= fol[3,4,5]!)
             out_t = Tile16(ov_tile.qpal[0], 7, prio=prio)
             for y in range(16):
                 for x in range(16):
-                    h = ((x * 5 + y * 3) ^ (x >> 1)) & 7
-                    out_t.p(x, y, 8 if h == 0 else (6 if h in (3, 6) else 7))
+                    bc = bg_tile.px[y][x]
+                    out_t.p(x, y, 6 if bc <= 3 else (8 if bc >= 5 else 7))
             out_t.overlay_from(ov_tile)
         return out_t
 
@@ -2638,17 +2638,21 @@ def build_all_metatiles(frame=0):
 #   TPAL_ACCENT  -> GEN PAL3 (slot 3)
 GEN_MAP_FOLIAGE_TO_P0 = [0, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 14, 13, 15, 14, 2]
 GEN_MAP_ARCH_TO_P0    = [0, 1, 6, 7, 8, 9, 6, 7, 8, 9, 10, 11, 12, 13, 14, 3]
-GEN_MAP_ARCH_TO_P3    = [0, 1, 6, 7, 8, 9, 1, 6, 8, 9, 11, 12, 13, 14, 15, 4]
-GEN_MAP_WATER_TO_P3   = [0, 2, 3, 4, 1, 6, 7, 9, 10, 1, 6, 14, 3, 4, 15, 5]
+GEN_MAP_ARCH_TO_P3    = [0, 1, 6, 7, 8, 9, 1, 6, 8, 9, 11, 12, 13, 14, 15, 10]
+GEN_MAP_WATER_TO_P3   = [0, 2, 3, 4, 2, 6, 7, 9, 2, 10, 10, 14, 3, 4, 15, 5]
 GEN_MAP_ACCENT_TO_P3  = [0, 1, 11, 12, 13, 14, 2, 3, 4, 5, 6, 7, 14, 14, 15, 5]
+# Maple canopies (CM_OPQ_MAPLE_* / CM_OV_MAPLE_*) use GEN PAL0: crimson/gold arch[10..13] + exact fol[3..5] turf!
+GEN_MAP_MAPLE_TO_P0   = [0, 1, 10, 11, 12, 13, 3, 4, 5, 5, 6, 7, 13, 12, 13, 14]
 
-def remap_quad_for_genesis(q8, qpal):
+def remap_quad_for_genesis(q8, qpal, meta_name=""):
     """Map an 8x8 tile from 4-palette space onto Genesis PAL0 (0) or PAL3 (3)."""
     if qpal == TPAL_FOLIAGE:
         return tuple(GEN_MAP_FOLIAGE_TO_P0[c] for c in q8), 0
     if qpal == TPAL_WATER:
         return tuple(GEN_MAP_WATER_TO_P3[c] for c in q8), 3
     if qpal == TPAL_ACCENT:
+        if "MAPLE" in meta_name:
+            return tuple(GEN_MAP_MAPLE_TO_P0[c] for c in q8), 0
         return tuple(GEN_MAP_ACCENT_TO_P3[c] for c in q8), 3
     # TPAL_ARCH: check if quadrant is predominantly stone/cobble (indices 2..5) vs wood/roof (6..12)
     stone_cnt = sum(1 for c in q8 if c in (2, 3, 4, 5))
@@ -2733,7 +2737,7 @@ def compile_console_bank(frames_meta, max_tiles, is_genesis=False):
         q8 = extract_quad8(t, qidx)
         pal = t.qpal[qidx]
         if is_genesis:
-            q8, pal = remap_quad_for_genesis(q8, pal)
+            q8, pal = remap_quad_for_genesis(q8, pal, META_NAMES[meta_id])
         return q8, pal, t.prio
 
     # Register animated sequences first (indices 1..K)

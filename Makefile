@@ -108,7 +108,7 @@ NODE_IMAGE      ?= node:22-slim
 WEB_PORT        ?= 5173
 WEB_CACHE_DIR   := $(CURDIR)/$(TOOLCHAIN_DIR)/web
 
-.PHONY: all linux macos windows genesis genesis-stage snes wasm web web-run core-test map-audit run deps-ubuntu clean distclean help
+.PHONY: all linux macos windows genesis genesis-stage snes wasm web web-run core-test map-audit map-audit-vision map-audit-bless run deps-ubuntu clean distclean help
 
 # Default target builds for the current machine
 all: $(HOST_TARGET)
@@ -188,14 +188,28 @@ $(BUILD_DIR)/test/$(APP_NAME)_core_test: $(CORE_SRCS) $(CORE_HDRS) $(TEST_SRC)
 	$(CC) $(CFLAGS_STRICT) $(CORE_SRCS) $(TEST_SRC) -o $@
 
 # ------------------------------------------------------------------------------
-# 4b. STANDALONE 6-PASS WORLD, AUTOTILE & PIXEL-SEAM AUDIT + ANNOTATED PNGs
+# 4b. STANDALONE 6-PASS WORLD, AUTOTILE & PIXEL-SEAM AUDIT + CONTACT SHEETS
+#     Optional: make map-audit VISION=1 [CHANGED_ONLY=1]  (or make map-audit-vision)
+#               make map-audit-bless  (save current verified pixel-diff baseline)
 # ------------------------------------------------------------------------------
-map-audit: $(CORE_SRCS) $(CORE_HDRS) $(TERRAIN_ROM_HDR) engine/tools/map_audit_dump.c engine/tools/map_audit.py
+MAP_AUDIT_FLAGS := $(if $(filter 1 true yes,$(VISION)),--vision,) $(if $(filter 1 true yes,$(CHANGED_ONLY)),--changed-only,)
+
+map-audit: $(CORE_SRCS) $(CORE_HDRS) $(TERRAIN_ROM_HDR) engine/tools/map_audit_dump.c engine/tools/map_audit.py engine/tools/map_audit_vision.py
 	$(call PRINT_BUILD_BANNER,map-audit)
 	@mkdir -p $(BUILD_DIR)/map_audit/raw
 	$(CC) $(CFLAGS_COMMON) -Wno-unused-function $(CORE_SRCS) engine/tools/map_audit_dump.c -o $(BUILD_DIR)/map_audit/map_audit_dump
 	@$(BUILD_DIR)/map_audit/map_audit_dump $(BUILD_DIR)/map_audit/raw
-	@python3 engine/tools/map_audit.py $(BUILD_DIR)/map_audit/raw $(BUILD_DIR)/map_audit
+	@python3 engine/tools/map_audit.py $(BUILD_DIR)/map_audit/raw $(BUILD_DIR)/map_audit $(MAP_AUDIT_FLAGS)
+
+map-audit-vision:
+	@$(MAKE) map-audit VISION=1 CHANGED_ONLY=$(CHANGED_ONLY)
+
+map-audit-bless: $(CORE_SRCS) $(CORE_HDRS) $(TERRAIN_ROM_HDR) engine/tools/map_audit_dump.c engine/tools/map_audit.py
+	$(call PRINT_BUILD_BANNER,map-audit-bless)
+	@mkdir -p $(BUILD_DIR)/map_audit/raw
+	$(CC) $(CFLAGS_COMMON) -Wno-unused-function $(CORE_SRCS) engine/tools/map_audit_dump.c -o $(BUILD_DIR)/map_audit/map_audit_dump
+	@$(BUILD_DIR)/map_audit/map_audit_dump $(BUILD_DIR)/map_audit/raw
+	@python3 engine/tools/map_audit.py $(BUILD_DIR)/map_audit/raw $(BUILD_DIR)/map_audit --bless
 
 # ------------------------------------------------------------------------------
 # 5. SEGA GENESIS / MEGA DRIVE ROM (Implicit Docker SGDK — Zero Manual Setup!)

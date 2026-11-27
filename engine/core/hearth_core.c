@@ -480,6 +480,12 @@ static uint8_t tod_to_mountain_pal(uint8_t tod) {
     return (uint8_t)ZPAL_ALDERBROOK;
 }
 
+static void set_tod_phase_quarter(HearthState *st, uint8_t tod) {
+    st->time_of_day = (uint8_t)(tod & 3u);
+    st->tod_phase = (uint8_t)(st->time_of_day << 4);
+    st->day_subtick = 0u;
+}
+
 static void clear_zone_entities(HearthState *st) {
     int i;
     for (i = 0; i < HEARTH_MAX_NPCS; i++) st->npcs[i].active = false;
@@ -502,12 +508,29 @@ static void populate_zone_rowan_home(HearthState *st) {
     st->zone_is_dark = (st->time_of_day == TOD_NIGHT);
     st->pip_visible = false;
 
-    set_npc(&st->npcs[0], 0, "Grandma Mara", SPR_NPC_MARA, 19, 12, DIR_DOWN, AURA_NONE);
-    if (st->time_of_day != TOD_NIGHT && st->ch1_step < 6u) {
-        set_npc(&st->npcs[1], 1, "Mido", SPR_PET_MILO, 22, 11, DIR_LEFT, AURA_NONE);
+    if (st->ch1_step < 6u) {
+        set_npc(&st->npcs[0], 0, "Grandma Mara", SPR_NPC_MARA, 19, 12, DIR_DOWN, AURA_NONE);
+        if (st->time_of_day != TOD_NIGHT) {
+            set_npc(&st->npcs[1], 1, "Mido", SPR_PET_MILO, 22, 11, DIR_LEFT, AURA_NONE);
+        }
     }
-    set_portal(&st->portals[0], 20, 20, ZONE_ALDERBROOK, 11, 14, 0, "Step Outside");
-    set_portal(&st->portals[1], 21, 20, ZONE_ALDERBROOK, 11, 14, 0, "Step Outside");
+    set_portal(&st->portals[0], 20, 20, ZONE_ALDERBROOK,     11, 14, 0, "Step Outside");
+    set_portal(&st->portals[1], 21, 20, ZONE_ALDERBROOK,     11, 14, 0, "Step Outside");
+    set_portal(&st->portals[2], 29,  8, ZONE_ROWAN_UPSTAIRS, 27, 16, 0, "Go Upstairs");
+    set_portal(&st->portals[3], 29,  9, ZONE_ROWAN_UPSTAIRS, 27, 16, 0, "Go Upstairs");
+}
+
+static void populate_zone_rowan_upstairs(HearthState *st) {
+    st->terrain_pal_id = ZPAL_COTTAGE_INTERIOR;
+    st->bgm_id = (st->time_of_day == TOD_NIGHT) ? (uint8_t)BGM_CINEMA_LULLABY : (uint8_t)BGM_ALDERBROOK;
+    st->zone_is_dark = (st->time_of_day == TOD_NIGHT);
+    st->pip_visible = false;
+
+    if (st->ch1_step >= 6u) {
+        set_npc(&st->npcs[0], 0, "Grandma Mara", SPR_NPC_MARA, 17, 12, DIR_LEFT, AURA_NONE);
+    }
+    set_portal(&st->portals[0], 28, 16, ZONE_ROWAN_HOME, 28, 9, 0, "Go Downstairs");
+    set_portal(&st->portals[1], 28, 17, ZONE_ROWAN_HOME, 28, 9, 0, "Go Downstairs");
 }
 
 static void populate_zone_alderbrook(HearthState *st) {
@@ -1059,6 +1082,7 @@ void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint16_t tx, uint16_t t
 
     if (zone_id == ZONE_ALDERBROOK)            populate_zone_alderbrook(st);
     else if (zone_id == ZONE_ROWAN_HOME)       populate_zone_rowan_home(st);
+    else if (zone_id == ZONE_ROWAN_UPSTAIRS)   populate_zone_rowan_upstairs(st);
     else if (zone_id == ZONE_WHISPERING_WOODS) populate_zone_whispering_woods(st);
     else if (zone_id == ZONE_HOLLOW_GLADE)     populate_zone_hollow_glade(st);
     else if (zone_id == ZONE_EVERTALE_WORLD)   populate_zone_evertale_world(st);
@@ -1193,18 +1217,19 @@ static void finish_cinema_mode(HearthState *st, bool play_sfx) {
     if (sid == 1u) {
         /* Attic Keepsake CG finished -> Dusk settles, Milo's Bell found! */
         st->has_milo_bell = true;
-        st->time_of_day = TOD_DUSK;
+        set_tod_phase_quarter(st, TOD_DUSK);
         if (st->ch1_step < 4u) st->ch1_step = 4u;
         st->mode = MODE_EXPLORE;
         st->warp_fade = 12;
-        populate_zone_rowan_home(st);
+        if (st->zone_id == ZONE_ROWAN_UPSTAIRS) populate_zone_rowan_upstairs(st);
+        else populate_zone_rowan_home(st);
         if (play_sfx) push_sfx(st, SFX_CONFIRM);
         build_ppu_packet(st);
         return;
     }
     if (sid == 2u) {
         /* Pip Dream Return CG finished -> Moonlit Night awakens Rowan beside his bed! */
-        st->time_of_day = TOD_NIGHT;
+        set_tod_phase_quarter(st, TOD_NIGHT);
         if (st->ch1_step < 6u) st->ch1_step = 6u;
         st->mode = MODE_EXPLORE;
         hearth_enter_zone(st, ZONE_ROWAN_HOME, 16, 15);
@@ -1242,7 +1267,7 @@ static void finish_cinema_mode(HearthState *st, bool play_sfx) {
     if (st->intro.launch_story) {
         /* Opening Cinema -> Chapter 1 Dawn inside Rowan & Grandma Mara's Cottage! */
         st->story_stage = STORY_AGE10_ALDERBROOK;
-        st->time_of_day = TOD_MORNING;
+        set_tod_phase_quarter(st, TOD_MORNING);
         st->ch1_step = 0u;
         st->ch2_step = 0u;
         st->ch1_errands_mask = 0u;
@@ -1433,7 +1458,7 @@ void hearth_init(HearthState *st) {
 
     /* Boot cleanly onto the Title Screen framed over redesigned Autumn Alderbrook */
     st->story_stage = STORY_AGE10_ALDERBROOK;
-    st->time_of_day = TOD_AFTERNOON;
+    set_tod_phase_quarter(st, TOD_AFTERNOON);
     st->flag_has_wand = false;
     hearth_enter_zone(st, ZONE_ALDERBROOK, 18, 14);
     st->zone_banner_frames = 0;
@@ -1467,7 +1492,7 @@ void hearth_toggle_ppu_mode(HearthState *st) {
 void hearth_start_story(HearthState *st) {
     /* New Story launches the Illustrated Opening Cinema -> Rowan's Cottage Dawn! */
     st->story_stage = STORY_AGE10_ALDERBROOK;
-    st->time_of_day = TOD_MORNING;
+    set_tod_phase_quarter(st, TOD_MORNING);
     st->ch1_step = 0u;
     st->ch2_step = 0u;
     st->ch1_errands_mask = 0u;
@@ -1686,9 +1711,9 @@ static bool collides_world_px(const HearthState *st, int16_t cx, int16_t cy) {
     for (i = 0; i < HEARTH_MAX_NPCS; i++) {
         if (!HS.npcs[i].active) continue;
         dx = (int16_t)(cx - FP_PX(HS.npcs[i].fx));
-        if (dx > -11 && dx < 11) {
+        if (dx > -12 && dx < 12) {
             dy = (int16_t)(cy - FP_PX(HS.npcs[i].fy));
-            if (dy > -9 && dy < 9) return true;
+            if (dy > -10 && dy < 10) return true;
         }
     }
     if (HS.has_waystone) {
@@ -2105,7 +2130,8 @@ uint8_t hearth_resolve_battle_biome(const HearthState *st) {
         if (bg1 == T_WORLD_PEAK || bg1 == T_WORLD_RUINS)    return (uint8_t)BIOME_SHRINE;
         return (uint8_t)BIOME_MEADOW;
     }
-    if (z == ZONE_ROWAN_HOME || (z >= ZONE_ALDER_DEPOT && z <= ZONE_BABANA_TENT)) {
+    if (z == ZONE_ROWAN_HOME || z == ZONE_ROWAN_UPSTAIRS ||
+        (z >= ZONE_ALDER_DEPOT && z <= ZONE_BABANA_TENT)) {
         return (uint8_t)BIOME_INTERIOR;
     }
     if (z == ZONE_ALDERBROOK || z == ZONE_SUNHILL_MARKET ||
@@ -3267,6 +3293,7 @@ static uint8_t infer_portrait_id(const HearthState *st, const char *speaker) {
     }
     if (speaker[0] == 'B' && speaker[1] == 'a' && speaker[2] == 'r' &&
         (st->zone_id == ZONE_ALDERBROOK || st->zone_id == ZONE_ROWAN_HOME ||
+         st->zone_id == ZONE_ROWAN_UPSTAIRS ||
          st->zone_id == ZONE_WHISPERING_WOODS || st->zone_id == ZONE_HOLLOW_GLADE)) {
         return (uint8_t)PORTRAIT_BARNABY;
     }
@@ -3289,9 +3316,17 @@ static void load_dialogue_page(HearthState *st, const char *text) {
     while (*text == ' ') text++;
     len = str_len16(text);
     if (st->tuning.ppu_mode == PPU_SNES_256x224) {
-        limit = (d->choice_count > 0u) ? 68u : 74u;
+        if (d->portrait_id != PORTRAIT_NONE) {
+            limit = (d->choice_count > 0u) ? 52u : 62u;
+        } else {
+            limit = (d->choice_count > 0u) ? 68u : 74u;
+        }
     } else {
-        limit = (d->choice_count > 0u) ? 88u : 96u;
+        if (d->portrait_id != PORTRAIT_NONE) {
+            limit = (d->choice_count > 0u) ? 74u : 84u;
+        } else {
+            limit = (d->choice_count > 0u) ? 88u : 96u;
+        }
     }
 
     if (len <= limit) {
@@ -3466,19 +3501,11 @@ static void apply_cutscene_flag(HearthState *st, int16_t flag_id) {
         st->guilders = (uint16_t)(st->guilders + 15u);
         if ((st->ch1_errands_mask & 3u) == 3u) {
             if (st->ch1_step < 2u) st->ch1_step = 2u;
-            if (st->time_of_day < TOD_AFTERNOON) {
-                st->time_of_day = TOD_AFTERNOON;
-                if (st->zone_id == ZONE_ALDERBROOK) st->terrain_pal_id = ZPAL_ALDERBROOK;
-            }
         }
     } else if (flag_id == FLAG_CH1_BARNABY_THERMOS) {
         st->ch1_errands_mask |= 2u;
         if ((st->ch1_errands_mask & 3u) == 3u) {
             if (st->ch1_step < 2u) st->ch1_step = 2u;
-            if (st->time_of_day < TOD_AFTERNOON) {
-                st->time_of_day = TOD_AFTERNOON;
-                if (st->zone_id == ZONE_ALDERBROOK) st->terrain_pal_id = ZPAL_ALDERBROOK;
-            }
         }
     } else if (flag_id == FLAG_CH1_JASPER_MET) {
         st->ch1_errands_mask |= 4u;
@@ -3824,17 +3851,24 @@ static int find_ch1_prop_interactable(const HearthState *st, int16_t hx, int16_t
     ST_UNUSED(st);
 
     if (HS.zone_id == ZONE_ROWAN_HOME) {
-        nx = (int16_t)(29 * 16 + 8);
-        ny = (int16_t)(9 * 16 + 8);
-        if (near_point_px(hx, hy, nx, ny, 24)) {
-            *ox = nx; *oy = (int16_t)(ny - 18); *olabel = "Cedar Chest";
-            return 14;
-        }
         nx = (int16_t)(14 * 16 + 8);
         ny = (int16_t)(15 * 16 + 12);
         if (near_point_px(hx, hy, nx, ny, 24)) {
             *ox = nx; *oy = (int16_t)(ny - 18); *olabel = (HS.ch1_step == 5u) ? "Sleep" : "Rowan's Bed";
             return 15;
+        }
+    } else if (HS.zone_id == ZONE_ROWAN_UPSTAIRS) {
+        nx = (int16_t)(26 * 16 + 8);
+        ny = (int16_t)(10 * 16 + 8);
+        if (near_point_px(hx, hy, nx, ny, 24)) {
+            *ox = nx; *oy = (int16_t)(ny - 18); *olabel = "Cedar Chest";
+            return 14;
+        }
+        nx = (int16_t)(15 * 16 + 8);
+        ny = (int16_t)(11 * 16 + 12);
+        if (near_point_px(hx, hy, nx, ny, 24)) {
+            *ox = nx; *oy = (int16_t)(ny - 18); *olabel = "Mara's Bed";
+            return 36;
         }
     } else if (HS.zone_id == ZONE_WHISPERING_WOODS) {
         for (i = 0; i < 3; i++) {
@@ -4175,6 +4209,9 @@ static void interact_npc_chapter1(HearthState *st, int hit) {
             open_dialogue(st, "Mido", SFX_TEXT_PIP,
                 "Yip! Mido curls his bushy amber tail beside the warm stone hearth, ears twitching in the cedar air.", 0, NULL);
         }
+    } else if (st->zone_id == ZONE_ROWAN_UPSTAIRS) {
+        open_dialogue(st, "Grandma Mara", SFX_TEXT_ELDER,
+            "Grandma Mara is fast asleep beneath her lavender quilt... Rowan pulls his autumn scarf tight and tiptoes softly back toward the stairs.", 0, NULL);
     } else if (st->zone_id == ZONE_ALDERBROOK) {
         if (st->time_of_day == TOD_NIGHT) {
             open_dialogue(st, "Mido", SFX_TEXT_PIP,
@@ -4528,7 +4565,8 @@ static void interact_npc_town_interior(HearthState *st, int hit) {
 static void interact_npc_other_zones(HearthState *st, int hit) {
     if (st->zone_id >= ZONE_ALDER_DEPOT && st->zone_id <= ZONE_BABANA_TENT) {
         interact_npc_town_interior(st, hit);
-    } else if (st->zone_id == ZONE_ROWAN_HOME || st->zone_id == ZONE_ALDERBROOK ||
+    } else if (st->zone_id == ZONE_ROWAN_HOME || st->zone_id == ZONE_ROWAN_UPSTAIRS ||
+        st->zone_id == ZONE_ALDERBROOK ||
         st->zone_id == ZONE_WHISPERING_WOODS || st->zone_id == ZONE_HOLLOW_GLADE) {
         interact_npc_chapter1(st, hit);
     } else if (st->zone_id == ZONE_SUNHILL_MARKET || st->zone_id == ZONE_CASTLE_GATE ||
@@ -4620,6 +4658,9 @@ static void interact_ch1_prop(HearthState *st, int hit, int16_t ox, int16_t oy) 
                 "A cozy patchwork quilt stitched by Grandma Mara. Take a quick breather?",
                 2, rest_opts);
         }
+    } else if (hit == 36) {
+        open_dialogue(st, "Grandma Mara's Bed", SFX_TEXT_HERO,
+            "Grandma Mara's soft quilt smells of dried lavender and mountain cedar. She always folds the corner neat as a pin.", 0, NULL);
     } else if (hit >= 16 && hit <= 18) {
         uint8_t bit = (uint8_t)(1u << (hit - 16));
         if ((st->woods_shrines_mask & bit) == 0u) {
@@ -5487,6 +5528,7 @@ static void build_ppu_packet(HearthState *st) {
     HP.terrain_pal_id = HS.terrain_pal_id;
     HP.bgm_id = resolve_active_bgm(st);
     HP.time_of_day = HS.time_of_day;
+    HP.tod_phase = HS.tod_phase;
     HP.zone_is_dark = HS.zone_is_dark;
     HP.has_mountain_vista = HS.has_mountain_vista;
     HP.zone_banner_frames = HS.zone_banner_frames;
@@ -5636,6 +5678,17 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
                     if (just_pressed & PAD_A) try_interact(st);
                     if (just_pressed & PAD_L) { HS.active_slot = (uint8_t)((HS.active_slot + 2) % 3); push_sfx(st, SFX_CURSOR); }
                     if (just_pressed & PAD_R) { HS.active_slot = (uint8_t)((HS.active_slot + 1) % 3); push_sfx(st, SFX_CURSOR); }
+                    /* Smooth real-time 64-step mountain day/night progression (225 frames/step = 4m full cycle) */
+                    if (HS.has_mountain_vista) {
+                        HS.day_subtick++;
+                        if (HS.day_subtick >= 225u) {
+                            HS.day_subtick = 0u;
+                            HS.tod_phase = (uint8_t)((HS.tod_phase + 1u) & 63u);
+                            HS.time_of_day = (uint8_t)(HS.tod_phase >> 4);
+                            HS.terrain_pal_id = tod_to_mountain_pal(HS.time_of_day);
+                            HS.zone_is_dark = (HS.tod_phase >= 42u && HS.tod_phase <= 58u);
+                        }
+                    }
                 }
             }
 #if !defined(HEARTH_TARGET_SNES)

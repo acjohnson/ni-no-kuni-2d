@@ -94,15 +94,24 @@ int main(void) {
     CHECK(ab_pkt->has_mountain_vista && ab_pkt->terrain_pal_id == ZPAL_AUTUMN_MORNING && saw_locomotive,
           "Redesigned Alderbrook shows mountain vista, Morning palette, and idling Steam Locomotive");
 
-    /* Complete Maple + Barnaby errands -> Shifts to Afternoon */
+    /* Complete Maple + Barnaby errands -> Advances story without jarring palette snap; real-time clock advances smoothly */
     hearth_start_cutscene(&g_st, CUTSCENE_CH1_MAPLE_LOAF);
     for (int f = 0; f < 400 && g_st.mode == MODE_CUTSCENE; f++) hearth_step_60hz(&g_st, ((f & 3) == 0) ? PAD_A : 0);
     hearth_start_cutscene(&g_st, CUTSCENE_CH1_BARNABY_THERMOS);
     for (int f = 0; f < 400 && g_st.mode == MODE_CUTSCENE; f++) hearth_step_60hz(&g_st, ((f & 3) == 0) ? PAD_A : 0);
-    CHECK(g_st.ch1_step == 2u && g_st.time_of_day == TOD_AFTERNOON, "Completing Maple & Barnaby errands shifts Alderbrook to Afternoon");
+    CHECK(g_st.ch1_step == 2u, "Completing Maple & Barnaby errands advances Chapter 1 without jarring palette snap");
+    uint8_t init_phase = g_st.tod_phase;
+    for (int f = 0; f < 300; f++) hearth_step_60hz(&g_st, 0);
+    CHECK(g_st.tod_phase != init_phase && g_st.ppu.tod_phase == g_st.tod_phase,
+          "Alderbrook time progresses smoothly in real time via 64-step tod_phase");
 
-    /* Attic Keepsake CG (Script 1) -> Shifts to Dusk + Grants Milo's Brass Bell */
-    hearth_enter_zone(&g_st, ZONE_ROWAN_HOME, 21, 9);
+    /* Grandma Mara's Upstairs Bedroom & Attic Keepsake CG (Script 1) -> Shifts to Dusk + Grants Milo's Brass Bell */
+    hearth_enter_zone(&g_st, ZONE_ROWAN_HOME, 28, 9);
+    CHECK(g_st.portals[2].active && g_st.portals[2].dst_zone == ZONE_ROWAN_UPSTAIRS,
+          "Rowan's Cottage stairs portal leads upstairs to Grandma Mara's Bedroom");
+    hearth_enter_zone(&g_st, ZONE_ROWAN_UPSTAIRS, 26, 11);
+    CHECK(g_st.zone_id == ZONE_ROWAN_UPSTAIRS && g_st.portals[0].active && g_st.portals[0].dst_zone == ZONE_ROWAN_HOME,
+          "Grandma Mara's Upstairs Bedroom loads cleanly with return staircase");
     hearth_start_story_cg(&g_st, 1u);
     CHECK(g_st.mode == MODE_INTRO && g_st.intro.scene == CG_ATTIC_KEEPSAKE, "Attic Cedar Chest launches Plate 6 (Attic Keepsake CG)");
     for (int f = 0; f < 1000 && g_st.mode == MODE_INTRO; f++) hearth_step_60hz(&g_st, ((f % 6) == 0) ? PAD_A : 0);

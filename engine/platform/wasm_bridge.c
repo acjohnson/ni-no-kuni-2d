@@ -395,6 +395,7 @@ static void sync_snapshot(void) {
     g_scalars[171] = (int32_t)((FROM_FP(g_state.hero_fy) / HEARTH_TILE_SIZE + HEARTH_GLOBE_H) % HEARTH_GLOBE_H);
     g_scalars[172] = p->globe_w;
     g_scalars[173] = p->globe_h;
+    g_scalars[174] = p->tod_phase;
 }
 
 static void inject_ui_pad(uint16_t mask) {

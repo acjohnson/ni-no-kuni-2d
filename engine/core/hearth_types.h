@@ -168,7 +168,8 @@ typedef enum {
     ZONE_SUNHILL_ARCHIVE  = 21, /* Sunhill Market: Corin's Cartography & Globe Hall */
     ZONE_WHISKER_GUILD    = 22, /* Whiskerburgh: Cheddar & Whiskers Mouse Guildhall */
     ZONE_BABANA_TENT      = 23, /* Oasis of Babana: Golden Babana Silk Caravanserai */
-    ZONE_COUNT            = 24
+    ZONE_ROWAN_UPSTAIRS   = 24, /* Chapter 1: Grandma Mara's Upstairs Bedroom & Keepsake Loft */
+    ZONE_COUNT            = 25
 } HearthZoneId;
 
 /* 7 Seamless Continents on the 256x192 Evertale Toroidal Globe */
@@ -884,6 +885,7 @@ typedef struct {
     uint8_t  terrain_pal_id;
     uint8_t  bgm_id;
     uint8_t  time_of_day;
+    uint8_t  tod_phase;       /* 0..63 smooth real-time day/night phase (16 subtle steps per quarter!) */
     bool     zone_is_dark;
     bool     has_mountain_vista;
     bool     is_world_map;

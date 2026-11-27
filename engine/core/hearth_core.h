@@ -42,6 +42,8 @@ typedef struct {
     uint8_t      terrain_pal_id;
     uint8_t      bgm_id;
     uint8_t      time_of_day;     /* TOD_MORNING..TOD_NIGHT */
+    uint8_t      tod_phase;       /* 0..63 continuous time-of-day step (64 smooth palettes!) */
+    uint8_t      day_subtick;     /* 0..224 frame counter per tod_phase step (~3.75s/step = 4m/day) */
     bool         zone_is_dark;
     bool         has_mountain_vista;
     bool         is_world_map;

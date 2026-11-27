@@ -15,18 +15,23 @@ baked 16x16 tileset pixel matrices & 60-color palettes from bake_chrono_tileset.
 Zero external dependencies (uses Python stdlib zlib + struct for fast PNG export).
 """
 
+import argparse
 import collections
+import hashlib
 import importlib.util
 import json
 import math
 import os
 import re
 import struct
+import subprocess
 import sys
 import zlib
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 BAKER_PATH = os.path.join(ROOT, "engine", "tools", "bake_chrono_tileset.py")
+BASELINE_PATH = os.path.join(ROOT, "engine", "tools", "map_audit_baseline.json")
+VISION_SCRIPT = os.path.join(ROOT, "engine", "tools", "map_audit_vision.py")
 
 # --- Logical Tile IDs (mirror engine/core/hearth_data.h) ---
 T_NAMES = {
@@ -227,13 +232,43 @@ class FlatTile:
         self.pal = tile16.qpal[0]
 
 
+def quantize_gen_cram_rgb(hex_rgb):
+    """Exact Sega Genesis 9-bit BGR333 CRAM quantization (3 bits per channel -> 0..255)."""
+    r3 = ((hex_rgb >> 16) & 0xFF) >> 5
+    g3 = ((hex_rgb >> 8) & 0xFF) >> 5
+    b3 = (hex_rgb & 0xFF) >> 5
+    return ((r3 * 255) // 7, (g3 * 255) // 7, (b3 * 255) // 7)
+
+
+def reconstruct_gen_metatile(gen_tiles, qlist):
+    """Rebuild a 16x16 FlatTile from Genesis 4x(tid, pal, hf, vf, prio) quadrant descriptors."""
+    px = [0] * 256
+    qpal = [0, 0, 0, 0]
+    for qidx, (tid, pal, hf, vf, _prio) in enumerate(qlist):
+        qpal[qidx] = pal & 1
+        q8 = gen_tiles[tid]
+        qx = (qidx & 1) * 8
+        qy = (qidx >> 1) * 8
+        for y in range(8):
+            sy = (7 - y) if vf else y
+            for x in range(8):
+                sx = (7 - x) if hf else x
+                px[(qy + y) * 16 + (qx + x)] = q8[sy * 8 + sx]
+    ft = FlatTile.__new__(FlatTile)
+    ft.px = px
+    ft.qpal = qpal
+    ft.pal = qpal[0]
+    return ft
+
+
 def build_tileset_cache(baker):
     zone_pals = baker.build_zone_palettes()  # dict {0..17: [4][16] of 0xRRGGBB}
+    gen_pals = baker.build_genesis_palettes(zone_pals)  # list {0..17: [2][16] of 0xRRGGBB}
     meta_names = list(baker.META_NAMES)
     name_to_id = {n: i for i, n in enumerate(meta_names)}
     frames = [baker.build_all_metatiles(f) for f in range(4)]
 
-    # Pre-unpack palette RGB tuples: pal_rgb[zpal][subpal][ci] -> (r,g,b)
+    # Pre-unpack SNES/SDL2/Web 60-color palette RGB tuples: pal_rgb[zpal][subpal][ci] -> (r,g,b)
     pal_rgb = []
     for zi in range(len(zone_pals)):
         zp = zone_pals[zi]
@@ -242,12 +277,22 @@ def build_tileset_cache(baker):
             sp_list.append([((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF) for c in sp])
         pal_rgb.append(sp_list)
 
-    # Map meta_id -> FlatTile for frames 0..3
+    # Pre-unpack exact Sega Genesis 9-bit CRAM palettes: gen_pal_rgb[zpal][0..1][ci] -> (r,g,b)
+    gen_pal_rgb = []
+    for zi in range(len(gen_pals)):
+        gp = gen_pals[zi]
+        gen_pal_rgb.append([[quantize_gen_cram_rgb(c) for c in sp] for sp in gp])
+
+    # Map meta_id -> FlatTile for frames 0..3 (SNES/PC/Web)
     meta_tiles = []
     for f in range(4):
         meta_tiles.append([FlatTile(t) for t in frames[f]])
 
-    return meta_names, name_to_id, pal_rgb, meta_tiles
+    # Compile exact Sega Genesis 8x8 tilebank & reconstruct Genesis 16x16 metatiles
+    gen_tiles, _gen_anim, gen_meta_quads = baker.compile_console_bank(frames, max_tiles=399, is_genesis=True)
+    gen_meta_tiles = [reconstruct_gen_metatile(gen_tiles, qlist) for qlist in gen_meta_quads]
+
+    return meta_names, name_to_id, pal_rgb, meta_tiles, gen_pal_rgb, gen_meta_tiles
 
 
 # ============================================================================
@@ -449,6 +494,139 @@ def render_map_rgb(w, h, cells, pal_rgb, meta_tiles, default_pal_id, is_globe=Fa
                                 off = row_off + tx * 3
                                 buf[off] = r; buf[off + 1] = g; buf[off + 2] = b
     return img_w, img_h, buf
+
+
+def render_genesis_zone_rgb(w, h, cells, gen_pal_rgb, gen_meta_tiles, pal_id, has_mountain_vista, name_to_id):
+    """
+    Render a local zone using the EXACT Sega Genesis VDP BG_A/BG_B rules,
+    remapped 399-tile bank, CM_OPQ_* parallax canopies, and 9-bit BGR333 CRAM.
+    """
+    img_w, img_h = w * 16, h * 16
+    buf = bytearray(img_w * img_h * 3)
+    gp = gen_pal_rgb[pal_id]
+    ov_base = name_to_id["CM_OV_CANOPY_TL"]
+    opq_base = name_to_id["CM_OPQ_CANOPY_TL"]
+    sky_rgb = (90, 124, 168) if pal_id != 8 else (22, 30, 56)
+
+    def blit_tile(cx, cy, tile, transparent0=False):
+        qpal = tile.qpal
+        px = tile.px
+        for ty in range(16):
+            row_off = ((cy * 16 + ty) * img_w + cx * 16) * 3
+            t_row = ty * 16
+            qy = 2 if ty >= 8 else 0
+            sp_l = gp[qpal[qy]]
+            sp_r = gp[qpal[qy + 1]]
+            for tx in range(16):
+                ci = px[t_row + tx]
+                if transparent0 and ci == 0:
+                    continue
+                r, g, b = (sp_l if tx < 8 else sp_r)[ci]
+                off = row_off + tx * 3
+                buf[off] = r; buf[off + 1] = g; buf[off + 2] = b
+
+    for cy in range(h):
+        for cx in range(w):
+            bg1, bg2, _col, meta = cells[cy * w + cx]
+            if has_mountain_vista:
+                if bg1 == T_MTN_SKY:
+                    fill_rect_rgb(buf, img_w, img_h, cx * 16, cy * 16, 16, 16, sky_rgb)
+                    if 1 <= bg2 <= 12:
+                        blit_tile(cx, cy, gen_meta_tiles[ov_base + (bg2 - 1)], transparent0=True)
+                elif 1 <= bg2 <= 12:
+                    blit_tile(cx, cy, gen_meta_tiles[opq_base + (bg2 - 1)], transparent0=False)
+                else:
+                    blit_tile(cx, cy, gen_meta_tiles[meta], transparent0=False)
+            else:
+                blit_tile(cx, cy, gen_meta_tiles[meta], transparent0=False)
+                if 1 <= bg2 <= 12:
+                    blit_tile(cx, cy, gen_meta_tiles[ov_base + (bg2 - 1)], transparent0=True)
+    return img_w, img_h, buf
+
+
+def audit_genesis_zone_seams(zone_info, cells, meta_names, gen_meta_tiles, gen_pal_rgb, name_to_id):
+    """
+    Genesis-specific CRAM visual seam audit:
+      1. Opaque mountain-vista canopies (CM_OPQ_*) must blend cleanly onto adjacent grass (no blue boxes!).
+      2. River banks (CM_SHORE_*) must blend cleanly onto adjacent grass in Genesis CRAM (no black/grey hatching!).
+      3. Cobble/rocky feathered edges (CM_COBBLE_EDGE/CORNER) must blend cleanly onto adjacent grass (no blue seams!).
+    """
+    issues = []
+    zid = zone_info["id"]
+    zname = zone_info["name"]
+    w, h = zone_info["w"], zone_info["h"]
+    pal_id = zone_info["pal_id"]
+    has_vista = zone_info.get("has_mountain_vista", False)
+    gp = gen_pal_rgb[pal_id]
+    opq_base = name_to_id["CM_OPQ_CANOPY_TL"]
+
+    def add_issue(sev, code, x, y, msg):
+        issues.append({
+            "severity": sev, "category": "SEAM", "code": code,
+            "zone_id": zid, "zone": f"{zname} [Genesis]", "x": x, "y": y, "msg": msg,
+        })
+
+    for y in range(h):
+        for x in range(w):
+            bg1, bg2, _col, meta = cells[y * w + x]
+            mname = meta_names[meta]
+
+            # 1. Opaque mountain-vista canopy corner/edge match against adjacent grass
+            if has_vista and 1 <= bg2 <= 12 and bg1 != T_MTN_SKY:
+                omid = opq_base + (bg2 - 1)
+                omname = meta_names[omid]
+                # Only check canopies that expose background corners (TL, TR, TOP, PINE_TOP)
+                if omname in ("CM_OPQ_MAPLE_TL", "CM_OPQ_MAPLE_TR", "CM_OPQ_MAPLE_TOP",
+                              "CM_OPQ_CANOPY_TL", "CM_OPQ_CANOPY_TR", "CM_OPQ_PINE_TOP"):
+                    grass_nbs = []
+                    for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+                        if 0 <= nx < w and 0 <= ny < h:
+                            nb = cells[ny * w + nx]
+                            if nb[0] in (T_GRASS, T_GRASS_ALT, T_AUTUMN_GRASS) and nb[1] == 0:
+                                grass_nbs.append(nb)
+                    if grass_nbs:
+                        g_rgb = tile_mean_rgb(gen_meta_tiles[grass_nbs[0][3]], gp, None)
+                        c_rgb = tile_mean_rgb(gen_meta_tiles[omid], gp, ((0, 0), (15, 0), (0, 1), (15, 1)))
+                        cdiff = (abs(c_rgb[0] - g_rgb[0]) + abs(c_rgb[1] - g_rgb[1]) + abs(c_rgb[2] - g_rgb[2])) / 3.0
+                        if cdiff > 40.0:
+                            add_issue("ERROR", "GEN_CANOPY_BG_SEAM", x, y,
+                                      f"Genesis {omname} background box RGB {tuple(int(v) for v in c_rgb)} clashes with grass {tuple(int(v) for v in g_rgb)} (diff {cdiff:.1f})")
+
+            # 2. River bank / shore edge match against adjacent grass in Genesis CRAM
+            if mname.startswith("CM_SHORE_") and pal_id != 3:
+                edges = expected_shore_edges_from_meta(mname)
+                tA = gen_meta_tiles[meta]
+                for edge, dx, dy, side in (("W", -1, 0, "E"), ("E", 1, 0, "E"), ("N", 0, -1, "S"), ("S", 0, 1, "S")):
+                    if edge not in edges:
+                        continue
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < w and 0 <= ny < h:
+                        nb = cells[ny * w + nx]
+                        if nb[0] in (T_GRASS, T_GRASS_ALT, T_AUTUMN_GRASS):
+                            tB = gen_meta_tiles[nb[3]]
+                            d = tile_border_rgb_diff(tB, tA, gp, side) if (dx < 0 or dy < 0) else tile_border_rgb_diff(tA, tB, gp, side)
+                            if d > 44.0:
+                                add_issue("ERROR", "GEN_SHORE_BANK_SEAM", x, y,
+                                          f"Genesis {mname} {edge}-bank clashes with adjacent grass (CRAM border diff {d:.1f})")
+
+            # 3. Cobble/rocky feathered edge match against adjacent grass in Genesis CRAM
+            if mname.startswith("CM_COBBLE_EDGE_") or mname.startswith("CM_COBBLE_CORNER_"):
+                tA = gen_meta_tiles[meta]
+                checks = []
+                if "W" in mname and x > 0: checks.append((x - 1, y, "E", True))
+                if "E" in mname and x + 1 < w: checks.append((x + 1, y, "E", False))
+                if "N" in mname and y > 0: checks.append((x, y - 1, "S", True))
+                if "S" in mname and y + 1 < h: checks.append((x, y + 1, "S", False))
+                for nx, ny, side, nb_first in checks:
+                    nb = cells[ny * w + nx]
+                    if nb[0] in (T_GRASS, T_GRASS_ALT, T_AUTUMN_GRASS):
+                        tB = gen_meta_tiles[nb[3]]
+                        d = tile_border_rgb_diff(tB, tA, gp, side) if nb_first else tile_border_rgb_diff(tA, tB, gp, side)
+                        if d > 36.0:
+                            add_issue("ERROR", "GEN_COBBLE_EDGE_SEAM", x, y,
+                                      f"Genesis {mname} clashes with adjacent grass (CRAM border diff {d:.1f})")
+
+    return issues
 
 
 # ============================================================================
@@ -1231,6 +1409,172 @@ def annotate_and_save_png(out_path, img_w, img_h, buf, issues, crop=None, scale=
     write_png_rgb(out_path, img_w, img_h, buf)
 
 
+# ============================================================================
+# Crisp 5x7 Bitmap Font & Labeled Contact-Sheet Builder (Zero External Deps)
+# ============================================================================
+FONT_5X7 = {
+    " ": (0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00),
+    "-": (0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00),
+    "_": (0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F),
+    ".": (0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C),
+    ":": (0x00, 0x0C, 0x0C, 0x00, 0x0C, 0x0C, 0x00),
+    "/": (0x01, 0x02, 0x04, 0x08, 0x10, 0x00, 0x00),
+    "(": (0x04, 0x08, 0x10, 0x10, 0x10, 0x08, 0x04),
+    ")": (0x08, 0x04, 0x02, 0x02, 0x02, 0x04, 0x08),
+    "!": (0x04, 0x04, 0x04, 0x04, 0x04, 0x00, 0x04),
+    "'": (0x04, 0x04, 0x08, 0x00, 0x00, 0x00, 0x00),
+    "[": (0x0E, 0x08, 0x08, 0x08, 0x08, 0x08, 0x0E),
+    "]": (0x0E, 0x02, 0x02, 0x02, 0x02, 0x02, 0x0E),
+    "&": (0x0C, 0x12, 0x14, 0x08, 0x15, 0x12, 0x0D),
+    "0": (0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E),
+    "1": (0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E),
+    "2": (0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F),
+    "3": (0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E),
+    "4": (0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02),
+    "5": (0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E),
+    "6": (0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E),
+    "7": (0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08),
+    "8": (0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E),
+    "9": (0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C),
+    "A": (0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11),
+    "B": (0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E),
+    "C": (0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E),
+    "D": (0x1C, 0x12, 0x11, 0x11, 0x11, 0x12, 0x1C),
+    "E": (0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F),
+    "F": (0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10),
+    "G": (0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F),
+    "H": (0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11),
+    "I": (0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E),
+    "J": (0x07, 0x02, 0x02, 0x02, 0x02, 0x12, 0x0C),
+    "K": (0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11),
+    "L": (0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F),
+    "M": (0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11),
+    "N": (0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11),
+    "O": (0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E),
+    "P": (0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10),
+    "Q": (0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D),
+    "R": (0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11),
+    "S": (0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E),
+    "T": (0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04),
+    "U": (0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E),
+    "V": (0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04),
+    "W": (0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A),
+    "X": (0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11),
+    "Y": (0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04),
+    "Z": (0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F),
+}
+
+
+def draw_text_5x7(buf, img_w, img_h, x0, y0, text, color, scale=2):
+    r, g, b = color
+    cx = x0
+    for ch in text.upper():
+        glyph = FONT_5X7.get(ch, FONT_5X7[" "])
+        for row_idx, bits in enumerate(glyph):
+            for col_idx in range(5):
+                if bits & (1 << (4 - col_idx)):
+                    for sy in range(scale):
+                        py = y0 + row_idx * scale + sy
+                        if py < 0 or py >= img_h:
+                            continue
+                        for sx in range(scale):
+                            px = cx + col_idx * scale + sx
+                            if 0 <= px < img_w:
+                                off = (py * img_w + px) * 3
+                                buf[off] = r
+                                buf[off + 1] = g
+                                buf[off + 2] = b
+        cx += 6 * scale
+
+
+def fill_rect_rgb(buf, img_w, img_h, x0, y0, w, h, color):
+    r, g, b = color
+    x1 = min(img_w, x0 + w)
+    y1 = min(img_h, y0 + h)
+    x0 = max(0, x0)
+    y0 = max(0, y0)
+    if x1 <= x0 or y1 <= y0:
+        return
+    row_bytes = bytes((r, g, b)) * (x1 - x0)
+    for y in range(y0, y1):
+        off = (y * img_w + x0) * 3
+        buf[off:off + len(row_bytes)] = row_bytes
+
+
+def resize_rgb_nearest(src_w, src_h, src_buf, dst_w, dst_h):
+    """Fast crisp nearest-neighbor pixel-art resizer preserving sharp tile edges."""
+    out = bytearray(dst_w * dst_h * 3)
+    x_map = [min(src_w - 1, (x * src_w) // dst_w) for x in range(dst_w)]
+    for y in range(dst_h):
+        sy = min(src_h - 1, (y * src_h) // dst_h)
+        srow = sy * src_w * 3
+        drow = y * dst_w * 3
+        for x in range(dst_w):
+            soff = srow + x_map[x] * 3
+            doff = drow + x * 3
+            out[doff] = src_buf[soff]
+            out[doff + 1] = src_buf[soff + 1]
+            out[doff + 2] = src_buf[soff + 2]
+    return out
+
+
+def build_contact_sheet(out_path, sheet_title, entries, cols, cell_w, cell_h):
+    """
+    Compose a labeled high-resolution contact-sheet PNG from rendered RGB maps.
+    entries: list of (label, src_w, src_h, src_buf, changed_flag, issue_count)
+    """
+    if not entries:
+        return
+    rows = (len(entries) + cols - 1) // cols
+    pad = 12
+    title_h = 34
+    header_h = 22
+    slot_w = cell_w + 4
+    slot_h = cell_h + header_h + 4
+    img_w = pad + cols * (slot_w + pad)
+    img_h = title_h + pad + rows * (slot_h + pad)
+    buf = bytearray(img_w * img_h * 3)
+    # Deep twilight slate backdrop
+    fill_rect_rgb(buf, img_w, img_h, 0, 0, img_w, img_h, (20, 22, 30))
+    fill_rect_rgb(buf, img_w, img_h, 0, 0, img_w, title_h, (32, 36, 48))
+    draw_text_5x7(buf, img_w, img_h, pad, 10, sheet_title, (245, 206, 102), scale=2)
+
+    for idx, (label, sw, sh, sbuf, is_changed, issue_cnt) in enumerate(entries):
+        gx = idx % cols
+        gy = idx // cols
+        sx0 = pad + gx * (slot_w + pad)
+        sy0 = title_h + pad + gy * (slot_h + pad)
+
+        # Card frame (highlight border if changed or has issues)
+        border_col = (240, 80, 80) if issue_cnt > 0 else ((85, 205, 255) if is_changed else (78, 86, 108))
+        fill_rect_rgb(buf, img_w, img_h, sx0, sy0, slot_w, slot_h, (14, 16, 22))
+        fill_rect_rgb(buf, img_w, img_h, sx0 + 2, sy0 + 2, cell_w, header_h, (34, 38, 52))
+        draw_rect_outline(buf, img_w, img_h, sx0, sy0, slot_w, slot_h, border_col, thick=2)
+
+        tag = label
+        if issue_cnt > 0:
+            tag = f"{label} ({issue_cnt}!)"
+        elif is_changed:
+            tag = f"{label} [DIFF]"
+        max_chars = max(8, (cell_w - 10) // 6)
+        draw_text_5x7(buf, img_w, img_h, sx0 + 6, sy0 + 8, tag[:max_chars],
+                      (245, 238, 220) if issue_cnt == 0 else (255, 130, 120), scale=1)
+
+        # Aspect-preserving fit inside cell_w x cell_h
+        scale = min(cell_w / float(sw), cell_h / float(sh))
+        dw = max(1, int(round(sw * scale)))
+        dh = max(1, int(round(sh * scale)))
+        resized = resize_rgb_nearest(sw, sh, sbuf, dw, dh)
+        ox = sx0 + 2 + (cell_w - dw) // 2
+        oy = sy0 + 2 + header_h + (cell_h - dh) // 2
+        for y in range(dh):
+            doff = ((oy + y) * img_w + ox) * 3
+            soff = y * dw * 3
+            buf[doff:doff + dw * 3] = resized[soff:soff + dw * 3]
+
+    write_png_rgb(out_path, img_w, img_h, buf)
+
+
 def render_globe_overview_png(out_path, w, h, cells, pal_rgb, meta_tiles, issues):
     """Render 4x-downsampled 1024x768 overview of the entire 256x192 globe (4px per tile) with issue pins."""
     img_w, img_h = w * 4, h * 4
@@ -1254,6 +1598,7 @@ def render_globe_overview_png(out_path, w, h, cells, pal_rgb, meta_tiles, issues
                     off = row_off + sx * 3
                     buf[off] = r; buf[off + 1] = g; buf[off + 2] = b
 
+    clean_hash = hashlib.sha256(buf).hexdigest()[:16]
     for iss in issues:
         col = CAT_COLORS.get(iss["category"], (255, 255, 255))
         ix, iy = iss["x"], iss["y"]
@@ -1262,24 +1607,47 @@ def render_globe_overview_png(out_path, w, h, cells, pal_rgb, meta_tiles, issues
             if iss["severity"] == "CRITICAL":
                 draw_rect_outline(buf, img_w, img_h, max(0, ix * 4 - 2), max(0, iy * 4 - 2), 8, 8, col, thick=1)
     write_png_rgb(out_path, img_w, img_h, buf)
+    return img_w, img_h, buf, clean_hash
 
 
 def main():
-    raw_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "build", "map_audit", "raw")
-    out_dir = sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, "build", "map_audit")
+    parser = argparse.ArgumentParser(
+        description="Project Hearth 6-Pass World, Autotile & Seam Auditor + Contact Sheets & Optional Gemini Vision QA"
+    )
+    parser.add_argument("raw_dir", nargs="?", default=os.path.join(ROOT, "build", "map_audit", "raw"))
+    parser.add_argument("out_dir", nargs="?", default=os.path.join(ROOT, "build", "map_audit"))
+    parser.add_argument("--bless", action="store_true",
+                        help="Record current clean map pixel hashes into engine/tools/map_audit_baseline.json.")
+    parser.add_argument("--vision", action="store_true",
+                        help="Run optional Gemini Vision QA pass on contact sheets (requires GEMINI_API_KEY).")
+    parser.add_argument("--changed-only", action="store_true",
+                        help="With --vision, send only maps whose pixels changed since the blessed baseline.")
+    args = parser.parse_args()
+
+    raw_dir = args.raw_dir
+    out_dir = args.out_dir
 
     with open(os.path.join(raw_dir, "world_dump.json"), "r") as fp:
         dump = json.load(fp)
 
     print("Loading baked 16-bit tileset & palettes from bake_chrono_tileset.py...")
     baker = load_tileset_module()
-    meta_names, name_to_id, pal_rgb, meta_tiles = build_tileset_cache(baker)
+    meta_names, name_to_id, pal_rgb, meta_tiles, gen_pal_rgb, gen_meta_tiles = build_tileset_cache(baker)
     water_flows = measure_water_flow_vectors(meta_names, meta_tiles)
+
+    # Load existing visual baseline hashes if present
+    baseline_hashes = {}
+    baseline_exists = os.path.isfile(BASELINE_PATH)
+    if baseline_exists:
+        try:
+            with open(BASELINE_PATH, "r") as fp:
+                baseline_hashes = json.load(fp).get("maps", {})
+        except Exception:
+            baseline_hashes = {}
 
     # Collect inbound portal spawns across all local zones & globe landmarks
     inbound_spawns = collections.defaultdict(list)
     zones_by_id = {z["id"]: z for z in dump["zones"]}
-    # Story default spawns
     inbound_spawns[5].append((19, 14, "Chapter 1 Start (Rowan Home)"))
     inbound_spawns[0].append((18, 12, "Alderbrook Arrival"))
     for z in dump["zones"]:
@@ -1291,9 +1659,18 @@ def main():
             inbound_spawns[lm["dst_zone"]].append((lm["dst_tx"], lm["dst_ty"], f"Globe landmark '{lm['name']}'"))
 
     all_issues = []
+    current_hashes = {}
+    map_png_paths = {}
+    zone_sheet_entries = []
+    genesis_sheet_entries = []
+    globe_sheet_entries = []
 
-    # Audit all 23 local zones
+    # Key Genesis showcase zones (12 diverse biomes incl. Alderbrook, Whispering Woods, Rowan Home, Mara Bedroom, Coral Cove)
+    GENESIS_SHEET_ZONE_IDS = {0, 1, 2, 5, 24, 6, 9, 11, 12, 18, 20, 21}
+
+    # Audit all local zones (SNES/PC/Web 60-color AND Sega Genesis 9-bit CRAM!)
     zones_png_dir = os.path.join(out_dir, "zones")
+    gen_png_dir = os.path.join(out_dir, "genesis_zones")
     for z in dump["zones"]:
         raw = open(os.path.join(raw_dir, z["bin"]), "rb").read()
         cells = [raw[i:i + 4] for i in range(0, len(raw), 4)]
@@ -1301,9 +1678,35 @@ def main():
         all_issues.extend(z_issues)
 
         slug = re.sub(r"[^a-z0-9]+", "_", z["name"].lower()).strip("_")
+        map_key = f"zone:{z['id']:02d}_{slug}"
+        png_path = os.path.join(zones_png_dir, f"{z['id']:02d}_{slug}_annotated.png")
         img_w, img_h, buf = render_map_rgb(z["w"], z["h"], cells, pal_rgb, meta_tiles, z["pal_id"], is_globe=False)
-        annotate_and_save_png(os.path.join(zones_png_dir, f"{z['id']:02d}_{slug}_annotated.png"),
-                              img_w, img_h, buf, z_issues)
+        clean_hash = hashlib.sha256(buf).hexdigest()[:16]
+        current_hashes[map_key] = clean_hash
+        map_png_paths[map_key] = png_path
+        is_changed = baseline_exists and (baseline_hashes.get(map_key) != clean_hash)
+
+        annotate_and_save_png(png_path, img_w, img_h, buf, z_issues)
+        z_crit_err = sum(1 for i in z_issues if i["severity"] in ("CRITICAL", "ERROR"))
+        zone_sheet_entries.append((f"{z['id']:02d} {z['name']}", img_w, img_h, buf, is_changed, z_crit_err))
+
+        # Sega Genesis CRAM seam audit (all local zones!) + PNG render for showcase sheet
+        gz_issues = audit_genesis_zone_seams(z, cells, meta_names, gen_meta_tiles, gen_pal_rgb, name_to_id)
+        all_issues.extend(gz_issues)
+        if z["id"] in GENESIS_SHEET_ZONE_IDS or gz_issues:
+            g_map_key = f"genesis:{z['id']:02d}_{slug}"
+            g_png_path = os.path.join(gen_png_dir, f"{z['id']:02d}_{slug}_genesis.png")
+            gw_z, gh_z, gbuf_z = render_genesis_zone_rgb(
+                z["w"], z["h"], cells, gen_pal_rgb, gen_meta_tiles,
+                z["pal_id"], z.get("has_mountain_vista", False), name_to_id
+            )
+            g_clean_hash = hashlib.sha256(gbuf_z).hexdigest()[:16]
+            current_hashes[g_map_key] = g_clean_hash
+            map_png_paths[g_map_key] = g_png_path
+            g_is_changed = baseline_exists and (baseline_hashes.get(g_map_key) != g_clean_hash)
+            annotate_and_save_png(g_png_path, gw_z, gh_z, gbuf_z, gz_issues)
+            gz_crit_err = sum(1 for i in gz_issues if i["severity"] in ("CRITICAL", "ERROR"))
+            genesis_sheet_entries.append((f"{z['id']:02d} {z['name']}", gw_z, gh_z, gbuf_z, g_is_changed, gz_crit_err))
 
     # Audit full 256x192 Evertale Globe
     g_info = dump["globe"]
@@ -1313,19 +1716,67 @@ def main():
     all_issues.extend(g_issues)
 
     # Export globe overview + 7 zoomed continent crops
-    render_globe_overview_png(os.path.join(out_dir, "globe_overview_annotated.png"),
-                              g_info["w"], g_info["h"], g_cells, pal_rgb, meta_tiles, g_issues)
+    globe_overview_path = os.path.join(out_dir, "globe_overview_annotated.png")
+    gw, gh, gbuf, ghash = render_globe_overview_png(
+        globe_overview_path, g_info["w"], g_info["h"], g_cells, pal_rgb, meta_tiles, g_issues
+    )
+    current_hashes["globe:overview"] = ghash
+    map_png_paths["globe:overview"] = globe_overview_path
+    g_changed = baseline_exists and (baseline_hashes.get("globe:overview") != ghash)
+    g_crit_err = sum(1 for i in g_issues if i["severity"] in ("CRITICAL", "ERROR"))
+    globe_sheet_entries.append(("GLOBE OVERVIEW", gw, gh, gbuf, g_changed, g_crit_err))
+
     cont_dir = os.path.join(out_dir, "continents")
     for reg_id, (slug, x0, y0, x1, y1) in CONTINENT_CROPS.items():
+        map_key = f"continent:{slug}"
+        cpath = os.path.join(cont_dir, f"{slug}_annotated.png")
         img_w, img_h, buf = render_map_rgb(g_info["w"], g_info["h"], g_cells, pal_rgb, meta_tiles, 10,
                                            is_globe=True, crop=(x0, y0, x1, y1))
-        annotate_and_save_png(os.path.join(cont_dir, f"{slug}_annotated.png"),
-                              img_w, img_h, buf, g_issues, crop=(x0, y0, x1, y1))
+        chash = hashlib.sha256(buf).hexdigest()[:16]
+        current_hashes[map_key] = chash
+        map_png_paths[map_key] = cpath
+        c_changed = baseline_exists and (baseline_hashes.get(map_key) != chash)
+        annotate_and_save_png(cpath, img_w, img_h, buf, g_issues, crop=(x0, y0, x1, y1))
+        c_crit_err = sum(1 for i in g_issues if i["severity"] in ("CRITICAL", "ERROR")
+                         and x0 <= i["x"] < x1 and y0 <= i["y"] < y1)
+        label = slug.replace("_", " ").upper()
+        globe_sheet_entries.append((label, img_w, img_h, buf, c_changed, c_crit_err))
+
+    # Export 4 labeled contact-sheet PNGs (SNES/PC zones, Sega Genesis CRAM zones, Evertale Globe)
+    sheet1_path = os.path.join(out_dir, "contact_sheet_zones_1.png")
+    sheet2_path = os.path.join(out_dir, "contact_sheet_zones_2.png")
+    sheet3_path = os.path.join(out_dir, "contact_sheet_globe.png")
+    sheet4_path = os.path.join(out_dir, "contact_sheet_genesis_zones.png")
+    half = (len(zone_sheet_entries) + 1) // 2
+    build_contact_sheet(sheet1_path, "PROJECT HEARTH - LOCAL ZONES (SHEET 1 OF 2)",
+                        zone_sheet_entries[:half], cols=4, cell_w=352, cell_h=224)
+    build_contact_sheet(sheet2_path, "PROJECT HEARTH - LOCAL ZONES (SHEET 2 OF 2)",
+                        zone_sheet_entries[half:], cols=4, cell_w=352, cell_h=224)
+    build_contact_sheet(sheet3_path, "PROJECT HEARTH - EVERTALE GLOBE & 7 CONTINENTS",
+                        globe_sheet_entries, cols=4, cell_w=420, cell_h=280)
+    build_contact_sheet(sheet4_path, "PROJECT HEARTH - SEGA GENESIS CRAM ZONES (9-BIT VDP)",
+                        genesis_sheet_entries, cols=4, cell_w=352, cell_h=224)
+
+    # Pixel-diff baseline comparison
+    changed_maps = sorted(k for k, h in current_hashes.items() if baseline_hashes.get(k) != h) if baseline_exists else []
+    removed_maps = sorted(k for k in baseline_hashes if k not in current_hashes) if baseline_exists else []
 
     # Build grouped root-cause report
     by_sev = collections.Counter(i["severity"] for i in all_issues)
     by_code = collections.Counter((i["severity"], i["category"], i["code"]) for i in all_issues)
     by_zone = collections.Counter(i["zone"] for i in all_issues if i["severity"] in ("CRITICAL", "ERROR"))
+
+    blessed_now = False
+    if args.bless:
+        if by_sev["CRITICAL"] > 0 or by_sev["ERROR"] > 0:
+            print("ERROR: Refusing to bless baseline while CRITICAL or ERROR audit findings remain.", file=sys.stderr)
+        else:
+            with open(BASELINE_PATH, "w") as fp:
+                json.dump({"maps": dict(sorted(current_hashes.items()))}, fp, indent=2)
+            blessed_now = True
+            baseline_exists = True
+            changed_maps = []
+            removed_maps = []
 
     report = {
         "summary": {
@@ -1337,6 +1788,15 @@ def main():
             "error": by_sev["ERROR"],
             "warning": by_sev["WARNING"],
         },
+        "visual_diff": {
+            "baseline_exists": baseline_exists,
+            "blessed_now": blessed_now,
+            "total_maps_hashed": len(current_hashes),
+            "changed_count": len(changed_maps),
+            "changed_maps": changed_maps,
+            "removed_maps": removed_maps,
+        },
+        "contact_sheets": [sheet1_path, sheet2_path, sheet3_path, sheet4_path],
         "root_causes": [
             {"severity": sev, "category": cat, "code": code, "count": cnt}
             for (sev, cat, code), cnt in by_code.most_common()
@@ -1353,9 +1813,21 @@ def main():
     print("  PROJECT HEARTH — 6-PASS WORLD, AUTOTILE & SEAM AUDIT REPORT")
     print("========================================================================")
     print(f"  Cells audited: {len(dump['zones']) * 44 * 28 + g_info['w'] * g_info['h']:,} "
-          f"({len(dump['zones'])} zones + 256x192 Evertale Globe)")
+          f"({len(dump['zones'])} zones [SNES + Genesis CRAM] + 256x192 Evertale Globe)")
     print(f"  VRAM footprint: SNES={dump['snes_tile_count']}/510 tiles | Genesis={dump['gen_tile_count']}/399 tiles")
     print(f"  Findings: CRITICAL={by_sev['CRITICAL']}  ERROR={by_sev['ERROR']}  WARNING={by_sev['WARNING']}")
+    if blessed_now:
+        print(f"  Visual Diff : BLESSED {len(current_hashes)} map pixel hashes -> {BASELINE_PATH}")
+    elif not baseline_exists:
+        print("  Visual Diff : No baseline yet (run `make map-audit-bless` after visually verifying contact sheets)")
+    elif not changed_maps and not removed_maps:
+        print(f"  Visual Diff : 0/{len(current_hashes)} maps changed visually since last blessed review")
+    else:
+        print(f"  Visual Diff : {len(changed_maps)}/{len(current_hashes)} map(s) visually changed since baseline:")
+        for mk in changed_maps[:15]:
+            print(f"    * {mk}")
+        if len(changed_maps) > 15:
+            print(f"    ... and {len(changed_maps) - 15} more")
     print("------------------------------------------------------------------------")
     print("  ROOT-CAUSE BREAKDOWN:")
     for (sev, cat, code), cnt in by_code.most_common():
@@ -1381,13 +1853,36 @@ def main():
         if shown >= 30:
             break
     print("------------------------------------------------------------------------")
-    print(f"  JSON Report : {report_path}")
-    print(f"  Zone PNGs   : {zones_png_dir}/ (23 annotated pixel-art maps)")
-    print(f"  Globe PNGs  : {out_dir}/globe_overview_annotated.png + {cont_dir}/ (7 crops)")
+    print(f"  JSON Report    : {report_path}")
+    print(f"  Contact Sheets : {sheet1_path}, {sheet2_path}, {sheet3_path}, {sheet4_path}")
+    print(f"  Zone PNGs      : {zones_png_dir}/ ({len(dump['zones'])} annotated pixel-art maps)")
+    print(f"  Genesis PNGs   : {gen_png_dir}/ ({len(genesis_sheet_entries)} Sega Genesis CRAM maps)")
+    print(f"  Globe PNGs     : {globe_overview_path} + {cont_dir}/ (7 crops)")
     print("========================================================================")
 
-    return 1 if (by_sev["CRITICAL"] > 0 or by_sev["ERROR"] > 0) else 0
+    exit_code = 1 if (by_sev["CRITICAL"] > 0 or by_sev["ERROR"] > 0) else 0
+
+    if args.vision:
+        if args.changed_only:
+            if not baseline_exists:
+                vision_targets = [sheet1_path, sheet2_path, sheet3_path, sheet4_path]
+            elif not changed_maps:
+                print("[VISION] 0 maps changed visually since blessed baseline — skipping Gemini Vision call.")
+                return exit_code
+            else:
+                vision_targets = [map_png_paths[k] for k in changed_maps if k in map_png_paths]
+        else:
+            vision_targets = [sheet1_path, sheet2_path, sheet3_path, sheet4_path]
+
+        vision_out = os.path.join(out_dir, "vision_report.json")
+        cmd = [sys.executable, VISION_SCRIPT, "--out", vision_out] + vision_targets
+        proc = subprocess.run(cmd)
+        if proc.returncode != 0:
+            exit_code = proc.returncode
+
+    return exit_code
 
 
 if __name__ == "__main__":
     sys.exit(main())
+

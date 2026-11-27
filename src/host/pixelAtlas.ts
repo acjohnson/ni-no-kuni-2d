@@ -71,6 +71,22 @@ function hexToRgbaTuple(hex: string): [number, number, number, number] {
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255, 255];
 }
 
+function lerpRgbaTuple(
+  a: [number, number, number, number],
+  b: [number, number, number, number],
+  frac16: number
+): [number, number, number, number] {
+  const inv = 16 - frac16;
+  return [
+    (a[0] * inv + b[0] * frac16 + 8) >> 4,
+    (a[1] * inv + b[1] * frac16 + 8) >> 4,
+    (a[2] * inv + b[2] * frac16 + 8) >> 4,
+    a[3],
+  ];
+}
+
+const TOD_PAL_KEYS = [6, 1, 7, 8] as const; // Morning, Afternoon, Dusk, Night
+
 export type SwappableSlotId =
   | 'hero'
   | 'pip'
@@ -115,6 +131,8 @@ export class PixelAtlas {
   private activePalettes: (readonly string[])[];
   private readonly zonePalettes: readonly (readonly string[])[];
   private currentTerrainPalId = 0;
+  private currentTodPhase = -1;
+  private currentMountainVista = false;
   private bg1Tiles = new Map<number, HTMLCanvasElement[]>(); // tileId -> animation frames
   private bg2Tiles = new Map<number, HTMLCanvasElement>();
   private sprites = new Map<string, HTMLCanvasElement>(); // key: `${spriteId}_${dir}_${frame}`
@@ -130,10 +148,21 @@ export class PixelAtlas {
     this.buildAllSprites();
   }
 
-  public setTerrainPalette(palId: number): void {
-    if (palId === this.currentTerrainPalId) return;
+  public setTerrainPalette(palId: number, todPhase = 0, hasMountainVista = false): void {
+    const isTodBlend =
+      hasMountainVista && (palId === 6 || palId === 1 || palId === 7 || palId === 8);
+    const effPhase = isTodBlend ? (todPhase & 63) : 0;
+    if (
+      palId === this.currentTerrainPalId &&
+      effPhase === this.currentTodPhase &&
+      isTodBlend === this.currentMountainVista
+    ) {
+      return;
+    }
     if (palId >= 0 && palId < CHRONO_ZONE_PALS.length) {
       this.currentTerrainPalId = palId;
+      this.currentTodPhase = effPhase;
+      this.currentMountainVista = isTodBlend;
       if (palId < this.zonePalettes.length) {
         this.activePalettes[0] = this.zonePalettes[palId];
       }
@@ -209,8 +238,21 @@ export class PixelAtlas {
       this.currentTerrainPalId >= 0 && this.currentTerrainPalId < CHRONO_ZONE_PALS.length
         ? this.currentTerrainPalId
         : 0;
-    const fourPals = CHRONO_ZONE_PALS[palId];
-    const rgbaPals = fourPals.map((sub) => sub.map(hexToRgbaTuple));
+    let rgbaPals: [number, number, number, number][][];
+    if (this.currentMountainVista) {
+      const seg = (this.currentTodPhase >> 4) & 3;
+      const frac = this.currentTodPhase & 15;
+      const pA = CHRONO_ZONE_PALS[TOD_PAL_KEYS[seg]];
+      const pB = CHRONO_ZONE_PALS[TOD_PAL_KEYS[(seg + 1) & 3]];
+      rgbaPals = pA.map((subA, sp) =>
+        subA.map((hexA, ci) =>
+          lerpRgbaTuple(hexToRgbaTuple(hexA), hexToRgbaTuple(pB[sp][ci]), frac)
+        )
+      );
+    } else {
+      const fourPals = CHRONO_ZONE_PALS[palId];
+      rgbaPals = fourPals.map((sub) => sub.map(hexToRgbaTuple));
+    }
 
     const basePx = getChronoBasePx();
     const animPx = getChronoAnimPx();
@@ -1655,23 +1697,46 @@ export class PixelAtlas {
       register('raft', 0, f, c);
     }
 
-    // Dune Scorpion (20x18 armored amber desert pincer foe)
+    // Dune Scorpion (22x18 armored crimson desert pincer foe — 2-frame snapping claws & legs)
     for (let f = 0; f < 2; f++) {
-      const c = makeCanvas(20, 18);
+      const c = makeCanvas(22, 18);
       const ctx = c.getContext('2d')!;
-      const pat = [
-        '............1111....',
-        '...........19aa91...',
-        '....11.....111991...',
-        '...19a1.......191...',
-        '..19a91..11111991...',
-        '.19a991119aaaa991...',
-        '.199911999a1b9aa1...',
-        '..111.19999999991...',
-        '......1911911911....',
-        '.....11..11..11.....',
+      const pat = f === 0 ? [
+        '...........1111.......',
+        '.........11cb9a11.....',
+        '........1cb1119aa1....',
+        '.........11...19aa1...',
+        '..111..........19a91..',
+        '.1aa91.........19aa1..',
+        '1a911..111......19a91.',
+        '1a1...1aa91.1111199a1.',
+        '.1a91.1a91119baab99a1.',
+        '..1991199199aa9aa9991.',
+        '...119a9999c1a9aa9a91.',
+        '....111999b1a99aa991..',
+        '.......119999999991...',
+        '......1911911911911...',
+        '.....191.191.191.191..',
+        '....11..11...11...11..',
+      ] : [
+        '..........1111........',
+        '........11cb9a11......',
+        '.......1cb1119aa1.....',
+        '........11...19aa1....',
+        '..............19a91...',
+        '..111..........19aa1..',
+        '.1aa91.111.....19a91..',
+        '1aa91.1aa91.111199a1..',
+        '1a99111a91119baab99a1.',
+        '.11999999199aa9aa9991.',
+        '...119a9999c1a9aa9a91.',
+        '....111999b1a99aa991..',
+        '.......119999999991...',
+        '.......191191191191...',
+        '.......191.191.191.191',
+        '......11...11..11...11',
       ];
-      paintPattern(ctx, pat, 3, 0, 5 + f);
+      paintPattern(ctx, pat, 3, 0, 2);
       register('enemy_scorpion', 0, f, c);
     }
 
@@ -1679,26 +1744,58 @@ export class PixelAtlas {
     for (let f = 0; f < 2; f++) {
       const c = makeCanvas(32, 34);
       const ctx = c.getContext('2d')!;
-      const pat = [
+      const pat = f === 0 ? [
         '........111111111111............',
-        '......1199aaaaaaaa9911..........',
-        '.....199aa11111111aa991.........',
-        '....19aa11cccccccc11aa91........',
-        '....19a11c11111111c11a91........',
-        '....19a11c1aa11aa1c11a91........',
-        '....19aa11cccccccc11aa91........',
-        '.....199aa11111111aa991.........',
-        '......119999aaaa999911..........',
-        '.......199aaaaaaaa991...........',
-        '......19999bbbbbb99991..........',
-        '.....199aaaa9999aaaa991.........',
-        '....199999bbbbbbbb999991........',
-        '....199aaaa999999aaaa99111......',
-        '.....1999999999999999999911.....',
-        '......11999aaaaaaaaaa999991.....',
-        '........111111111111111111......',
+        '......1199bbbbbbbb9911..........',
+        '.....19bbccbbbbbbccbb91.........',
+        '....19bb111111111111bb91........',
+        '...19bb115c115c115c11bb91.......',
+        '...19b11c11222222221c11b91......',
+        '...19b11512211111122151b91......',
+        '...19b11c122119911221c1b91......',
+        '...19b11512211111122151b91......',
+        '...19bb115c115c115c11bb91.......',
+        '....19bb111111111111bb91........',
+        '.....199bbbbccccbbbb991.........',
+        '......1199999999999911..........',
+        '.....199bbbccccccbbb991.........',
+        '....19bbbbbbbbbbbbbbbb91........',
+        '....199999999999999999911.......',
+        '...199bbbccccccccccbbb99911.....',
+        '...19bbbbbbbbbbbbbbbbbbbb991....',
+        '...1999999999999999999999991....',
+        '..199bbbccccccccccbbbbbbbb991...',
+        '..19bbbbbbbbbbbbbbbbbbbbbbb91...',
+        '.15599999999999999999999999551..',
+        '1555555555555555555555555555551.',
+        '.11111111111111111111111111111..',
+      ] : [
+        '.........111111111111...........',
+        '.......1199bbbbbbbb9911.........',
+        '......19bbccbbbbbbccbb91........',
+        '.....19bb111111111111bb91.......',
+        '....19bb11c511c511c511bb91......',
+        '....19b11511222222221511b91.....',
+        '....19b11c122111111221c1b91.....',
+        '....19b11512211aa1122151b91.....',
+        '....19b11c122111111221c1b91.....',
+        '....19bb11c511c511c511bb91......',
+        '.....19bb111111111111bb91.......',
+        '......199bbbbccccbbbb991........',
+        '......1199999999999911..........',
+        '.....199bbbccccccbbb991.........',
+        '....19bbbbbbbbbbbbbbbb91........',
+        '....199999999999999999911.......',
+        '...199bbbccccccccccbbb99911.....',
+        '...19bbbbbbbbbbbbbbbbbbbb991....',
+        '...1999999999999999999999991....',
+        '..199bbbccccccccccbbbbbbbb991...',
+        '..19bbbbbbbbbbbbbbbbbbbbbbb91...',
+        '.15599999999999999999999999551..',
+        '1555555555555555555555555555551.',
+        '.11111111111111111111111111111..',
       ];
-      paintPattern(ctx, pat, 3, 0, 10 + f);
+      paintPattern(ctx, pat, 3, 0, 8 + f);
       register('enemy_sandworm', 0, f, c);
     }
 

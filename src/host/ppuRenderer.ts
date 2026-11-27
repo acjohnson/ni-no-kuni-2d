@@ -69,7 +69,7 @@ export class SoftwarePpuRenderer {
       canvas.height = packet.height;
     }
 
-    atlas.setTerrainPalette(packet.terrainPalId);
+    atlas.setTerrainPalette(packet.terrainPalId, packet.todPhase, packet.hasMountainVista);
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -513,25 +513,38 @@ export class SoftwarePpuRenderer {
    * PARALLAX SNOW-DUSTED ALPINE MOUNTAIN VISTA (Morning / Afternoon / Dusk / Night)
    * ======================================================================== */
   private renderMountainVista(ctx: CanvasRenderingContext2D, packet: PpuFramePacket): void {
-    const { width, camX, camY, frameCount, timeOfDay } = packet;
+    const { width, camX, camY, frameCount, timeOfDay, todPhase } = packet;
     const horizonH = Math.min(packet.height, Math.max(88, 128 - Math.floor(camY * 0.25)));
+    const phase = todPhase & 63;
+    const seg = (phase >> 4) & 3;
+    const segN = (seg + 1) & 3;
+    const frac = phase & 15;
 
-    // 1. Time-of-Day Sky Gradient Bands
+    const lerpHex = (ha: string, hb: string): string => {
+      const a = parseInt(ha.slice(1), 16);
+      const b = parseInt(hb.slice(1), 16);
+      const inv = 16 - frac;
+      const r = (((a >> 16) & 255) * inv + ((b >> 16) & 255) * frac + 8) >> 4;
+      const g = (((a >> 8) & 255) * inv + ((b >> 8) & 255) * frac + 8) >> 4;
+      const bl = ((a & 255) * inv + (b & 255) * frac + 8) >> 4;
+      return `rgb(${r},${g},${bl})`;
+    };
+
+    // 1. Smooth 64-Step Time-of-Day Sky Gradient Bands
     const skyPalettes: readonly (readonly string[])[] = [
       ['#3A5C88', '#6B8EB5', '#B9978A', '#ECC89E'], // 0 = Morning Rose-Gold Dawn
       ['#2E649E', '#528EC4', '#86B8DF', '#D6E2E8'], // 1 = Crisp Autumn Afternoon
       ['#2B204A', '#6A3656', '#C25F4A', '#EEA05B'], // 2 = Copper-Amber Dusk
       ['#0B1228', '#142042', '#1D315C', '#2A4370'], // 3 = Moonlit Indigo Night
     ];
-    const bands = skyPalettes[timeOfDay] ?? skyPalettes[1];
     const bandH = Math.ceil(horizonH / 4);
     for (let i = 0; i < 4; i++) {
-      ctx.fillStyle = bands[i];
+      ctx.fillStyle = lerpHex(skyPalettes[seg][i], skyPalettes[segN][i]);
       ctx.fillRect(0, i * bandH, width, bandH + 1);
     }
 
     // 2. Celestial Body / Drifting Autumn Clouds
-    if (timeOfDay === 3) {
+    if (timeOfDay === 3 || phase >= 42) {
       // Twinkling alpine stars + harvest crescent moon
       ctx.fillStyle = '#E8F0FF';
       for (let i = 0; i < 20; i++) {
@@ -544,11 +557,11 @@ export class SoftwarePpuRenderer {
       ctx.fillStyle = '#FFF5D0';
       ctx.fillRect(width - 54, 12, 12, 12);
       ctx.fillRect(width - 52, 10, 8, 16);
-      ctx.fillStyle = '#142042';
+      ctx.fillStyle = lerpHex(skyPalettes[seg][1], skyPalettes[segN][1]);
       ctx.fillRect(width - 49, 11, 7, 10);
     } else {
-      const cloudCol = timeOfDay === 2 ? '#F6B882' : timeOfDay === 0 ? '#FBE3C6' : '#F4F7FA';
-      ctx.fillStyle = cloudCol;
+      const cloudKeys = ['#FBE3C6', '#F4F7FA', '#F6B882', '#7084A6'] as const;
+      ctx.fillStyle = lerpHex(cloudKeys[seg], cloudKeys[segN]);
       for (let i = 0; i < 4; i++) {
         const cx = (((i * 98 + Math.floor(frameCount * 0.08) - Math.floor(camX * 0.06)) % (width + 64)) + (width + 64)) % (width + 64) - 32;
         const cy = 9 + (i & 1) * 11;
@@ -558,10 +571,10 @@ export class SoftwarePpuRenderer {
     }
 
     // 3. Far Snow-Dusted Alpine Peaks (Parallax 0.14x)
-    const farPeakCol =
-      timeOfDay === 3 ? '#1F2D4E' : timeOfDay === 2 ? '#543554' : timeOfDay === 0 ? '#5E6B8A' : '#586E8C';
-    const snowCapCol =
-      timeOfDay === 3 ? '#B4C6E6' : timeOfDay === 2 ? '#F4C6A0' : timeOfDay === 0 ? '#FBEAD6' : '#F2F6FA';
+    const farPeakKeys = ['#5E6B8A', '#586E8C', '#543554', '#1F2D4E'] as const;
+    const snowCapKeys = ['#FBEAD6', '#F2F6FA', '#F4C6A0', '#B4C6E6'] as const;
+    const farPeakCol = lerpHex(farPeakKeys[seg], farPeakKeys[segN]);
+    const snowCapCol = lerpHex(snowCapKeys[seg], snowCapKeys[segN]);
     const farScroll = Math.floor(camX * 0.14);
     for (let x = 0; x < width; x += 4) {
       const wx = x + farScroll;
@@ -579,24 +592,10 @@ export class SoftwarePpuRenderer {
 
     // 4. Midground Ridge — Evertale Sunlit Castle Aurelia Skyline vs. Alderbrook Autumn Foothills
     const isEvertaleVista = packet.zoneId === 9 || packet.zoneId === 10;
-    const midCol = isEvertaleVista
-      ? '#4A8E54'
-      : timeOfDay === 3
-        ? '#15243A'
-        : timeOfDay === 2
-          ? '#4A2B36'
-          : timeOfDay === 0
-            ? '#3E5448'
-            : '#355444';
-    const midMaple = isEvertaleVista
-      ? '#6AB868'
-      : timeOfDay === 3
-        ? '#3B2846'
-        : timeOfDay === 2
-          ? '#A64A32'
-          : timeOfDay === 0
-            ? '#B8663A'
-            : '#B84A32';
+    const midColKeys = ['#3E5448', '#355444', '#4A2B36', '#15243A'] as const;
+    const midMapleKeys = ['#B8663A', '#B84A32', '#A64A32', '#3B2846'] as const;
+    const midCol = isEvertaleVista ? '#4A8E54' : lerpHex(midColKeys[seg], midColKeys[segN]);
+    const midMaple = isEvertaleVista ? '#6AB868' : lerpHex(midMapleKeys[seg], midMapleKeys[segN]);
     const midScroll = Math.floor(camX * 0.28);
     for (let x = 0; x < width; x += 4) {
       const wx = x + midScroll;
