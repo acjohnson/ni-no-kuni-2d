@@ -703,6 +703,21 @@ def audit_local_zone(zone, cells, all_zones_by_id, inbound_spawns, meta_names, m
                 if gc >= 2 and sc == 0 and mname == "T_PALM_TREE":
                     add_issue("WARNING", "AUTOTILE", "PROP_GROUND_MISMATCH", x, y,
                               f"Palm tree on lush grass resolved to sandy {mname} instead of CM_PALM_GRASS")
+                elif 1 <= x < w - 1 and 1 <= y < h - 1 and gc >= 1 and sc >= 1:
+                    add_issue("WARNING", "SEAM", "PALM_ON_BIOME_SEAM", x, y,
+                              f"Palm tree sits directly on grass-to-sand biome seam (breaks feathered sand-grass curve)")
+
+            # Pass 3d2: Interior wall directly north of window/fireplace/wall must resolve to cutaway cap
+            if bg1 == T_INTERIOR_WALL and y + 1 < h and ts in (T_WALL_WINDOW, T_FIREPLACE, T_WALL_WOOD):
+                if mname != "CM_INTERIOR_CAP":
+                    add_issue("ERROR", "AUTOTILE", "INTERIOR_WALL_CAP_PROTRUSION", x, y,
+                              f"Interior wall above {T_NAMES[ts]} resolved to {mname} instead of CM_INTERIOR_CAP")
+
+            # Pass 3d3: Rigid solid grid of coral reef tiles (all 4 cardinal neighbors also coral)
+            if bg1 == T_WORLD_CORAL and 1 <= x < w - 1 and 1 <= y < h - 1:
+                if tn == T_WORLD_CORAL and ts == T_WORLD_CORAL and tw == T_WORLD_CORAL and te == T_WORLD_CORAL:
+                    add_issue("WARNING", "SEAM", "RIGID_CORAL_GRID", x, y,
+                              "Solid >=3x3 grid of identical T_WORLD_CORAL tiles (scatter organically instead)")
 
             # Pass 3e: Miniature overworld icons should never be stamped into human-scale local zones
             if bg1 in WORLD_ICON_TILES:
@@ -834,29 +849,32 @@ def audit_local_zone(zone, cells, all_zones_by_id, inbound_spawns, meta_names, m
                         if bg1 == T_SHRINE_PILLAR and top_fam == "GRASS" and cdiff > 35.0:
                             add_issue("ERROR", "SEAM", "TERRAIN_BIOME_SEAM", x, y,
                                       f"Stone pillar {mname} sits on GRASS with harsh border diff {cdiff:.1f}")
+                        elif bg1 in (T_TREE_TRUNK, T_MAPLE_TRUNK, T_PINE_TRUNK) and top_fam == "STONE":
+                            add_issue("ERROR", "SEAM", "TREE_ON_STONE_PATH", x, y,
+                                      f"Tree trunk {T_NAMES[bg1]} planted directly on stone path ({T_NAMES[top_list[0][0]]})")
                         elif bg1 in PROP_TILES and cdiff > 38.0 and not (bg1 in (T_LANTERN_POST, T_SIGNPOST) and top_fam == "SAND"):
                             add_issue("WARNING", "SEAM", "PROP_BORDER_SEAM", x, y,
                                       f"Prop {mname} outer corner RGB differs from surrounding {top_fam} ({T_NAMES[top_list[0][0]]}) by {cdiff:.1f}")
 
-            # Pass 4b: Cobble-to-Grass feathered edge color match
+            # Pass 4b: Cobble/Rocky-to-Grass feathered edge color match
             if mname.startswith("CM_COBBLE_EDGE_") or mname.startswith("CM_COBBLE_CORNER_"):
                 tA = t0_arr[meta]
-                if "W" in mname and x > 0 and cells[y * w + (x - 1)][0] in (T_GRASS, T_GRASS_ALT):
+                if "W" in mname and x > 0 and cells[y * w + (x - 1)][0] in (T_GRASS, T_GRASS_ALT, T_AUTUMN_GRASS):
                     avg_diff = tile_border_rgb_diff(t0_arr[cells[y * w + (x - 1)][3]], tA, zp, "E")
                     if avg_diff > 22.0:
                         add_issue("WARNING", "SEAM", "ROAD_EDGE_SEAM", x, y,
                                   f"Cobble grass-edge {mname} clashes with west grass (border diff {avg_diff:.1f})")
-                if "E" in mname and x + 1 < w and cells[y * w + (x + 1)][0] in (T_GRASS, T_GRASS_ALT):
+                if "E" in mname and x + 1 < w and cells[y * w + (x + 1)][0] in (T_GRASS, T_GRASS_ALT, T_AUTUMN_GRASS):
                     avg_diff = tile_border_rgb_diff(tA, t0_arr[cells[y * w + (x + 1)][3]], zp, "E")
                     if avg_diff > 22.0:
                         add_issue("WARNING", "SEAM", "ROAD_EDGE_SEAM", x, y,
                                   f"Cobble grass-edge {mname} clashes with east grass (border diff {avg_diff:.1f})")
-                if "N" in mname and y > 0 and cells[(y - 1) * w + x][0] in (T_GRASS, T_GRASS_ALT):
+                if "N" in mname and y > 0 and cells[(y - 1) * w + x][0] in (T_GRASS, T_GRASS_ALT, T_AUTUMN_GRASS):
                     avg_diff = tile_border_rgb_diff(t0_arr[cells[(y - 1) * w + x][3]], tA, zp, "S")
                     if avg_diff > 22.0:
                         add_issue("WARNING", "SEAM", "ROAD_EDGE_SEAM", x, y,
                                   f"Cobble grass-edge {mname} clashes with north grass (border diff {avg_diff:.1f})")
-                if "S" in mname and y + 1 < h and cells[(y + 1) * w + x][0] in (T_GRASS, T_GRASS_ALT):
+                if "S" in mname and y + 1 < h and cells[(y + 1) * w + x][0] in (T_GRASS, T_GRASS_ALT, T_AUTUMN_GRASS):
                     avg_diff = tile_border_rgb_diff(tA, t0_arr[cells[(y + 1) * w + x][3]], zp, "S")
                     if avg_diff > 22.0:
                         add_issue("WARNING", "SEAM", "ROAD_EDGE_SEAM", x, y,

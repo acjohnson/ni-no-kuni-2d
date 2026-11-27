@@ -155,7 +155,7 @@ def build_zone_palettes():
     alder_arch = [
         0x000000, 0x241A1E, 0x484A58, 0x787C8A, 0xAEABA4, 0xDFDBD0, 0x4A291C,
         0x844E2E, 0xBE844E, 0xE8CCA0, 0x6C2220, 0xB03C2A, 0xDC6C3C, 0xF8C456,
-        0xFFF0AE, 0x587242,
+        0xFFF0AE, 0x888642,
     ]
     alder_acc = [
         0x000000, 0x28141A, 0x6E1E22, 0xB83226, 0xE2622C, 0xF6B040, 0x244234,
@@ -3041,23 +3041,29 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("                           tn == T_ROCKY_PATH || ts == T_ROCKY_PATH || tn == T_DIRT || ts == T_DIRT ||")
     out.append("                           tn == T_SHRINE_FLOOR || ts == T_SHRINE_FLOOR) ? 1u : 0u;")
     out.append("        uint8_t ww = 0u, we = 0u;")
-    out.append("        if (!rail_ns && road_ns) {")
-    out.append("            for (d = 1u; d <= 4u; d++) {")
-    out.append("                if (mx >= d) {")
-    out.append("                    uint8_t c = bg1[(uint32_t)my * mw + (mx - d)];")
-    out.append("                    if (hearth_is_water_like(c)) { ww = 1u; break; }")
-    out.append("                    if (c != T_BRIDGE) break;")
-    out.append("                }")
-    out.append("            }")
-    out.append("            for (d = 1u; d <= 4u; d++) {")
-    out.append("                if (mx + d < mw) {")
-    out.append("                    uint8_t c = bg1[(uint32_t)my * mw + (mx + d)];")
-    out.append("                    if (hearth_is_water_like(c)) { we = 1u; break; }")
-    out.append("                    if (c != T_BRIDGE) break;")
-    out.append("                }")
-    out.append("            }")
-    out.append("            if ((ww || we) && ((!wn && !ws) || (ww && we))) {")
+    out.append("        if (!rail_ns) {")
+    out.append("            if (ws && !wn) {")
     out.append("                flags |= 4u;")
+    out.append("            } else if (!wn && ts == T_BRIDGE && my + 2u < mh && hearth_is_water_like(bg1[(uint32_t)(my + 2u) * mw + mx])) {")
+    out.append("                flags |= 4u;")
+    out.append("            } else if (road_ns) {")
+    out.append("                for (d = 1u; d <= 4u; d++) {")
+    out.append("                    if (mx >= d) {")
+    out.append("                        uint8_t c = bg1[(uint32_t)my * mw + (mx - d)];")
+    out.append("                        if (hearth_is_water_like(c)) { ww = 1u; break; }")
+    out.append("                        if (c != T_BRIDGE) break;")
+    out.append("                    }")
+    out.append("                }")
+    out.append("                for (d = 1u; d <= 4u; d++) {")
+    out.append("                    if (mx + d < mw) {")
+    out.append("                        uint8_t c = bg1[(uint32_t)my * mw + (mx + d)];")
+    out.append("                        if (hearth_is_water_like(c)) { we = 1u; break; }")
+    out.append("                        if (c != T_BRIDGE) break;")
+    out.append("                    }")
+    out.append("                }")
+    out.append("                if ((ww || we) && ((!wn && !ws) || (ww && we))) {")
+    out.append("                    flags |= 4u;")
+    out.append("                }")
     out.append("            }")
     out.append("        }")
     out.append("    }")
@@ -3117,7 +3123,7 @@ def emit_c_header(zone_pals, gen_pals, frames_meta, snes_tiles, snes_anim, snes_
     out.append("        return t;")
     out.append("    }")
     out.append("    /* 1b. Cutaway Interior Wall Caps, 2-Tile Bed Footboard & Vertical N-S Bridges */")
-    out.append("    if (t == T_INTERIOR_WALL && (ts == T_INTERIOR_WALL || ts == T_MTN_SKY)) {")
+    out.append("    if (t == T_INTERIOR_WALL && (ts == T_INTERIOR_WALL || ts == T_MTN_SKY || ts == T_WALL_WINDOW || ts == T_FIREPLACE || ts == T_WALL_WOOD)) {")
     out.append("        return (uint8_t)CM_INTERIOR_CAP;")
     out.append("    }")
     out.append("    if (t == T_BED_QUILT && tn == T_BED_QUILT) {")
@@ -3574,24 +3580,30 @@ def emit_web_ts(zone_pals, frames_meta):
         "    const ws = my + 1 < mh && isWaterLike(ts);",
         "    const railNs = tn === 9 || tn === 10 || ts === 9 || ts === 10;",
         "    const roadNs = tn === 8 || ts === 8 || tn === 5 || ts === 5 || tn === 33 || ts === 33 || tn === 4 || ts === 4 || tn === 22 || ts === 22;",
-        "    if (!railNs && roadNs) {",
-        "      let ww = false, we = false;",
-        "      for (let d = 1; d <= 4; d++) {",
-        "        if (mx >= d) {",
-        "          const c = bg1[my * mw + (mx - d)];",
-        "          if (isWaterLike(c)) { ww = true; break; }",
-        "          if (c !== 8) break;",
-        "        }",
-        "      }",
-        "      for (let d = 1; d <= 4; d++) {",
-        "        if (mx + d < mw) {",
-        "          const c = bg1[my * mw + (mx + d)];",
-        "          if (isWaterLike(c)) { we = true; break; }",
-        "          if (c !== 8) break;",
-        "        }",
-        "      }",
-        "      if ((ww || we) && ((!wn && !ws) || (ww && we))) {",
+        "    if (!railNs) {",
+        "      if (ws && !wn) {",
         "        flags |= 4;",
+        "      } else if (!wn && ts === 8 && my + 2 < mh && isWaterLike(bg1[(my + 2) * mw + mx])) {",
+        "        flags |= 4;",
+        "      } else if (roadNs) {",
+        "        let ww = false, we = false;",
+        "        for (let d = 1; d <= 4; d++) {",
+        "          if (mx >= d) {",
+        "            const c = bg1[my * mw + (mx - d)];",
+        "            if (isWaterLike(c)) { ww = true; break; }",
+        "            if (c !== 8) break;",
+        "          }",
+        "        }",
+        "        for (let d = 1; d <= 4; d++) {",
+        "          if (mx + d < mw) {",
+        "            const c = bg1[my * mw + (mx + d)];",
+        "            if (isWaterLike(c)) { we = true; break; }",
+        "            if (c !== 8) break;",
+        "          }",
+        "        }",
+        "        if ((ww || we) && ((!wn && !ws) || (ww && we))) {",
+        "          flags |= 4;",
+        "        }",
         "      }",
         "    }",
         "  }",
@@ -3647,7 +3659,7 @@ def emit_web_ts(zone_pals, frames_meta):
         "    }",
         "    return t;",
         "  }",
-        "  if (t === 45 && (ts === 45 || ts === 28)) return CM_INTERIOR_CAP;",
+        "  if (t === 45 && (ts === 45 || ts === 28 || ts === 15 || ts === 40 || ts === 14)) return CM_INTERIOR_CAP;",
         "  if (t === 41 && tn === 41) return CM_BED_FOOT;",
         "  if (!isWorld && t === 8 && isNsBridge) return CM_BRIDGE_NS;",
         "  if (t === 62 && isWaterLike(ts)) return CM_PIER_WATER_EDGE;",

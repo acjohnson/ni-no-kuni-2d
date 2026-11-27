@@ -412,12 +412,12 @@ static void build_zone_alderbrook(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     int x, y, hash, sy;
     uint16_t i;
     static const int8_t maples[][2] = {
-        {4, 11}, {16, 11}, {31, 11}, {35, 14}, {38, 17},
+        {4, 11}, {16, 11}, {31, 11}, {35, 16}, {38, 17},
         {6, 17}, {26, 18}, {37, 8}, {8, 24}, {34, 24}
     };
     static const int8_t pines[][2] = {
-        {3, 7}, {3, 15}, {3, 23}, {15, 7}, {29, 7},
-        {34, 7}, {40, 12}, {41, 16}, {18, 24}, {26, 25}, {40, 23}
+        {3, 7}, {3, 15}, {3, 23}, {19, 10}, {29, 10},
+        {34, 7}, {39, 15}, {41, 16}, {10, 25}, {33, 25}, {40, 23}
     };
     static const int8_t boulders[][2] = {
         {6, 15}, {14, 17}, {20, 17}, {27, 17}, {33, 15},
@@ -522,8 +522,8 @@ static void build_zone_alderbrook(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     }
 
     /* Alderbrook Creek Fishing Pier at (22, 20) jutting south into the mountain brook */
-    set_bg1(bg1, col, 22, 19, T_ROCKY_PATH, COL_WALKABLE);
-    set_bg1(bg1, col, 22, 20, T_BRIDGE,     COL_WALKABLE);
+    set_bg1(bg1, col, 22, 19, T_AUTUMN_GRASS, COL_WALKABLE);
+    set_bg1(bg1, col, 22, 20, T_BRIDGE,       COL_WALKABLE);
     set_bg1(bg1, col, 21, 19, T_LANTERN_POST, COL_SOLID);
 
     /* Northeast Rocky Switchback Trail climbing toward Whispering Woods (Portal at 41,9) */
@@ -556,8 +556,8 @@ static void build_zone_whispering_woods(uint8_t *bg1, uint8_t *bg2, uint8_t *col
     int x, y, rx, hash;
     uint16_t i;
     static const int8_t maples[][2] = {
-        {6, 9}, {16, 8}, {28, 8}, {33, 13}, {8, 16},
-        {14, 21}, {29, 21}, {38, 17}, {24, 23}, {6, 23}
+        {6, 9}, {16, 8}, {28, 8}, {30, 13}, {8, 16},
+        {9, 18}, {29, 21}, {38, 17}, {24, 23}, {6, 23}
     };
     static const int8_t pines[][2] = {
         {4, 7}, {11, 7}, {21, 7}, {31, 7}, {40, 8},
@@ -1652,7 +1652,7 @@ static void build_zone_timber_pier(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     set_bg1(bg1, col, 6,  14, T_BOULDER,   COL_SOLID);
     set_bg1(bg1, col, 36, 14, T_BOULDER,   COL_SOLID);
     set_bg1(bg1, col, 33, 7,  T_PALM_TREE, COL_SOLID);
-    set_bg1(bg1, col, 37, 9,  T_PALM_TREE, COL_SOLID);
+    set_bg1(bg1, col, 37, 8,  T_PALM_TREE, COL_SOLID);
 }
 
 /* ============================================================================
@@ -1677,12 +1677,20 @@ static void build_zone_coral_cove(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     fill_rect(bg1, col, 20, 0, 4, 10, T_DOCK_PIER, COL_WALKABLE);
     /* Coral Lagoon Cove on East Side for Tropical Fishing! */
     fill_rect(bg1, col, 31, 10, 11, 8, T_WORLD_SHALLOW, COL_WATER);
-    fill_rect(bg1, col, 34, 12, 5,  4, T_WORLD_CORAL,   COL_WATER);
+    set_bg1(bg1, col, 34, 12, T_WORLD_CORAL, COL_WATER);
+    set_bg1(bg1, col, 35, 12, T_WORLD_CORAL, COL_WATER);
+    set_bg1(bg1, col, 37, 12, T_WORLD_CORAL, COL_WATER);
+    set_bg1(bg1, col, 38, 13, T_WORLD_CORAL, COL_WATER);
+    set_bg1(bg1, col, 35, 14, T_WORLD_CORAL, COL_WATER);
+    set_bg1(bg1, col, 37, 14, T_WORLD_CORAL, COL_WATER);
+    set_bg1(bg1, col, 34, 15, T_WORLD_CORAL, COL_WATER);
+    set_bg1(bg1, col, 36, 15, T_WORLD_CORAL, COL_WATER);
+    set_bg1(bg1, col, 38, 15, T_WORLD_CORAL, COL_WATER);
     fill_rect(bg1, col, 27, 13, 5,  2, T_DOCK_PIER,     COL_WALKABLE);
     /* Beachside Cabanas & Palm Grove */
     place_cottage(bg1, bg2, col, 7,  11);
     place_cottage(bg1, bg2, col, 16, 19);
-    set_bg1(bg1, col, 5,  18, T_PALM_TREE, COL_SOLID);
+    set_bg1(bg1, col, 5,  20, T_PALM_TREE, COL_SOLID);
     set_bg1(bg1, col, 12, 22, T_PALM_TREE, COL_SOLID);
     set_bg1(bg1, col, 29, 21, T_PALM_TREE, COL_SOLID);
     set_bg1(bg1, col, 36, 22, T_PALM_TREE, COL_SOLID);
@@ -1737,7 +1745,7 @@ static void build_zone_babana_oasis(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     set_bg1(bg1, col, 13, 8,  T_PALM_TREE, COL_SOLID);
     set_bg1(bg1, col, 29, 14, T_PALM_TREE, COL_SOLID);
     set_bg1(bg1, col, 12, 16, T_PALM_TREE, COL_SOLID);
-    set_bg1(bg1, col, 32, 19, T_PALM_TREE, COL_SOLID);
+    set_bg1(bg1, col, 34, 20, T_PALM_TREE, COL_SOLID);
     set_bg1(bg1, col, 18, 17, T_LANTERN_POST, COL_SOLID);
     set_bg1(bg1, col, 25, 17, T_LANTERN_POST, COL_SOLID);
     set_bg1(bg1, col, 18, 22, T_SIGNPOST,     COL_SOLID);

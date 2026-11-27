@@ -157,7 +157,7 @@ export const CHRONO_ZONE_PALS: readonly (readonly (readonly string[])[])[] = [
   [ // ZPAL_ALDERBROOK
     ['rgba(0,0,0,0)', '#1D1E22', '#2D4432', '#566E3A', '#8E8B40', '#C6A84C', '#ECD072', '#482B1E', '#7A4B30', '#B27A48', '#DFB87E', '#F2E8D6', '#F4BC44', '#D85038', '#7EB4DA', '#3C5434'],
     ['rgba(0,0,0,0)', '#204A76', '#3A7CAE', '#82C4E4', '#143052', '#3C4252', '#70788A', '#DCE2EA', '#242A3A', '#3E5234', '#6E7842', '#627488', '#489CB4', '#9EC2D8', '#E4EEF6', '#F8FCFF'],
-    ['rgba(0,0,0,0)', '#241A1E', '#484A58', '#787C8A', '#AEABA4', '#DFDBD0', '#4A291C', '#844E2E', '#BE844E', '#E8CCA0', '#6C2220', '#B03C2A', '#DC6C3C', '#F8C456', '#FFF0AE', '#587242'],
+    ['rgba(0,0,0,0)', '#241A1E', '#484A58', '#787C8A', '#AEABA4', '#DFDBD0', '#4A291C', '#844E2E', '#BE844E', '#E8CCA0', '#6C2220', '#B03C2A', '#DC6C3C', '#F8C456', '#FFF0AE', '#888642'],
     ['rgba(0,0,0,0)', '#28141A', '#6E1E22', '#B83226', '#E2622C', '#F6B040', '#244234', '#3E6A48', '#78A85A', '#D8E89A', '#4A3A44', '#887A86', '#E8C460', '#F48A30', '#FFD868', '#FFF6D4'],
   ],
   [ // ZPAL_WHISKERBURGH
@@ -187,19 +187,19 @@ export const CHRONO_ZONE_PALS: readonly (readonly (readonly string[])[])[] = [
   [ // ZPAL_AUTUMN_MORNING
     ['rgba(0,0,0,0)', '#4D3F3B', '#595D49', '#7B7E4F', '#A89454', '#D5AB5D', '#F4CA7B', '#6F4A38', '#976246', '#C5875A', '#E9B885', '#F9DDCB', '#FBBB57', '#E4664D', '#9BB4CE', '#666A4A'],
     ['rgba(0,0,0,0)', '#485D89', '#5E84B8', '#9BBDE6', '#3F496C', '#60576C', '#8C819A', '#E7D4EB', '#4C4457', '#626452', '#8A815E', '#807E98', '#6A9DBE', '#B2BCDC', '#EDDEF3', '#FAE8F3'],
-    ['rgba(0,0,0,0)', '#4E3C38', '#6C6268', '#948A90', '#C1B0A6', '#EAD6CA', '#6E4837', '#9E6545', '#CE9060', '#F2CAA3', '#8A423A', '#C35742', '#E77D51', '#F8C456', '#FFF0AE', '#7A8256'],
+    ['rgba(0,0,0,0)', '#4E3C38', '#6C6268', '#948A90', '#C1B0A6', '#EAD6CA', '#6E4837', '#9E6545', '#CE9060', '#F2CAA3', '#8A423A', '#C35742', '#E77D51', '#F8C456', '#FFF0AE', '#A29256'],
     ['rgba(0,0,0,0)', '#4D3133', '#89393A', '#C84A3D', '#EC7142', '#FDB153', '#4A5749', '#60785A', '#91AA68', '#E3DF9E', '#6A5056', '#9F858D', '#F1C16D', '#F48A30', '#FFD868', '#FDEACF'],
   ],
   [ // ZPAL_AUTUMN_DUSK
     ['rgba(0,0,0,0)', '#552F21', '#60462A', '#7D5F2E', '#A57131', '#CD8237', '#E89A4B', '#73371F', '#974A28', '#BF6635', '#DF8C52', '#EDA981', '#EE8E33', '#DA4D2D', '#9A8983', '#6B502A'],
     ['rgba(0,0,0,0)', '#4C4067', '#5D5987', '#8B7DA5', '#443353', '#5E3C53', '#7F5772', '#C48CA8', '#4F3046', '#5F4442', '#7E574A', '#765571', '#66698A', '#9D7C9F', '#CA92AF', '#D699B4'],
-    ['rgba(0,0,0,0)', '#51291F', '#6B4740', '#8E665C', '#B5836A', '#D8A183', '#6D321E', '#974A28', '#C06B3A', '#DF9768', '#852E20', '#B63E26', '#D65C30', '#F8C456', '#FFF0AE', '#776033'],
+    ['rgba(0,0,0,0)', '#51291F', '#6B4740', '#8E665C', '#B5836A', '#D8A183', '#6D321E', '#974A28', '#C06B3A', '#DF9768', '#852E20', '#B63E26', '#D65C30', '#F8C456', '#FFF0AE', '#996C33'],
     ['rgba(0,0,0,0)', '#552819', '#8C2F1E', '#C73D20', '#E85D24', '#F89230', '#524729', '#666334', '#948D3F', '#E0B864', '#704232', '#A16D58', '#EDA042', '#F48A30', '#FFD868', '#F8C285'],
   ],
   [ // ZPAL_AUTUMN_NIGHT
     ['rgba(0,0,0,0)', '#141D37', '#18283D', '#223440', '#303D42', '#3D4547', '#475157', '#1F2135', '#2B2A3C', '#383846', '#444A5C', '#48587F', '#494B44', '#422C3F', '#2C4981', '#1B2D3E'],
     ['rgba(0,0,0,0)', '#122C61', '#1A3F80', '#305B9E', '#0E224D', '#1A294D', '#2A3E6C', '#4C67A1', '#131F40', '#1B2F3D', '#2A3E45', '#263C6B', '#1E4C83', '#395A97', '#4F6BA8', '#5571AA'],
-    ['rgba(0,0,0,0)', '#171A30', '#212949', '#2E395E', '#3D4869', '#4B577D', '#211F2F', '#322B37', '#423C44', '#4D5368', '#2B1D30', '#3E2535', '#4A343D', '#F8C456', '#FFF0AE', '#26363F'],
+    ['rgba(0,0,0,0)', '#171A30', '#212949', '#2E395E', '#3D4869', '#4B577D', '#211F2F', '#322B37', '#423C44', '#4D5368', '#2B1D30', '#3E2535', '#4A343D', '#F8C456', '#FFF0AE', '#323C3F'],
     ['rgba(0,0,0,0)', '#1B162B', '#33192E', '#4E2030', '#5D3033', '#644B3C', '#192537', '#233340', '#374848', '#595E65', '#27233E', '#3D385C', '#5F524B', '#F48A30', '#FFD868', '#676380'],
   ],
   [ // ZPAL_COTTAGE_INTERIOR
@@ -339,24 +339,30 @@ export function getLocalTileFlags(bg1: ArrayLike<number>, mx: number, my: number
     const ws = my + 1 < mh && isWaterLike(ts);
     const railNs = tn === 9 || tn === 10 || ts === 9 || ts === 10;
     const roadNs = tn === 8 || ts === 8 || tn === 5 || ts === 5 || tn === 33 || ts === 33 || tn === 4 || ts === 4 || tn === 22 || ts === 22;
-    if (!railNs && roadNs) {
-      let ww = false, we = false;
-      for (let d = 1; d <= 4; d++) {
-        if (mx >= d) {
-          const c = bg1[my * mw + (mx - d)];
-          if (isWaterLike(c)) { ww = true; break; }
-          if (c !== 8) break;
-        }
-      }
-      for (let d = 1; d <= 4; d++) {
-        if (mx + d < mw) {
-          const c = bg1[my * mw + (mx + d)];
-          if (isWaterLike(c)) { we = true; break; }
-          if (c !== 8) break;
-        }
-      }
-      if ((ww || we) && ((!wn && !ws) || (ww && we))) {
+    if (!railNs) {
+      if (ws && !wn) {
         flags |= 4;
+      } else if (!wn && ts === 8 && my + 2 < mh && isWaterLike(bg1[(my + 2) * mw + mx])) {
+        flags |= 4;
+      } else if (roadNs) {
+        let ww = false, we = false;
+        for (let d = 1; d <= 4; d++) {
+          if (mx >= d) {
+            const c = bg1[my * mw + (mx - d)];
+            if (isWaterLike(c)) { ww = true; break; }
+            if (c !== 8) break;
+          }
+        }
+        for (let d = 1; d <= 4; d++) {
+          if (mx + d < mw) {
+            const c = bg1[my * mw + (mx + d)];
+            if (isWaterLike(c)) { we = true; break; }
+            if (c !== 8) break;
+          }
+        }
+        if ((ww || we) && ((!wn && !ws) || (ww && we))) {
+          flags |= 4;
+        }
       }
     }
   }
@@ -412,7 +418,7 @@ export function resolveChronoMeta(
     }
     return t;
   }
-  if (t === 45 && (ts === 45 || ts === 28)) return CM_INTERIOR_CAP;
+  if (t === 45 && (ts === 45 || ts === 28 || ts === 15 || ts === 40 || ts === 14)) return CM_INTERIOR_CAP;
   if (t === 41 && tn === 41) return CM_BED_FOOT;
   if (!isWorld && t === 8 && isNsBridge) return CM_BRIDGE_NS;
   if (t === 62 && isWaterLike(ts)) return CM_PIER_WATER_EDGE;
