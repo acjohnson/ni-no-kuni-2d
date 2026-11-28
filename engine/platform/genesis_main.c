@@ -22,9 +22,14 @@
 #include "hearth_terrain_rom.h"
 #define HEARTH_INCLUDE_GENESIS_BATTLE_BG 1
 #include "battle_bg_rom.h"
+#include "atlas_gen_rom.h"
 
 /* Placed statically in Sega Genesis 64KB 68000 Work RAM (zero malloc!) */
 static HearthState g_hearth;
+static u8 g_boot_stage = 0u;
+
+static void psg_tick_60hz(uint8_t bgm_id);
+static void upload_zone_pal0_to_cram(u8 pal_id, u8 terrain_pal3, u16 tod_phase, u8 has_outdoor_tod, TransferMethod tm);
 
 /* ============================================================================
  * VRAM TILE INDEX ALLOCATION (Strictly below SGDK 64x64 HSCROLL=1344 & SAT=1376!)
@@ -44,10 +49,10 @@ static HearthState g_hearth;
 #define VRAM_UI_BASE       ((u16)(VRAM_BG_BASE + 400u))
 #define VRAM_SPR_BASE      ((u16)(VRAM_UI_BASE + 24u))
 #define VRAM_FONT_BASE     ((u16)(VRAM_SPR_BASE + 244u))
-#define VRAM_ATLAS_BASE    ((u16)(VRAM_FONT_BASE + 64u))
-#define VRAM_CG_BASE       VRAM_ATLAS_BASE
-#define VRAM_VISTA_BASE    VRAM_ATLAS_BASE
-#define VRAM_TALL_SPR_BASE ((u16)(VRAM_ATLAS_BASE + 480u))
+#define VRAM_CG_BASE       ((u16)(VRAM_FONT_BASE + 64u))  /* 748..1227 (480 tiles): CG / Battle OR disjoint Vista+Atlas! */
+#define VRAM_VISTA_BASE    VRAM_CG_BASE                   /* 748..939  (192 tiles: Alpine Parallax Vista = 163 tiles) */
+#define VRAM_ATLAS_BASE    ((u16)(VRAM_CG_BASE + 192u))   /* 940..1227 (288 tiles: Deduplicated ROM Atlas = 174 tiles) */
+#define VRAM_TALL_SPR_BASE ((u16)(VRAM_CG_BASE + 480u))
 #define VRAM_PORTRAIT_BASE ((u16)(VRAM_TALL_SPR_BASE + 84u)) /* 1312..1327: 16 tiles (32x32 PAL2 dialogue portrait) */
 
 /* Nestable atomic VDP bulk-upload guard: prevents _VINT from clobbering VDP control latches
@@ -244,6 +249,7 @@ static void gen_upload_rom_tiles_dma(const u32 *src, u16 dst_tile, u16 count) {
     while (count > 0u) {
         u16 chunk = (count > 64u) ? 64u : count;
         gen_queue_rom_tiles_dma(src, dst_tile, chunk);
+        if (g_boot_stage >= 2u) psg_tick_60hz(g_hearth.ppu.bgm_id);
         SYS_doVBlankProcess();
         src += (u32)chunk * 8u;
         dst_tile = (u16)(dst_tile + chunk);
@@ -254,6 +260,7 @@ static void gen_upload_rom_tiles_dma(const u32 *src, u16 dst_tile, u16 count) {
 static void gen_dma_stage_flush(void) {
     if (g_dma_stage_cnt > 0u) {
         VDP_loadTileData(g_dma_stage, g_dma_stage_base, g_dma_stage_cnt, DMA_QUEUE);
+        if (g_boot_stage >= 2u) psg_tick_60hz(g_hearth.ppu.bgm_id);
         SYS_doVBlankProcess();
         g_dma_stage_cnt = 0u;
     }
@@ -584,124 +591,11 @@ static const uint32_t ATLAS_PAL_RGB[16] = {
 static u8 g_atlas_baked = 0u;
 static u8 g_vista_vram_dirty = 1u;
 
-/* Fast zero-DIVU 24x16 (192x128 px) 4bpp Pixel-Art Evertale World Atlas baker (lazy-baked on first Atlas open) */
+/* Instant ROM DMA upload of the pre-baked deduplicated 174-tile Evertale World Atlas (3 VBlanks = 50ms!)
+ * Lives at VRAM_ATLAS_BASE (940..1227), completely disjoint from Alpine Parallax Vista (748..939)! */
 static void bake_genesis_atlas_bitmap(void) {
-    static u8 row3[3][HEARTH_ATLAS_W];
-    static u8 below[HEARTH_ATLAS_W];
-    static u8 px_ax[192];
-    static u8 px_mod3[192];
-    static u8 px_grat[192];
-    s16 lm_px[HEARTH_GLOBE_LANDMARK_COUNT];
-    s16 lm_py[HEARTH_GLOBE_LANDMARK_COUNT];
-    u8  lm_col[HEARTH_GLOBE_LANDMARK_COUNT];
-    u16 tile_idx = 0u;
-
-    /* Precompute px/3, px%3, and px%24==0 via pure additions (eliminates 98,304 68000 DIVU calls!) */
-    {
-        u8 cur_ax = 0u;
-        u8 cur_m3 = 0u;
-        u8 cur_m24 = 0u;
-        for (u16 px = 0u; px < 192u; px++) {
-            px_ax[px] = (cur_ax < HEARTH_ATLAS_W) ? cur_ax : (u8)(HEARTH_ATLAS_W - 1u);
-            px_mod3[px] = cur_m3;
-            px_grat[px] = (cur_m24 == 0u) ? 1u : 0u;
-            cur_m3++;
-            if (cur_m3 == 3u) { cur_m3 = 0u; cur_ax++; }
-            cur_m24++;
-            if (cur_m24 == 24u) { cur_m24 = 0u; }
-        }
-    }
-
-    /* Precompute landmark pixel centers once (eliminates 344,064 inner-loop MULU calls!) */
-    for (u8 i = 0u; i < HEARTH_GLOBE_LANDMARK_COUNT; i++) {
-        const HearthGlobeLandmark *lm = &HEARTH_GLOBE_LANDMARKS[i];
-        lm_px[i]  = (s16)(((u16)lm->tx * 3u) >> 2);
-        lm_py[i]  = (s16)(((u16)lm->ty * 171u) >> 8);
-        lm_col[i] = lm->enterable ? 13u : 14u;
-    }
-
-    for (u16 ty = 0u; ty < GEN_ATLAS_TH; ty++) {
-        u8 ay0 = (u8)(ty * 3u);
-        u8 ay_next = (u8)((ay0 + 3u < HEARTH_ATLAS_H) ? (ay0 + 3u) : (HEARTH_ATLAS_H - 1u));
-        s16 ty0 = (s16)(ty << 3);
-        for (u8 ax = 0u; ax < HEARTH_ATLAS_W; ax++) {
-            row3[0][ax] = hearth_globe_atlas_cell(ax, ay0);
-            row3[1][ax] = hearth_globe_atlas_cell(ax, (u8)(ay0 + 1u));
-            row3[2][ax] = hearth_globe_atlas_cell(ax, (u8)(ay0 + 2u));
-            below[ax]   = hearth_globe_atlas_cell(ax, ay_next);
-        }
-
-        for (u16 tx = 0u; tx < GEN_ATLAS_TW; tx++) {
-            s16 tx0 = (s16)(tx << 3);
-            u8 hit_lm[4];
-            u8 hit_cnt = 0u;
-
-            /* Tile-level 8x8 bounding-box cull for 5x5 landmark pins (~93% of tiles skip inner loop!) */
-            for (u8 i = 0u; i < HEARTH_GLOBE_LANDMARK_COUNT; i++) {
-                s16 ldx = (s16)(lm_px[i] - tx0);
-                s16 ldy = (s16)(lm_py[i] - ty0);
-                if (ldx >= -2 && ldx <= 9 && ldy >= -2 && ldy <= 9 && hit_cnt < 4u) {
-                    hit_lm[hit_cnt++] = i;
-                }
-            }
-
-            for (u8 ly = 0u; ly < 8u; ly++) {
-                u8 py = (u8)((ty << 3) + ly);
-                u8 sub = (ly < 3u) ? 0u : ((ly < 5u) ? 1u : 2u);
-                u8 py_grat = (py == 0u || py == 24u || py == 48u ||
-                              py == 72u || py == 96u || py == 120u) ? 1u : 0u;
-                u8 py_even = ((py & 1u) == 0u) ? 1u : 0u;
-                u8 is_row_seam = (ly == 3u || ly == 5u) ? 1u : 0u;
-
-                for (u8 lx = 0u; lx < 8u; lx++) {
-                    u8 px = (u8)((tx << 3) + lx);
-                    u8 ax = px_ax[px];
-                    u8 cell = row3[sub][ax];
-                    u8 col = (u8)((cell < 10u ? cell : 0u) + 2u);
-
-                    /* Subtle latitude/longitude graticule across deep ocean */
-                    if (cell == 0u && ((px_grat[px] && py_even) || (py_grat && ((px & 1u) == 0u)))) {
-                        col = 15u;
-                    }
-                    /* Crisp 1px coastal shadow along south/east continent shoreline */
-                    if (cell < 3u) {
-                        if (is_row_seam && sub > 0u && row3[sub - 1u][ax] >= 3u) {
-                            col = 1u;
-                        } else if (px_mod3[px] == 0u && ax > 0u && row3[sub][ax - 1u] >= 3u) {
-                            col = 1u;
-                        }
-                    } else if (ly == 7u && below[ax] < 3u) {
-                        col = 1u;
-                    }
-
-                    /* Crisp 5x5 framed landmark pins (only evaluated on intersecting tiles) */
-                    for (u8 h = 0u; h < hit_cnt; h++) {
-                        u8 li = hit_lm[h];
-                        s16 dx = (s16)px - lm_px[li];
-                        s16 dy = (s16)py - lm_py[li];
-                        if (dx >= -2 && dx <= 2 && dy >= -2 && dy <= 2) {
-                            if (dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1) {
-                                col = lm_col[li];
-                            } else if ((dx != -2 && dx != 2) || (dy != -2 && dy != 2)) {
-                                col = 1u;
-                            }
-                        }
-                    }
-
-                    /* Gilded bronze outer border around the 192x128 World Atlas */
-                    if (px == 0u || px == 191u || py == 0u || py == 127u) {
-                        col = 12u;
-                    }
-                    g_pix8[(u16)ly * 8u + lx] = col;
-                }
-            }
-            upload_pix8_to_vram((u16)(VRAM_ATLAS_BASE + tile_idx));
-            tile_idx++;
-        }
-    }
-    gen_dma_stage_flush();
+    gen_upload_rom_tiles_dma(GEN_ATLAS_TILES, VRAM_ATLAS_BASE, GEN_ATLAS_TILE_COUNT);
     g_atlas_baked = 1u;
-    g_vista_vram_dirty = 1u; /* Shares 480-tile block with Alpine Parallax Vista */
 }
 
 static void bake_all_sprites(void) {
@@ -1565,7 +1459,7 @@ static void bake_genesis_parallax_vista(void) {
                         g_pix8[ly * 8u + lx] = col;
                     }
                 }
-                if (next_t < 480u) {
+                if (next_t < 192u) {
                     upload_pix8_to_vram((u16)(VRAM_VISTA_BASE + next_t));
                     g_vista_map[ty][tx] = (u16)(VRAM_VISTA_BASE + next_t);
                     next_t++;
@@ -1577,7 +1471,7 @@ static void bake_genesis_parallax_vista(void) {
     }
     gen_dma_stage_flush();
     g_vista_vram_dirty = 0u;
-    g_atlas_baked = 0u; /* Shares 480-tile block with World Atlas */
+    /* Disjoint from VRAM_ATLAS_BASE (940..1227) — World Atlas stays hot in VRAM! */
 }
 
 static void draw_genesis_parallax_vista(void) {
@@ -2087,25 +1981,27 @@ static void upload_atlas_pal0_to_cram(TransferMethod tm) {
         cram[c] = hearth_rgb_to_genesis_bgr333(ATLAS_PAL_RGB[c]);
     }
     PAL_setColors(0, cram, 16, tm);
-    g_last_pal_id = 255u; /* Force zone terrain PAL0 restore immediately when Atlas closes */
+    g_last_pal_id = 255u;    /* Force zone terrain PAL0 restore immediately when Atlas closes */
+    g_prev_cram_valid = 0u;  /* Invalidate CRAM shadow cache so upload_zone_pal0_to_cram NEVER skips PAL0! */
 }
 
 static void draw_genesis_atlas_window(void) {
     u16 tile_idx = 0u;
-    /* Callers ensure bake_genesis_atlas_bitmap() has already completed outside bulk lock! */
+    /* Callers invoke inside gen_vdp_begin_bulk()/gen_vdp_end_bulk() with Atlas tiles already in VRAM! */
 
-    upload_atlas_pal0_to_cram(DMA_QUEUE);
-    gen_clear_plane(WINDOW);
+    upload_atlas_pal0_to_cram(CPU);
     VDP_setWindowHPos(FALSE, 0);
     VDP_setWindowFullScreen();
+    /* Fill full 40x28 WINDOW plane with opaque dark slate so BG_A/BG_B never bleed on screen edges! */
+    VDP_fillTileMapRect(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, VRAM_UI_BASE + GUI_FILL), 0, 0, 40, 28);
     win_fill_box(1, 0, 38, 27);
     win_text(10, 1, PAL3, "EVERTALE WORLD ATLAS");
 
-    /* Stamp pre-baked 24x16 (192x128 px) 4bpp Pixel-Art World Map centered at cols 8..31, rows 3..18 */
+    /* Stamp deduplicated 24x16 (192x128 px) 4bpp Pixel-Art World Map centered at cols 8..31, rows 3..18 */
     for (u16 ry = 0u; ry < GEN_ATLAS_TH; ry++) {
         for (u16 rx = 0u; rx < GEN_ATLAS_TW; rx++) {
             VDP_setTileMapXY(WINDOW,
-                TILE_ATTR_FULL(PAL0, 1, 0, 0, (u16)(VRAM_ATLAS_BASE + tile_idx)),
+                TILE_ATTR_FULL(PAL0, 1, 0, 0, (u16)(VRAM_ATLAS_BASE + GEN_ATLAS_MAP[tile_idx])),
                 (u16)(8u + rx), (u16)(3u + ry));
             tile_idx++;
         }
@@ -2126,19 +2022,29 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
     else want_layout = 0;
 
     if (want_layout != g_win_layout) {
+        u8 prev_layout = g_win_layout;
         u8 masked = (g_vdp_bulk_depth == 0u) ? 1u : 0u;
         g_win_layout = want_layout;
         g_last_title_cursor = 255;
         g_last_atlas_sig = 0xFFFFu;
         g_last_hud_line[0] = '\0';
         if (want_layout == 7) {
-            if (masked) { VDP_waitDMACompletion(); SYS_disableInts(); }
+            gen_vdp_begin_bulk();
             draw_genesis_atlas_window();
-            VDP_setAutoInc(2);
-            if (masked) { SYS_enableInts(); }
+            gen_vdp_end_bulk();
             return;
         }
-        if (masked) { VDP_waitDMACompletion(); SYS_disableInts(); }
+        if (prev_layout == 7u) {
+            /* Closing Atlas: atomically restore zone PAL0 + shrink WINDOW in one bulk lock -> 0 flash! */
+            u8 want_tpal3 = (g_hearth.mode == MODE_TITLE || g_hearth.mode == MODE_EXPLORE ||
+                             g_hearth.mode == MODE_CUTSCENE || g_hearth.mode == MODE_SHOP) ? 1u : 0u;
+            gen_vdp_begin_bulk();
+            upload_zone_pal0_to_cram(ppu->terrain_pal_id, want_tpal3, ppu->tod_phase,
+                                     ppu->has_outdoor_tod ? 1u : 0u, CPU);
+        } else if (masked) {
+            VDP_waitDMACompletion();
+            SYS_disableInts();
+        }
         gen_clear_plane(WINDOW);
         VDP_setWindowHPos(FALSE, 0);
         if (want_layout == 1) {
@@ -2161,7 +2067,11 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
             win_fill_box(0, 20, 40, 8);
         }
         VDP_setAutoInc(2);
-        if (masked) { SYS_enableInts(); }
+        if (prev_layout == 7u) {
+            gen_vdp_end_bulk();
+        } else if (masked) {
+            SYS_enableInts();
+        }
         g_hud_tick = 0;
     }
 
@@ -3280,14 +3190,13 @@ static void upload_palettes_to_cram(void) {
  *     - First visible splash appears in < 25ms after power-on!
  *     - Stages heavy terrain & sprite VRAM baking in the dark beats between splashes
  * ============================================================================ */
-#define VRAM_SPLASH_STAR0   ((u16)(VRAM_ATLAS_BASE + 0u))
-#define VRAM_SPLASH_STAR1   ((u16)(VRAM_ATLAS_BASE + 1u))
-#define VRAM_SPLASH_RULE    ((u16)(VRAM_ATLAS_BASE + 2u))
-#define VRAM_SPLASH_CORNER  ((u16)(VRAM_ATLAS_BASE + 3u))
-#define VRAM_SPLASH_ART0    ((u16)(VRAM_ATLAS_BASE + 4u))
-#define VRAM_SPLASH_ART1    ((u16)(VRAM_ATLAS_BASE + 24u))
+#define VRAM_SPLASH_STAR0   ((u16)(VRAM_CG_BASE + 0u))
+#define VRAM_SPLASH_STAR1   ((u16)(VRAM_CG_BASE + 1u))
+#define VRAM_SPLASH_RULE    ((u16)(VRAM_CG_BASE + 2u))
+#define VRAM_SPLASH_CORNER  ((u16)(VRAM_CG_BASE + 3u))
+#define VRAM_SPLASH_ART0    ((u16)(VRAM_CG_BASE + 4u))
+#define VRAM_SPLASH_ART1    ((u16)(VRAM_CG_BASE + 24u))
 
-static u8 g_boot_stage = 0u;
 static u8 g_splash_buf[48u * 32u];
 
 static void gen_run_boot_stage(u8 target_stage) {
@@ -3298,6 +3207,7 @@ static void gen_run_boot_stage(u8 target_stage) {
     if (target_stage >= 2u && g_boot_stage < 2u) {
         bake_all_sprites();
         bake_env_anim_frames();
+        bake_genesis_atlas_bitmap(); /* Preload 174-tile ROM Atlas (3 VBlanks, disjoint from Vista!) */
         g_boot_stage = 2u;
     }
 }
@@ -3993,14 +3903,8 @@ int main(bool hard_reset) {
             }
         }
 
-        /* 2. Lazy-bake World Atlas bitmap outside bulk lock before opening Atlas window */
+        /* 2. Fast 3-VBlank ROM DMA reload of World Atlas if evicted by a Cinema CG or Battle BG */
         if (g_hearth.atlas_open && !g_atlas_baked) {
-            gen_vdp_begin_bulk();
-            VDP_setWindowHPos(FALSE, 0);
-            VDP_setWindowFullScreen();
-            win_fill_box(1, 0, 38, 27);
-            win_text(10, 12, PAL3, "CHARTING EVERTALE...");
-            gen_vdp_end_bulk();
             bake_genesis_atlas_bitmap();
         }
 

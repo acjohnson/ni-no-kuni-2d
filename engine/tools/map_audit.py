@@ -699,6 +699,11 @@ def audit_console_hardware(dump, meta_names, meta_tiles, snes_tiles, snes_meta_t
     if len(gen_tiles) > 399:
         add("CRITICAL", "Genesis", "GEN_VRAM_OVERFLOW",
             f"Compiled Genesis 4bpp BG tilebank ({len(gen_tiles)}) exceeds 399-tile VRAM budget")
+    if "upload_atlas_pal0_to_cram" in gen_src:
+        m_ap = re.search(r"static void upload_atlas_pal0_to_cram\(.*?\n\}", gen_src, re.S)
+        if m_ap and "g_prev_cram_valid = 0u" not in m_ap.group(0):
+            add("ERROR", "Genesis", "GEN_ATLAS_PAL0_CACHE_STALE",
+                "upload_atlas_pal0_to_cram() must clear g_prev_cram_valid = 0u so PAL0 restores cleanly on Atlas close")
 
     if os.path.isfile(terrain_rom_h) and os.path.isfile(terrain_snes_asm):
         trom = open(terrain_rom_h, "r").read()

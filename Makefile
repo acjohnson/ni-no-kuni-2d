@@ -39,6 +39,7 @@ SDL2_CG_HDR     := $(PLAT_DIR)/cinema_cg_sdl2.h
 ROM_CG_HDR      := $(PLAT_DIR)/cinema_cg_rom.h
 HERO24_HDR      := $(PLAT_DIR)/hearth_hero24.h
 ROWAN_GEN_HDR   := $(PLAT_DIR)/rowan_gen_rom.h
+ATLAS_GEN_HDR   := $(PLAT_DIR)/atlas_gen_rom.h
 TERRAIN_ROM_HDR := $(PLAT_DIR)/hearth_terrain_rom.h
 BATTLE_BG_ROM_HDR := $(PLAT_DIR)/battle_bg_rom.h
 SNES_CG_ASM     := $(PLAT_DIR)/cinema_cg_snes.asm
@@ -214,10 +215,10 @@ map-audit-bless: $(CORE_SRCS) $(CORE_HDRS) $(TERRAIN_ROM_HDR) engine/tools/map_a
 # ------------------------------------------------------------------------------
 # 5. SEGA GENESIS / MEGA DRIVE ROM (Implicit Docker SGDK — Zero Manual Setup!)
 # ------------------------------------------------------------------------------
-genesis-stage: $(CORE_SRCS) $(CORE_HDRS) $(GENESIS_SRC) $(ROM_CG_HDR) $(HERO24_HDR) $(ROWAN_GEN_HDR) $(TERRAIN_ROM_HDR) $(BATTLE_BG_ROM_HDR)
+genesis-stage: $(CORE_SRCS) $(CORE_HDRS) $(GENESIS_SRC) $(ROM_CG_HDR) $(HERO24_HDR) $(ROWAN_GEN_HDR) $(ATLAS_GEN_HDR) $(TERRAIN_ROM_HDR) $(BATTLE_BG_ROM_HDR)
 	@rm -rf $(BUILD_DIR)/genesis/src $(BUILD_DIR)/genesis/out
 	@mkdir -p $(BUILD_DIR)/genesis/src $(BUILD_DIR)/genesis/res $(BUILD_DIR)/genesis/inc
-	@cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) $(HERO24_HDR) $(ROWAN_GEN_HDR) $(TERRAIN_ROM_HDR) $(BATTLE_BG_ROM_HDR) $(BUILD_DIR)/genesis/src/
+	@cp $(CORE_SRCS) $(CORE_HDRS) $(ROM_CG_HDR) $(HERO24_HDR) $(ROWAN_GEN_HDR) $(ATLAS_GEN_HDR) $(TERRAIN_ROM_HDR) $(BATTLE_BG_ROM_HDR) $(BUILD_DIR)/genesis/src/
 	@cp $(GENESIS_SRC) $(BUILD_DIR)/genesis/src/main.c
 
 genesis: genesis-stage
