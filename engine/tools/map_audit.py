@@ -125,16 +125,10 @@ EXPECT_SOLID = {
     T_WORLD_RUINS, T_PALM_TREE, T_LANTERN_UNLIT,
 }
 
-# Region -> ZPAL index for globe rendering
-REGION_TO_ZPAL = {
-    0: 10,  # Heartland -> ZPAL_EVERTALE_WORLD
-    1: 12,  # Desert -> ZPAL_DESERT
-    2: 13,  # Paradise -> ZPAL_PARADISE
-    3: 14,  # Frostmere -> ZPAL_FROST
-    4: 15,  # Canopy -> ZPAL_JUNGLE
-    5: 16,  # Volcano -> ZPAL_VOLCANO
-    6: 17,  # Aetheris -> ZPAL_TECH
-}
+# Unified World Map Palette: all 7 continents share ZPAL_EVERTALE_WORLD (10) so sailing/flying
+# between islands never snaps the hardware palette mid-travel!
+GLOBE_UNIFIED_ZPAL = 10
+SHALLOW_TILES = {T_WORLD_SHALLOW, T_WORLD_CORAL}
 
 # Bounding boxes (tx0, ty0, tx1, ty1) for per-continent zoomed PNG crops
 CONTINENT_CROPS = {
@@ -418,6 +412,26 @@ def expected_shore_edges_from_meta(meta_name):
     return edges
 
 
+def expected_shoal_edges_from_meta(meta_name):
+    """Return set of cardinal edges {'N','S','W','E'} that a CM_SHOAL_* metatile visually transitions to shallow water."""
+    if not meta_name.startswith("CM_SHOAL_"):
+        return set()
+    suf = meta_name[len("CM_SHOAL_"):]
+    if suf.startswith("I"):
+        return set()  # diagonal inner corner only
+    return {ch for ch in ("N", "S", "W", "E") if ch in suf}
+
+
+def expected_suffix_edges(prefix, meta_name):
+    """Return cardinal edges {'N','S','W','E'} encoded in the suffix after prefix (ignores I* inner corners)."""
+    if not meta_name.startswith(prefix):
+        return set()
+    suf = meta_name[len(prefix):]
+    if suf.startswith("I"):
+        return set()
+    return {ch for ch in ("N", "S", "W", "E") if ch in suf}
+
+
 def tile_border_rgb_diff(tA, tB, zp, direction):
     """Compute mean per-channel RGB difference along shared 16-pixel border ('E' or 'S')."""
     diff = 0.0
@@ -492,7 +506,7 @@ def render_map_rgb(w, h, cells, pal_rgb, meta_tiles, default_pal_id, is_globe=Fa
             rec = cells[my * w + mx]
             bg2 = rec[1]
             meta = rec[3]
-            pal_id = REGION_TO_ZPAL.get(rec[4], 10) if is_globe else default_pal_id
+            pal_id = GLOBE_UNIFIED_ZPAL if is_globe else default_pal_id
             tile = t_arr[meta]
             qpal = tile.qpal
             zp = pal_rgb[pal_id]
@@ -536,17 +550,23 @@ def render_map_rgb(w, h, cells, pal_rgb, meta_tiles, default_pal_id, is_globe=Fa
     return img_w, img_h, buf
 
 
-def render_genesis_zone_rgb(w, h, cells, gen_pal_rgb, gen_meta_tiles, pal_id, has_mountain_vista, name_to_id):
+def render_genesis_zone_rgb(w, h, cells, gen_pal_rgb, gen_meta_tiles, pal_id, has_mountain_vista, name_to_id, is_globe=False, crop=None):
     """
-    Render a local zone using the EXACT Sega Genesis VDP BG_A/BG_B rules,
+    Render a local zone or globe crop using the EXACT Sega Genesis VDP BG_A/BG_B rules,
     remapped 399-tile bank, CM_OPQ_* parallax canopies, and 9-bit BGR333 CRAM.
     """
-    img_w, img_h = w * 16, h * 16
+    if crop:
+        x0, y0, x1, y1 = crop
+    else:
+        x0, y0, x1, y1 = 0, 0, w, h
+    cw, ch = x1 - x0, y1 - y0
+    img_w, img_h = cw * 16, ch * 16
     buf = bytearray(img_w * img_h * 3)
-    gp = gen_pal_rgb[pal_id]
+    eff_pal = GLOBE_UNIFIED_ZPAL if is_globe else pal_id
+    gp = gen_pal_rgb[eff_pal]
     ov_base = name_to_id["CM_OV_CANOPY_TL"]
     opq_base = name_to_id["CM_OPQ_CANOPY_TL"]
-    sky_rgb = (90, 124, 168) if pal_id != 8 else (22, 30, 56)
+    sky_rgb = (90, 124, 168) if eff_pal != 8 else (22, 30, 56)
 
     def blit_tile(cx, cy, tile, transparent0=False):
         qpal = tile.qpal
@@ -565,10 +585,13 @@ def render_genesis_zone_rgb(w, h, cells, gen_pal_rgb, gen_meta_tiles, pal_id, ha
                 off = row_off + tx * 3
                 buf[off] = r; buf[off + 1] = g; buf[off + 2] = b
 
-    for cy in range(h):
-        for cx in range(w):
-            bg1, bg2, _col, meta = cells[cy * w + cx]
-            if has_mountain_vista:
+    for cy in range(ch):
+        my = (y0 + cy) % h if is_globe else (y0 + cy)
+        for cx in range(cw):
+            mx = (x0 + cx) % w if is_globe else (x0 + cx)
+            rec = cells[my * w + mx]
+            bg1, bg2, meta = rec[0], rec[1], rec[3]
+            if not is_globe and has_mountain_vista:
                 if bg1 == T_MTN_SKY:
                     fill_rect_rgb(buf, img_w, img_h, cx * 16, cy * 16, 16, 16, sky_rgb)
                     if 1 <= bg2 <= 12:
@@ -606,7 +629,7 @@ def render_snes_zone_rgb(w, h, cells, snes_pal_rgb, snes_meta_tiles, pal_id, has
             rec = cells[my * w + mx]
             bg1, bg2 = rec[0], rec[1]
             meta = rec[3]
-            zpal = REGION_TO_ZPAL.get(rec[4], 10) if is_globe else pal_id
+            zpal = GLOBE_UNIFIED_ZPAL if is_globe else pal_id
             sp = snes_pal_rgb[zpal]
             sky_rgb = sp[1][2] if (not is_globe and has_mountain_vista) else sp[0][1]
 
@@ -858,6 +881,253 @@ def audit_console_hardware(dump, meta_names, meta_tiles, snes_tiles, snes_meta_t
     if "uintptr_t" in gen_src:
         add("CRITICAL", "Genesis", "GEN_UINTPTR_FORBIDDEN",
             "genesis_main.c uses uintptr_t (unavailable in SGDK m68k stdint.h)")
+
+    # 7g. Unified World Map Palette Lock (prevents mid-travel color snapping between islands)
+    core_c_path = os.path.join(ROOT, "engine", "core", "hearth_core.c")
+    core_src = open(core_c_path, "r").read()
+    m_stream = re.search(r"static void update_globe_region_streaming\(.*?\n\}", core_src, re.S)
+    if m_stream and "terrain_pal_id" in m_stream.group(0):
+        add("ERROR", "Parity", "GLOBE_PALETTE_SNAP",
+            "hearth_core.c update_globe_region_streaming() mutates terrain_pal_id on region change (causes island-to-island palette snaps)")
+    m_pop = re.search(r"static void populate_zone_evertale_world\(.*?\n\}", core_src, re.S)
+    if m_pop and "ZPAL_EVERTALE_WORLD" not in m_pop.group(0):
+        add("ERROR", "Parity", "GLOBE_PALETTE_UNIFIED",
+            "hearth_core.c populate_zone_evertale_world() must pin terrain_pal_id to unified ZPAL_EVERTALE_WORLD")
+
+    return issues
+
+
+def audit_cross_build_edge_transitions(label, zone_id, w, h, cells, pal_id, is_globe,
+                                       meta_names, targets, reg_names=None):
+    """
+    Cross-Build Edge-Transition Audit across ALL 3 rendered hardware builds:
+      - Master (PC SDL2 / Web Canvas, 60-color lossless 16x16 metatiles)
+      - SNES   (Mode-1 PPU, compiled <=510-tile 4bpp bank, 15-bit BGR555 CGRAM)
+      - Genesis (VDP, compiled <=399-tile 4bpp bank, 9-bit BGR333 CRAM)
+
+    Checks BOTH:
+      1. Structural autotile transition completeness whenever two distinct terrain styles meet:
+         - Deep Ocean (T_WORLD_OCEAN) <-> Shallow Water (T_WORLD_SHALLOW / T_WORLD_CORAL) => CM_SHOAL_*
+         - Beach / Desert Sand <-> Grass => CM_SAND_GRASS_*
+         - Cobble Road <-> Grass (local zones) => CM_COBBLE_EDGE_* / CM_COBBLE_CORNER_*
+      2. Pixel-level border continuity across all 3 compiled hardware tilebanks & palettes
+         so neither missing autotiles nor SNES/Genesis tile folding can produce jagged seams!
+    """
+    issues = []
+    eff_pal = GLOBE_UNIFIED_ZPAL if is_globe else pal_id
+
+    def zone_label(target_tag, x, y):
+        base = label
+        if is_globe and reg_names is not None:
+            reg = cells[y * w + x][4]
+            base = f"Globe:{reg_names[reg]}" if 0 <= reg < len(reg_names) else "Globe:Evertale"
+        return f"{base} [{target_tag}]" if target_tag != "Master" else base
+
+    def add_issue(sev, cat, code, target_tag, x, y, msg):
+        issues.append({
+            "severity": sev, "category": cat, "code": code,
+            "zone_id": zone_id, "zone": zone_label(target_tag, x, y),
+            "x": x, "y": y, "msg": msg,
+        })
+
+    def get_cell(x, y):
+        if is_globe:
+            return cells[(y % h) * w + (x % w)]
+        if 0 <= x < w and 0 <= y < h:
+            return cells[y * w + x]
+        return None
+
+    border_cache = {}
+    def border_diff(tidx, mA, mB, side):
+        key = (tidx, eff_pal, mA, mB, side)
+        v = border_cache.get(key)
+        if v is None:
+            _tname, tiles, pals = targets[tidx]
+            v = tile_border_rgb_diff(tiles[mA], tiles[mB], pals[eff_pal], side)
+            border_cache[key] = v
+        return v
+
+    def is_solid_caster_tile(t):
+        return t in (
+            T_WALL_WOOD, T_WALL_WINDOW, T_WALL_DOOR, T_ROOF_BODY, T_ROOF_TOP,
+            T_WINDMILL_WALL, T_WINDMILL_DOOR, T_WINDMILL_ROOF, T_CLIFF_WALL,
+            T_CLIFF_LEDGE, T_TREE_TRUNK, T_MAPLE_TRUNK, T_PINE_TRUNK,
+            T_HOLLOW_OAK, T_SHRINE_PILLAR, T_BOULDER,
+        )
+
+    CARDINAL = (("N", 0, -1, "S", True), ("S", 0, 1, "S", False), ("W", -1, 0, "E", True), ("E", 1, 0, "E", False))
+    DIAG = (("NW", -1, -1), ("NE", 1, -1), ("SW", -1, 1), ("SE", 1, 1))
+
+    for y in range(h):
+        for x in range(w):
+            rec = cells[y * w + x]
+            bg1 = rec[0]
+            meta = rec[3]
+            mname = meta_names[meta]
+
+            # 1. Deep Ocean <-> Shallow Water Curved Shoal Transitions (CM_SHOAL_*)
+            if bg1 == T_WORLD_OCEAN:
+                land_c = {}
+                shal_c = {}
+                for e, dx, dy, _side, _nbf in CARDINAL:
+                    nb = get_cell(x + dx, y + dy)
+                    nt = nb[0] if nb is not None else bg1
+                    land_c[e] = is_shore_land(nt, is_globe)
+                    shal_c[e] = nt in SHALLOW_TILES
+                has_land_card = any(land_c.values())
+                needed_shoal = {e for e, f in shal_c.items() if f}
+                if not has_land_card:
+                    if needed_shoal:
+                        if (shal_c["N"] and shal_c["S"]) or (shal_c["W"] and shal_c["E"]):
+                            add_issue("WARNING", "SEAM", "SHOAL_INCOMPLETE_MASK", "Master", x, y,
+                                      f"Deep ocean tile ({mname}) pinched between opposite shallow water edges")
+                        drawn_shoal = expected_shoal_edges_from_meta(mname)
+                        if not mname.startswith("CM_SHOAL_") or not needed_shoal.issubset(drawn_shoal):
+                            missing = "".join(sorted(needed_shoal - drawn_shoal))
+                            add_issue("ERROR", "AUTOTILE", "MISSING_SHOAL_EDGE", "Master", x, y,
+                                      f"Deep ocean touches shallow water on {''.join(sorted(needed_shoal))} without curved shoal transition ({mname}, missing {missing})")
+                    else:
+                        # Check diagonal shallow corner (when no diagonal land coast takes precedence)
+                        has_land_diag = any(
+                            is_shore_land(get_cell(x + dx, y + dy)[0], is_globe)
+                            for _, dx, dy in DIAG if get_cell(x + dx, y + dy) is not None
+                        )
+                        has_shal_diag = any(
+                            get_cell(x + dx, y + dy)[0] in SHALLOW_TILES
+                            for _, dx, dy in DIAG if get_cell(x + dx, y + dy) is not None
+                        )
+                        if has_shal_diag and not has_land_diag and not mname.startswith("CM_SHOAL_I"):
+                            add_issue("ERROR", "AUTOTILE", "MISSING_SHOAL_EDGE", "Master", x, y,
+                                      f"Deep ocean touches diagonal shallow water without inner shoal corner ({mname})")
+
+                # Cross-build pixel continuity on every active CM_SHOAL_* outer shallow rim & inner ocean edge
+                if mname.startswith("CM_SHOAL_"):
+                    drawn_shoal = expected_shoal_edges_from_meta(mname)
+                    for e, dx, dy, side, nb_first in CARDINAL:
+                        nb = get_cell(x + dx, y + dy)
+                        if nb is None:
+                            continue
+                        nbg1, nmeta = nb[0], nb[3]
+                        nmname = meta_names[nmeta]
+                        if e in drawn_shoal and nbg1 in SHALLOW_TILES:
+                            # Skip junctions where the shallow tile itself draws a perpendicular land coast
+                            if expected_shore_edges_from_meta(nmname):
+                                continue
+                            d_master = border_diff(0, nmeta, meta, side) if nb_first else border_diff(0, meta, nmeta, side)
+                            for tidx, (tname, _tiles, _pals) in enumerate(targets):
+                                d = d_master if tidx == 0 else (border_diff(tidx, nmeta, meta, side) if nb_first else border_diff(tidx, meta, nmeta, side))
+                                lim = 30.0 if tname != "Genesis" else 34.0
+                                deg_lim = 14.0 if tname == "SNES" else 22.0
+                                degraded = (tidx > 0 and d > 28.0 and (d - d_master) > deg_lim)
+                                if d > lim or degraded:
+                                    code = "EDGE_TRANSITION_SEAM" if tname == "Master" else (
+                                        "SNES_EDGE_TRANSITION_SEAM" if tname == "SNES" else "GEN_EDGE_TRANSITION_SEAM")
+                                    add_issue("ERROR", "SEAM", code, tname, x, y,
+                                              f"{tname} shoal outer edge {mname} ({e}) clashes with {nmname} (border diff {d:.1f}, master {d_master:.1f})")
+                        elif e not in drawn_shoal and nbg1 == T_WORLD_OCEAN and nmname in ("T_WORLD_OCEAN", "CM_OCEAN_V1"):
+                            d_master = border_diff(0, nmeta, meta, side) if nb_first else border_diff(0, meta, nmeta, side)
+                            for tidx, (tname, _tiles, _pals) in enumerate(targets):
+                                d = d_master if tidx == 0 else (border_diff(tidx, nmeta, meta, side) if nb_first else border_diff(tidx, meta, nmeta, side))
+                                lim = 34.0 if tname != "Genesis" else 38.0
+                                deg_lim = 14.0 if tname == "SNES" else 22.0
+                                degraded = (tidx > 0 and d > 30.0 and (d - d_master) > deg_lim)
+                                if d > lim or degraded:
+                                    code = "EDGE_TRANSITION_SEAM" if tname == "Master" else (
+                                        "SNES_EDGE_TRANSITION_SEAM" if tname == "SNES" else "GEN_EDGE_TRANSITION_SEAM")
+                                    add_issue("ERROR", "SEAM", code, tname, x, y,
+                                              f"{tname} shoal inner edge {mname} ({e}) clashes with {nmname} (border diff {d:.1f}, master {d_master:.1f})")
+
+            # 2. Sand / Beach <-> Grass Feathered Transitions (CM_SAND_GRASS_*)
+            elif bg1 in (T_WORLD_BEACH, T_WORLD_SAND):
+                grass_c = {}
+                for e, dx, dy, _side, _nbf in CARDINAL:
+                    nb = get_cell(x + dx, y + dy)
+                    grass_c[e] = (nb is not None and nb[0] in GRASS_LIKE)
+                needed_sg = {e for e, f in grass_c.items() if f}
+                if needed_sg and not ((grass_c["N"] and grass_c["S"]) or (grass_c["W"] and grass_c["E"])):
+                    drawn_sg = expected_suffix_edges("CM_SAND_GRASS_", mname)
+                    if not needed_sg.issubset(drawn_sg):
+                        missing = "".join(sorted(needed_sg - drawn_sg))
+                        add_issue("ERROR", "AUTOTILE", "MISSING_SAND_GRASS_EDGE", "Master", x, y,
+                                  f"Sand/beach touches grass on {''.join(sorted(needed_sg))} without curved transition ({mname}, missing {missing})")
+                if mname.startswith("CM_SAND_GRASS_"):
+                    drawn_sg = expected_suffix_edges("CM_SAND_GRASS_", mname)
+                    for e, dx, dy, side, nb_first in CARDINAL:
+                        if e not in drawn_sg:
+                            continue
+                        nb = get_cell(x + dx, y + dy)
+                        if nb is not None and nb[0] in (T_GRASS, T_GRASS_ALT, T_AUTUMN_GRASS):
+                            nmeta = nb[3]
+                            d_master = border_diff(0, nmeta, meta, side) if nb_first else border_diff(0, meta, nmeta, side)
+                            for tidx, (tname, _tiles, _pals) in enumerate(targets):
+                                d = d_master if tidx == 0 else (border_diff(tidx, nmeta, meta, side) if nb_first else border_diff(tidx, meta, nmeta, side))
+                                lim = 26.0 if tname != "Genesis" else 34.0
+                                deg_lim = 14.0 if tname == "SNES" else 22.0
+                                degraded = (tidx > 0 and d > 28.0 and (d - d_master) > deg_lim)
+                                if d > lim or degraded:
+                                    code = "EDGE_TRANSITION_SEAM" if tname == "Master" else (
+                                        "SNES_EDGE_TRANSITION_SEAM" if tname == "SNES" else "GEN_EDGE_TRANSITION_SEAM")
+                                    add_issue("ERROR", "SEAM", code, tname, x, y,
+                                              f"{tname} sand-grass edge {mname} ({e}) clashes with {meta_names[nmeta]} (border diff {d:.1f}, master {d_master:.1f})")
+
+            # 3. Cobble Road <-> Grass Feathered Transitions (local zones, all 3 builds!)
+            elif not is_globe and bg1 == T_COBBLE:
+                nb_n = get_cell(x, y - 1)
+                nb_w = get_cell(x - 1, y)
+                cast_shadow = (nb_n is not None and is_solid_caster_tile(nb_n[0])) or (nb_w is not None and is_solid_caster_tile(nb_w[0]))
+                grass_c = {}
+                for e, dx, dy, _side, _nbf in CARDINAL:
+                    nb = get_cell(x + dx, y + dy)
+                    grass_c[e] = (nb is not None and nb[0] in GRASS_LIKE)
+                needed_cg = {e for e, f in grass_c.items() if f}
+                if needed_cg and not cast_shadow and not ((grass_c["N"] and grass_c["S"]) or (grass_c["W"] and grass_c["E"])):
+                    drawn_cg = expected_suffix_edges("CM_COBBLE_EDGE_", mname) | expected_suffix_edges("CM_COBBLE_CORNER_", mname)
+                    if not needed_cg.issubset(drawn_cg):
+                        missing = "".join(sorted(needed_cg - drawn_cg))
+                        add_issue("ERROR", "AUTOTILE", "MISSING_COBBLE_EDGE", "Master", x, y,
+                                  f"Cobble road touches grass on {''.join(sorted(needed_cg))} without feathered edge ({mname}, missing {missing})")
+                if mname.startswith("CM_COBBLE_EDGE_") or mname.startswith("CM_COBBLE_CORNER_"):
+                    drawn_cg = expected_suffix_edges("CM_COBBLE_EDGE_", mname) | expected_suffix_edges("CM_COBBLE_CORNER_", mname)
+                    for e, dx, dy, side, nb_first in CARDINAL:
+                        if e not in drawn_cg:
+                            continue
+                        nb = get_cell(x + dx, y + dy)
+                        if nb is not None and nb[0] in (T_GRASS, T_GRASS_ALT, T_AUTUMN_GRASS):
+                            nmeta = nb[3]
+                            d_master = border_diff(0, nmeta, meta, side) if nb_first else border_diff(0, meta, nmeta, side)
+                            for tidx, (tname, _tiles, _pals) in enumerate(targets):
+                                d = d_master if tidx == 0 else (border_diff(tidx, nmeta, meta, side) if nb_first else border_diff(tidx, meta, nmeta, side))
+                                lim = 24.0 if tname != "Genesis" else 36.0
+                                deg_lim = 14.0 if tname == "SNES" else 22.0
+                                degraded = (tidx > 0 and d > 28.0 and (d - d_master) > deg_lim)
+                                if d > lim or degraded:
+                                    code = "EDGE_TRANSITION_SEAM" if tname == "Master" else (
+                                        "SNES_EDGE_TRANSITION_SEAM" if tname == "SNES" else "GEN_EDGE_TRANSITION_SEAM")
+                                    add_issue("ERROR", "SEAM", code, tname, x, y,
+                                              f"{tname} cobble edge {mname} ({e}) clashes with {meta_names[nmeta]} (border diff {d:.1f}, master {d_master:.1f})")
+
+            # 4. Local Zone River Bank <-> Grass Continuity (all 3 builds; accounts for shaded bank turf lip!)
+            elif not is_globe and mname.startswith("CM_SHORE_") and eff_pal != 3:
+                drawn_sh = expected_shore_edges_from_meta(mname)
+                for e, dx, dy, side, nb_first in CARDINAL:
+                    if e not in drawn_sh:
+                        continue
+                    nb = get_cell(x + dx, y + dy)
+                    if nb is not None and nb[0] in (T_GRASS, T_GRASS_ALT, T_AUTUMN_GRASS):
+                        nmeta = nb[3]
+                        d_master = border_diff(0, nmeta, meta, side) if nb_first else border_diff(0, meta, nmeta, side)
+                        for tidx, (tname, _tiles, _pals) in enumerate(targets):
+                            d = d_master if tidx == 0 else (border_diff(tidx, nmeta, meta, side) if nb_first else border_diff(tidx, meta, nmeta, side))
+                            # Shaded river turf rim (TPAL_WATER 9..10) vs sunlit grass can legitimately differ up to ~60;
+                            # flag harsh mismatches OR console tile-folding degradation over Master!
+                            lim = 60.0 if tname == "Master" else (64.0 if tname == "SNES" else 44.0)
+                            deg_lim = 14.0 if tname == "SNES" else 22.0
+                            degraded = (tidx > 0 and d > 30.0 and (d - d_master) > deg_lim)
+                            if d > lim or degraded:
+                                code = "EDGE_TRANSITION_SEAM" if tname == "Master" else (
+                                    "SNES_EDGE_TRANSITION_SEAM" if tname == "SNES" else "GEN_EDGE_TRANSITION_SEAM")
+                                add_issue("ERROR", "SEAM", code, tname, x, y,
+                                          f"{tname} shore bank {mname} ({e}) clashes with {meta_names[nmeta]} (border diff {d:.1f}, master {d_master:.1f})")
 
     return issues
 
@@ -1486,13 +1756,12 @@ def audit_globe(globe_info, cells, meta_names, meta_tiles, pal_rgb, water_flows)
     t0_arr = meta_tiles[0]
     globe_mean_cache = {}
 
-    # Pass 4-pre: Verify every Globe region's ocean palette stays cool/aquatic (never lava-red!)
-    for reg_id, rname in enumerate(reg_names):
-        zp_reg = pal_rgb[REGION_TO_ZPAL.get(reg_id, 10)]
-        oc_rgb = tile_mean_rgb(t0_arr[T_WORLD_OCEAN], zp_reg, None)
-        if oc_rgb[0] > oc_rgb[2] + 30.0:
-            add_issue("ERROR", "SEAM", "OCEAN_PALETTE_HUE", 0, 0,
-                      f"Region {rname} ocean palette is red/lava-tinted (mean RGB={oc_rgb[0]:.0f},{oc_rgb[1]:.0f},{oc_rgb[2]:.0f})", reg_id)
+    # Pass 4-pre: Verify unified World Map ocean palette stays cool/aquatic (never lava-red!)
+    zp_world = pal_rgb[GLOBE_UNIFIED_ZPAL]
+    oc_rgb = tile_mean_rgb(t0_arr[T_WORLD_OCEAN], zp_world, None)
+    if oc_rgb[0] > oc_rgb[2] + 30.0:
+        add_issue("ERROR", "SEAM", "OCEAN_PALETTE_HUE", 0, 0,
+                  f"Unified World Map ocean palette is red/lava-tinted (mean RGB={oc_rgb[0]:.0f},{oc_rgb[1]:.0f},{oc_rgb[2]:.0f})", 0)
 
     # Pass 3-pre: Detect miniature landmark icon spam (connected clusters of T_WORLD_CASTLE/TOWN/RUINS > 24 tiles!)
     icon_seen = set()
@@ -1543,7 +1812,7 @@ def audit_globe(globe_info, cells, meta_names, meta_tiles, pal_rgb, water_flows)
             xe = (x + 1) % w
             bg1, bg2, col, meta, reg = cells[y * w + x]
             mname = meta_names[meta]
-            pal_id = REGION_TO_ZPAL.get(reg, 10)
+            pal_id = GLOBE_UNIFIED_ZPAL
             zp = pal_rgb[pal_id]
 
             # Pass 2: Collision <-> Visual Parity
@@ -1901,7 +2170,7 @@ def render_globe_overview_png(out_path, w, h, cells, pal_rgb, meta_tiles, issues
     for y in range(h):
         for x in range(w):
             bg1, _, col_flag, meta, reg = cells[y * w + x]
-            pal_id = REGION_TO_ZPAL.get(reg, 10)
+            pal_id = GLOBE_UNIFIED_ZPAL
             tile = t0_arr[meta]
             zp = pal_rgb[pal_id]
             px = tile.px
@@ -1993,6 +2262,14 @@ def main():
     console_issues = audit_console_hardware(dump, meta_names, meta_tiles, snes_tiles, snes_meta_tiles, gen_tiles)
     all_issues.extend(console_issues)
 
+    # Build target list for Cross-Build Edge-Transition Audit (PC/Web Master + SNES BGR555 + Genesis BGR333)
+    edge_targets = [
+        ("Master",  meta_tiles[0],   pal_rgb),
+        ("SNES",    snes_meta_tiles, snes_pal_rgb),
+        ("Genesis", gen_meta_tiles,  gen_pal_rgb),
+    ]
+    edge_issues_all = []
+
     # Audit all local zones (PC/Web master, SNES 4bpp BGR555, AND Sega Genesis 9-bit CRAM!)
     zones_png_dir = os.path.join(out_dir, "zones")
     snes_png_dir = os.path.join(out_dir, "snes_zones")
@@ -2003,6 +2280,16 @@ def main():
         z_issues = audit_local_zone(z, cells, zones_by_id, inbound_spawns, meta_names, meta_tiles, pal_rgb, water_flows)
         all_issues.extend(z_issues)
 
+        # Cross-Build Edge-Transition Audit (Master + SNES + Genesis)
+        ez_issues = audit_cross_build_edge_transitions(
+            z["name"], z["id"], z["w"], z["h"], cells, z["pal_id"], False, meta_names, edge_targets
+        )
+        edge_issues_all.extend(ez_issues)
+        all_issues.extend(ez_issues)
+        ez_master = [i for i in ez_issues if not i["zone"].endswith("]") or i["zone"].endswith("[Master]")]
+        ez_snes = [i for i in ez_issues if i["zone"].endswith("[SNES]")]
+        ez_gen = [i for i in ez_issues if i["zone"].endswith("[Genesis]")]
+
         slug = re.sub(r"[^a-z0-9]+", "_", z["name"].lower()).strip("_")
         map_key = f"zone:{z['id']:02d}_{slug}"
         png_path = os.path.join(zones_png_dir, f"{z['id']:02d}_{slug}_annotated.png")
@@ -2012,12 +2299,13 @@ def main():
         map_png_paths[map_key] = png_path
         is_changed = baseline_exists and (baseline_hashes.get(map_key) != clean_hash)
 
-        annotate_and_save_png(png_path, img_w, img_h, buf, z_issues)
-        z_crit_err = sum(1 for i in z_issues if i["severity"] in ("CRITICAL", "ERROR"))
+        z_annot = z_issues + ez_master
+        annotate_and_save_png(png_path, img_w, img_h, buf, z_annot)
+        z_crit_err = sum(1 for i in z_annot if i["severity"] in ("CRITICAL", "ERROR"))
         zone_sheet_entries.append((f"{z['id']:02d} {z['name']}", img_w, img_h, buf, is_changed, z_crit_err))
 
         # SNES 4bpp Mode-1 Hardware Render (single-BG1 + CM_OPQ_* + 15-bit BGR555 CGRAM)
-        if z["id"] in CONSOLE_SHEET_ZONE_IDS:
+        if z["id"] in CONSOLE_SHEET_ZONE_IDS or ez_snes:
             s_map_key = f"snes:{z['id']:02d}_{slug}"
             s_png_path = os.path.join(snes_png_dir, f"{z['id']:02d}_{slug}_snes.png")
             sw_z, sh_z, sbuf_z = render_snes_zone_rgb(
@@ -2028,13 +2316,15 @@ def main():
             current_hashes[s_map_key] = s_clean_hash
             map_png_paths[s_map_key] = s_png_path
             s_is_changed = baseline_exists and (baseline_hashes.get(s_map_key) != s_clean_hash)
-            write_png_rgb(s_png_path, sw_z, sh_z, sbuf_z)
-            snes_sheet_entries.append((f"{z['id']:02d} {z['name']}", sw_z, sh_z, sbuf_z, s_is_changed, 0))
+            annotate_and_save_png(s_png_path, sw_z, sh_z, sbuf_z, ez_snes)
+            sz_crit_err = sum(1 for i in ez_snes if i["severity"] in ("CRITICAL", "ERROR"))
+            snes_sheet_entries.append((f"{z['id']:02d} {z['name']}", sw_z, sh_z, sbuf_z, s_is_changed, sz_crit_err))
 
         # Sega Genesis CRAM seam audit (all local zones!) + PNG render for showcase sheet
         gz_issues = audit_genesis_zone_seams(z, cells, meta_names, gen_meta_tiles, gen_pal_rgb, name_to_id)
         all_issues.extend(gz_issues)
-        if z["id"] in CONSOLE_SHEET_ZONE_IDS or gz_issues:
+        gz_all = gz_issues + ez_gen
+        if z["id"] in CONSOLE_SHEET_ZONE_IDS or gz_all:
             g_map_key = f"genesis:{z['id']:02d}_{slug}"
             g_png_path = os.path.join(gen_png_dir, f"{z['id']:02d}_{slug}_genesis.png")
             gw_z, gh_z, gbuf_z = render_genesis_zone_rgb(
@@ -2045,55 +2335,80 @@ def main():
             current_hashes[g_map_key] = g_clean_hash
             map_png_paths[g_map_key] = g_png_path
             g_is_changed = baseline_exists and (baseline_hashes.get(g_map_key) != g_clean_hash)
-            annotate_and_save_png(g_png_path, gw_z, gh_z, gbuf_z, gz_issues)
-            gz_crit_err = sum(1 for i in gz_issues if i["severity"] in ("CRITICAL", "ERROR"))
+            annotate_and_save_png(g_png_path, gw_z, gh_z, gbuf_z, gz_all)
+            gz_crit_err = sum(1 for i in gz_all if i["severity"] in ("CRITICAL", "ERROR"))
             genesis_sheet_entries.append((f"{z['id']:02d} {z['name']}", gw_z, gh_z, gbuf_z, g_is_changed, gz_crit_err))
 
-    # Audit full 256x192 Evertale Globe
+    # Audit full 256x192 Evertale Globe (Master + SNES + Genesis Edge Transitions!)
     g_info = dump["globe"]
     g_raw = open(os.path.join(raw_dir, g_info["bin"]), "rb").read()
     g_cells = [g_raw[i:i + 5] for i in range(0, len(g_raw), 5)]
     g_issues = audit_globe(g_info, g_cells, meta_names, meta_tiles, pal_rgb, water_flows)
     all_issues.extend(g_issues)
+    eg_issues = audit_cross_build_edge_transitions(
+        "Globe", 8, g_info["w"], g_info["h"], g_cells, GLOBE_UNIFIED_ZPAL, True,
+        meta_names, edge_targets, reg_names=g_info["regions"]
+    )
+    edge_issues_all.extend(eg_issues)
+    all_issues.extend(eg_issues)
+    eg_master = [i for i in eg_issues if not i["zone"].endswith("]") or i["zone"].endswith("[Master]")]
+    eg_snes = [i for i in eg_issues if i["zone"].endswith("[SNES]")]
+    eg_gen = [i for i in eg_issues if i["zone"].endswith("[Genesis]")]
+    g_issues_master = g_issues + eg_master
 
-    # Render SNES Hardware Emerald Heartland Globe crop (verifies Hollow Oak crown & BGR555 bank!)
+    # Render SNES & Genesis Hardware Emerald Heartland Globe crops (verifies shoals, Hollow Oak & unified palette!)
     hx0, hy0, hx1, hy1 = CONTINENT_CROPS[0][1:]
     s_hl_key = "snes:globe_00_heartland"
     s_hl_path = os.path.join(snes_png_dir, "globe_00_heartland_snes.png")
     shw, shh, shbuf = render_snes_zone_rgb(
         g_info["w"], g_info["h"], g_cells, snes_pal_rgb, snes_meta_tiles,
-        10, False, name_to_id, is_globe=True, crop=(hx0, hy0, hx1, hy1)
+        GLOBE_UNIFIED_ZPAL, False, name_to_id, is_globe=True, crop=(hx0, hy0, hx1, hy1)
     )
     sh_hash = hashlib.sha256(shbuf).hexdigest()[:16]
     current_hashes[s_hl_key] = sh_hash
     map_png_paths[s_hl_key] = s_hl_path
     sh_changed = baseline_exists and (baseline_hashes.get(s_hl_key) != sh_hash)
-    write_png_rgb(s_hl_path, shw, shh, shbuf)
-    snes_sheet_entries.append(("GLOBE HEARTLAND", shw, shh, shbuf, sh_changed, 0))
+    annotate_and_save_png(s_hl_path, shw, shh, shbuf, eg_snes, crop=(hx0, hy0, hx1, hy1))
+    s_hl_err = sum(1 for i in eg_snes if i["severity"] in ("CRITICAL", "ERROR") and hx0 <= i["x"] < hx1 and hy0 <= i["y"] < hy1)
+    snes_sheet_entries.append(("GLOBE HEARTLAND", shw, shh, shbuf, sh_changed, s_hl_err))
+
+    g_hl_key = "genesis:globe_00_heartland"
+    g_hl_path = os.path.join(gen_png_dir, "globe_00_heartland_genesis.png")
+    ghw, ghh, ghbuf = render_genesis_zone_rgb(
+        g_info["w"], g_info["h"], g_cells, gen_pal_rgb, gen_meta_tiles,
+        GLOBE_UNIFIED_ZPAL, False, name_to_id, is_globe=True, crop=(hx0, hy0, hx1, hy1)
+    )
+    gh_hash = hashlib.sha256(ghbuf).hexdigest()[:16]
+    current_hashes[g_hl_key] = gh_hash
+    map_png_paths[g_hl_key] = g_hl_path
+    gh_changed = baseline_exists and (baseline_hashes.get(g_hl_key) != gh_hash)
+    annotate_and_save_png(g_hl_path, ghw, ghh, ghbuf, eg_gen, crop=(hx0, hy0, hx1, hy1))
+    g_hl_err = sum(1 for i in eg_gen if i["severity"] in ("CRITICAL", "ERROR") and hx0 <= i["x"] < hx1 and hy0 <= i["y"] < hy1)
+    genesis_sheet_entries.append(("GLOBE HEARTLAND", ghw, ghh, ghbuf, gh_changed, g_hl_err))
 
     # Export globe overview + 7 zoomed continent crops
     globe_overview_path = os.path.join(out_dir, "globe_overview_annotated.png")
     gw, gh, gbuf, ghash = render_globe_overview_png(
-        globe_overview_path, g_info["w"], g_info["h"], g_cells, pal_rgb, meta_tiles, g_issues
+        globe_overview_path, g_info["w"], g_info["h"], g_cells, pal_rgb, meta_tiles, g_issues_master
     )
     current_hashes["globe:overview"] = ghash
     map_png_paths["globe:overview"] = globe_overview_path
     g_changed = baseline_exists and (baseline_hashes.get("globe:overview") != ghash)
-    g_crit_err = sum(1 for i in g_issues if i["severity"] in ("CRITICAL", "ERROR"))
+    g_crit_err = sum(1 for i in g_issues_master if i["severity"] in ("CRITICAL", "ERROR"))
     globe_sheet_entries.append(("GLOBE OVERVIEW", gw, gh, gbuf, g_changed, g_crit_err))
 
     cont_dir = os.path.join(out_dir, "continents")
     for reg_id, (slug, x0, y0, x1, y1) in CONTINENT_CROPS.items():
         map_key = f"continent:{slug}"
         cpath = os.path.join(cont_dir, f"{slug}_annotated.png")
-        img_w, img_h, buf = render_map_rgb(g_info["w"], g_info["h"], g_cells, pal_rgb, meta_tiles, 10,
+        img_w, img_h, buf = render_map_rgb(g_info["w"], g_info["h"], g_cells, pal_rgb, meta_tiles, GLOBE_UNIFIED_ZPAL,
                                            is_globe=True, crop=(x0, y0, x1, y1))
         chash = hashlib.sha256(buf).hexdigest()[:16]
         current_hashes[map_key] = chash
         map_png_paths[map_key] = cpath
         c_changed = baseline_exists and (baseline_hashes.get(map_key) != chash)
-        annotate_and_save_png(cpath, img_w, img_h, buf, g_issues, crop=(x0, y0, x1, y1))
-        c_crit_err = sum(1 for i in g_issues if i["severity"] in ("CRITICAL", "ERROR")
+        annotate_and_save_png(cpath, img_w, img_h, buf, g_issues_master, crop=(x0, y0, x1, y1))
+        c_crit_err = sum(1 for i in g_issues_master if i["severity"] in ("CRITICAL", "ERROR")
                          and x0 <= i["x"] < x1 and y0 <= i["y"] < y1)
         label = slug.replace("_", " ").upper()
         globe_sheet_entries.append((label, img_w, img_h, buf, c_changed, c_crit_err))
@@ -2144,6 +2459,7 @@ def main():
             "snes_tile_count": dump["snes_tile_count"],
             "gen_tile_count": dump["gen_tile_count"],
             "console_checks_failed": sum(1 for i in console_issues if i["severity"] in ("CRITICAL", "ERROR")),
+            "edge_transition_checks_failed": sum(1 for i in edge_issues_all if i["severity"] in ("CRITICAL", "ERROR")),
             "critical": by_sev["CRITICAL"],
             "error": by_sev["ERROR"],
             "warning": by_sev["WARNING"],
@@ -2168,15 +2484,18 @@ def main():
     with open(report_path, "w") as fp:
         json.dump(report, fp, indent=2)
 
+    edge_fail_cnt = sum(1 for i in edge_issues_all if i["severity"] in ("CRITICAL", "ERROR"))
     print("")
     print("========================================================================")
     print("  PROJECT HEARTH — 7-PASS WORLD, AUTOTILE, SEAM & CONSOLE AUDIT REPORT")
     print("========================================================================")
     print(f"  Cells audited: {len(dump['zones']) * 44 * 28 + g_info['w'] * g_info['h']:,} "
-          f"({len(dump['zones'])} zones [Master + SNES + Genesis CRAM] + 256x192 Evertale Globe)")
+          f"({len(dump['zones'])} zones + 256x192 Globe [Master + SNES + Genesis])")
     print(f"  VRAM footprint: SNES={dump['snes_tile_count']}/510 tiles | Genesis={dump['gen_tile_count']}/399 tiles")
     print(f"  Console Audit : SNES/Genesis VRAM, OAM, Particles, HUD, Portraits & 816-tcc = "
           f"{'PASS (0 issues)' if not console_issues else f'{len(console_issues)} finding(s)'}")
+    print(f"  Edge Transit. : Master + SNES BGR555 + Genesis BGR333 (Shoals/Sand/Cobble/Shores) = "
+          f"{'PASS (0 issues)' if edge_fail_cnt == 0 else f'{edge_fail_cnt} error(s)'}")
     print(f"  Findings: CRITICAL={by_sev['CRITICAL']}  ERROR={by_sev['ERROR']}  WARNING={by_sev['WARNING']}")
     if blessed_now:
         print(f"  Visual Diff : BLESSED {len(current_hashes)} map pixel hashes -> {BASELINE_PATH}")

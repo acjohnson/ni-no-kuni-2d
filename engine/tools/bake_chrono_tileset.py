@@ -2949,17 +2949,28 @@ def compile_console_bank(frames_meta, max_tiles, is_genesis=False):
     # grass/stone/water sub-variants (typical Hamming distance <= 6 px out of 64!).
     if len(static_tiles) > max_tiles:
         remap = list(range(len(static_tiles)))
-        # Protect visually critical state-toggle metatiles (e.g. unlit vs lit lanterns) from fuzzy folding
+        # Protect visually critical state-toggle & feathered edge-transition metatiles from fuzzy folding
         protected_tids = set()
-        for pname in ("CM_LAMP_UNLIT", "CM_LAMP_COBBLE"):
+        for pname in (
+            "CM_LAMP_UNLIT", "CM_LAMP_COBBLE",
+            "CM_OCEAN_V1",
+            "CM_COBBLE_EDGE_N", "CM_COBBLE_EDGE_S", "CM_COBBLE_EDGE_W", "CM_COBBLE_EDGE_E",
+            "CM_COBBLE_CORNER_NW", "CM_COBBLE_CORNER_NE", "CM_COBBLE_CORNER_SW", "CM_COBBLE_CORNER_SE",
+            "CM_SAND_GRASS_N", "CM_SAND_GRASS_S", "CM_SAND_GRASS_W", "CM_SAND_GRASS_E",
+            "CM_SHOAL_N", "CM_SHOAL_S", "CM_SHOAL_W", "CM_SHOAL_E",
+            "CM_SHOAL_NW", "CM_SHOAL_NE", "CM_SHOAL_SW", "CM_SHOAL_SE",
+            "CM_SHOAL_INW", "CM_SHOAL_INE", "CM_SHOAL_ISW", "CM_SHOAL_ISE",
+        ):
             if pname in META_IDX:
                 for qinfo in meta_quads[META_IDX[pname]]:
                     protected_tids.add(qinfo[0])
         active = list(range(1 + anim_count, len(static_tiles)))
+        # Weight 8x8 border pixels 3x higher so console tile folding preserves clean 16x16 edge seams!
+        border_weights = [3 if (i < 8 or i >= 56 or (i & 7) in (0, 7)) else 1 for i in range(64)]
         # Precompute nearest neighbor (dist, other_idx) for each active tile
         def find_nearest(ti, pool):
             qi = static_tiles[ti]
-            bd = 999
+            bd = 9999
             bo = -1
             for oj in pool:
                 if oj == ti:
@@ -2968,9 +2979,9 @@ def compile_console_bank(frames_meta, max_tiles, is_genesis=False):
                     continue
                 qo = static_tiles[oj]
                 d = 0
-                for a, b in zip(qi, qo):
-                    if a != b:
-                        d += 1
+                for idx in range(64):
+                    if qi[idx] != qo[idx]:
+                        d += border_weights[idx]
                         if d >= bd:
                             break
                 if d < bd:
