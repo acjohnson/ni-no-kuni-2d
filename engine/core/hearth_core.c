@@ -82,6 +82,10 @@ static fp16_t wrap_globe_fp_y(fp16_t fy) {
     return fy;
 }
 
+/* GLOBE_FP_H == 786432 == 0x000C0000: a single 16-bit high-word check proves 0 <= fy < GLOBE_FP_H! */
+#define FAST_WRAP_GLOBE_FP_Y(fy_) \
+    (((uint16_t)((uint32_t)(fy_) >> 16) < 12u) ? (fy_) : wrap_globe_fp_y(fy_))
+
 static int16_t wrap_delta_y(int16_t dy) {
     if (dy > (GLOBE_PX_H >> 1)) dy = (int16_t)(dy - GLOBE_PX_H);
     else if (dy < -(GLOBE_PX_H >> 1)) dy = (int16_t)(dy + GLOBE_PX_H);
@@ -206,6 +210,11 @@ static void spawn_particle(
     uint8_t pal_idx, uint8_t col_idx, bool screen_space
 ) {
     int i;
+#if defined(HEARTH_TARGET_SNES)
+    /* SNES hardware OAM only renders spark/ember bursts (kind 3/4, size >= 3);
+     * skipping unrendered dust/splash motes avoids scanning 64 particle slots every frame! */
+    if ((kind != 3u && kind != 4u) || size < 3u) return;
+#endif
     for (i = 0; i < HEARTH_MAX_PARTICLES; i++) {
         HearthParticle *p = &st->particles[i];
         if (!p->active) {
@@ -234,6 +243,8 @@ static void spawn_burst(
     int i;
     int max_cnt = count;
 #if defined(HEARTH_TARGET_SNES)
+    /* SNES hardware OAM only renders spark/ember bursts (kind 3/4); skip PRNG loop for dust/grass/splash! */
+    if (kind != 3u && kind != 4u) return;
     if (max_cnt > 12) max_cnt = 12;
 #endif
     for (i = 0; i < max_cnt; i++) {
@@ -493,9 +504,28 @@ void hearth_tod_grade_params(uint16_t tod_phase, HearthTodGrade *out) {
     uint8_t  nxt = (uint8_t)((seg + 1u) & 3u);
     uint16_t frac = (uint16_t)(eff & 255u);
     uint16_t inv  = (uint16_t)(256u - frac);
-    out->mr  = (uint16_t)((MUL_R[seg] * inv + MUL_R[nxt] * frac + 128u) >> 8);
-    out->mg  = (uint16_t)((MUL_G[seg] * inv + MUL_G[nxt] * frac + 128u) >> 8);
-    out->mb  = (uint16_t)((MUL_B[seg] * inv + MUL_B[nxt] * frac + 128u) >> 8);
+    uint16_t a, b;
+
+    if (frac == 0u) {
+        out->mr  = MUL_R[seg];
+        out->mg  = MUL_G[seg];
+        out->mb  = MUL_B[seg];
+        out->ar8 = (uint16_t)(ADD_R[seg] << 8);
+        out->ag8 = (uint16_t)(ADD_G[seg] << 8);
+        out->ab8 = (uint16_t)(ADD_B[seg] << 8);
+        return;
+    }
+
+    /* 16-bit overflow-safe lerp (avoids 256u*256u == 0 wrap on 16-bit SNES 816-tcc!) */
+    a = MUL_R[seg]; b = MUL_R[nxt];
+    out->mr = (b >= a) ? (uint16_t)(a + (uint16_t)((((uint16_t)(b - a) * frac) + 128u) >> 8))
+                       : (uint16_t)(a - (uint16_t)((((uint16_t)(a - b) * frac) + 128u) >> 8));
+    a = MUL_G[seg]; b = MUL_G[nxt];
+    out->mg = (b >= a) ? (uint16_t)(a + (uint16_t)((((uint16_t)(b - a) * frac) + 128u) >> 8))
+                       : (uint16_t)(a - (uint16_t)((((uint16_t)(a - b) * frac) + 128u) >> 8));
+    a = MUL_B[seg]; b = MUL_B[nxt];
+    out->mb = (b >= a) ? (uint16_t)(a + (uint16_t)((((uint16_t)(b - a) * frac) + 128u) >> 8))
+                       : (uint16_t)(a - (uint16_t)((((uint16_t)(a - b) * frac) + 128u) >> 8));
     out->ar8 = (uint16_t)(ADD_R[seg] * inv + ADD_R[nxt] * frac);
     out->ag8 = (uint16_t)(ADD_G[seg] * inv + ADD_G[nxt] * frac);
     out->ab8 = (uint16_t)(ADD_B[seg] * inv + ADD_B[nxt] * frac);
@@ -712,18 +742,19 @@ static uint16_t g_last_region_macro = 0xFFFFu;
 static void update_globe_region_streaming(HearthState *st, bool show_banner) {
     uint16_t tx, ty, mkey;
     uint8_t reg;
-    if (!st->is_world_map) return;
-    tx = (uint16_t)((uint16_t)WRAP_GLOBE_PX_X(FP_PX(st->hero_fx)) >> 4);
-    ty = (uint16_t)((uint16_t)wrap_globe_px_y(FP_PX(st->hero_fy)) >> 4);
+    ST_UNUSED(st);
+    if (!HS.is_world_map) return;
+    tx = (uint16_t)((uint16_t)WRAP_GLOBE_PX_X(FP_PX(HS.hero_fx)) >> 4);
+    ty = (uint16_t)((uint16_t)wrap_globe_px_y(FP_PX(HS.hero_fy)) >> 4);
     mkey = (uint16_t)(((ty >> 2) << 6) | (tx >> 2));
     if (mkey == g_last_region_macro) return;
     g_last_region_macro = mkey;
     reg = hearth_globe_region_at(tx, ty);
-    if (reg != st->world_region_id) {
-        st->world_region_id = reg;
-        st->bgm_id = region_to_bgm(reg);
-        if (show_banner) st->zone_banner_frames = 100;
-        if (reg != st->globe_enemy_region) {
+    if (reg != HS.world_region_id) {
+        HS.world_region_id = reg;
+        HS.bgm_id = region_to_bgm(reg);
+        if (show_banner) HS.zone_banner_frames = 100;
+        if (reg != HS.globe_enemy_region) {
             populate_globe_enemies_for_region(st, reg);
         }
     }
@@ -1844,11 +1875,11 @@ static void step_hero_collide_xy(HearthState *st) {
             hx = nx;
         } else if (!collides_world_px(st, nx, (int16_t)(hy - 5))) {
             HS.hero_fy -= 192;
-            if (HS.is_world_map) HS.hero_fy = wrap_globe_fp_y(HS.hero_fy);
+            if (HS.is_world_map) HS.hero_fy = FAST_WRAP_GLOBE_FP_Y(HS.hero_fy);
             hy = FP_PX(HS.hero_fy);
         } else if (!collides_world_px(st, nx, (int16_t)(hy + 5))) {
             HS.hero_fy += 192;
-            if (HS.is_world_map) HS.hero_fy = wrap_globe_fp_y(HS.hero_fy);
+            if (HS.is_world_map) HS.hero_fy = FAST_WRAP_GLOBE_FP_Y(HS.hero_fy);
             hy = FP_PX(HS.hero_fy);
         } else {
             hit_block = true;
@@ -1859,7 +1890,7 @@ static void step_hero_collide_xy(HearthState *st) {
     }
     if (HS.hero_vy != 0) {
         nfy = HS.hero_fy + HS.hero_vy;
-        if (HS.is_world_map) nfy = wrap_globe_fp_y(nfy);
+        if (HS.is_world_map) nfy = FAST_WRAP_GLOBE_FP_Y(nfy);
         ny = FP_PX(nfy);
         if (!collides_world_px(st, hx, ny)) {
             HS.hero_fy = nfy;
@@ -1880,20 +1911,18 @@ static void step_hero_collide_xy(HearthState *st) {
         }
     }
 
-    if (HS.is_world_map) {
+    if (HS.is_world_map && HS.active_vehicle < VEH_BALLOON) {
         uint8_t cur_col = get_col_at_px(st, hx, hy);
-        if (HS.active_vehicle < VEH_BALLOON) {
-            if (cur_col == COL_WATER && (HS.vehicle_unlocked_mask & VEH_MASK_SHIP) != 0u) {
-                HS.active_vehicle = VEH_SHIP;
-            } else if (cur_col == COL_SHALLOW && (HS.vehicle_unlocked_mask & VEH_MASK_RAFT) != 0u) {
-                if (HS.active_vehicle == VEH_FOOT) {
-                    HS.active_vehicle = VEH_RAFT;
-                    push_sfx(st, SFX_WATER_SPLASH);
-                }
-            } else if (cur_col == COL_WALKABLE || cur_col == COL_TALL_GRASS) {
-                if (HS.active_vehicle == VEH_RAFT || HS.active_vehicle == VEH_SHIP) {
-                    HS.active_vehicle = VEH_FOOT;
-                }
+        if (cur_col == COL_WATER && (HS.vehicle_unlocked_mask & VEH_MASK_SHIP) != 0u) {
+            HS.active_vehicle = VEH_SHIP;
+        } else if (cur_col == COL_SHALLOW && (HS.vehicle_unlocked_mask & VEH_MASK_RAFT) != 0u) {
+            if (HS.active_vehicle == VEH_FOOT) {
+                HS.active_vehicle = VEH_RAFT;
+                push_sfx(st, SFX_WATER_SPLASH);
+            }
+        } else if (cur_col == COL_WALKABLE || cur_col == COL_TALL_GRASS) {
+            if (HS.active_vehicle == VEH_RAFT || HS.active_vehicle == VEH_SHIP) {
+                HS.active_vehicle = VEH_FOOT;
             }
         }
         /* One-time Pip hint when nudging deep cobalt ocean on the Cedar Raft */
@@ -2040,7 +2069,7 @@ static void step_pip_follower(HearthState *st) {
     }
     if (HS.is_world_map) {
         HS.pip_fx = WRAP_GLOBE_FP_X(HS.pip_fx);
-        HS.pip_fy = wrap_globe_fp_y(HS.pip_fy);
+        HS.pip_fy = FAST_WRAP_GLOBE_FP_Y(HS.pip_fy);
     }
     if (dx < -40 || dx > 40) HS.pip_dir = (uint8_t)((dx < 0) ? DIR_LEFT : DIR_RIGHT);
 
@@ -3802,7 +3831,7 @@ static void step_enemy_patrol(HearthState *st, HearthFieldEnemy *e) {
     nfy = e->fy + e->vy;
     if (HS.is_world_map) {
         nfx = WRAP_GLOBE_FP_X(nfx);
-        nfy = wrap_globe_fp_y(nfy);
+        nfy = FAST_WRAP_GLOBE_FP_Y(nfy);
     }
     px = FP_PX(nfx);
     py = FP_PX(nfy);
@@ -3850,7 +3879,7 @@ static bool step_enemy_chase(HearthState *st, HearthFieldEnemy *e, int idx, int1
     nfy = e->fy + nvy;
     if (HS.is_world_map) {
         nfx = WRAP_GLOBE_FP_X(nfx);
-        nfy = wrap_globe_fp_y(nfy);
+        nfy = FAST_WRAP_GLOBE_FP_Y(nfy);
     }
     cx = (uint16_t)get_col_at_px(st, FP_PX(nfx), ey);
     cy = (uint16_t)get_col_at_px(st, ex, FP_PX(nfy));
@@ -3888,11 +3917,15 @@ static void step_field_enemies(HearthState *st, bool can_engage) {
 
         if (globe || check_aggro) {
             ex = FP_PX(e->fx);
-            ey = FP_PX(e->fy);
             dx = world_dx(st, hx, ex);
+            if (globe && (dx < -208 || dx > 208)) {
+                e->alerted = false;
+                continue;
+            }
+            ey = FP_PX(e->fy);
             dy = world_dy(st, hy, ey);
             /* On the giant 4096x3072 globe, skip patrol/collision AI for far off-screen enemies */
-            if (globe && (dx < -208 || dx > 208 || dy < -184 || dy > 184)) {
+            if (globe && (dy < -184 || dy > 184)) {
                 e->alerted = false;
                 continue;
             }
@@ -4929,20 +4962,31 @@ static void check_explore_triggers(HearthState *st) {
         }
     }
 
-    /* Globe Landmark walk-in warps (only when on foot/raft/ship and not in spawn grace frames!) */
+    /* Globe Landmark walk-in warps (only when moving on foot/raft/ship and not in spawn grace frames!) */
     if (HS.is_world_map) {
-        if (HS.active_vehicle < VEH_BALLOON && HS.hero_safe_frames == 0) {
-            const HearthGlobeLandmark *lm = HEARTH_GLOBE_LANDMARKS;
-            for (i = 0; i < HEARTH_GLOBE_LANDMARK_COUNT; i++, lm++) {
-                int16_t px, py, ddx;
-                if (!lm->enterable || lm->dst_zone >= ZONE_COUNT) continue;
-                px = (int16_t)(((int16_t)lm->tx << 4) + 8);
-                ddx = WRAP_DELTA_X((int16_t)(hx - px));
-                if (ddx <= -12 || ddx >= 12) continue;
-                py = (int16_t)(((int16_t)lm->ty << 4) + 8);
-                if (near_world_point_px(st, hx, hy, px, py, 12)) {
-                    request_zone_warp(st, lm->dst_zone, lm->dst_tx, lm->dst_ty);
-                    return;
+        if (HS.active_vehicle < VEH_BALLOON && HS.hero_safe_frames == 0 &&
+            (HS.hero_vx != 0 || HS.hero_vy != 0)) {
+#if defined(HEARTH_TARGET_SNES)
+            static int16_t s_trig_cx = -1, s_trig_cy = -1;
+            int16_t c4x = (int16_t)(hx >> 2);
+            int16_t c4y = (int16_t)(hy >> 2);
+            if (c4x == s_trig_cx && c4y == s_trig_cy) return;
+            s_trig_cx = c4x;
+            s_trig_cy = c4y;
+#endif
+            {
+                const HearthGlobeLandmark *lm = HEARTH_GLOBE_LANDMARKS;
+                for (i = 0; i < HEARTH_GLOBE_LANDMARK_COUNT; i++, lm++) {
+                    int16_t px, py, ddx;
+                    if (!lm->enterable || lm->dst_zone >= ZONE_COUNT) continue;
+                    px = (int16_t)(((int16_t)lm->tx << 4) + 8);
+                    ddx = WRAP_DELTA_X((int16_t)(hx - px));
+                    if (ddx <= -12 || ddx >= 12) continue;
+                    py = (int16_t)(((int16_t)lm->ty << 4) + 8);
+                    if (near_world_point_px(st, hx, hy, px, py, 12)) {
+                        request_zone_warp(st, lm->dst_zone, lm->dst_tx, lm->dst_ty);
+                        return;
+                    }
                 }
             }
         }
@@ -5014,7 +5058,8 @@ static void step_camera(HearthState *st) {
     w = (HS.tuning.ppu_mode == PPU_SNES_256x224) ? (int16_t)256 : (int16_t)320;
     if (HS.is_world_map) {
         gx = WRAP_GLOBE_FP_X(HS.hero_fx - TO_FP(w >> 1));
-        gy = wrap_globe_fp_y(HS.hero_fy - TO_FP(112));
+        gy = HS.hero_fy - TO_FP(112);
+        gy = FAST_WRAP_GLOBE_FP_Y(gy);
         dx = gx - HS.cam_fx;
         if (dx > (GLOBE_FP_W >> 1)) dx -= GLOBE_FP_W;
         else if (dx < -(GLOBE_FP_W >> 1)) dx += GLOBE_FP_W;
@@ -5026,8 +5071,10 @@ static void step_camera(HearthState *st) {
             else HS.cam_fx = WRAP_GLOBE_FP_X(HS.cam_fx + (dx >> 3));
         }
         if (dy != 0) {
-            if (dy >= -16384 && dy <= 16383) HS.cam_fy = wrap_globe_fp_y(HS.cam_fy + (fp16_t)((int16_t)dy >> 3));
-            else HS.cam_fy = wrap_globe_fp_y(HS.cam_fy + (dy >> 3));
+            fp16_t ncy = (dy >= -16384 && dy <= 16383)
+                ? (HS.cam_fy + (fp16_t)((int16_t)dy >> 3))
+                : (HS.cam_fy + (dy >> 3));
+            HS.cam_fy = FAST_WRAP_GLOBE_FP_Y(ncy);
         }
         return;
     }
@@ -5225,36 +5272,46 @@ static uint16_t build_explore_ppu_props_and_actors(
 
     /* Fast path for 256x192 Evertale Toroidal Globe (zero NPCs/chests/waystones/locomotive!) */
     if (HS.is_world_map) {
-        const HearthGlobeFauna *fa = HEARTH_GLOBE_FAUNA;
+        static const uint8_t FAUNA_REG_START[REGION_COUNT] = { 0u, 0u, 4u,  8u, 14u, 22u, 18u };
+        static const uint8_t FAUNA_REG_END[REGION_COUNT]   = { 0u, 4u, 8u, 14u, 18u, 24u, 22u };
         uint8_t cur_reg = HS.world_region_id;
+        uint8_t f_start, f_end;
 
         /* Hollow Oak Gateway Arch at Heartland (74, 108) */
-        ny = (int16_t)(108 * 16 + 10);
-        sx = world_dx(st, (int16_t)(74 * 16 + 8), cx);
-        sy = world_dy(st, ny, cy);
-        if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
-            OAM_SET_IDX(p, cnt, sx, sy, SPR_HOLLOW_OAK, npc_f, DIR_DOWN, OAM_FLAG_SHADOW,
-                FP_ONE, FP_ONE, AURA_NONE, 1, (int16_t)(sy - 4), 0);
-            cnt++;
+        if (cur_reg == REGION_HEARTLAND) {
+            sx = WRAP_DELTA_X((int16_t)((74 * 16 + 8) - cx));
+            if (sx >= -24 && sx <= max_sx) {
+                ny = (int16_t)(108 * 16 + 10);
+                sy = wrap_delta_y((int16_t)(ny - cy));
+                if (sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
+                    OAM_SET_IDX(p, cnt, sx, sy, SPR_HOLLOW_OAK, npc_f, DIR_DOWN, OAM_FLAG_SHADOW,
+                        FP_ONE, FP_ONE, AURA_NONE, 1, (int16_t)(sy - 4), 0);
+                    cnt++;
+                }
+            }
         }
 
-        /* Proximity-Streamed Biome Fauna across all 7 Continents on the Toroidal Globe */
-        for (i = 0; i < HEARTH_GLOBE_FAUNA_COUNT && cnt < (uint16_t)(HEARTH_MAX_OAM - 12); i++, fa++) {
-            int16_t sv, bob;
-            if (fa->region_id != cur_reg) continue;
-            sx = WRAP_DELTA_X((int16_t)((((int16_t)fa->tx << 4) + 8) - cx));
-            if (sx < -24 || sx > (int16_t)(max_sx + 4)) continue;
-            sy = wrap_delta_y((int16_t)((((int16_t)fa->ty << 4) + 8) - cy));
-            if (sy < -20 || sy > 244) continue;
-            sv = (int16_t)HEARTH_SIN64[((fc16 >> 2) + fa->phase) & 63u];
-            bob = (int16_t)((sv + (sv << 1)) >> 7);
-            sx = (int16_t)(sx + bob);
-            OAM_SET_IDX(p, cnt, sx, sy, fa->sprite_id,
-                (uint8_t)(((fc16 + fa->phase) >> 4) & 1u),
-                (bob < 0) ? DIR_LEFT : DIR_RIGHT,
-                (uint8_t)(OAM_FLAG_SHADOW | ((bob < 0) ? OAM_FLAG_FLIP_X : 0u)),
-                FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
-            cnt++;
+        /* Proximity-Streamed Biome Fauna (O(region_count) instead of scanning all 24!) */
+        f_start = (cur_reg < REGION_COUNT) ? FAUNA_REG_START[cur_reg] : 0u;
+        f_end   = (cur_reg < REGION_COUNT) ? FAUNA_REG_END[cur_reg]   : 0u;
+        if (f_start < f_end) {
+            const HearthGlobeFauna *fa = &HEARTH_GLOBE_FAUNA[f_start];
+            for (i = (int16_t)f_start; i < (int16_t)f_end && cnt < (uint16_t)(HEARTH_MAX_OAM - 12); i++, fa++) {
+                int16_t sv, bob;
+                sx = WRAP_DELTA_X((int16_t)((((int16_t)fa->tx << 4) + 8) - cx));
+                if (sx < -24 || sx > (int16_t)(max_sx + 4)) continue;
+                sy = wrap_delta_y((int16_t)((((int16_t)fa->ty << 4) + 8) - cy));
+                if (sy < -20 || sy > 244) continue;
+                sv = (int16_t)HEARTH_SIN64[((fc16 >> 2) + fa->phase) & 63u];
+                bob = (int16_t)((sv + (sv << 1)) >> 7);
+                sx = (int16_t)(sx + bob);
+                OAM_SET_IDX(p, cnt, sx, sy, fa->sprite_id,
+                    (uint8_t)(((fc16 + fa->phase) >> 4) & 1u),
+                    (bob < 0) ? DIR_LEFT : DIR_RIGHT,
+                    (uint8_t)(OAM_FLAG_SHADOW | ((bob < 0) ? OAM_FLAG_FLIP_X : 0u)),
+                    FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
+                cnt++;
+            }
         }
 
         return build_explore_ppu_enemies(st, p, cnt, cx, cy, max_sx);
@@ -5464,10 +5521,11 @@ static uint16_t build_explore_ppu_layer2(
 }
 
 uint8_t hearth_compute_hero_pose(const HearthState *st) {
-    uint16_t fc16 = (uint16_t)st->frame_count;
-    if (st->mode == MODE_BATTLE || st->mode == MODE_BATTLE_VICTORY || st->mode == MODE_BATTLE_DEFEAT) {
-        const HearthBattleState *b = &st->battle;
-        if (st->mode == MODE_BATTLE_VICTORY || b->phase == BPHASE_VICTORY_POSE) {
+    uint16_t fc16 = (uint16_t)HS.frame_count;
+    ST_UNUSED(st);
+    if (HS.mode == MODE_BATTLE || HS.mode == MODE_BATTLE_VICTORY || HS.mode == MODE_BATTLE_DEFEAT) {
+        const HearthBattleState *b = &HS.battle;
+        if (HS.mode == MODE_BATTLE_VICTORY || b->phase == BPHASE_VICTORY_POSE) {
             return (uint8_t)HERO_POSE_BTL_VICTORY;
         }
         if (b->hero_flash_frames > 0u || b->phase == BPHASE_DEFEAT_POSE) {
@@ -5486,16 +5544,16 @@ uint8_t hearth_compute_hero_pose(const HearthState *st) {
         }
         return (uint8_t)HERO_POSE_BTL_READY;
     }
-    if (st->hero_anim_tick == 0u) {
+    if (HS.hero_anim_tick == 0u) {
         if ((fc16 & 0xFFu) >= 248u) return (uint8_t)HERO_POSE_BLINK;
         return (uint8_t)HERO_POSE_IDLE;
     }
-    if (st->hero_dashing) {
-        return (((st->hero_anim_tick >> 2) & 1u) != 0u)
+    if (HS.hero_dashing) {
+        return (((HS.hero_anim_tick >> 2) & 1u) != 0u)
             ? (uint8_t)HERO_POSE_DASH_B
             : (uint8_t)HERO_POSE_DASH_A;
     }
-    return (uint8_t)((st->hero_anim_tick >> 3) & 3u);
+    return (uint8_t)((HS.hero_anim_tick >> 3) & 3u);
 }
 
 static void build_explore_ppu_oam(HearthState *st, HearthPpuPacket *p) {
@@ -5563,6 +5621,27 @@ static void build_explore_ppu_oam(HearthState *st, HearthPpuPacket *p) {
     if (HS.mode == MODE_EXPLORE && !HS.dialogue.active && !HS.atlas_open) {
         int16_t ix = 0, iy = 0;
         const char *ilbl = NULL;
+#if defined(HEARTH_TARGET_SNES)
+        if (HS.is_world_map) {
+            static int16_t s_int_cx = -1, s_int_cy = -1;
+            static int16_t s_int_ox = 0, s_int_oy = 0;
+            static const char *s_int_lbl = NULL;
+            static int s_int_hit = -1;
+            int16_t c4x = (int16_t)(FP_PX(HS.hero_fx) >> 2);
+            int16_t c4y = (int16_t)(FP_PX(HS.hero_fy) >> 2);
+            if (c4x != s_int_cx || c4y != s_int_cy) {
+                s_int_cx = c4x;
+                s_int_cy = c4y;
+                s_int_hit = find_interactable(st, &s_int_ox, &s_int_oy, &s_int_lbl);
+            }
+            if (s_int_hit >= 0) {
+                HP.interact_active = true;
+                HP.interact_x = world_dx(st, s_int_ox, cx);
+                HP.interact_y = world_dy(st, s_int_oy, cy);
+                HP.interact_label = s_int_lbl;
+            }
+        } else
+#endif
         if (find_interactable(st, &ix, &iy, &ilbl) >= 0) {
             HP.interact_active = true;
             HP.interact_x = world_dx(st, ix, cx);
@@ -5656,7 +5735,11 @@ static void build_ppu_packet(HearthState *st) {
     HP.zone_name = HS.is_world_map
         ? HEARTH_REGION_NAMES[(HS.world_region_id < REGION_COUNT) ? HS.world_region_id : 0u]
         : HEARTH_ZONE_NAMES[(HS.zone_id < ZONE_COUNT) ? HS.zone_id : 1u];
+#if defined(HEARTH_TARGET_SNES)
+    HP.objective_text = NULL;
+#else
     HP.objective_text = hearth_get_objective_text(st);
+#endif
     HP.cam_x = FP_PX(HS.cam_fx);
     HP.cam_y = FP_PX(HS.cam_fy);
     HP.shake_x = (HS.shake_frames > 0) ? (int8_t)hearth_prng_range(&HS.prng, -(int16_t)HS.shake_intensity, (int16_t)HS.shake_intensity) : 0;

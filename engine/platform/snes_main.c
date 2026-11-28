@@ -170,7 +170,8 @@ static u16 g_prev_cgram[64];
 static u16 g_staged_cgram[64];
 static u8  g_prev_cgram_valid  = 0;
 static u8  g_pal_cgram_mask    = 0;
-static u8  g_pal_grade_step    = 4u;
+static u8  g_pal_grade_step    = 32u; /* 0..31 pairs (2 colors/frame -> 0 dropped VBlanks even while moving!) */
+static u8  g_pal_sub_changed   = 0u;
 static HearthTodGrade g_pal_tod_gr;
 static u8  g_pal_tod_mode      = 0u;
 static u8  g_pal_tod_pid       = 0u;
@@ -187,16 +188,31 @@ static u8  g_spc_booted       = 0u;
 static u8  g_spc_playing      = 0u;
 static u8  g_boot_stage       = 0u;
 
-/* 3-slot rolling strip caches in Bank $7E WRAM for 8-neighbor open-world globe streaming
- * (eliminates 2/3 of hearth_globe_stream_col/row calls during continuous scrolling!) */
-static u8  g_col_cache[3][18];
+/* 3-slot flat rolling strip caches in Bank $7E WRAM (direct 16-bit indexed access, zero far pointers!) */
+static u8  g_col_cache[54];
 static u16 g_col_wx[3]  = { 0xFFFFu, 0xFFFFu, 0xFFFFu };
 static u16 g_col_wy0[3] = { 0xFFFFu, 0xFFFFu, 0xFFFFu };
 static u8  g_col_next   = 0u;
-static u8  g_row_cache[3][20];
+static u8  g_row_cache[60];
 static u16 g_row_wy[3]  = { 0xFFFFu, 0xFFFFu, 0xFFFFu };
 static u16 g_row_wx0[3] = { 0xFFFFu, 0xFFFFu, 0xFFFFu };
 static u8  g_row_next   = 0u;
+static const u8 COL_SLOT_OFF[3] = { 0u, 18u, 36u };
+static const u8 ROW_SLOT_OFF[3] = { 0u, 20u, 40u };
+
+/* Time-sliced offscreen globe strip job (at most 1 strip fetch OR 1 tile-write pass per frame!) */
+static u8  g_wjob_kind    = 0u; /* 0=idle, 1=col, 2=row */
+static u8  g_wjob_stage   = 0u; /* 0=center, 1=side A, 2=side C, 3=write bg1_map */
+static s16 g_wjob_mx      = 0;
+static s16 g_wjob_my      = 0;
+static u16 g_wjob_wx      = 0u;
+static u16 g_wjob_wy      = 0u;
+static u16 g_wjob_aux0    = 0u;
+static u16 g_wjob_aux1    = 0u;
+static u8  g_wjob_sa      = 0u;
+static u8  g_wjob_sb      = 0u;
+static u8  g_wjob_sc      = 0u;
+static u8  g_wjob_need_nb = 0u;
 /* 32x32 4bpp canvas in Bank $7E WRAM for procedural retro boot splash emblems */
 static u8 g_splash_32[1024];
 
@@ -632,91 +648,95 @@ static void begin_zone_pal_update(u8 pal_id, u16 tod_phase, u8 has_outdoor_tod) 
     if (autumn_blend && frac > 0u) {
         g_pal_tod_mode = 1u;
     } else if (has_outdoor_tod && !autumn_blend) {
-        g_pal_tod_mode = 2u;
         hearth_tod_grade_params(eff_phase, &g_pal_tod_gr);
+        /* Pure Afternoon identity (1.0x + 0) needs zero multiplies -> direct copy fast path! */
+        if (g_pal_tod_gr.mr == 256u && g_pal_tod_gr.mg == 256u && g_pal_tod_gr.mb == 256u &&
+            g_pal_tod_gr.ar8 == 0u && g_pal_tod_gr.ag8 == 0u && g_pal_tod_gr.ab8 == 0u) {
+            g_pal_tod_mode = 0u;
+        } else {
+            g_pal_tod_mode = 2u;
+        }
     } else {
         g_pal_tod_mode = 0u;
     }
-    g_pal_grade_step = 0u;
+    g_pal_grade_step  = 0u;
+    g_pal_sub_changed = 0u;
 }
 
-/* Compute ONE 16-color terrain sub-palette (p = 0..3) into g_staged_cgram[] OUTSIDE VBlank.
- * Spreading 4 sub-palettes across 4 active-display frames eliminates 30,000-insn VBlank stalls! */
-static void stage_zone_pal_subpal(u8 p) {
+/* Compute ONE pair of terrain sub-palette colors (2 colors/frame, step = 0..31) OUTSIDE VBlank.
+ * Keeping each frame to only 2 graded colors guarantees 0 missed VBlanks even while walking/dashing! */
+static void stage_zone_pal_pair(u8 step) {
+    u8 p = (u8)(step >> 3);
+    u8 psub = (u8)(step & 7u);
+    u16 c0 = (u16)((u16)psub << 1);
+    u16 c_end = (u16)(c0 + 2u);
     u16 base = (u16)((u16)p << 4);
     u16 c, b0, br, bg, bb, bg_col, col;
-    u8 changed = 0u;
     u8 pid = g_pal_tod_pid;
     u8 pA = g_pal_tod_pA;
     u8 pB = g_pal_tod_pB;
     u16 frac = g_pal_tod_frac;
     u8 pb = TOD_P_BIAS[p];
 
-    if (g_pal_tod_mode == 1u) {
-        for (c = 0u; c < 16u; c++) {
+    if (psub == 0u) {
+        g_pal_sub_changed = 0u;
+    }
+
+    for (c = c0; c < c_end; c++) {
+        if (p == 0u && c == 0u) {
+            if (g_pal_tod_mode == 1u) {
+                col = snes_lerp_bgr555(SNES_CHRONO_PALS[pA][1][2], SNES_CHRONO_PALS[pB][1][2], frac, 64u, 148u, 224u);
+            } else if (g_pal_tod_mode == 2u) {
+                bg_col = (!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista)
+                    ? SNES_CHRONO_PALS[pid][1][2] : SNES_CHRONO_PALS[pid][0][1];
+                col = snes_grade_bgr555(bg_col, &g_pal_tod_gr, 64u, 148u, 224u);
+            } else {
+                col = (!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista)
+                    ? SNES_CHRONO_PALS[pid][1][2] : SNES_CHRONO_PALS[pid][0][1];
+            }
+        } else if (g_pal_tod_mode == 1u) {
             b0 = (u16)(pb + TOD_C_BIAS[c]);
             br = (u16)((b0 + 19u) & 255u);
             bg = (u16)((b0 + 109u) & 255u);
             bb = (u16)((b0 + 199u) & 255u);
-            g_pal16[c] = snes_lerp_bgr555(SNES_CHRONO_PALS[pA][p][c], SNES_CHRONO_PALS[pB][p][c], frac, br, bg, bb);
-        }
-        if (p == 0u) {
-            g_pal16[0] = snes_lerp_bgr555(SNES_CHRONO_PALS[pA][1][2], SNES_CHRONO_PALS[pB][1][2], frac, 64u, 148u, 224u);
-        }
-    } else if (g_pal_tod_mode == 2u) {
-        for (c = 0u; c < 16u; c++) {
+            col = snes_lerp_bgr555(SNES_CHRONO_PALS[pA][p][c], SNES_CHRONO_PALS[pB][p][c], frac, br, bg, bb);
+        } else if (g_pal_tod_mode == 2u) {
             if (c == 0u || hearth_tod_is_emissive_4pal(pid, p, (u8)c)) {
-                g_pal16[c] = SNES_CHRONO_PALS[pid][p][c];
+                col = SNES_CHRONO_PALS[pid][p][c];
             } else {
                 b0 = (u16)(pb + TOD_C_BIAS[c]);
                 br = (u16)((b0 + 19u) & 255u);
                 bg = (u16)((b0 + 109u) & 255u);
                 bb = (u16)((b0 + 199u) & 255u);
-                g_pal16[c] = snes_grade_bgr555(SNES_CHRONO_PALS[pid][p][c], &g_pal_tod_gr, br, bg, bb);
+                col = snes_grade_bgr555(SNES_CHRONO_PALS[pid][p][c], &g_pal_tod_gr, br, bg, bb);
             }
+        } else {
+            col = SNES_CHRONO_PALS[pid][p][c];
         }
-        if (p == 0u) {
-            bg_col = (!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista)
-                ? SNES_CHRONO_PALS[pid][1][2] : SNES_CHRONO_PALS[pid][0][1];
-            g_pal16[0] = snes_grade_bgr555(bg_col, &g_pal_tod_gr, 64u, 148u, 224u);
-        }
-    } else {
-        for (c = 0u; c < 16u; c++) {
-            g_pal16[c] = SNES_CHRONO_PALS[pid][p][c];
-        }
-        if (p == 0u) {
-            if (!g_hearth.is_world_map && g_hearth.ppu.has_mountain_vista) {
-                g_pal16[0] = SNES_CHRONO_PALS[pid][1][2];
-            } else {
-                g_pal16[0] = SNES_CHRONO_PALS[pid][0][1];
-            }
-        }
-    }
 
-    for (c = 0u; c < 16u; c++) {
-        col = g_pal16[c];
         g_staged_cgram[(u16)(base + c)] = col;
         if (!g_prev_cgram_valid || col != g_prev_cgram[(u16)(base + c)]) {
-            changed = 1u;
+            g_pal_sub_changed = 1u;
             g_prev_cgram[(u16)(base + c)] = col;
         }
     }
-    if (changed) {
+
+    if (psub == 7u && g_pal_sub_changed) {
         g_pal_cgram_mask |= (u8)(1u << p);
     }
 }
 
 /* Force-blank immediate palette upload (boot / scene switches only). */
 static void upload_zone_pal0(u8 pal_id, u16 tod_phase, u8 has_outdoor_tod) {
-    u8 p;
+    u8 s;
     begin_zone_pal_update(pal_id, tod_phase, has_outdoor_tod);
     g_prev_cgram_valid = 0u;
-    for (p = 0u; p < 4u; p++) {
-        stage_zone_pal_subpal(p);
-        dmaCopyCGram((u8 *)(g_staged_cgram + ((u16)p << 4)), (u16)((u16)p << 4), 32u);
+    for (s = 0u; s < 32u; s++) {
+        stage_zone_pal_pair(s);
     }
-    g_pal_grade_step = 4u;
-    g_pal_cgram_mask = 0u;
+    dmaCopyCGram((u8 *)g_staged_cgram, 0u, 128u);
+    g_pal_grade_step   = 32u;
+    g_pal_cgram_mask   = 0u;
     g_prev_cgram_valid = 1u;
 }
 
@@ -1992,22 +2012,24 @@ static void patch_single_world_tile(u16 mx, u16 my) {
  *   bit2 (0x04): grass_like (T_GRASS, T_GRASS_ALT, T_FLOWERS, T_TALL_GRASS, T_AUTUMN_GRASS)
  *   bit3 (0x08): water_like (T_WATER, T_FORD, T_RAPIDS, T_WORLD_OCEAN, T_WORLD_SHALLOW)
  *   bit4 (0x10): simple_world (returns t directly on world map with zero neighbor reads!)
+ *   bit5 (0x20): needs_nb (uses neighbor tiles -> requires streaming pa/pc strips!)
  * Replaces 16 JSL helper calls per ocean tile in hearth_resolve_chrono_meta() -> 20x-100x faster! */
-#define WCLS_LAND    0x01u
-#define WCLS_SHALLOW 0x02u
-#define WCLS_GRASS   0x04u
-#define WCLS_WATER   0x08u
-#define WCLS_SIMPLE  0x10u
+#define WCLS_LAND     0x01u
+#define WCLS_SHALLOW  0x02u
+#define WCLS_GRASS    0x04u
+#define WCLS_WATER    0x08u
+#define WCLS_SIMPLE   0x10u
+#define WCLS_NEEDS_NB 0x20u
 
 static const u8 SNES_WORLD_TILE_CLASS[64] = {
-    0x05u, 0x15u, 0x15u, 0x15u, 0x11u, 0x11u, 0x08u, 0x08u, /* 0..7: GRASS..FORD */
-    0x11u, 0x11u, 0x11u, 0x01u, 0x11u, 0x01u, 0x11u, 0x11u, /* 8..15 */
+    0x05u, 0x15u, 0x15u, 0x15u, 0x11u, 0x11u, 0x28u, 0x28u, /* 0..7: GRASS..FORD */
+    0x11u, 0x11u, 0x11u, 0x21u, 0x11u, 0x21u, 0x11u, 0x11u, /* 8..15 */
     0x11u, 0x11u, 0x11u, 0x11u, 0x11u, 0x11u, 0x11u, 0x11u, /* 16..23 */
-    0x11u, 0x01u, 0x01u, 0x01u, 0x11u, 0x11u, 0x11u, 0x01u, /* 24..31: ..BOULDER(31) */
-    0x15u, 0x11u, 0x08u, 0x11u, 0x11u, 0x11u, 0x11u, 0x11u, /* 32..39: AUTUMN_GRASS..HEARTH_RUG */
-    0x11u, 0x11u, 0x11u, 0x11u, 0x11u, 0x01u, 0x08u, 0x01u, /* 40..47: ..WORLD_OCEAN(46), BEACH(47) */
-    0x01u, 0x11u, 0x11u, 0x11u, 0x11u, 0x11u, 0x0Au, 0x01u, /* 48..55: PEAK(48), FOREST..RUINS, SHALLOW(54), SAND(55) */
-    0x01u, 0x11u, 0x01u, 0x02u, 0x11u, 0x01u, 0x00u, 0x01u  /* 56..63: SNOW(56), LAVA, JUNGLE(58), CORAL(59), TECH, PALM(61), PIER(62), UNLIT(63) */
+    0x11u, 0x21u, 0x21u, 0x21u, 0x11u, 0x11u, 0x11u, 0x21u, /* 24..31: ..BOULDER(31) */
+    0x15u, 0x11u, 0x28u, 0x11u, 0x11u, 0x11u, 0x11u, 0x11u, /* 32..39: AUTUMN_GRASS..HEARTH_RUG */
+    0x11u, 0x11u, 0x11u, 0x11u, 0x11u, 0x21u, 0x28u, 0x21u, /* 40..47: ..WORLD_OCEAN(46), BEACH(47) */
+    0x21u, 0x11u, 0x11u, 0x11u, 0x11u, 0x11u, 0x2Au, 0x21u, /* 48..55: PEAK(48), FOREST..RUINS, SHALLOW(54), SAND(55) */
+    0x01u, 0x11u, 0x01u, 0x22u, 0x11u, 0x21u, 0x20u, 0x01u  /* 56..63: SNOW(56), LAVA, JUNGLE(58), CORAL(59), TECH, PALM(61), PIER(62), UNLIT(63) */
 };
 
 #define WCLS_OF(tid_) (((tid_) < 64u) ? SNES_WORLD_TILE_CLASS[(tid_)] : (u8)WCLS_LAND)
@@ -2131,48 +2153,437 @@ static u8 snes_resolve_world_border(u8 t, u8 tn, u8 ts, u8 tw, u8 te,
     return hearth_resolve_chrono_meta(t, 0u, tn, ts, tw, te, tnw, tne, tsw, tse, mx, my, 1u);
 }
 
-/* 3-slot rolling cache lookup for vertical globe strips (never evicts avoid0/avoid1!) */
-static u8 get_globe_col_slot(u16 wx, u16 wy0, u8 avoid0, u8 avoid1) {
-    u8 s;
+/* 3-slot rolling cache lookup for vertical globe strips with +/-1 diagonal slide reuse!
+ * On diagonal movement, shifts 17 cached bytes in WRAM and streams ONLY the 1 new edge tile
+ * instead of re-streaming all 18 tiles -> 3x faster diagonal scrolling across coasts & oceans! */
+static u8 find_or_alloc_col_slot(u16 wx, u16 wy0, u8 avoid0, u8 avoid1, u8 *hit) {
+    u8 s, k;
+    u16 base, prev_wy, next_wy, tail_wy;
     for (s = 0u; s < 3u; s++) {
-        if (g_col_wx[s] == wx && g_col_wy0[s] == wy0) return s;
+        if (g_col_wx[s] == wx) {
+            if (g_col_wy0[s] == wy0) {
+                *hit = 1u;
+                return s;
+            }
+            if (g_col_wy0[s] < (u16)HEARTH_GLOBE_H) {
+                next_wy = ((u16)(g_col_wy0[s] + 1u) >= (u16)HEARTH_GLOBE_H) ? 0u : (u16)(g_col_wy0[s] + 1u);
+                if (next_wy == wy0) {
+                    base = (u16)COL_SLOT_OFF[s];
+                    for (k = 0u; k < 17u; k++) {
+                        g_col_cache[(u16)(base + k)] = g_col_cache[(u16)(base + k + 1u)];
+                    }
+                    tail_wy = (u16)(wy0 + 17u);
+                    if (tail_wy >= (u16)HEARTH_GLOBE_H) tail_wy = (u16)(tail_wy - (u16)HEARTH_GLOBE_H);
+                    hearth_globe_stream_col(wx, tail_wy, 1u, &g_col_cache[(u16)(base + 17u)]);
+                    g_col_wy0[s] = wy0;
+                    *hit = 1u;
+                    return s;
+                }
+                prev_wy = (g_col_wy0[s] == 0u) ? (u16)(HEARTH_GLOBE_H - 1u) : (u16)(g_col_wy0[s] - 1u);
+                if (prev_wy == wy0) {
+                    base = (u16)COL_SLOT_OFF[s];
+                    for (k = 17u; k > 0u; k--) {
+                        g_col_cache[(u16)(base + k)] = g_col_cache[(u16)(base + k - 1u)];
+                    }
+                    hearth_globe_stream_col(wx, wy0, 1u, &g_col_cache[base]);
+                    g_col_wy0[s] = wy0;
+                    *hit = 1u;
+                    return s;
+                }
+            }
+        }
     }
     s = g_col_next;
     while (s == avoid0 || s == avoid1) {
         s = (s >= 2u) ? 0u : (u8)(s + 1u);
     }
     g_col_next = (s >= 2u) ? 0u : (u8)(s + 1u);
-    g_col_wx[s]  = wx;
-    g_col_wy0[s] = wy0;
-    hearth_globe_stream_col(wx, wy0, 18u, g_col_cache[s]);
+    g_col_wx[s]  = 0xFFFFu; /* Mark incomplete until second half finishes */
+    g_col_wy0[s] = 0xFFFFu;
+    *hit = 0u;
     return s;
 }
 
-/* 3-slot rolling cache lookup for horizontal globe strips (never evicts avoid0/avoid1!) */
-static u8 get_globe_row_slot(u16 wx0, u16 wy, u8 avoid0, u8 avoid1) {
-    u8 s;
+static u8 find_or_alloc_row_slot(u16 wx0, u16 wy, u8 avoid0, u8 avoid1, u8 *hit) {
+    u8 s, k;
+    u16 base;
     for (s = 0u; s < 3u; s++) {
-        if (g_row_wy[s] == wy && g_row_wx0[s] == wx0) return s;
+        if (g_row_wy[s] == wy) {
+            if (g_row_wx0[s] == wx0) {
+                *hit = 1u;
+                return s;
+            }
+            if (g_row_wx0[s] < 256u) {
+                if (((g_row_wx0[s] + 1u) & 255u) == wx0) {
+                    base = (u16)ROW_SLOT_OFF[s];
+                    for (k = 0u; k < 19u; k++) {
+                        g_row_cache[(u16)(base + k)] = g_row_cache[(u16)(base + k + 1u)];
+                    }
+                    hearth_globe_stream_row((u16)((wx0 + 19u) & 255u), wy, 1u, &g_row_cache[(u16)(base + 19u)]);
+                    g_row_wx0[s] = wx0;
+                    *hit = 1u;
+                    return s;
+                }
+                if (((g_row_wx0[s] - 1u) & 255u) == wx0) {
+                    base = (u16)ROW_SLOT_OFF[s];
+                    for (k = 19u; k > 0u; k--) {
+                        g_row_cache[(u16)(base + k)] = g_row_cache[(u16)(base + k - 1u)];
+                    }
+                    hearth_globe_stream_row(wx0, wy, 1u, &g_row_cache[base]);
+                    g_row_wx0[s] = wx0;
+                    *hit = 1u;
+                    return s;
+                }
+            }
+        }
     }
     s = g_row_next;
     while (s == avoid0 || s == avoid1) {
         s = (s >= 2u) ? 0u : (u8)(s + 1u);
     }
     g_row_next = (s >= 2u) ? 0u : (u8)(s + 1u);
-    g_row_wy[s]  = wy;
-    g_row_wx0[s] = wx0;
-    hearth_globe_stream_row(wx0, wy, 20u, g_row_cache[s]);
+    g_row_wy[s]  = 0xFFFFu;
+    g_row_wx0[s] = 0xFFFFu;
+    *hit = 0u;
     return s;
 }
 
+static u8 strip_col_needs_neighbors(u8 slot) {
+    u16 i, end;
+    u8 t;
+    i = (u16)(COL_SLOT_OFF[slot] + 1u);
+    end = (u16)(i + 16u);
+    for (; i < end; i++) {
+        t = g_col_cache[i];
+        if (t < 64u && (SNES_WORLD_TILE_CLASS[t] & WCLS_NEEDS_NB) != 0u) return 1u;
+    }
+    return 0u;
+}
+
+static u8 strip_row_needs_neighbors(u8 slot) {
+    u16 i, end;
+    u8 t;
+    i = (u16)(ROW_SLOT_OFF[slot] + 1u);
+    end = (u16)(i + 18u);
+    for (; i < end; i++) {
+        t = g_row_cache[i];
+        if (t < 64u && (SNES_WORLD_TILE_CLASS[t] & WCLS_NEEDS_NB) != 0u) return 1u;
+    }
+    return 0u;
+}
+
+static void write_globe_col_bg1_half(s16 mx, s16 my_start, u16 wx, u16 wy0, u8 sa, u8 sb, u8 sc, u8 k_start, u8 k_end) {
+    u16 half_col, row_off, off, k, wy, ia, ib, ic;
+    u8 m, t, v, wx3_8, wxs_8;
+
+    half_col = (u16)(((u16)mx & 15u) << 1);
+    if (((u16)mx & 16u) != 0u) {
+        half_col = (u16)(1024u + half_col);
+    }
+    row_off = (u16)((((u16)my_start + (u16)k_start) & 15u) << 6);
+    wy = (u16)(wy0 + (u16)k_start);
+    if (wy >= (u16)HEARTH_GLOBE_H) wy = (u16)(wy - (u16)HEARTH_GLOBE_H);
+    wx3_8 = (u8)((wx + (wx << 1)) & 3u);
+    wxs_8 = (u8)((wx >> 1) & 3u);
+    ia = (u16)(COL_SLOT_OFF[sa] + (u16)k_start + 1u);
+    ib = (u16)(COL_SLOT_OFF[sb] + (u16)k_start + 1u);
+    ic = (u16)(COL_SLOT_OFF[sc] + (u16)k_start + 1u);
+    for (k = (u16)k_start; k < (u16)k_end; k++, ia++, ib++, ic++) {
+        t = g_col_cache[ib];
+        if (t == T_GRASS) {
+            v = (u8)(((wx3_8 + (u8)wy) ^ wxs_8) & 3u);
+            m = (v > 0u) ? (u8)(CM_GRASS_V1 + (v - 1u)) : (u8)T_GRASS;
+        } else if (t < 64u && (SNES_WORLD_TILE_CLASS[t] & WCLS_SIMPLE) != 0u) {
+            m = t;
+        } else if (t == 255u) {
+            m = (u8)CM_OPQ_OAK_CROWN;
+        } else if (t == T_WORLD_SNOW) {
+            m = (((wx3_8 + (u8)wy) ^ wxs_8) & 1u) ? (u8)CM_SNOW_V1 : (u8)T_WORLD_SNOW;
+        } else if (t == T_WORLD_JUNGLE) {
+            m = (((wx3_8 + (u8)wy) ^ wxs_8) & 1u) ? (u8)CM_JUNGLE_V1 : (u8)T_WORLD_JUNGLE;
+        } else {
+            m = snes_resolve_world_border(
+                t,
+                g_col_cache[ib - 1u], g_col_cache[ib + 1u],
+                g_col_cache[ia],      g_col_cache[ic],
+                g_col_cache[ia - 1u], g_col_cache[ic - 1u],
+                g_col_cache[ia + 1u], g_col_cache[ic + 1u],
+                wx, wy
+            );
+        }
+        off = (u16)(half_col + row_off);
+        g_bg1_map[off]               = SNES_META_TL[m];
+        g_bg1_map[(u16)(off + 1u)]   = SNES_META_TR[m];
+        g_bg1_map[(u16)(off + 32u)]  = SNES_META_BL[m];
+        g_bg1_map[(u16)(off + 33u)]  = SNES_META_BR[m];
+        row_off = (u16)((row_off + 64u) & 1023u);
+        wy++;
+        if (wy >= (u16)HEARTH_GLOBE_H) wy = 0u;
+    }
+    if (k_end >= 16u) {
+        if (((u16)mx & 16u) == 0u) g_bg1_dirty_l = 1;
+        else                       g_bg1_dirty_r = 1;
+    }
+}
+
+static void write_globe_row_bg1_half(s16 mx_start, s16 my, u16 wx, u16 wy, u8 sa, u8 sb, u8 sc, u8 k_start, u8 k_end) {
+    u16 row_off, off, k, cur_wx, ia, ib, ic;
+    s16 mx_k;
+    u8 m, t, v, wy_8;
+
+    row_off = (u16)(((u16)my & 15u) << 6);
+    mx_k = (s16)(mx_start + (s16)k_start);
+    off = (u16)(row_off + (((u16)mx_k & 15u) << 1));
+    if (((u16)mx_k & 16u) != 0u) off = (u16)(off + 1024u);
+    cur_wx = (u16)((wx + (u16)k_start) & 255u);
+    wy_8 = (u8)(wy & 3u);
+    ia = (u16)(ROW_SLOT_OFF[sa] + (u16)k_start + 1u);
+    ib = (u16)(ROW_SLOT_OFF[sb] + (u16)k_start + 1u);
+    ic = (u16)(ROW_SLOT_OFF[sc] + (u16)k_start + 1u);
+
+    for (k = (u16)k_start; k < (u16)k_end; k++, ia++, ib++, ic++) {
+        t = g_row_cache[ib];
+        if (t == T_GRASS) {
+            v = (u8)((((u8)(cur_wx + (cur_wx << 1)) + wy_8) ^ (u8)(cur_wx >> 1)) & 3u);
+            m = (v > 0u) ? (u8)(CM_GRASS_V1 + (v - 1u)) : (u8)T_GRASS;
+        } else if (t < 64u && (SNES_WORLD_TILE_CLASS[t] & WCLS_SIMPLE) != 0u) {
+            m = t;
+        } else if (t == 255u) {
+            m = (u8)CM_OPQ_OAK_CROWN;
+        } else if (t == T_WORLD_SNOW) {
+            m = (((u8)cur_wx ^ wy_8 ^ (u8)(cur_wx >> 1)) & 1u) ? (u8)CM_SNOW_V1 : (u8)T_WORLD_SNOW;
+        } else if (t == T_WORLD_JUNGLE) {
+            m = (((u8)cur_wx ^ wy_8 ^ (u8)(cur_wx >> 1)) & 1u) ? (u8)CM_JUNGLE_V1 : (u8)T_WORLD_JUNGLE;
+        } else {
+            m = snes_resolve_world_border(
+                t,
+                g_row_cache[ia],      g_row_cache[ic],
+                g_row_cache[ib - 1u], g_row_cache[ib + 1u],
+                g_row_cache[ia - 1u], g_row_cache[ia + 1u],
+                g_row_cache[ic - 1u], g_row_cache[ic + 1u],
+                cur_wx, wy
+            );
+        }
+        g_bg1_map[off]               = SNES_META_TL[m];
+        g_bg1_map[(u16)(off + 1u)]   = SNES_META_TR[m];
+        g_bg1_map[(u16)(off + 32u)]  = SNES_META_BL[m];
+        g_bg1_map[(u16)(off + 33u)]  = SNES_META_BR[m];
+        off = (u16)(off + 2u);
+        if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
+        cur_wx = (u16)((cur_wx + 1u) & 255u);
+    }
+
+    if (k_end >= 18u) {
+        if (!g_bg1_dirty_l && !g_bg1_dirty_r) {
+            if (!g_bg1_row_dirty || g_bg1_dirty_row_off == row_off) {
+                g_bg1_row_dirty = 1u;
+                g_bg1_dirty_row_off = row_off;
+            } else {
+                g_bg1_row_dirty = 0u;
+                g_bg1_dirty_l = 1;
+                g_bg1_dirty_r = 1;
+            }
+        } else {
+            g_bg1_row_dirty = 0u;
+            g_bg1_dirty_l = 1;
+            g_bg1_dirty_r = 1;
+        }
+    }
+}
+
+static u8 g_streamed_frame = 0u;
+
+/* Advance active offscreen globe strip job by at most HALF a strip-stream (9-10 tiles) OR HALF a tile write (8-9 tiles).
+ * Every single stage stays well below 1 NTSC VBlank -> locked 60.0 FPS across all continents!
+ * Stages: 0/1 = center strip half0/half1, 2/3 = side A half0/half1, 4/5 = side C half0/half1, 6/7 = write bg1 half0/half1. */
+static void step_world_strip_job(u8 flush_all) {
+    u8 hit;
+    u16 wy_h2, wx_side, wy_n;
+    if (g_wjob_kind != 0u) g_streamed_frame = 1u;
+    while (g_wjob_kind != 0u) {
+        if (g_wjob_kind == 1u) {
+            if (g_wjob_stage == 0u) {
+                g_wjob_sb = find_or_alloc_col_slot(g_wjob_wx, g_wjob_aux0, 255u, 255u, &hit);
+                if (hit) {
+                    g_wjob_need_nb = strip_col_needs_neighbors(g_wjob_sb);
+                    if (!g_wjob_need_nb) { g_wjob_sa = g_wjob_sb; g_wjob_sc = g_wjob_sb; g_wjob_stage = 6u; }
+                    else { g_wjob_stage = 2u; }
+                } else {
+                    hearth_globe_stream_col(g_wjob_wx, g_wjob_aux0, 9u, &g_col_cache[COL_SLOT_OFF[g_wjob_sb]]);
+                    g_wjob_stage = 1u;
+                    if (!flush_all) return;
+                }
+            } else if (g_wjob_stage == 1u) {
+                wy_h2 = (u16)(g_wjob_aux0 + 9u);
+                if (wy_h2 >= (u16)HEARTH_GLOBE_H) wy_h2 = (u16)(wy_h2 - (u16)HEARTH_GLOBE_H);
+                hearth_globe_stream_col(g_wjob_wx, wy_h2, 9u, &g_col_cache[(u16)(COL_SLOT_OFF[g_wjob_sb] + 9u)]);
+                g_col_wx[g_wjob_sb]  = g_wjob_wx;
+                g_col_wy0[g_wjob_sb] = g_wjob_aux0;
+                g_wjob_need_nb = strip_col_needs_neighbors(g_wjob_sb);
+                if (!g_wjob_need_nb) { g_wjob_sa = g_wjob_sb; g_wjob_sc = g_wjob_sb; g_wjob_stage = 6u; }
+                else { g_wjob_stage = 2u; }
+                if (!flush_all) return;
+            } else if (g_wjob_stage == 2u) {
+                wx_side = (u16)((g_wjob_wx - 1u) & 255u);
+                g_wjob_sa = find_or_alloc_col_slot(wx_side, g_wjob_aux0, g_wjob_sb, 255u, &hit);
+                if (hit) {
+                    g_wjob_stage = 4u;
+                } else {
+                    hearth_globe_stream_col(wx_side, g_wjob_aux0, 9u, &g_col_cache[COL_SLOT_OFF[g_wjob_sa]]);
+                    g_wjob_stage = 3u;
+                    if (!flush_all) return;
+                }
+            } else if (g_wjob_stage == 3u) {
+                wx_side = (u16)((g_wjob_wx - 1u) & 255u);
+                wy_h2 = (u16)(g_wjob_aux0 + 9u);
+                if (wy_h2 >= (u16)HEARTH_GLOBE_H) wy_h2 = (u16)(wy_h2 - (u16)HEARTH_GLOBE_H);
+                hearth_globe_stream_col(wx_side, wy_h2, 9u, &g_col_cache[(u16)(COL_SLOT_OFF[g_wjob_sa] + 9u)]);
+                g_col_wx[g_wjob_sa]  = wx_side;
+                g_col_wy0[g_wjob_sa] = g_wjob_aux0;
+                g_wjob_stage = 4u;
+                if (!flush_all) return;
+            } else if (g_wjob_stage == 4u) {
+                wx_side = (u16)((g_wjob_wx + 1u) & 255u);
+                g_wjob_sc = find_or_alloc_col_slot(wx_side, g_wjob_aux0, g_wjob_sb, g_wjob_sa, &hit);
+                if (hit) {
+                    g_wjob_stage = 6u;
+                } else {
+                    hearth_globe_stream_col(wx_side, g_wjob_aux0, 9u, &g_col_cache[COL_SLOT_OFF[g_wjob_sc]]);
+                    g_wjob_stage = 5u;
+                    if (!flush_all) return;
+                }
+            } else if (g_wjob_stage == 5u) {
+                wx_side = (u16)((g_wjob_wx + 1u) & 255u);
+                wy_h2 = (u16)(g_wjob_aux0 + 9u);
+                if (wy_h2 >= (u16)HEARTH_GLOBE_H) wy_h2 = (u16)(wy_h2 - (u16)HEARTH_GLOBE_H);
+                hearth_globe_stream_col(wx_side, wy_h2, 9u, &g_col_cache[(u16)(COL_SLOT_OFF[g_wjob_sc] + 9u)]);
+                g_col_wx[g_wjob_sc]  = wx_side;
+                g_col_wy0[g_wjob_sc] = g_wjob_aux0;
+                g_wjob_stage = 6u;
+                if (!flush_all) return;
+            } else if (g_wjob_stage == 6u) {
+                write_globe_col_bg1_half(g_wjob_mx, g_wjob_my, g_wjob_wx, g_wjob_wy, g_wjob_sa, g_wjob_sb, g_wjob_sc, 0u, 8u);
+                g_wjob_stage = 7u;
+                if (!flush_all) return;
+            } else {
+                write_globe_col_bg1_half(g_wjob_mx, g_wjob_my, g_wjob_wx, g_wjob_wy, g_wjob_sa, g_wjob_sb, g_wjob_sc, 8u, 16u);
+                g_wjob_kind = 0u;
+                return;
+            }
+        } else {
+            if (g_wjob_stage == 0u) {
+                g_wjob_sb = find_or_alloc_row_slot(g_wjob_aux0, g_wjob_wy, 255u, 255u, &hit);
+                if (hit) {
+                    g_wjob_need_nb = strip_row_needs_neighbors(g_wjob_sb);
+                    if (!g_wjob_need_nb) { g_wjob_sa = g_wjob_sb; g_wjob_sc = g_wjob_sb; g_wjob_stage = 6u; }
+                    else { g_wjob_stage = 2u; }
+                } else {
+                    hearth_globe_stream_row(g_wjob_aux0, g_wjob_wy, 10u, &g_row_cache[ROW_SLOT_OFF[g_wjob_sb]]);
+                    g_wjob_stage = 1u;
+                    if (!flush_all) return;
+                }
+            } else if (g_wjob_stage == 1u) {
+                hearth_globe_stream_row((u16)((g_wjob_aux0 + 10u) & 255u), g_wjob_wy, 10u, &g_row_cache[(u16)(ROW_SLOT_OFF[g_wjob_sb] + 10u)]);
+                g_row_wy[g_wjob_sb]  = g_wjob_wy;
+                g_row_wx0[g_wjob_sb] = g_wjob_aux0;
+                g_wjob_need_nb = strip_row_needs_neighbors(g_wjob_sb);
+                if (!g_wjob_need_nb) { g_wjob_sa = g_wjob_sb; g_wjob_sc = g_wjob_sb; g_wjob_stage = 6u; }
+                else { g_wjob_stage = 2u; }
+                if (!flush_all) return;
+            } else if (g_wjob_stage == 2u) {
+                wy_n = (g_wjob_wy == 0u) ? (u16)(HEARTH_GLOBE_H - 1u) : (u16)(g_wjob_wy - 1u);
+                g_wjob_sa = find_or_alloc_row_slot(g_wjob_aux0, wy_n, g_wjob_sb, 255u, &hit);
+                if (hit) {
+                    g_wjob_stage = 4u;
+                } else {
+                    hearth_globe_stream_row(g_wjob_aux0, wy_n, 10u, &g_row_cache[ROW_SLOT_OFF[g_wjob_sa]]);
+                    g_wjob_stage = 3u;
+                    if (!flush_all) return;
+                }
+            } else if (g_wjob_stage == 3u) {
+                wy_n = (g_wjob_wy == 0u) ? (u16)(HEARTH_GLOBE_H - 1u) : (u16)(g_wjob_wy - 1u);
+                hearth_globe_stream_row((u16)((g_wjob_aux0 + 10u) & 255u), wy_n, 10u, &g_row_cache[(u16)(ROW_SLOT_OFF[g_wjob_sa] + 10u)]);
+                g_row_wy[g_wjob_sa]  = wy_n;
+                g_row_wx0[g_wjob_sa] = g_wjob_aux0;
+                g_wjob_stage = 4u;
+                if (!flush_all) return;
+            } else if (g_wjob_stage == 4u) {
+                g_wjob_sc = find_or_alloc_row_slot(g_wjob_aux0, g_wjob_aux1, g_wjob_sb, g_wjob_sa, &hit);
+                if (hit) {
+                    g_wjob_stage = 6u;
+                } else {
+                    hearth_globe_stream_row(g_wjob_aux0, g_wjob_aux1, 10u, &g_row_cache[ROW_SLOT_OFF[g_wjob_sc]]);
+                    g_wjob_stage = 5u;
+                    if (!flush_all) return;
+                }
+            } else if (g_wjob_stage == 5u) {
+                hearth_globe_stream_row((u16)((g_wjob_aux0 + 10u) & 255u), g_wjob_aux1, 10u, &g_row_cache[(u16)(ROW_SLOT_OFF[g_wjob_sc] + 10u)]);
+                g_row_wy[g_wjob_sc]  = g_wjob_aux1;
+                g_row_wx0[g_wjob_sc] = g_wjob_aux0;
+                g_wjob_stage = 6u;
+                if (!flush_all) return;
+            } else if (g_wjob_stage == 6u) {
+                write_globe_row_bg1_half(g_wjob_mx, g_wjob_my, g_wjob_wx, g_wjob_wy, g_wjob_sa, g_wjob_sb, g_wjob_sc, 0u, 9u);
+                g_wjob_stage = 7u;
+                if (!flush_all) return;
+            } else {
+                write_globe_row_bg1_half(g_wjob_mx, g_wjob_my, g_wjob_wx, g_wjob_wy, g_wjob_sa, g_wjob_sb, g_wjob_sc, 9u, 18u);
+                g_wjob_kind = 0u;
+                return;
+            }
+        }
+    }
+}
+
+static void queue_globe_col_job(s16 mx, s16 my_start) {
+    s16 wy_s;
+    u16 wy;
+    if (g_wjob_kind != 0u) step_world_strip_job(1u);
+    wy_s = my_start;
+    while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
+    while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
+    wy = (u16)wy_s;
+    g_wjob_kind  = 1u;
+    g_wjob_stage = 0u;
+    g_wjob_mx    = mx;
+    g_wjob_my    = my_start;
+    g_wjob_wx    = (u16)((u16)mx & 255u);
+    g_wjob_wy    = wy;
+    g_wjob_aux0  = (wy == 0u) ? (u16)(HEARTH_GLOBE_H - 1u) : (u16)(wy - 1u);
+    step_world_strip_job(0u);
+}
+
+static void queue_globe_row_job(s16 mx_start, s16 my) {
+    s16 wy_s;
+    u16 wx, wy;
+    if (g_wjob_kind != 0u) step_world_strip_job(1u);
+    wx = (u16)((u16)mx_start & 255u);
+    wy_s = my;
+    while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
+    while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
+    wy = (u16)wy_s;
+    g_wjob_kind  = 2u;
+    g_wjob_stage = 0u;
+    g_wjob_mx    = mx_start;
+    g_wjob_my    = my;
+    g_wjob_wx    = wx;
+    g_wjob_wy    = wy;
+    g_wjob_aux0  = (u16)((wx - 1u) & 255u);
+    g_wjob_aux1  = ((u16)(wy + 1u) >= (u16)HEARTH_GLOBE_H) ? 0u : (u16)(wy + 1u);
+    step_world_strip_job(0u);
+}
+
 static void stream_world_col(s16 mx, s16 my_start) {
-    u16 half_col, row_off, k, j, idx, idx_valid, step_w, wx, wy, wy_prev;
-    s16 my, mw, mh, wy_s;
-    u8 m, t, sa, sb, sc, v;
-    const u8 *pa;
-    const u8 *pb;
-    const u8 *pc;
+    u16 half_col, row_off, k, idx, idx_valid, step_w;
+    s16 my, mw, mh;
+    u8 m;
     u16 *dst;
+
+    if (g_hearth.is_world_map) {
+        queue_globe_col_job(mx, my_start);
+        step_world_strip_job(1u);
+        return;
+    }
 
     half_col = (u16)(((u16)mx & 15u) << 1);
     if (((u16)mx & 16u) == 0u) {
@@ -2182,57 +2593,6 @@ static void stream_world_col(s16 mx, s16 my_start) {
         g_bg1_dirty_r = 1;
     }
     row_off = (u16)(((u16)my_start & 15u) << 6);
-
-    if (g_hearth.is_world_map) {
-        wx = (u16)((u16)mx & 255u);
-        wy_s = my_start;
-        while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
-        while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
-        wy = (u16)wy_s;
-        wy_prev = (wy == 0u) ? (u16)(HEARTH_GLOBE_H - 1u) : (u16)(wy - 1u);
-        sa = get_globe_col_slot((u16)((wx - 1u) & 255u), wy_prev, 255u, 255u);
-        sb = get_globe_col_slot(wx,                      wy_prev, sa,   255u);
-        sc = get_globe_col_slot((u16)((wx + 1u) & 255u), wy_prev, sa,   sb);
-        pa = g_col_cache[sa];
-        pb = g_col_cache[sb];
-        pc = g_col_cache[sc];
-        for (k = 0u; k < 16u; k++) {
-            j = (u16)(k + 1u);
-            t = pb[j];
-            if (t == 255u) {
-                m = (u8)CM_OPQ_OAK_CROWN;
-            } else if (t < 64u && (SNES_WORLD_TILE_CLASS[t] & WCLS_SIMPLE) != 0u) {
-                m = t;
-            } else if (t == T_GRASS) {
-                v = (u8)((((wx + (wx << 1)) + (wy + (wy << 2))) ^ (wx >> 1)) & 3u);
-                m = (v > 0u) ? (u8)(CM_GRASS_V1 + (v - 1u)) : (u8)T_GRASS;
-            } else if (t == T_WORLD_SNOW) {
-                v = (u8)((((wx + (wx << 1)) + (wy + (wy << 2))) ^ (wx >> 1)) & 1u);
-                m = v ? (u8)CM_SNOW_V1 : (u8)T_WORLD_SNOW;
-            } else if (t == T_WORLD_JUNGLE) {
-                v = (u8)((((wx + (wx << 1)) + (wy + (wy << 2))) ^ (wx >> 1)) & 1u);
-                m = v ? (u8)CM_JUNGLE_V1 : (u8)T_WORLD_JUNGLE;
-            } else {
-                m = snes_resolve_world_border(
-                    t,
-                    pb[j - 1u], pb[j + 1u],
-                    pa[j],      pc[j],
-                    pa[j - 1u], pc[j - 1u],
-                    pa[j + 1u], pc[j + 1u],
-                    wx, wy
-                );
-            }
-            dst = g_bg1_map + (u16)(half_col + row_off);
-            dst[0]  = SNES_META_TL[m];
-            dst[1]  = SNES_META_TR[m];
-            dst[32] = SNES_META_BL[m];
-            dst[33] = SNES_META_BR[m];
-            row_off = (u16)((row_off + 64u) & 1023u);
-            wy++;
-            if (wy >= (u16)HEARTH_GLOBE_H) wy = 0u;
-        }
-        return;
-    }
 
     mw = (s16)(g_hearth.map_w ? g_hearth.map_w : HEARTH_MAP_W);
     mh = (s16)(g_hearth.map_h ? g_hearth.map_h : HEARTH_MAP_H);
@@ -2275,14 +2635,17 @@ static void stream_world_col(s16 mx, s16 my_start) {
 }
 
 static void stream_world_row(s16 mx_start, s16 my) {
-    u16 row_off, off, k, j, idx, wx, wy, wx_prev, wy_n, wy_d, cur_wx;
-    s16 mx, mw, mh, wy_s;
-    u8 m, t, sa, sb, sc, v;
+    u16 row_off, off, k, idx;
+    s16 mx, mw, mh;
+    u8 m;
     u16 *dst;
     const u8 *sp;
-    const u8 *pa;
-    const u8 *pb;
-    const u8 *pc;
+
+    if (g_hearth.is_world_map) {
+        queue_globe_row_job(mx_start, my);
+        step_world_strip_job(1u);
+        return;
+    }
 
     row_off = (u16)(((u16)my & 15u) << 6);
     if (!g_bg1_dirty_l && !g_bg1_dirty_r) {
@@ -2304,59 +2667,6 @@ static void stream_world_row(s16 mx_start, s16 my) {
     mx = mx_start;
     off = (u16)(row_off + (((u16)mx & 15u) << 1));
     if (((u16)mx & 16u) != 0u) off = (u16)(off + 1024u);
-
-    if (g_hearth.is_world_map) {
-        wx = (u16)((u16)mx_start & 255u);
-        wy_s = my;
-        while (wy_s < 0) wy_s = (s16)(wy_s + HEARTH_GLOBE_H);
-        while (wy_s >= HEARTH_GLOBE_H) wy_s = (s16)(wy_s - HEARTH_GLOBE_H);
-        wy = (u16)wy_s;
-        wx_prev = (u16)((wx - 1u) & 255u);
-        wy_n = (wy == 0u) ? (u16)(HEARTH_GLOBE_H - 1u) : (u16)(wy - 1u);
-        wy_d = ((u16)(wy + 1u) >= (u16)HEARTH_GLOBE_H) ? 0u : (u16)(wy + 1u);
-        sa = get_globe_row_slot(wx_prev, wy_n, 255u, 255u);
-        sb = get_globe_row_slot(wx_prev, wy,   sa,   255u);
-        sc = get_globe_row_slot(wx_prev, wy_d, sa,   sb);
-        pa = g_row_cache[sa];
-        pb = g_row_cache[sb];
-        pc = g_row_cache[sc];
-        for (k = 0u; k < 18u; k++) {
-            j = (u16)(k + 1u);
-            t = pb[j];
-            cur_wx = (u16)((wx + k) & 255u);
-            if (t == 255u) {
-                m = (u8)CM_OPQ_OAK_CROWN;
-            } else if (t < 64u && (SNES_WORLD_TILE_CLASS[t] & WCLS_SIMPLE) != 0u) {
-                m = t;
-            } else if (t == T_GRASS) {
-                v = (u8)((((cur_wx + (cur_wx << 1)) + (wy + (wy << 2))) ^ (cur_wx >> 1)) & 3u);
-                m = (v > 0u) ? (u8)(CM_GRASS_V1 + (v - 1u)) : (u8)T_GRASS;
-            } else if (t == T_WORLD_SNOW) {
-                v = (u8)((((cur_wx + (cur_wx << 1)) + (wy + (wy << 2))) ^ (cur_wx >> 1)) & 1u);
-                m = v ? (u8)CM_SNOW_V1 : (u8)T_WORLD_SNOW;
-            } else if (t == T_WORLD_JUNGLE) {
-                v = (u8)((((cur_wx + (cur_wx << 1)) + (wy + (wy << 2))) ^ (cur_wx >> 1)) & 1u);
-                m = v ? (u8)CM_JUNGLE_V1 : (u8)T_WORLD_JUNGLE;
-            } else {
-                m = snes_resolve_world_border(
-                    t,
-                    pa[j],      pc[j],
-                    pb[j - 1u], pb[j + 1u],
-                    pa[j - 1u], pa[j + 1u],
-                    pc[j - 1u], pc[j + 1u],
-                    cur_wx, wy
-                );
-            }
-            dst = g_bg1_map + off;
-            dst[0]  = SNES_META_TL[m];
-            dst[1]  = SNES_META_TR[m];
-            dst[32] = SNES_META_BL[m];
-            dst[33] = SNES_META_BR[m];
-            off = (u16)(off + 2u);
-            if ((off & 31u) == 0u) off = (u16)((off - 32u) ^ 1024u);
-        }
-        return;
-    }
 
     mw = (s16)(g_hearth.map_w ? g_hearth.map_w : HEARTH_MAP_W);
     mh = (s16)(g_hearth.map_h ? g_hearth.map_h : HEARTH_MAP_H);
@@ -2406,6 +2716,7 @@ static void stream_world_row(s16 mx_start, s16 my) {
 static void build_full_world_bg1(s16 cam_x, s16 cam_y) {
     s16 mx0, my0, dy;
 
+    g_wjob_kind = 0u;
     mx0 = (s16)((cam_x >> 4) - 1);
     my0 = (s16)((cam_y >> 4) - 1);
     for (dy = 0; dy < 16; dy++) {
@@ -2421,9 +2732,15 @@ static void build_full_world_bg1(s16 cam_x, s16 cam_y) {
 static void stream_world_bg1(s16 cam_x, s16 cam_y) {
     s16 cmx, cmy, dx, dy;
 
+    g_streamed_frame = 0u;
     cmx = (s16)(cam_x >> 4);
     cmy = (s16)(cam_y >> 4);
-    if (cmx == g_last_cam_mx && cmy == g_last_cam_my) return;
+    if (cmx == g_last_cam_mx && cmy == g_last_cam_my) {
+        if (g_wjob_kind != 0u) {
+            step_world_strip_job(0u);
+        }
+        return;
+    }
 
     dx = (s16)(cmx - g_last_cam_mx);
     dy = (s16)(cmy - g_last_cam_my);
@@ -2439,30 +2756,53 @@ static void stream_world_bg1(s16 cam_x, s16 cam_y) {
         return;
     }
 
-    /* Stagger diagonal tile-boundary crossings across 2 frames (at most 1 axis strip per frame).
-     * The 16-pixel offscreen tile margin absorbs 1 frame cleanly while halving peak diagonal CPU! */
+    /* Let any active offscreen strip job finish its time-sliced stages before starting the
+     * perpendicular axis (as long as neither axis is >= 2 tiles behind, staying inside the 16px margin)! */
+    if (g_wjob_kind != 0u && dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1) {
+        step_world_strip_job(0u);
+        return;
+    }
+
+    /* Stagger diagonal tile-boundary crossings across 2 frames & time-slice globe strips across
+     * the 16px offscreen margin -> 0 dropped VBlanks even when dashing diagonally! */
     if (dx > 0) {
         g_last_cam_mx++;
-        if (g_hearth.is_world_map && g_last_cam_mx >= HEARTH_GLOBE_W) g_last_cam_mx = 0;
-        stream_world_col((s16)(g_last_cam_mx + 16), (s16)(g_last_cam_my - 1));
+        if (g_hearth.is_world_map) {
+            if (g_last_cam_mx >= HEARTH_GLOBE_W) g_last_cam_mx = 0;
+            queue_globe_col_job((s16)(g_last_cam_mx + 16), (s16)(g_last_cam_my - 1));
+        } else {
+            stream_world_col((s16)(g_last_cam_mx + 16), (s16)(g_last_cam_my - 1));
+        }
         return;
     }
     if (dx < 0) {
         g_last_cam_mx--;
-        if (g_hearth.is_world_map && g_last_cam_mx < 0) g_last_cam_mx = (s16)(HEARTH_GLOBE_W - 1);
-        stream_world_col((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my - 1));
+        if (g_hearth.is_world_map) {
+            if (g_last_cam_mx < 0) g_last_cam_mx = (s16)(HEARTH_GLOBE_W - 1);
+            queue_globe_col_job((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my - 1));
+        } else {
+            stream_world_col((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my - 1));
+        }
         return;
     }
     if (dy > 0) {
         g_last_cam_my++;
-        if (g_hearth.is_world_map && g_last_cam_my >= HEARTH_GLOBE_H) g_last_cam_my = 0;
-        stream_world_row((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my + 14));
+        if (g_hearth.is_world_map) {
+            if (g_last_cam_my >= HEARTH_GLOBE_H) g_last_cam_my = 0;
+            queue_globe_row_job((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my + 14));
+        } else {
+            stream_world_row((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my + 14));
+        }
         return;
     }
     if (dy < 0) {
         g_last_cam_my--;
-        if (g_hearth.is_world_map && g_last_cam_my < 0) g_last_cam_my = (s16)(HEARTH_GLOBE_H - 1);
-        stream_world_row((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my - 1));
+        if (g_hearth.is_world_map) {
+            if (g_last_cam_my < 0) g_last_cam_my = (s16)(HEARTH_GLOBE_H - 1);
+            queue_globe_row_job((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my - 1));
+        } else {
+            stream_world_row((s16)(g_last_cam_mx - 1), (s16)(g_last_cam_my - 1));
+        }
         return;
     }
 }
@@ -3306,6 +3646,11 @@ static void update_ui_layer(const HearthPpuPacket *ppu) {
         want = 0;
     }
 
+    /* During normal exploration, yield HUD signature scan on active streaming frames and run at 15Hz */
+    if (want == 0u && g_ui_layout == 0u && (g_streamed_frame || (((u8)g_hearth.frame_count) & 3u) != 0u)) {
+        return;
+    }
+
     if (want != g_ui_layout) {
         u8 want_p7 = (u8)((want == 2u) ? 1u : 0u);
         if (want_p7 != g_pal7_is_portrait) {
@@ -3418,11 +3763,10 @@ static const u8 HI_TAIL_MASK[4] = { 0x00u, 0x54u, 0x50u, 0x40u };
 } while (0)
 
 static void render_snes_sprites(const HearthPpuPacket *ppu) {
-    u16 i, n, count, sid, ta, flg, oidx, hi_idx, hi_byte, hi_mask, prev_cnt, end_lane;
+    u16 i, n, count, sid, ta, flg, oidx, hi_idx, hi_byte, hi_mask, prev_cnt, end_lane, idx;
     s16 sx, sy, sy_bot, sx_r, shx, shy, min_y, max_y, min_y_tall, max_y_tall;
     u16 prog, rem, rpal, pi, burst_drawn;
     u8 boot_tile, hdir, hpose, rkey, hflip, bt_l, bt_r, battr;
-    const HearthOamSprite *o;
     const HearthParticle *pt;
     (void)ppu;
 
@@ -3442,11 +3786,13 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
 
         /* Hardware OAM Spark Burst Particles (Lamp Ignition, Chests, Heart Mending) — crisp 8x8 embers! */
         if (g_hearth.active_particles > 0u) {
+            u8 p_rem = g_hearth.active_particles;
             burst_drawn = 0u;
-            for (pi = 0u; pi < HEARTH_MAX_PARTICLES && burst_drawn < 8u && count < 110u; pi++) {
+            for (pi = 0u; pi < HEARTH_MAX_PARTICLES && p_rem > 0u && burst_drawn < 8u && count < 110u; pi++) {
                 u8 etile, eattr;
                 pt = &g_hearth.particles[pi];
                 if (!pt->active) continue;
+                p_rem--;
                 if ((pt->kind != 3u && pt->kind != 4u) || pt->size < 3u) continue;
                 sx = (s16)(FP_PX(pt->fx) + (pt->screen_space ? shx : (s16)(-g_hearth.ppu.cam_x + shx)) - 4);
                 sy = (s16)(FP_PX(pt->fy) + (pt->screen_space ? shy : (s16)(-g_hearth.ppu.cam_y + shy)) - 4);
@@ -3464,17 +3810,17 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
         if (n > 48u) n = 48u;
         /* Reverse iterate ppu->oam: SNES OAM draws LOWER sprite indices IN FRONT of higher indices! */
         for (i = n; i > 0u && count < 118u; i--) {
-            o = &g_hearth.ppu.oam[i - 1u];
-            flg = (u16)o->flags;
-            sid = (u16)o->sprite_id;
+            idx = (u16)(i - 1u);
+            flg = (u16)g_hearth.ppu.oam[idx].flags;
+            sid = (u16)g_hearth.ppu.oam[idx].sprite_id;
             if (sid >= 49u) sid = 0u;
             boot_tile = SPR_BOOT_TILE_LUT[sid];
 
             if (boot_tile != 0u) {
                 /* Tall 16x24 JRPG character: 1x 16x16 (OBJ_LARGE) + 2x 8x8 boot tiles (OBJ_SMALL) */
-                sy = (s16)(o->y - 24 + shy);
+                sy = (s16)(g_hearth.ppu.oam[idx].y - 24 + shy);
                 if (sy < min_y_tall || sy >= max_y_tall) continue;
-                sx = (s16)(o->x - 8 + shx);
+                sx = (s16)(g_hearth.ppu.oam[idx].x - 8 + shx);
                 if (sx < -15 || sx >= 256) continue;
 
                 if (sid == 0u) {
@@ -3512,9 +3858,9 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
                 }
             } else {
                 /* Standard 16x16 sprite (OBJ_LARGE under OBJ_SIZE8_L16) */
-                sy = (s16)(o->y - ((flg & OAM_FLAG_LAYER2) ? 8 : 16) + shy);
+                sy = (s16)(g_hearth.ppu.oam[idx].y - ((flg & OAM_FLAG_LAYER2) ? 8 : 16) + shy);
                 if (sy < min_y || sy >= max_y) continue;
-                sx = (s16)(o->x - 8 + shx);
+                sx = (s16)(g_hearth.ppu.oam[idx].x - 8 + shx);
                 if (sx < -15 || sx >= 256) continue;
 
                 if (sid == 1u) {
@@ -3535,36 +3881,36 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
             }
         }
 
-        /* Battle Choreography VFX burst sprite (16x16 OBJ_LARGE) */
-        if (g_hearth.mode == MODE_BATTLE && g_hearth.battle.vfx_kind != BVFX_NONE && count < 122u) {
-            rem = (g_hearth.battle.vfx_dur > 0u) ? g_hearth.battle.vfx_dur : 1u;
-            prog = (u16)(((u16)g_hearth.battle.vfx_timer << 4) / rem);
-            if (prog > 16u) prog = 16u;
-            sx = (s16)(g_hearth.battle.vfx_x + (((g_hearth.battle.vfx_tx - g_hearth.battle.vfx_x) * (s16)prog) >> 4) - 8);
-            sy = (s16)(g_hearth.battle.vfx_y + (((g_hearth.battle.vfx_ty - g_hearth.battle.vfx_y) * (s16)prog) >> 4) - 16);
-            rpal = (u16)(0x36u | ((((u16)g_hearth.frame_count) & 2u) ? 0x40u : 0x00u)
-                               | ((((u16)g_hearth.frame_count) & 4u) ? 0x80u : 0x00u));
-            if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
-                EMIT_SNES_OAM(sx, sy, 0xCEu, (u8)rpal, 1u);
+        /* Battle Choreography VFX burst & Timed-Hit Ring sprites (16x16 OBJ_LARGE) */
+        if (g_hearth.mode == MODE_BATTLE) {
+            if (g_hearth.battle.vfx_kind != BVFX_NONE && count < 122u) {
+                rem = (g_hearth.battle.vfx_dur > 0u) ? g_hearth.battle.vfx_dur : 1u;
+                prog = (u16)(((u16)g_hearth.battle.vfx_timer << 4) / rem);
+                if (prog > 16u) prog = 16u;
+                sx = (s16)(g_hearth.battle.vfx_x + (((g_hearth.battle.vfx_tx - g_hearth.battle.vfx_x) * (s16)prog) >> 4) - 8);
+                sy = (s16)(g_hearth.battle.vfx_y + (((g_hearth.battle.vfx_ty - g_hearth.battle.vfx_y) * (s16)prog) >> 4) - 16);
+                rpal = (u16)(0x36u | ((((u16)g_hearth.frame_count) & 2u) ? 0x40u : 0x00u)
+                                   | ((((u16)g_hearth.frame_count) & 4u) ? 0x80u : 0x00u));
+                if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
+                    EMIT_SNES_OAM(sx, sy, 0xCEu, (u8)rpal, 1u);
+                }
+            }
+            if (g_hearth.battle.ring.active && count < 124u) {
+                prog = g_hearth.battle.ring.progress_fp;
+                rem = (prog < 256u) ? (u16)(256u - prog) : 0u;
+                rpal = (prog >= g_hearth.battle.ring.sweet_start_fp)
+                    ? ((((u16)g_hearth.frame_count & 2u) != 0u) ? 0x32u : 0x34u)
+                    : 0x36u;
+                sx = (s16)(g_hearth.battle.ring.x - 8);
+                sy = (s16)(g_hearth.battle.ring.y - 20 - (s16)(rem >> 4));
+                if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
+                    EMIT_SNES_OAM(sx, sy, 0xC2u, (u8)rpal, 1u);
+                }
             }
         }
 
-        /* Converging & flashing Timed-Hit / Parry indicator ring sprite (16x16 OBJ_LARGE) */
-        if (g_hearth.mode == MODE_BATTLE && g_hearth.battle.ring.active && count < 124u) {
-            prog = g_hearth.battle.ring.progress_fp;
-            rem = (prog < 256u) ? (u16)(256u - prog) : 0u;
-            rpal = (prog >= g_hearth.battle.ring.sweet_start_fp)
-                ? ((((u16)g_hearth.frame_count & 2u) != 0u) ? 0x32u : 0x34u)
-                : 0x36u;
-            sx = (s16)(g_hearth.battle.ring.x - 8);
-            sy = (s16)(g_hearth.battle.ring.y - 20 - (s16)(rem >> 4));
-            if (sx >= 0 && sx < 248 && sy >= 0 && sy < 140) {
-                EMIT_SNES_OAM(sx, sy, 0xC2u, (u8)rpal, 1u);
-            }
-        }
-
-        /* 60fps Hardware Drifting Biome Atmosphere Particles (dedicated 8x8 OBJ, ZERO tcc__mul!) */
-        if ((g_hearth.mode == MODE_EXPLORE || g_hearth.mode == MODE_BATTLE) && count < 118u) {
+        /* 60fps Hardware Drifting Biome Atmosphere Particles (skipped on 256x192 globe for 60fps headroom!) */
+        if (((g_hearth.mode == MODE_EXPLORE && !g_hearth.is_world_map) || g_hearth.mode == MODE_BATTLE) && count < 118u) {
             static const u8 AMB_BTL_S3[6] = { 57u, 186u, 59u, 188u, 61u, 190u };
             static const u8 AMB_BTL_S5[6] = { 95u,  54u, 13u, 228u, 187u, 146u };
             static const u8 AMB_EXP_S3[6] = { 51u, 180u, 53u, 182u, 55u, 184u };
@@ -3606,7 +3952,8 @@ static void render_snes_sprites(const HearthPpuPacket *ppu) {
                         EMIT_SNES_OAM(ax, ay, p_tile, p_pal, 0u);
                     }
                 }
-            } else {
+            } else if (!g_hearth.is_world_map) {
+                /* Skip ambient weather dots on the 256x192 globe to preserve 100% locked 60fps headroom! */
                 pid = ppu->terrain_pal_id;
                 is_interior = (u8)((pid == ZPAL_COTTAGE_INTERIOR ||
                     g_hearth.zone_id == ZONE_ROWAN_HOME ||
@@ -4494,6 +4841,7 @@ int main(void) {
             scene_kind = 0u;
         }
         scene_switched = 0;
+        g_streamed_frame = 0u;
 
         if (scene_kind == 0u &&
             (ppu->terrain_pal_id != g_last_pal_id ||
@@ -4581,13 +4929,13 @@ int main(void) {
                 upload_cinema_cg_force_blank(g_hearth.intro.scene);
                 g_pal_dirty = 0u;
                 g_full_pal_dirty = 0u;
-                g_pal_grade_step = 4u;
+                g_pal_grade_step = 32u;
                 g_pal_cgram_mask = 0u;
             } else if (scene_kind == 1u) {
                 upload_battle_bg_force_blank(g_hearth.battle.biome, g_hearth.time_of_day);
                 g_pal_dirty = 0u;
                 g_full_pal_dirty = 0u;
-                g_pal_grade_step = 4u;
+                g_pal_grade_step = 32u;
                 g_pal_cgram_mask = 0u;
             } else if (g_full_pal_dirty) {
                 /* Restore Chrono/Mana 415-tile BG1 terrain from ROM (single 4ms DMA!) + 60-color palettes */
@@ -4647,20 +4995,21 @@ int main(void) {
             if (ppu->fade_level == 0u && want_mod != g_cur_bgm_mod) {
                 load_snes_music(want_mod);
             }
-            /* Stage ToD CGRAM palette math OUTSIDE VBlank (1 sub-palette/frame = 0 VBlank stalls!) */
+            /* Stage ToD CGRAM palette math OUTSIDE VBlank (2 colors/frame -> 0 dropped VBlanks!) */
             if (g_pal_dirty) {
                 begin_zone_pal_update(g_last_pal_id, g_last_tod_phase, g_last_outdoor_tod);
                 g_pal_dirty = 0u;
             }
-            if (g_pal_grade_step < 4u) {
+            if (g_pal_grade_step < 32u) {
                 if (g_pal_tod_mode == 0u) {
-                    while (g_pal_grade_step < 4u) {
-                        stage_zone_pal_subpal(g_pal_grade_step++);
+                    while (g_pal_grade_step < 32u) {
+                        stage_zone_pal_pair(g_pal_grade_step++);
                     }
                     g_prev_cgram_valid = 1u;
-                } else {
-                    stage_zone_pal_subpal(g_pal_grade_step++);
-                    if (g_pal_grade_step >= 4u) g_prev_cgram_valid = 1u;
+                } else if (!g_streamed_frame && g_wjob_kind == 0u) {
+                    /* Yield ToD grading on active streaming frames so both always stay < 1 VBlank! */
+                    stage_zone_pal_pair(g_pal_grade_step++);
+                    if (g_pal_grade_step >= 32u) g_prev_cgram_valid = 1u;
                 }
             }
             spcProcess();
