@@ -3,6 +3,8 @@ build/
 .toolchains/
 dist/
 coverage/
+__pycache__/
+*.pyc
 .DS_Store
 *.log
 .env*

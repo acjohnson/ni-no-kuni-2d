@@ -57,6 +57,9 @@ typedef struct {
     uint8_t      woods_shrines_mask; /* bits 0..2: 3 lantern markers in Whispering Woods */
     bool         has_milo_bell;   /* Mido's heirloom brass bell & pressed oak leaf */
     uint8_t      map_revision;
+    uint8_t      dirty_tx;        /* In-place single-tile edit X (e.g. shrine lantern lit) */
+    uint8_t      dirty_ty;        /* In-place single-tile edit Y */
+    bool         has_dirty_tile;  /* True when map_revision changed only 1 tile in-place */
     uint8_t      warp_fade;       /* 0..15 fade out/in on zone warp */
     bool         warp_pending;
     uint8_t      warp_dst_zone;

@@ -439,12 +439,12 @@ static void build_zone_alderbrook(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     int x, y, hash, sy;
     uint16_t i;
     static const int8_t maples[][2] = {
-        {4, 11}, {16, 11}, {31, 11}, {35, 16}, {38, 17},
-        {6, 17}, {26, 18}, {37, 8}, {8, 24}, {34, 24}
+        {4, 11}, {18, 11}, {31, 11}, {36, 18}, {38, 17},
+        {6, 17}, {26, 18}, {37, 8}, {8, 24}, {35, 25}
     };
     static const int8_t pines[][2] = {
-        {3, 7}, {3, 15}, {3, 23}, {19, 10}, {29, 10},
-        {34, 7}, {39, 15}, {41, 16}, {10, 25}, {33, 25}, {40, 23}
+        {3, 7}, {3, 15}, {3, 23}, {20, 10}, {29, 10},
+        {34, 7}, {39, 15}, {41, 16}, {10, 25}, {33, 25}, {40, 24}
     };
     static const int8_t boulders[][2] = {
         {6, 15}, {14, 17}, {20, 17}, {27, 17}, {33, 15},
@@ -584,7 +584,7 @@ static void build_zone_whispering_woods(uint8_t *bg1, uint8_t *bg2, uint8_t *col
     uint16_t i;
     static const int8_t maples[][2] = {
         {6, 9}, {16, 8}, {28, 8}, {30, 13}, {8, 16},
-        {9, 18}, {29, 21}, {38, 17}, {24, 23}, {6, 23}
+        {9, 18}, {29, 21}, {39, 19}, {24, 23}, {5, 18}
     };
     static const int8_t pines[][2] = {
         {4, 7}, {11, 7}, {21, 7}, {31, 7}, {40, 8},
@@ -766,7 +766,7 @@ void hearth_build_sandbox_map(uint8_t *bg1, uint8_t *bg2, uint8_t *col) {
     uint16_t i;
     static const int8_t trees[][2] = {
         {3, 5}, {3, 10}, {3, 20}, {8, 24},
-        {16, 5}, {22, 5}, {28, 4}, {34, 5},
+        {14, 5}, {22, 5}, {28, 4}, {34, 5},
         {39, 5}, {22, 18}, {35, 24}, {40, 23}
     };
 
@@ -1385,44 +1385,64 @@ static void globe_apply_outer_landmarks(uint16_t x, uint16_t y, uint8_t *p_bg1, 
     }
 }
 
-static uint8_t globe_is_macro_water(char c) {
-    return (c == '~' || c == 's' || c == 'r') ? 1u : 0u;
-}
+/* Multiply-free inline macro for water macro characters (avoids 3 JSL calls per cell on 65816!) */
+#define GLOBE_IS_WATER_CHAR(ch_) ((ch_) == '~' || (ch_) == 's' || (ch_) == 'r')
 
-/* Organic sub-tile rounding for 4x4 world macro blocks:
- * Eliminates giant 64px staircases along coastlines & biome borders while preserving
- * 100% deterministic collision/visual parity and near-zero CPU overhead on 65816/68000! */
-static char globe_smooth_macro_char(uint16_t x, uint16_t y) {
-    uint8_t sx = (uint8_t)(x & 3u);
-    uint8_t sy = (uint8_t)(y & 3u);
-    uint8_t mx = (uint8_t)(x >> 2);
-    uint8_t my = (uint8_t)(y >> 2);
-    char c = GLOBE_MACRO_CHAR(mx, my);
-    uint8_t mx_h, my_v, w_c, w_h, w_v, bias;
-    char ch, cv;
+/* Fast ASCII -> fixed BG1 tile LUT for non-hash-dependent globe macro chars (255 = hash-dependent) */
+static const uint8_t GLOBE_CHAR_FIXED_BG1[128] = {
+    T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,
+    T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,
+    T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,
+    T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,
+    T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,
+    T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,
+    T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,
+    T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,
+    T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,
+    T_WORLD_OCEAN, /* 64..72: @..H */
+    T_WORLD_PEAK,  /* 73: 'I' */
+    T_WORLD_FOREST,/* 74: 'J' */
+    T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,
+    T_WORLD_OCEAN, /* 75..83: K..S */
+    T_SHRINE_PILLAR,/* 84: 'T' */
+    T_WORLD_OCEAN, /* 85: 'U' */
+    T_WORLD_PEAK,  /* 86: 'V' */
+    T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,
+    T_WORLD_OCEAN,T_WORLD_OCEAN, /* 87..96: W..` */
+    T_WORLD_OCEAN, /* 97: 'a' */
+    T_WORLD_BEACH, /* 98: 'b' */
+    T_WORLD_OCEAN, /* 99: 'c' */
+    255u,          /* 100: 'd' -> hash-dependent */
+    T_WORLD_OCEAN, /* 101: 'e' */
+    T_WORLD_FOREST,/* 102: 'f' */
+    255u,          /* 103: 'g' -> hash-dependent */
+    255u,          /* 104: 'h' -> hash-dependent */
+    T_WORLD_SNOW,  /* 105: 'i' */
+    T_WORLD_JUNGLE,/* 106: 'j' */
+    T_WORLD_OCEAN, /* 107: 'k' */
+    T_WORLD_LAVA,  /* 108: 'l' */
+    T_WORLD_PEAK,  /* 109: 'm' */
+    T_WORLD_OCEAN, /* 110: 'n' */
+    255u,          /* 111: 'o' -> hash-dependent */
+    255u,          /* 112: 'p' -> hash-dependent */
+    T_WORLD_OCEAN, /* 113: 'q' */
+    255u,          /* 114: 'r' -> hash-dependent */
+    T_WORLD_SHALLOW,/* 115: 's' */
+    255u,          /* 116: 't' -> hash-dependent */
+    T_WORLD_OCEAN, /* 117: 'u' */
+    255u,          /* 118: 'v' -> hash-dependent */
+    T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN,T_WORLD_OCEAN, /* 119..124 */
+    T_WORLD_OCEAN, /* 125 */
+    T_WORLD_OCEAN, /* 126: '~' */
+    T_WORLD_OCEAN  /* 127 */
+};
 
-    /* Fast path: center 2x2 sub-tiles of each 4x4 block never need corner rounding */
-    if ((sx == 1u || sx == 2u) && (sy == 1u || sy == 2u)) {
-        return c;
-    }
-
-    /* Determine which horizontal & vertical macro edge this border sub-tile leans toward */
-    mx_h = (sx <= 1u) ? (uint8_t)((mx - 1u) & 63u) : (uint8_t)((mx + 1u) & 63u);
-    my_v = (sy <= 1u)
-         ? ((my == 0u) ? (uint8_t)(HEARTH_ATLAS_H - 1u) : (uint8_t)(my - 1u))
-         : ((my + 1u >= (uint8_t)HEARTH_ATLAS_H) ? 0u : (uint8_t)(my + 1u));
-
-    ch = GLOBE_MACRO_CHAR(mx_h, my);
-    cv = GLOBE_MACRO_CHAR(mx, my_v);
-
-    /* Only round when BOTH adjacent cardinal macro neighbors differ from center cell */
-    if (ch == c || cv == c) {
-        return c;
-    }
-
-    w_c = globe_is_macro_water(c);
-    w_h = globe_is_macro_water(ch);
-    w_v = globe_is_macro_water(cv);
+/* Shared corner/bevel resolver once ch != c && cv != c are known */
+static char globe_round_corner(char c, char ch, char cv, uint8_t sx, uint8_t sy, uint8_t mx, uint8_t my) {
+    uint8_t w_c = GLOBE_IS_WATER_CHAR(c) ? 1u : 0u;
+    uint8_t w_h = GLOBE_IS_WATER_CHAR(ch) ? 1u : 0u;
+    uint8_t w_v = GLOBE_IS_WATER_CHAR(cv) ? 1u : 0u;
+    uint8_t bias;
 
     /* True corner sub-tiles (0,0), (3,0), (0,3), (3,3): always round 90-degree staircase corners */
     if ((sx == 0u || sx == 3u) && (sy == 0u || sy == 3u)) {
@@ -1432,10 +1452,9 @@ static char globe_smooth_macro_char(uint16_t x, uint16_t y) {
         return c;
     }
 
-    /* Adjacent edge bevel sub-tiles (1,0), (2,0), (0,1), (3,1), etc.:
-     * Extend gentle organic curvature onto one side of a 90-degree corner so long
-     * coastlines sweep naturally instead of stepping at uniform 45-degree angles! */
-    bias = (uint8_t)((mx * 7u + my * 13u) & 3u);
+    /* Adjacent edge bevel sub-tiles (1,0), (2,0), (0,1), (3,1), etc.: multiply-free bias */
+    bias = (uint8_t)(((((uint16_t)mx << 3) - (uint16_t)mx) +
+                      (((uint16_t)my << 3) + ((uint16_t)my << 2) + (uint16_t)my)) & 3u);
     if (ch == cv || (w_h && w_v && !w_c) || (!w_h && !w_v && w_c)) {
         char fill = (ch == cv) ? ch
                   : (w_h && w_v) ? ((ch == 's' || ch == 'r') ? ch : cv)
@@ -1448,6 +1467,43 @@ static char globe_smooth_macro_char(uint16_t x, uint16_t y) {
         }
     }
     return c;
+}
+
+/* Organic sub-tile rounding for 4x4 world macro blocks:
+ * Eliminates giant 64px staircases along coastlines & biome borders while preserving
+ * 100% deterministic collision/visual parity and near-zero CPU overhead on 65816/68000! */
+static char globe_smooth_macro_char(uint16_t x, uint16_t y) {
+    uint8_t sx = (uint8_t)(x & 3u);
+    uint8_t sy = (uint8_t)(y & 3u);
+    uint8_t mx = (uint8_t)(x >> 2);
+    uint8_t my = (uint8_t)(y >> 2);
+    uint16_t row_off = (uint16_t)(((uint16_t)my << 6) + (uint16_t)my);
+    const char *row_cur = &GLOBE_MACRO_ROWS[0][0] + row_off;
+    char c = row_cur[mx];
+    uint8_t mx_h, my_v;
+    char ch, cv;
+
+    /* Fast path: center 2x2 sub-tiles of each 4x4 block never need corner rounding */
+    if ((sx == 1u || sx == 2u) && (sy == 1u || sy == 2u)) {
+        return c;
+    }
+
+    /* Check horizontal neighbor FIRST — ~75% of border cells return immediately without touching my_v! */
+    mx_h = (sx <= 1u) ? (uint8_t)((mx - 1u) & 63u) : (uint8_t)((mx + 1u) & 63u);
+    ch = row_cur[mx_h];
+    if (ch == c) {
+        return c;
+    }
+
+    my_v = (sy <= 1u)
+         ? ((my == 0u) ? (uint8_t)(HEARTH_ATLAS_H - 1u) : (uint8_t)(my - 1u))
+         : ((my + 1u >= (uint8_t)HEARTH_ATLAS_H) ? 0u : (uint8_t)(my + 1u));
+    cv = GLOBE_MACRO_CHAR(mx, my_v);
+    if (cv == c) {
+        return c;
+    }
+
+    return globe_round_corner(c, ch, cv, sx, sy, mx, my);
 }
 
 static uint8_t globe_base_bg1(char c, uint16_t x, uint16_t y, uint8_t hash) {
@@ -1552,16 +1608,28 @@ uint8_t hearth_globe_col(uint16_t tx, uint16_t ty) {
     return col;
 }
 
-/* Batch horizontal globe metatile streamer (hoists constant Y & Y-band checks!) */
+/* Batch horizontal globe metatile streamer (hoists constant Y, macro rows & Y-band checks!) */
 void hearth_globe_stream_row(uint16_t wx0, uint16_t wy, uint8_t count, uint8_t *dst_meta) {
     uint16_t y = wy;
     uint16_t x = (uint16_t)(wx0 & 255u);
-    uint16_t y_h, y_s;
-    uint8_t k, y_band, bg1, bg2, col, hash;
+    uint16_t y_h, y_s, off_cur, off_v;
+    uint8_t k, y_band, bg1, bg2, col, hash, sy, my, my_v, sy_mid;
+    const char *row_cur;
+    const char *row_v;
 
     while (y >= HEARTH_GLOBE_H) y = (uint16_t)(y - HEARTH_GLOBE_H);
-    y_h  = (uint16_t)(y + (y << 2) + (y << 1));
-    y_s  = (uint16_t)(y >> 3);
+    y_h = (uint16_t)(y + (y << 2) + (y << 1));
+    y_s = (uint16_t)(y >> 3);
+    sy  = (uint8_t)(y & 3u);
+    my  = (uint8_t)(y >> 2);
+    sy_mid = (sy == 1u || sy == 2u) ? 1u : 0u;
+    my_v = (sy <= 1u)
+         ? ((my == 0u) ? (uint8_t)(HEARTH_ATLAS_H - 1u) : (uint8_t)(my - 1u))
+         : ((my + 1u >= (uint8_t)HEARTH_ATLAS_H) ? 0u : (uint8_t)(my + 1u));
+    off_cur = (uint16_t)(((uint16_t)my << 6) + (uint16_t)my);
+    off_v   = (uint16_t)(((uint16_t)my_v << 6) + (uint16_t)my_v);
+    row_cur = &GLOBE_MACRO_ROWS[0][0] + off_cur;
+    row_v   = &GLOBE_MACRO_ROWS[0][0] + off_v;
 
     /* Classify Y-band ONCE for the entire row! (0 = zero landmarks in this row!) */
     if (y >= 64u && y <= 118u) {
@@ -1573,10 +1641,25 @@ void hearth_globe_stream_row(uint16_t wx0, uint16_t wy, uint8_t count, uint8_t *
     }
 
     for (k = 0u; k < count; k++) {
-        char c = globe_smooth_macro_char(x, y);
-        hash = (uint8_t)(((x + (x << 2)) ^ y_h ^ ((x >> 2) + y_s)) & 15u);
-        bg1  = globe_base_bg1(c, x, y, hash);
-        bg2  = O_NONE;
+        uint8_t sx = (uint8_t)(x & 3u);
+        uint8_t mx = (uint8_t)(x >> 2);
+        char c = row_cur[mx];
+        if (!(sy_mid && (sx == 1u || sx == 2u))) {
+            uint8_t mx_h = (sx <= 1u) ? (uint8_t)((mx - 1u) & 63u) : (uint8_t)((mx + 1u) & 63u);
+            char ch = row_cur[mx_h];
+            if (ch != c) {
+                char cv = row_v[mx];
+                if (cv != c) {
+                    c = globe_round_corner(c, ch, cv, sx, sy, mx, my);
+                }
+            }
+        }
+        bg1 = GLOBE_CHAR_FIXED_BG1[(uint8_t)c & 127u];
+        if (bg1 == 255u) {
+            hash = (uint8_t)(((x + (x << 2)) ^ y_h ^ ((x >> 2) + y_s)) & 15u);
+            bg1  = globe_base_bg1(c, x, y, hash);
+        }
+        bg2 = O_NONE;
         if (y_band == 1u) {
             if (x >= 68u && x <= 148u) {
                 globe_apply_heartland(x, y, &bg1, &bg2, &col);
@@ -1592,16 +1675,24 @@ void hearth_globe_stream_row(uint16_t wx0, uint16_t wy, uint8_t count, uint8_t *
     }
 }
 
-/* Batch vertical globe metatile streamer (hoists constant X & X-band checks!) */
+/* Batch vertical globe metatile streamer (hoists constant X, macro col & X-band checks!) */
 void hearth_globe_stream_col(uint16_t wx, uint16_t wy0, uint8_t count, uint8_t *dst_meta) {
     uint16_t x = (uint16_t)(wx & 255u);
     uint16_t y = wy0;
-    uint16_t x_h, x_s;
-    uint8_t  k, x_band, bg1, bg2, col, hash;
+    uint16_t x_h, x_s, row_off;
+    uint8_t  k, x_band, bg1, bg2, col, hash, sx, mx, mx_h, sx_mid, my, sy;
+    const char *base_ptr = &GLOBE_MACRO_ROWS[0][0];
 
     while (y >= HEARTH_GLOBE_H) y = (uint16_t)(y - HEARTH_GLOBE_H);
     x_h = (uint16_t)(x + (x << 2));
     x_s = (uint16_t)(x >> 2);
+    sx  = (uint8_t)(x & 3u);
+    mx  = (uint8_t)(x >> 2);
+    sx_mid = (sx == 1u || sx == 2u) ? 1u : 0u;
+    mx_h = (sx <= 1u) ? (uint8_t)((mx - 1u) & 63u) : (uint8_t)((mx + 1u) & 63u);
+    my = (uint8_t)(y >> 2);
+    sy = (uint8_t)(y & 3u);
+    row_off = (uint16_t)(((uint16_t)my << 6) + (uint16_t)my);
 
     /* Classify X-band ONCE for the entire column! (0 = zero landmarks in this column!) */
     if (x >= 68u && x <= 148u) {
@@ -1614,10 +1705,29 @@ void hearth_globe_stream_col(uint16_t wx, uint16_t wy0, uint8_t count, uint8_t *
     }
 
     for (k = 0u; k < count; k++) {
-        char c = globe_smooth_macro_char(x, y);
-        hash = (uint8_t)((x_h ^ (y + (y << 2) + (y << 1)) ^ (x_s + (y >> 3))) & 15u);
-        bg1  = globe_base_bg1(c, x, y, hash);
-        bg2  = O_NONE;
+        char c = base_ptr[row_off + mx];
+        if (!(sx_mid && (sy == 1u || sy == 2u))) {
+            char ch = base_ptr[row_off + mx_h];
+            if (ch != c) {
+                uint16_t off_v;
+                char cv;
+                if (sy <= 1u) {
+                    off_v = (my == 0u) ? (uint16_t)((HEARTH_ATLAS_H - 1u) * 65u) : (uint16_t)(row_off - 65u);
+                } else {
+                    off_v = (my + 1u >= (uint8_t)HEARTH_ATLAS_H) ? 0u : (uint16_t)(row_off + 65u);
+                }
+                cv = base_ptr[off_v + mx];
+                if (cv != c) {
+                    c = globe_round_corner(c, ch, cv, sx, sy, mx, my);
+                }
+            }
+        }
+        bg1 = GLOBE_CHAR_FIXED_BG1[(uint8_t)c & 127u];
+        if (bg1 == 255u) {
+            hash = (uint8_t)((x_h ^ (y + (y << 2) + (y << 1)) ^ (x_s + (y >> 3))) & 15u);
+            bg1  = globe_base_bg1(c, x, y, hash);
+        }
+        bg2 = O_NONE;
         if (x_band == 1u) {
             if (y >= 64u && y <= 118u) {
                 globe_apply_heartland(x, y, &bg1, &bg2, &col);
@@ -1634,7 +1744,17 @@ void hearth_globe_stream_col(uint16_t wx, uint16_t wy0, uint8_t count, uint8_t *
         }
         *dst_meta++ = (bg2 != O_NONE) ? (uint8_t)255u : ((bg1 < 64u) ? bg1 : (uint8_t)T_WORLD_OCEAN);
         y++;
-        if (y >= HEARTH_GLOBE_H) y = 0u;
+        sy++;
+        if (sy >= 4u) {
+            sy = 0u;
+            my++;
+            row_off = (uint16_t)(row_off + 65u);
+            if (y >= HEARTH_GLOBE_H) {
+                y = 0u;
+                my = 0u;
+                row_off = 0u;
+            }
+        }
     }
 }
 
@@ -1787,7 +1907,7 @@ static void build_zone_sunhill_market(uint8_t *bg1, uint8_t *bg2, uint8_t *col) 
     int x, y, hash;
     uint16_t i;
     static const int8_t trees[][2] = {
-        {4, 10}, {4, 21}, {39, 10}, {39, 21}, {10, 24}, {33, 24}
+        {4, 10}, {4, 15}, {4, 21}, {39, 10}, {39, 15}, {39, 21}
     };
 
     hearth_memset(bg2, O_NONE, (uint16_t)HEARTH_MAP_CELLS);

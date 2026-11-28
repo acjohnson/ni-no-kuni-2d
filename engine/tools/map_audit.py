@@ -1532,6 +1532,12 @@ def audit_local_zone(zone, cells, all_zones_by_id, inbound_spawns, meta_names, m
                     if not found_oak:
                         add_issue("ERROR", "OVERLAY", "FLOATING_OAK_CROWN", x, y,
                                   "O_OAK_CROWN has no T_HOLLOW_OAK or T_TREE_TRUNK anchor below")
+                # Tree canopies must never overhang water, bridges, or stone roads (causes opaque grass box on SNES/Genesis!)
+                if bg2 in (O_CANOPY_TL, O_CANOPY_TR, O_CANOPY_BL, O_CANOPY_BR,
+                           O_MAPLE_TL, O_MAPLE_TR, O_MAPLE_MID, O_MAPLE_TOP, O_PINE_TOP, O_OAK_CROWN):
+                    if bg1 in (WATER_TILES | {T_BRIDGE, T_COBBLE, T_ROCKY_PATH, T_RAIL_TRACK, T_STONE_STAIRS}):
+                        add_issue("ERROR", "OVERLAY", "CANOPY_OVER_WATER_OR_ROAD", x, y,
+                                  f"Tree canopy BG2={bg2} overhangs {T_NAMES.get(bg1, bg1)} (creates opaque grass box on SNES/Genesis)")
 
     # Pass 4: Pixel-Level Border Seam Continuity Check (water-water, aquatic-feature & prop-ground seams)
     t0_arr = meta_tiles[0]

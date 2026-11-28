@@ -2005,25 +2005,36 @@ def make_canopy_quad(quad, maple=False):
         return make_canopy_quad('BL', maple).flip_h()
 
     if maple:
-        # Full billowing left crimson-amber lobe of the Autumn Maple!
-        # Top curves smoothly up to (15, 0) where it meets O_MAPLE_TOP; right edge x=14..15 is solid y=0..14!
-        puffs = [(15, 7, 8.2), (10, 8, 6.8), (6, 9, 5.2), (14, 11, 5.4), (15, 3, 5.2)]
+        # Organic rounded storybook Autumn Maple left bough (soft russet edge, zero stiff mushroom cone!)
+        puffs = [
+            (15.0, 6.0, 8.2), (10.5, 6.8, 6.2), (7.0, 8.8, 4.6),
+            (13.5, 10.2, 5.2), (15.0, 2.5, 5.4), (11.5, 3.8, 4.2),
+        ]
+        # Soft deep-russet silhouette (c1) with subtle dark-plum accent only along underside
         for cx, cy, r in puffs:
-            t.disc(cx, cy, r, r, c0)
-        for cx, cy, r in puffs:
-            t.disc(cx, cy, r - 1.0, r - 1.0, c1)
+            t.disc(cx, cy, r, r * 0.92, c1)
         # Solid right-seam fill so TL joins O_MAPLE_MID cleanly with ZERO seam line
         t.rect(12, 1, 4, 13, c2)
-        for cx, cy, r in [(14, 6.5, 6.6), (9.5, 7.5, 5.4), (6.5, 8.5, 4.0), (14, 10.0, 4.2)]:
-            t.disc(cx, cy, r, r, c2)
-        for cx, cy, r in [(13.5, 5.0, 4.6), (9.5, 6.0, 3.8), (6.8, 7.2, 2.6)]:
-            t.disc(cx, cy, r, r, c3b)
-        for x, y in [(13, 2), (14, 2), (9, 4), (10, 4), (6, 6), (12, 7), (14, 5)]:
+        for cx, cy, r in [(14.5, 6.2, 7.0), (10.5, 7.0, 5.2), (7.5, 8.6, 3.6), (13.5, 9.6, 4.2), (14.5, 3.0, 4.4), (11.5, 4.0, 3.2)]:
+            t.disc(cx, cy, r, r * 0.9, c2)
+        # Warm burnt-orange leaf clusters with organic broken-edge dither
+        for cx, cy, r in [(14.0, 4.8, 4.8), (10.2, 5.8, 3.6), (7.8, 7.6, 2.4), (12.8, 8.2, 3.0)]:
+            t.disc(cx, cy, r, r * 0.86, c3b)
+        # Sunlit golden-amber leaf speckles near upper-left sunlit crown
+        for x, y in [(13, 2), (14, 2), (11, 3), (12, 4), (9, 5), (10, 5), (7, 7), (13, 6), (14, 7), (10, 8)]:
             t.p(x, y, c4)
-        # Shaded crimson underside rim
-        for x in range(4, 16):
+        # Gentle organic scalloped leaf edge + warm shaded underside (never a flat heavy black line!)
+        for y in range(1, 14):
+            for x in range(2, 12):
+                if t.px[y][x] == c1 and ((x * 3 + y * 5) & 3) == 0:
+                    # Break up rigid outer arc into soft leafy clusters
+                    if t.px[y][x - 1] == 0 and t.px[y - 1][x] == 0:
+                        t.p(x, y, 0)
+        for x in range(5, 16):
+            if t.px[13][x] != 0:
+                t.p(x, 13, c1 if ((x & 1) == 0) else c2)
             if t.px[14][x] != 0:
-                t.p(x, 14, c0 if x < 12 else c1)
+                t.p(x, 14, c0 if (x in (7, 8, 12, 13)) else c1)
         return t
 
     if quad == 'TL':
@@ -2091,39 +2102,51 @@ def make_oak_crown():
 def make_maple_mid():
     """Solid billowing crimson-orange Autumn Maple heart connecting TOP, TL, TR & TRUNK seamlessly!"""
     t = Tile16(TPAL_ACCENT, 2, prio=1)
-    # Full sunlit crimson-gold center puffs across y=0..14
-    t.rect(0, 0, 16, 14, 3)
-    for cx, cy, r in [(4, 4, 5.2), (12, 4, 5.2), (8, 8, 6.0), (3, 11, 4.4), (13, 11, 4.4)]:
+    t.rect(0, 0, 16, 13, 3)
+    for cx, cy, r in [(4, 4, 5.4), (12, 4, 5.4), (8, 7.5, 6.2), (3, 10.5, 4.4), (13, 10.5, 4.4)]:
         t.disc(cx, cy, r, r * 0.88, 3)
-    for cx, cy, r in [(4, 3.5, 3.4), (11.5, 3.5, 3.4), (8, 6.8, 4.2), (3.5, 9.5, 2.6), (12, 9.5, 2.6)]:
-        t.disc(cx, cy, r, r * 0.8, 4)
-    for x, y in [(3, 2), (4, 2), (11, 2), (12, 2), (7, 5), (8, 5), (9, 5), (4, 8), (11, 8)]:
+    # Soft internal leaf-layer shadow crescents so the crown reads as rich clustered autumn foliage
+    for x, y in [(5, 6), (6, 6), (10, 7), (11, 7), (2, 9), (13, 9), (7, 11), (8, 11)]:
+        t.p(x, y, 2)
+    for cx, cy, r in [(4, 3.2, 3.4), (11.5, 3.2, 3.4), (8, 6.2, 4.0), (3.5, 8.8, 2.4), (12.0, 8.8, 2.4)]:
+        t.disc(cx, cy, r, r * 0.82, 4)
+    for x, y in [(3, 2), (4, 2), (11, 2), (12, 2), (7, 4), (8, 4), (9, 5), (3, 7), (12, 7), (7, 9)]:
         t.p(x, y, 5)
-    # Shaded deep-crimson under-canopy rim resting directly over T_MAPLE_TRUNK
+    # Softly scalloped shaded russet under-canopy resting over T_MAPLE_TRUNK
     t.hline(0, 13, 16, 2)
-    t.hline(0, 14, 16, 1)
+    t.hline(0, 14, 16, 2)
     t.hline(0, 15, 16, 0)
-    for x in (2, 3, 7, 8, 12, 13):
-        t.p(x, 14, 2); t.p(x, 15, 1)
+    for x in (1, 2, 6, 7, 8, 9, 13, 14):
+        t.p(x, 14, 1)
+    for x in (3, 4, 7, 8, 11, 12):
+        t.p(x, 15, 2 if (x & 1) else 1)
     return t
 
 def make_maple_top():
-    """Rounded sunlit golden-crimson Autumn Maple crown peak curving seamlessly into O_MAPLE_MID!"""
+    """Broad, lush rounded Autumn Maple crown curving organically into O_MAPLE_MID/TL/TR (zero pointy cone!)."""
     t = Tile16(TPAL_ACCENT, 0, prio=1)
-    puffs = [(7.5, 13.5, 8.2), (4.5, 12.5, 5.4), (10.5, 12.5, 5.4), (7.5, 9.0, 5.8)]
+    # Wide, gentle dome (starts around y=5..6 instead of a narrow spike) with soft russet outer leaf clusters
+    puffs = [
+        (7.5, 13.0, 8.2), (3.8, 12.8, 5.4), (11.2, 12.8, 5.4),
+        (5.5, 9.8, 4.8), (9.8, 9.8, 4.8), (7.5, 8.8, 4.8),
+    ]
     for cx, cy, r in puffs:
-        t.disc(cx, cy, r, r * 0.86, 1)
-    for cx, cy, r in puffs:
-        t.disc(cx, cy, r - 1.0, (r - 1.0) * 0.86, 2)
-    # Solid bottom row y=14..15 across x=0..15 so it joins O_MAPLE_MID with ZERO seam!
+        t.disc(cx, cy, r, r * 0.84, 2)
+    # Solid bottom rows y=14..15 across x=0..15 so it joins O_MAPLE_MID seamlessly!
     t.rect(1, 13, 14, 3, 3)
     t.p(0, 14, 2); t.p(0, 15, 3); t.p(15, 14, 2); t.p(15, 15, 3)
-    for cx, cy, r in [(7.5, 12.5, 6.8), (4.5, 11.8, 4.2), (10.5, 11.8, 4.2), (7.5, 8.5, 4.6)]:
-        t.disc(cx, cy, r, r * 0.85, 3)
-    for cx, cy, r in [(7.5, 7.6, 3.4), (5.0, 10.6, 2.8), (10.2, 10.6, 2.8), (7.5, 11.5, 3.6)]:
-        t.disc(cx, cy, r, r * 0.8, 4)
-    for x, y in [(6, 5), (7, 5), (8, 5), (4, 9), (10, 9), (7, 10), (8, 10)]:
+    for cx, cy, r in [(7.5, 12.4, 7.0), (4.0, 12.2, 4.4), (11.0, 12.2, 4.4), (5.6, 9.6, 3.8), (9.6, 9.6, 3.8), (7.5, 8.8, 3.8)]:
+        t.disc(cx, cy, r, r * 0.82, 3)
+    for cx, cy, r in [(5.8, 8.8, 2.8), (9.4, 8.8, 2.8), (7.5, 11.2, 3.6), (4.2, 11.4, 2.4), (10.8, 11.4, 2.4)]:
+        t.disc(cx, cy, r, r * 0.78, 4)
+    # Sunlit amber-gold leaf clusters near top crest
+    for x, y in [(5, 6), (6, 6), (8, 6), (9, 6), (4, 9), (7, 9), (10, 9), (6, 11), (9, 11), (11, 10)]:
         t.p(x, y, 5)
+    # Soft organic leaf tips along top silhouette (break any smooth geometric arc)
+    for y in range(4, 12):
+        for x in range(1, 15):
+            if t.px[y][x] == 2 and t.px[y - 1][x] == 0 and ((x * 5 + y * 3) & 3) == 0:
+                t.p(x, y, 0)
     return t
 
 # ------------------------------------------------------------------------------
@@ -2744,6 +2767,7 @@ def build_all_metatiles(frame=0):
         return out_t
 
     dapple_g = make_grass(0); dapple_g.dapple_canopy()
+    autumn_bg = make_autumn_grass(0)
     M["CM_OPQ_CANOPY_TL"]   = make_opq_canopy(M["CM_OV_CANOPY_TL"], dapple_g)
     M["CM_OPQ_CANOPY_TR"]   = M["CM_OPQ_CANOPY_TL"].flip_h()
     M["CM_OPQ_CANOPY_BL"]   = make_opq_canopy(M["CM_OV_CANOPY_BL"], dapple_g)
@@ -2752,12 +2776,13 @@ def build_all_metatiles(frame=0):
     M["CM_OPQ_ROOF_EAVE"]   = eave_bg
     arch_bg = make_shrine_floor(0); arch_bg.overlay_from(M["CM_OV_SHRINE_ARCH"]); arch_bg.prio = 1
     M["CM_OPQ_SHRINE_ARCH"] = arch_bg
-    M["CM_OPQ_MAPLE_TL"]    = make_opq_canopy(M["CM_OV_MAPLE_TL"], dapple_g)
+    # Autumn Maples & Alpine Pines blend seamlessly onto exact T_AUTUMN_GRASS (no dark-green box halo!)
+    M["CM_OPQ_MAPLE_TL"]    = make_opq_canopy(M["CM_OV_MAPLE_TL"], autumn_bg)
     M["CM_OPQ_MAPLE_TR"]    = M["CM_OPQ_MAPLE_TL"].flip_h()
-    M["CM_OPQ_PINE_TOP"]    = make_opq_canopy(M["CM_OV_PINE_TOP"], dapple_g)
+    M["CM_OPQ_PINE_TOP"]    = make_opq_canopy(M["CM_OV_PINE_TOP"], autumn_bg)
     M["CM_OPQ_OAK_CROWN"]   = make_opq_canopy(M["CM_OV_OAK_CROWN"], dapple_g)
-    M["CM_OPQ_MAPLE_MID"]   = make_opq_canopy(M["CM_OV_MAPLE_MID"], dapple_g)
-    M["CM_OPQ_MAPLE_TOP"]   = make_opq_canopy(M["CM_OV_MAPLE_TOP"], dapple_g)
+    M["CM_OPQ_MAPLE_MID"]   = make_opq_canopy(M["CM_OV_MAPLE_MID"], autumn_bg)
+    M["CM_OPQ_MAPLE_TOP"]   = make_opq_canopy(M["CM_OV_MAPLE_TOP"], autumn_bg)
 
     return [M[name] for name in META_NAMES]
 

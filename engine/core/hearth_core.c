@@ -1143,6 +1143,7 @@ static void populate_zone_town_interior(HearthState *st, uint8_t zone_id) {
 void hearth_enter_zone(HearthState *st, uint8_t zone_id, uint16_t tx, uint16_t ty) {
     if (zone_id >= ZONE_COUNT) zone_id = ZONE_EVERTALE_WORLD;
     st->zone_id = zone_id;
+    st->has_dirty_tile = false;
     st->map_revision++;
     st->zone_banner_frames = 120;
     st->cam_override = false;
@@ -4767,10 +4768,13 @@ static void interact_ch1_prop(HearthState *st, int hit, int16_t ox, int16_t oy) 
             uint16_t cell = (uint16_t)((uint16_t)SHRINE_COORDS[sidx_num][1] * (uint16_t)HEARTH_MAP_W + (uint16_t)SHRINE_COORDS[sidx_num][0]);
             st->woods_shrines_mask |= bit;
             st->map_bg1[cell] = (uint8_t)T_LANTERN_POST;
+            st->dirty_tx = SHRINE_COORDS[sidx_num][0];
+            st->dirty_ty = SHRINE_COORDS[sidx_num][1];
+            st->has_dirty_tile = true;
             st->map_revision++;
-            st->flash_level = 6u;
+            st->flash_level = 4u;
             push_sfx(st, SFX_HEART_GIVE);
-            spawn_burst(st, 3, ox, (int16_t)(oy + 6), 14, 3, 11, false);
+            spawn_burst(st, 3, ox, (int16_t)(oy + 6), 10, 3, 11, false);
             spawn_ftext(st, ox, oy, "LANTERN LIT!", 3, 11, true);
             if ((st->woods_shrines_mask & 7u) == 7u) {
                 open_dialogue(st, "Rowan", SFX_TEXT_HERO,
@@ -5219,6 +5223,43 @@ static uint16_t build_explore_ppu_props_and_actors(
     (void)p;
 #endif
 
+    /* Fast path for 256x192 Evertale Toroidal Globe (zero NPCs/chests/waystones/locomotive!) */
+    if (HS.is_world_map) {
+        const HearthGlobeFauna *fa = HEARTH_GLOBE_FAUNA;
+        uint8_t cur_reg = HS.world_region_id;
+
+        /* Hollow Oak Gateway Arch at Heartland (74, 108) */
+        ny = (int16_t)(108 * 16 + 10);
+        sx = world_dx(st, (int16_t)(74 * 16 + 8), cx);
+        sy = world_dy(st, ny, cy);
+        if (sx >= -24 && sx <= max_sx && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
+            OAM_SET_IDX(p, cnt, sx, sy, SPR_HOLLOW_OAK, npc_f, DIR_DOWN, OAM_FLAG_SHADOW,
+                FP_ONE, FP_ONE, AURA_NONE, 1, (int16_t)(sy - 4), 0);
+            cnt++;
+        }
+
+        /* Proximity-Streamed Biome Fauna across all 7 Continents on the Toroidal Globe */
+        for (i = 0; i < HEARTH_GLOBE_FAUNA_COUNT && cnt < (uint16_t)(HEARTH_MAX_OAM - 12); i++, fa++) {
+            int16_t sv, bob;
+            if (fa->region_id != cur_reg) continue;
+            sx = WRAP_DELTA_X((int16_t)((((int16_t)fa->tx << 4) + 8) - cx));
+            if (sx < -24 || sx > (int16_t)(max_sx + 4)) continue;
+            sy = wrap_delta_y((int16_t)((((int16_t)fa->ty << 4) + 8) - cy));
+            if (sy < -20 || sy > 244) continue;
+            sv = (int16_t)HEARTH_SIN64[((fc16 >> 2) + fa->phase) & 63u];
+            bob = (int16_t)((sv + (sv << 1)) >> 7);
+            sx = (int16_t)(sx + bob);
+            OAM_SET_IDX(p, cnt, sx, sy, fa->sprite_id,
+                (uint8_t)(((fc16 + fa->phase) >> 4) & 1u),
+                (bob < 0) ? DIR_LEFT : DIR_RIGHT,
+                (uint8_t)(OAM_FLAG_SHADOW | ((bob < 0) ? OAM_FLAG_FLIP_X : 0u)),
+                FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
+            cnt++;
+        }
+
+        return build_explore_ppu_enemies(st, p, cnt, cx, cy, max_sx);
+    }
+
     /* 1. Treasure Chest (emits dedicated SPR_CHEST_OPEN when opened!) */
     if (HS.chest.active) {
         ny = (int16_t)((int16_t)HS.chest.ty * 16 + 12);
@@ -5278,16 +5319,12 @@ static uint16_t build_explore_ppu_props_and_actors(
         }
     }
 
-    /* 2. Hollow Oak Gateway Arch Sprite in Hollow Glade, Windmill Hamlet, & Evertale Globe */
-    if (HS.zone_id == ZONE_HOLLOW_GLADE || HS.zone_id == ZONE_HAMLET || HS.zone_id == ZONE_EVERTALE_WORLD) {
+    /* 2. Hollow Oak Gateway Arch Sprite in Hollow Glade & Windmill Hamlet */
+    if (HS.zone_id == ZONE_HOLLOW_GLADE || HS.zone_id == ZONE_HAMLET) {
         if (HS.zone_id == ZONE_HOLLOW_GLADE) {
             ny = (int16_t)(12 * 16 + 4);
             sx = (int16_t)(21 * 16 + 8 - cx);
             sy = (int16_t)(ny - cy);
-        } else if (HS.zone_id == ZONE_EVERTALE_WORLD) {
-            ny = (int16_t)(108 * 16 + 10);
-            sx = world_dx(st, (int16_t)(74 * 16 + 8), cx);
-            sy = world_dy(st, ny, cy);
         } else {
             ny = (int16_t)(13 * 16 + 8);
             sx = (int16_t)(2 * 16 + 8 - cx);
@@ -5307,29 +5344,6 @@ static uint16_t build_explore_ppu_props_and_actors(
         sy = (int16_t)(ny - cy);
         if (sx >= -32 && sx <= (int16_t)(max_sx + 16) && sy >= -24 && sy <= 248 && cnt < HEARTH_MAX_OAM) {
             OAM_SET_IDX(p, cnt, sx, sy, SPR_LOCOMOTIVE, npc_f, DIR_RIGHT, OAM_FLAG_SHADOW,
-                FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
-            cnt++;
-        }
-    }
-
-    /* 2c. Proximity-Streamed Biome Fauna across all 7 Continents on the Toroidal Globe */
-    if (HS.is_world_map) {
-        const HearthGlobeFauna *fa = HEARTH_GLOBE_FAUNA;
-        uint8_t cur_reg = HS.world_region_id;
-        for (i = 0; i < HEARTH_GLOBE_FAUNA_COUNT && cnt < (uint16_t)(HEARTH_MAX_OAM - 12); i++, fa++) {
-            int16_t sv, bob;
-            if (fa->region_id != cur_reg) continue;
-            sx = WRAP_DELTA_X((int16_t)((((int16_t)fa->tx << 4) + 8) - cx));
-            if (sx < -24 || sx > (int16_t)(max_sx + 4)) continue;
-            sy = wrap_delta_y((int16_t)((((int16_t)fa->ty << 4) + 8) - cy));
-            if (sy < -20 || sy > 244) continue;
-            sv = (int16_t)HEARTH_SIN64[((fc16 >> 2) + fa->phase) & 63u];
-            bob = (int16_t)((sv + (sv << 1)) >> 7);
-            sx = (int16_t)(sx + bob);
-            OAM_SET_IDX(p, cnt, sx, sy, fa->sprite_id,
-                (uint8_t)(((fc16 + fa->phase) >> 4) & 1u),
-                (bob < 0) ? DIR_LEFT : DIR_RIGHT,
-                (uint8_t)(OAM_FLAG_SHADOW | ((bob < 0) ? OAM_FLAG_FLIP_X : 0u)),
                 FP_ONE, FP_ONE, AURA_NONE, 1, sy, 0);
             cnt++;
         }
@@ -5419,10 +5433,12 @@ static uint16_t build_explore_ppu_layer2(
         }
     }
 
-    for (i = 0; i < HEARTH_MAX_NPCS && cnt < HEARTH_MAX_OAM; i++) {
-        if (HS.npcs[i].active && HS.npcs[i].emote_frames > 0 && HS.npcs[i].emote != 0) {
-            emit_emote_oam(p, cnt++, (int16_t)(FP_PX(HS.npcs[i].fx) - cx),
-                (int16_t)(FP_PX(HS.npcs[i].fy) - 25 - cy), HS.npcs[i].emote);
+    if (!HS.is_world_map) {
+        for (i = 0; i < HEARTH_MAX_NPCS && cnt < HEARTH_MAX_OAM; i++) {
+            if (HS.npcs[i].active && HS.npcs[i].emote_frames > 0 && HS.npcs[i].emote != 0) {
+                emit_emote_oam(p, cnt++, (int16_t)(FP_PX(HS.npcs[i].fx) - cx),
+                    (int16_t)(FP_PX(HS.npcs[i].fy) - 25 - cy), HS.npcs[i].emote);
+            }
         }
     }
     for (i = 0; i < HEARTH_MAX_FIELD_ENEMIES && cnt < HEARTH_MAX_OAM; i++, e++) {
@@ -5691,8 +5707,10 @@ const HearthPpuPacket *hearth_step_60hz(HearthState *st, uint16_t pad_bits) {
 
     if (HS.hero_emote_frames > 0) HS.hero_emote_frames--; else HS.hero_emote = 0;
     if (HS.pip_emote_frames > 0) HS.pip_emote_frames--; else HS.pip_emote = 0;
-    for (i = 0; i < HEARTH_MAX_NPCS; i++) {
-        if (HS.npcs[i].emote_frames > 0) HS.npcs[i].emote_frames--; else HS.npcs[i].emote = 0;
+    if (!HS.is_world_map) {
+        for (i = 0; i < HEARTH_MAX_NPCS; i++) {
+            if (HS.npcs[i].emote_frames > 0) HS.npcs[i].emote_frames--; else HS.npcs[i].emote = 0;
+        }
     }
 
     /* Smooth zone transition fade-out / fade-in */

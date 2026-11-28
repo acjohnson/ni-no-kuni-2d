@@ -72,7 +72,15 @@ ROM_PORT_W, ROM_PORT_H = 32, 32  # 4 x 4 tiles of 8x8 = 16 tiles per character p
 MAX_ROM_TILES = 480       # Zero lossy tile merging! Fits cleanly in SNES BG1 (512 slots) & Genesis VRAM
 SNES_CG_TILE_BASE = 0     # Loaded at VRAM_BG1_GFX + 0 during MODE_INTRO (terrain re-baked on exit)
 
-# Exact HEARTH_PALETTES_RGB[2] (Villagers & Portraits palette — permanently in GEN PAL2 & SNES BG7 during dialogue!)
+# Exact HEARTH_PALETTES_RGB[1] (Hero/Warm palette — permanently in GEN PAL1)
+ROM_PORTRAIT_PAL1 = [
+    (0x00, 0x00, 0x00), (0x1F, 0x17, 0x1A), (0xF5, 0xD2, 0xB2), (0xD4, 0x9C, 0x76),
+    (0x6B, 0x3E, 0x26), (0x9C, 0x61, 0x3B), (0x2F, 0x6E, 0x49), (0x4F, 0xA1, 0x67),
+    (0xB8, 0x43, 0x33), (0xE8, 0x6A, 0x4A), (0xE8, 0xB4, 0x3C), (0xFF, 0xF1, 0xA8),
+    (0x3B, 0x59, 0x98), (0x67, 0xB7, 0xE8), (0xDD, 0xF5, 0xFF), (0x4A, 0x36, 0x2C),
+]
+
+# Exact HEARTH_PALETTES_RGB[2] (Villagers & UI palette — permanently in GEN PAL2)
 ROM_PORTRAIT_PAL2 = [
     (0x00, 0x00, 0x00), (0x1D, 0x1B, 0x22), (0xF3, 0xD1, 0xB0), (0xCE, 0x98, 0x74),
     (0xE6, 0xE2, 0xD8), (0xA5, 0xA2, 0x9E), (0xC4, 0x85, 0x2D), (0xE8, 0xB8, 0x52),
@@ -135,6 +143,27 @@ def color_dist2(c1, c2):
     db = c1[2] - c2[2]
     # Perceptual RGB weighting (human eye is most sensitive to green, then red, then blue)
     return dr * dr * 3 + dg * dg * 6 + db * db * 2
+
+
+def portrait_color_dist2(c1, c2):
+    """
+    Hue- & skin-tone-preserving perceptual color distance for 32x32 dialogue portraits.
+    Strongly penalizes false hue shifts (e.g., neutral dark shadows snapping to purple/lavender)
+    while preserving natural warm skin, hair, and clothing ramps.
+    """
+    r1, g1, b1 = c1
+    r2, g2, b2 = c2
+    rmean = (r1 + r2) >> 1
+    dr = r1 - r2
+    dg = g1 - g2
+    db = b1 - b2
+    base = (((512 + rmean) * dr * dr) >> 8) + 4 * dg * dg + (((767 - rmean) * db * db) >> 8)
+    # Chroma-difference terms (r-g, b-g, r-b) prevent warm/neutral pixels snapping to purple!
+    d_rg = (r1 - g1) - (r2 - g2)
+    d_bg = (b1 - g1) - (b2 - g2)
+    d_rb = (r1 - b1) - (r2 - b2)
+    chroma = (d_rg * d_rg + d_bg * d_bg + d_rb * d_rb) * 2
+    return base + chroma
 
 
 def median_cut_palette(color_counts, max_colors, bits):
@@ -538,34 +567,87 @@ def build_rom_headers():
 
         print(f"  Plate {idx:2d} ({name:20s}): SNES={len(s_tiles):3d}t/60c (rms={s_err:.1f}) | GEN={len(g_tiles):3d}t/45c (rms={g_err:.1f})")
 
-    # Also quantize all 10 character dialogue portraits at 32x32 (16 8x8 tiles each) onto shared PAL2!
-    def bake_portrait_32x32(raw, bits):
-        snapped_pal = [snap_rgb(*c, bits) for c in ROM_PORTRAIT_PAL2]
-        bayer = BAYER_2X2_SNES if bits == 5 else BAYER_2X2_GEN
-        # Map 32x32 RGB image to indices 1..15 with gentle 2x2 ordered dithering & crisp gilded frame
+    # Quantize all character dialogue portraits at 32x32 (16 8x8 tiles each):
+    #  - SNES:    Dedicated per-character 15-color 15-bit BGR555 palette in CGRAM PAL7!
+    #  - Genesis: Dual-palette PAL1 + PAL2 per-8x8-tile selection (30 simultaneous CRAM colors)
+    #             with hue-preserving perceptual matching (no purple shadow artifacts!).
+    PORT_BAYER_SNES = ((-2, 1), (1, -1))
+    PORT_BAYER_GEN  = ((-2, 1), (2, -2))
+
+    def bake_snes_portrait_32x32(raw):
+        # Collect interior pixels (2..29 x 2..29) for custom 12-color median-cut palette (+ 3 frame colors)
+        counts = {}
+        for y in range(2, ROM_PORT_H - 2):
+            for x in range(2, ROM_PORT_W - 2):
+                o = (y * ROM_PORT_W + x) * 3
+                rgb = snap_rgb(raw[o], raw[o + 1], raw[o + 2], 5)
+                # Slightly emphasize center face pixels (6..25) so skin/eyes get crisp dedicated ramps
+                w = 3 if (6 <= x < 26 and 5 <= y < 25) else 1
+                counts[rgb] = counts.get(rgb, 0) + w
+        # Reserve 0=transparent, 1=dark frame (#1D1B22), 2=bronze frame (#C4852D), 3=gold frame (#E8B852)
+        mc = median_cut_palette(counts, 12, 5)[1:13]
+        pal = [
+            (0x00, 0x00, 0x00),
+            snap_rgb(0x1D, 0x1B, 0x22, 5),
+            snap_rgb(0xC4, 0x85, 0x2D, 5),
+            snap_rgb(0xE8, 0xB8, 0x52, 5),
+        ] + mc
+        while len(pal) < 16:
+            pal.append(pal[-1])
+
+        # 3 rounds of weighted k-means refinement on slots 4..15 for razor-accurate face & hair colors
+        pts = []
+        for y in range(2, ROM_PORT_H - 2):
+            for x in range(2, ROM_PORT_W - 2):
+                o = (y * ROM_PORT_W + x) * 3
+                w = 3 if (6 <= x < 26 and 5 <= y < 25) else 1
+                pts.append(((raw[o], raw[o + 1], raw[o + 2]), w))
+        for _ in range(3):
+            sums = [[0, 0, 0, 0] for _ in range(16)]
+            for rgb, w in pts:
+                best_i = 1
+                best_d = 1 << 30
+                for ci in range(1, 16):
+                    d = portrait_color_dist2(rgb, pal[ci])
+                    if d < best_d:
+                        best_d = d
+                        best_i = ci
+                sums[best_i][0] += rgb[0] * w
+                sums[best_i][1] += rgb[1] * w
+                sums[best_i][2] += rgb[2] * w
+                sums[best_i][3] += w
+            for ci in range(4, 16):
+                if sums[ci][3] > 0:
+                    wt = sums[ci][3]
+                    pal[ci] = snap_rgb(int(round(sums[ci][0] / wt)),
+                                       int(round(sums[ci][1] / wt)),
+                                       int(round(sums[ci][2] / wt)), 5)
+
         idx_img = [1] * (ROM_PORT_W * ROM_PORT_H)
         for y in range(ROM_PORT_H):
             for x in range(ROM_PORT_W):
                 if x == 0 or x == ROM_PORT_W - 1 or y == 0 or y == ROM_PORT_H - 1:
-                    idx_img[y * ROM_PORT_W + x] = 6 if ((x + y) & 1) == 0 else 7
+                    idx_img[y * ROM_PORT_W + x] = 2 if ((x + y) & 1) == 0 else 3
                     continue
                 if x == 1 or x == ROM_PORT_W - 2 or y == 1 or y == ROM_PORT_H - 2:
                     idx_img[y * ROM_PORT_W + x] = 1
                     continue
                 o = (y * ROM_PORT_W + x) * 3
-                d = bayer[y & 1][x & 1]
-                r = max(0, min(255, raw[o] + d))
-                g = max(0, min(255, raw[o + 1] + d))
-                b = max(0, min(255, raw[o + 2] + d))
+                d = PORT_BAYER_SNES[y & 1][x & 1]
+                rgb = (
+                    max(0, min(255, raw[o] + d)),
+                    max(0, min(255, raw[o + 1] + d)),
+                    max(0, min(255, raw[o + 2] + d)),
+                )
                 best_i = 1
                 best_d = 1 << 30
                 for ci in range(1, 16):
-                    dist = color_dist2((r, g, b), snapped_pal[ci])
+                    dist = portrait_color_dist2(rgb, pal[ci])
                     if dist < best_d:
                         best_d = dist
                         best_i = ci
                 idx_img[y * ROM_PORT_W + x] = best_i
-        # Slice row-major into 16 8x8 tiles (4 cols x 4 rows)
+
         tiles16 = []
         for ty in range(4):
             for tx in range(4):
@@ -574,15 +656,69 @@ def build_rom_headers():
                     ro = (ty * 8 + py) * ROM_PORT_W + tx * 8
                     t[py * 8:py * 8 + 8] = idx_img[ro:ro + 8]
                 tiles16.append(bytes(t))
-        return tiles16
+        pal_bgr555 = [rgb888_to_bgr555(*c) for c in pal]
+        return tiles16, pal_bgr555
+
+    def bake_gen_portrait_32x32(raw):
+        snapped_p1 = [snap_rgb(*c, 3) for c in ROM_PORTRAIT_PAL1]
+        snapped_p2 = [snap_rgb(*c, 3) for c in ROM_PORTRAIT_PAL2]
+        # Avoid snapping dark backgrounds to bright lavender (PAL2[14]) or violet (PAL2[13]) unless source is truly purple
+        tiles16 = []
+        pal_mask = 0
+        for ty in range(4):
+            for tx in range(4):
+                best_choice = None
+                for use_p1, spal, f_dark, f_b, f_g in (
+                    (0, snapped_p2, 1, 6, 7),
+                    (1, snapped_p1, 1, 5, 10),
+                ):
+                    t = bytearray(64)
+                    err = 0
+                    for py in range(8):
+                        y = ty * 8 + py
+                        for px in range(8):
+                            x = tx * 8 + px
+                            if x == 0 or x == ROM_PORT_W - 1 or y == 0 or y == ROM_PORT_H - 1:
+                                t[py * 8 + px] = f_b if ((x + y) & 1) == 0 else f_g
+                                continue
+                            if x == 1 or x == ROM_PORT_W - 2 or y == 1 or y == ROM_PORT_H - 2:
+                                t[py * 8 + px] = f_dark
+                                continue
+                            o = (y * ROM_PORT_W + x) * 3
+                            src_rgb = (raw[o], raw[o + 1], raw[o + 2])
+                            d = PORT_BAYER_GEN[y & 1][x & 1]
+                            rgb = (
+                                max(0, min(255, src_rgb[0] + d)),
+                                max(0, min(255, src_rgb[1] + d)),
+                                max(0, min(255, src_rgb[2] + d)),
+                            )
+                            best_i = 1
+                            best_d = 1 << 30
+                            for ci in range(1, 16):
+                                dist = portrait_color_dist2(rgb, spal[ci])
+                                if dist < best_d:
+                                    best_d = dist
+                                    best_i = ci
+                            t[py * 8 + px] = best_i
+                            err += portrait_color_dist2(src_rgb, spal[best_i])
+                    if best_choice is None or err < best_choice[0]:
+                        best_choice = (err, use_p1, bytes(t))
+                _, use_p1, best_t = best_choice
+                if use_p1:
+                    pal_mask |= (1 << (ty * 4 + tx))
+                tiles16.append(best_t)
+        return tiles16, pal_mask
 
     snes_portraits = []
     gen_portraits = []
     for idx, (name, fname) in enumerate(PORTRAITS):
-        raw = read_rgb(os.path.join(IMG_DIR, fname), ROM_PORT_W, ROM_PORT_H, crisp_16bit=True)
-        snes_portraits.append((idx, name, bake_portrait_32x32(raw, bits=5)))
-        gen_portraits.append((idx, name, bake_portrait_32x32(raw, bits=3)))
-    print(f"  Baked {len(PORTRAITS)} 32x32 PAL2 dialogue portraits (16 tiles each) for Genesis & SNES!")
+        # Clean Lanczos portrait downsample (no oversaturated unsharp halos on faces!)
+        raw = read_rgb(os.path.join(IMG_DIR, fname), ROM_PORT_W, ROM_PORT_H, crisp_16bit=False)
+        s_tiles16, s_pal_bgr = bake_snes_portrait_32x32(raw)
+        g_tiles16, g_pmask = bake_gen_portrait_32x32(raw)
+        snes_portraits.append((idx, name, s_tiles16, s_pal_bgr))
+        gen_portraits.append((idx, name, g_tiles16, g_pmask))
+    print(f"  Baked {len(PORTRAITS)} 32x32 dialogue portraits (SNES per-char BGR555 PAL7 + Genesis dual PAL1/PAL2)!")
 
     # 1. Write C header: SNES externs + tile counts; Genesis 3-palette arrays + pre-encoded map attr words
     with open(OUT_ROM, "w") as f:
@@ -606,7 +742,8 @@ def build_rom_headers():
         f.write("/* SNES places each 60-color plate in its own SUPERFREE LoROM bank (cinema_cg_snes.asm) */\n")
         for idx, name, _tiles, _map, _pals in snes_baked:
             f.write(f"extern char cg_plate{idx}_tiles, cg_plate{idx}_map, cg_plate{idx}_pal; /* {name} */\n")
-        f.write("extern char snes_portrait_tiles; /* 10 x 16 4bpp PAL2 32x32 character portraits (5120 B) */\n")
+        f.write("extern char snes_portrait_tiles; /* 11 x 16 4bpp 32x32 character portraits (5632 B) */\n")
+        f.write("extern char snes_portrait_pals;  /* 11 x 16 BGR555 per-character CGRAM PAL7 palettes (352 B) */\n")
         f.write("#else\n\n")
 
         f.write("static const uint16_t CINEMA_ROM_TILE_COUNTS[CINEMA_ROM_PLATE_COUNT] = {\n    ")
@@ -649,9 +786,12 @@ def build_rom_headers():
         for idx in range(len(ROM_PLATES)):
             f.write(f"    CINEMA_ROM_MAP_{idx},\n")
         f.write("};\n\n")
-        f.write(f"/* {len(gen_portraits)} x 32x32 (16 8x8 tiles = 128 u32s) PAL2 character portraits for Genesis dialogue */\n")
+        f.write(f"/* {len(gen_portraits)} x 32x32 (16 8x8 tiles = 128 u32s) dual-palette (PAL1/PAL2) character portraits for Genesis */\n")
+        f.write("static const uint16_t GEN_PORTRAIT_PAL_MASK[ROM_PORTRAIT_COUNT] = {\n    ")
+        f.write(", ".join(f"0x{pmask:04X}u" for _idx, _name, _tiles16, pmask in gen_portraits))
+        f.write("\n};\n")
         f.write("static const uint32_t GEN_PORTRAIT_TILES[ROM_PORTRAIT_COUNT][128] = {\n")
-        for idx, name, tiles16 in gen_portraits:
+        for idx, name, tiles16, _pmask in gen_portraits:
             f.write(f"    /* {idx}: {name} */\n    {{\n")
             for t in tiles16:
                 packed = pack_genesis_tile(t)
@@ -691,15 +831,21 @@ def build_rom_headers():
                 f.write('.dw ' + ','.join(f'${v:04X}' for v in pals_bgr[p][8:]) + '\n')
             f.write('.ends\n\n')
 
-        f.write(f'; --- {len(snes_portraits)} x 32x32 PAL2 Character Dialogue Portraits ({len(snes_portraits) * 16} 4bpp tiles = {len(snes_portraits) * 512} bytes) ---\n')
+        f.write(f'; --- {len(snes_portraits)} x 32x32 Per-Character BGR555 Dialogue Portraits ({len(snes_portraits) * 16} 4bpp tiles = {len(snes_portraits) * 512} bytes + {len(snes_portraits) * 32} B palettes) ---\n')
         f.write('.section ".rodata_portraits" superfree\n\n')
         f.write('snes_portrait_tiles:\n')
-        for idx, name, tiles16 in snes_portraits:
+        for idx, name, tiles16, _pal_bgr in snes_portraits:
             f.write(f'; Portrait {idx}: {name}\n')
             for t in tiles16:
                 packed = pack_snes_tile(t)
                 f.write('.db ' + ','.join(f'${b:02X}' for b in packed[:16]) + '\n')
                 f.write('.db ' + ','.join(f'${b:02X}' for b in packed[16:]) + '\n')
+        f.write('snes_portrait_tiles_end:\n\n')
+        f.write('snes_portrait_pals:\n')
+        for idx, name, _tiles16, pal_bgr in snes_portraits:
+            f.write(f'; Portrait {idx} Palette: {name}\n')
+            f.write('.dw ' + ','.join(f'${v:04X}' for v in pal_bgr[:8]) + '\n')
+            f.write('.dw ' + ','.join(f'${v:04X}' for v in pal_bgr[8:]) + '\n')
         f.write('.ends\n\n')
 
 

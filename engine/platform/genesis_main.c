@@ -1016,11 +1016,11 @@ static void bake_all_sprites(void) {
     p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_BARNABY * 4);
 
-    /* 34: SPR_NPC_MAPLE (Baker Maple — Kerchief & Flour Apron - PAL2) */
+    /* 34: SPR_NPC_MAPLE (Baker Maple — Golden Kerchief, Auburn Hair, Blue Dress & Cream Apron - PAL2) */
     p16_clear();
-    p16_rect(4, 1, 8, 2, 15); p16_rect(4, 3, 8, 2, 11);
+    p16_rect(4, 1, 8, 2, 7); p16_rect(4, 3, 8, 2, 12);
     p16_rect(5, 5, 6, 3, 2); g_pix16[6*16+6]=1; g_pix16[6*16+9]=1;
-    p16_rect(4, 8, 8, 6, 12); p16_rect(6, 9, 4, 5, 15);
+    p16_rect(4, 8, 8, 6, 8); p16_rect(6, 9, 4, 5, 15);
     p16_rect(5, 14, 2, 2, 11); p16_rect(9, 14, 2, 2, 11);
     upload_pix16_sprite_to_vram(VRAM_SPR_BASE + SPR_NPC_MAPLE * 4);
 
@@ -1782,6 +1782,32 @@ static u16 g_prev_cram0[16];
 static u16 g_prev_cram3[16];
 static u8  g_prev_cram_valid = 0;
 
+static void patch_genesis_single_tile(u16 mx, u16 my) {
+    u16 mw, mh, row_off, n_off, s_off, mx_l, mx_r, idx;
+    const u8 *p1;
+    const u8 *p2;
+    if (g_hearth.is_world_map) return;
+    mw = (u16)(g_hearth.map_w ? g_hearth.map_w : HEARTH_MAP_W);
+    mh = (u16)(g_hearth.map_h ? g_hearth.map_h : HEARTH_MAP_H);
+    if (mx >= mw || my >= mh) return;
+    p1 = g_hearth.map_bg1;
+    p2 = g_hearth.map_bg2;
+    row_off = (u16)(my * mw);
+    n_off = (my > 0u) ? (u16)((my - 1u) * mw) : row_off;
+    s_off = ((u16)(my + 1u) < mh) ? (u16)((my + 1u) * mw) : row_off;
+    mx_l = (mx > 0u) ? (u16)(mx - 1u) : mx;
+    mx_r = ((u16)(mx + 1u) < mw) ? (u16)(mx + 1u) : mx;
+    idx = (u16)(row_off + mx);
+    g_gen_bg_meta[idx] = hearth_resolve_chrono_meta(
+        p1[idx], p2[idx],
+        p1[(u16)(n_off + mx)], p1[(u16)(s_off + mx)],
+        p1[(u16)(row_off + mx_l)], p1[(u16)(row_off + mx_r)],
+        p1[(u16)(n_off + mx_l)], p1[(u16)(n_off + mx_r)],
+        p1[(u16)(s_off + mx_l)], p1[(u16)(s_off + mx_r)],
+        mx, my, hearth_local_tile_flags(p1, mx, my, mw, mh));
+    write_metatile((s16)mx, (s16)my);
+}
+
 static void draw_full_world_viewport(s16 cam_x, s16 cam_y) {
     s16 mx0 = (s16)((cam_x >> 4) - 2);
     s16 my0 = (s16)((cam_y >> 4) - 2);
@@ -2254,11 +2280,16 @@ static void update_window_ui(const HearthPpuPacket *ppu) {
                     gen_queue_rom_tiles_dma(GEN_PORTRAIT_TILES[pid - 1u], VRAM_PORTRAIT_BASE, ROM_PORTRAIT_TILES);
                 }
             }
-            for (u16 py = 0u; py < 4u; py++) {
-                for (u16 px = 0u; px < 4u; px++) {
-                    u16 pt = (u16)(VRAM_PORTRAIT_BASE + (py << 2) + px);
-                    VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(PAL2, 1, 0, 0, pt),
-                        (u16)(2u + px), (u16)(22u + py));
+            {
+                u16 pmask = GEN_PORTRAIT_PAL_MASK[pid - 1u];
+                for (u16 py = 0u; py < 4u; py++) {
+                    for (u16 px = 0u; px < 4u; px++) {
+                        u16 tidx = (u16)((py << 2) + px);
+                        u16 pt = (u16)(VRAM_PORTRAIT_BASE + tidx);
+                        u16 ppal = ((pmask & (u16)(1u << tidx)) != 0u) ? PAL1 : PAL2;
+                        VDP_setTileMapXY(WINDOW, TILE_ATTR_FULL(ppal, 1, 0, 0, pt),
+                            (u16)(2u + px), (u16)(22u + py));
+                    }
                 }
             }
         }
@@ -2559,26 +2590,26 @@ static void render_sprites(const HearthPpuPacket *ppu) {
         return;
     }
 
-    /* Hardware SAT Spark Burst Particles (Lamp Ignition, Chests, Heart Mending) — drawn in front! */
+    /* Hardware SAT Spark Burst Particles (Lamp Ignition, Chests, Heart Mending) — crisp 8x8 embers! */
     if (g_hearth.active_particles > 0u) {
         u8 burst_drawn = 0u;
-        for (u16 pi = 0u; pi < HEARTH_MAX_PARTICLES && burst_drawn < 12u && count < 56u; pi++) {
+        for (u16 pi = 0u; pi < HEARTH_MAX_PARTICLES && burst_drawn < 8u && count < 56u; pi++) {
             const HearthParticle *p = &g_hearth.particles[pi];
             s16 px, py;
             u8 hf, vf;
             u16 ppal;
             if (!p->active) continue;
             if ((p->kind != 3u && p->kind != 4u) || p->size < 3u) continue;
-            px = (s16)(FROM_FP(p->fx) + (p->screen_space ? ppu->shake_x : (s16)(-ppu->cam_x + ppu->shake_x)) - 8);
-            py = (s16)(FROM_FP(p->fy) + (p->screen_space ? ppu->shake_y : (s16)(-ppu->cam_y + ppu->shake_y)) - 8);
-            if (px < -16 || px >= 320 || py < -16 || py >= 224) continue;
+            px = (s16)(FROM_FP(p->fx) + (p->screen_space ? ppu->shake_x : (s16)(-ppu->cam_x + ppu->shake_x)) - 4);
+            py = (s16)(FROM_FP(p->fy) + (p->screen_space ? ppu->shake_y : (s16)(-ppu->cam_y + ppu->shake_y)) - 4);
+            if (px < -8 || px >= 320 || py < -8 || py >= 224) continue;
             if (g_win_layout >= 2u && py >= 148) continue;
             if (g_win_layout == 0u && py < 8) continue;
             hf = (u8)(((g_hearth.frame_count >> 2) + pi) & 1u);
             vf = (u8)(((g_hearth.frame_count >> 3) + pi) & 1u);
             ppal = (((g_hearth.frame_count >> 1) + pi) & 1u) ? PAL3 : PAL1;
-            VDP_setSpriteFull(count, px, py, SPRITE_SIZE(2, 2),
-                TILE_ATTR_FULL(ppal, 1, vf, hf, VRAM_SPR_BASE + SPR_EMOTE_SPARK * 4u),
+            VDP_setSpriteFull(count, px, py, SPRITE_SIZE(1, 1),
+                TILE_ATTR_FULL(ppal, 1, vf, hf, VRAM_BG_MOTE_TILE),
                 (u8)(count + 1u));
             count++;
             burst_drawn++;
@@ -3909,7 +3940,7 @@ int main(bool hard_reset) {
             g_last_map_rev = g_hearth.map_revision;
             g_last_zone_id = g_hearth.zone_id;
             did_scene_transition = 1u;
-            if (map_changed) {
+            if (map_changed && !(same_zone_edit && g_hearth.has_dirty_tile)) {
                 gen_invalidate_globe_cache();
                 bake_genesis_zone_metas();
             }
@@ -3934,8 +3965,12 @@ int main(bool hard_reset) {
                 gen_vdp_begin_bulk();
                 update_window_ui(ppu);
                 gen_vdp_end_bulk();
+            } else if (same_zone_edit && g_hearth.has_dirty_tile) {
+                /* O(1) zero-pause single-tile patch (fluid 60fps shrine lantern ignition!) */
+                patch_genesis_single_tile((u16)g_hearth.dirty_tx, (u16)g_hearth.dirty_ty);
+                g_hearth.has_dirty_tile = false;
             } else if (same_zone_edit) {
-                /* Seamless in-place tile update (e.g. lighting a Whispering Woods shrine lantern!) */
+                /* Seamless in-place tile update */
                 draw_full_world_viewport(ppu->cam_x, ppu->cam_y);
             } else {
                 if (!g_hearth.is_world_map && ppu->has_mountain_vista && g_vista_vram_dirty) {
