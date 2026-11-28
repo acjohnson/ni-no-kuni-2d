@@ -2974,10 +2974,28 @@ def compile_console_bank(frames_meta, max_tiles, is_genesis=False):
     # grass/stone/water sub-variants (typical Hamming distance <= 6 px out of 64!).
     if len(static_tiles) > max_tiles:
         remap = list(range(len(static_tiles)))
-        # Protect visually critical state-toggle & feathered edge-transition metatiles from fuzzy folding
-        protected_tids = set()
-        for pname in (
-            "CM_LAMP_UNLIT", "CM_LAMP_COBBLE",
+        # Protect primary repeating ground tiles, feathered edge transitions, and state-toggle props
+        base_ground_tids = set()
+        for gname in (
+            "T_GRASS", "T_GRASS_ALT", "T_DIRT", "T_COBBLE", "T_ROCKY_PATH",
+            "T_AUTUMN_GRASS", "T_WOOD_FLOOR",
+            "T_WORLD_OCEAN", "T_WORLD_SHALLOW", "T_WORLD_BEACH", "T_WORLD_SAND",
+            "T_WORLD_SNOW", "T_WORLD_JUNGLE",
+        ):
+            if gname in META_IDX:
+                for qinfo in meta_quads[META_IDX[gname]]:
+                    base_ground_tids.add(qinfo[0])
+
+        protected_tids = set(base_ground_tids)
+        # Foreground prop tiles must never be dropped AND must never absorb generic ground tiles!
+        no_absorb_tids = set()
+        for pname in ("CM_LAMP_UNLIT", "CM_LAMP_COBBLE"):
+            if pname in META_IDX:
+                for qinfo in meta_quads[META_IDX[pname]]:
+                    protected_tids.add(qinfo[0])
+                    if qinfo[0] not in base_ground_tids:
+                        no_absorb_tids.add(qinfo[0])
+        for ename in (
             "CM_OCEAN_V1",
             "CM_COBBLE_EDGE_N", "CM_COBBLE_EDGE_S", "CM_COBBLE_EDGE_W", "CM_COBBLE_EDGE_E",
             "CM_COBBLE_CORNER_NW", "CM_COBBLE_CORNER_NE", "CM_COBBLE_CORNER_SW", "CM_COBBLE_CORNER_SE",
@@ -2986,8 +3004,8 @@ def compile_console_bank(frames_meta, max_tiles, is_genesis=False):
             "CM_SHOAL_NW", "CM_SHOAL_NE", "CM_SHOAL_SW", "CM_SHOAL_SE",
             "CM_SHOAL_INW", "CM_SHOAL_INE", "CM_SHOAL_ISW", "CM_SHOAL_ISE",
         ):
-            if pname in META_IDX:
-                for qinfo in meta_quads[META_IDX[pname]]:
+            if ename in META_IDX:
+                for qinfo in meta_quads[META_IDX[ename]]:
                     protected_tids.add(qinfo[0])
         active = list(range(1 + anim_count, len(static_tiles)))
         # Weight 8x8 border pixels 3x higher so console tile folding preserves clean 16x16 edge seams!
@@ -2999,6 +3017,8 @@ def compile_console_bank(frames_meta, max_tiles, is_genesis=False):
             bo = -1
             for oj in pool:
                 if oj == ti:
+                    continue
+                if oj in no_absorb_tids:
                     continue
                 if ti in protected_tids and oj in protected_tids:
                     continue

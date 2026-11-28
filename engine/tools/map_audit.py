@@ -724,6 +724,35 @@ def audit_console_hardware(dump, meta_names, meta_tiles, snes_tiles, snes_meta_t
                     if bad:
                         add("CRITICAL", "SNES", "SNES_META_TILE_OOB",
                             f"{arr_name} references out-of-range tile index {bad[0]} >= {rom_tcnt}")
+            # Verify console tile folding never folds repeating ground tiles into foreground lamp props
+            meta_idx_map = {nm: idx for idx, nm in enumerate(meta_names)}
+            ground_check = [
+                nm for nm in (
+                    "T_COBBLE", "CM_COBBLE_V1", "CM_COBBLE_V2", "CM_COBBLE_V3",
+                    "T_ROCKY_PATH", "CM_ROCKY_V1", "T_GRASS", "CM_GRASS_V1",
+                    "T_AUTUMN_GRASS", "T_DIRT", "T_WOOD_FLOOR",
+                ) if nm in meta_idx_map
+            ]
+            lamp_check = [nm for nm in ("CM_LAMP_UNLIT", "CM_LAMP_COBBLE") if nm in meta_idx_map]
+            for target_lbl, pfx, tmask in (("SNES", "SNES_META_", 0x03FF), ("Genesis", "GEN_META_", 0x07FF)):
+                q_arrs = {}
+                for q in ("TL", "TR", "BL", "BR"):
+                    m_q = re.search(rf"{pfx}{q}\[.*?\]\s*=\s*\{{(.*?)\}};", trom, re.S)
+                    if m_q:
+                        q_arrs[q] = [int(v, 0) & tmask for v in re.findall(r"0x[0-9A-Fa-f]+", m_q.group(1))]
+                if len(q_arrs) == 4:
+                    lamp_head_tids = set()
+                    for lnm in lamp_check:
+                        li = meta_idx_map[lnm]
+                        lamp_head_tids.add(q_arrs["TL"][li])
+                        lamp_head_tids.add(q_arrs["TR"][li])
+                    for gnm in ground_check:
+                        gi = meta_idx_map[gnm]
+                        for q in ("TL", "TR", "BL", "BR"):
+                            tid = q_arrs[q][gi]
+                            if tid != 0 and tid in lamp_head_tids:
+                                add("ERROR", target_lbl, f"{target_lbl.upper()}_GROUND_FOLDED_TO_PROP",
+                                    f"{gnm}.{q} folded into lantern prop tile {tid} in {pfx}{q}")
 
     # 7b. SNES OBJ VRAM 8x8 Tile Collision & Ambient Particle Audit
     # Compute all 8x8 OBJ tile indices occupied by 16x16 slots 0..48 and 49..60
